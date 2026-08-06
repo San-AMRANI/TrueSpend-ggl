@@ -60,7 +60,7 @@ export default function TransactionForm({ onSuccess }: { onSuccess: () => void }
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Amount</label>
               <Input required type="number" step="0.01" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} placeholder="0.00" />
@@ -75,7 +75,7 @@ export default function TransactionForm({ onSuccess }: { onSuccess: () => void }
             </div>
           </div>
           
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Wallet</label>
               <Select value={formData.source_wallet} onChange={e => setFormData({...formData, source_wallet: e.target.value})}>
@@ -85,7 +85,29 @@ export default function TransactionForm({ onSuccess }: { onSuccess: () => void }
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Category</label>
-              <Input required value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} placeholder="Groceries, Rent..." />
+              <Select required value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                <option value="" disabled>Select category</option>
+                <optgroup label="Expenses">
+                  <option value="Food & Dining">Food & Dining</option>
+                  <option value="Groceries">Groceries</option>
+                  <option value="Transportation">Transportation</option>
+                  <option value="Housing & Rent">Housing & Rent</option>
+                  <option value="Utilities">Utilities</option>
+                  <option value="Shopping">Shopping</option>
+                  <option value="Entertainment">Entertainment</option>
+                  <option value="Health & Fitness">Health & Fitness</option>
+                  <option value="Personal Care">Personal Care</option>
+                  <option value="Debt Repayment">Debt Repayment</option>
+                  <option value="Other">Other Expense</option>
+                </optgroup>
+                <optgroup label="Income & Transfers">
+                  <option value="Income">Income / Salary</option>
+                  <option value="Transfer">Transfer</option>
+                  <option value="Reimbursement">Reimbursement</option>
+                  <option value="Refund">Refund</option>
+                  <option value="Other Income">Other Income</option>
+                </optgroup>
+              </Select>
             </div>
           </div>
 
@@ -102,7 +124,7 @@ export default function TransactionForm({ onSuccess }: { onSuccess: () => void }
               </label>
               
               {isSplit && (
-                <div className="grid grid-cols-2 gap-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Reimbursable Amount</label>
                     <Input required={isSplit} type="number" step="0.01" value={splitData.reimbursable_amount} onChange={e => setSplitData({...splitData, reimbursable_amount: e.target.value})} placeholder="0.00" />

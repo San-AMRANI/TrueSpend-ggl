@@ -91,7 +91,7 @@ function AppContent() {
             <span className="text-lg font-bold tracking-tight text-gray-900">TrueSpend</span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-gray-600">{user.email}</span>
+            <span className="hidden sm:block text-sm font-medium text-gray-600">{user.email}</span>
             <Button variant="outline" size="sm" onClick={signOut}>Sign Out</Button>
           </div>
         </div>

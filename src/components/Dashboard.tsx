@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
+import { Select } from './ui/Select';
 import TransactionForm from './TransactionForm';
 import { useAuth } from '../context/AuthContext';
 import { format } from 'date-fns';
@@ -14,8 +15,11 @@ export default function Dashboard() {
   const [kpis, setKpis] = useState<any>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [debts, setDebts] = useState<any[]>([]);
+  const [payday, setPayday] = useState(25);
+  const [isSavingPayday, setIsSavingPayday] = useState(false);
+  const [analyticsMonth, setAnalyticsMonth] = useState('All Time');
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'debts' | 'analytics'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'debts' | 'analytics' | 'settings'>('overview');
 
   const fetchData = async () => {
     setLoading(true);
@@ -76,8 +80,28 @@ export default function Dashboard() {
     }
   };
 
+  
+  
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    transactions.forEach(t => {
+      const date = new Date(t.createdAt);
+      months.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
+    });
+    const sorted = Array.from(months).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    return ['All Time', ...sorted];
+  }, [transactions]);
+
+  const filteredTransactions = useMemo(() => {
+    if (analyticsMonth === 'All Time') return transactions;
+    return transactions.filter(t => {
+      const date = new Date(t.createdAt);
+      return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) === analyticsMonth;
+    });
+  }, [transactions, analyticsMonth]);
+
   const categoryData = useMemo(() => {
-    const expenses = transactions.filter(t => t.type === 'Expense');
+    const expenses = filteredTransactions.filter(t => t.type === 'Expense');
     const grouped = expenses.reduce((acc, curr) => {
       acc[curr.category] = (acc[curr.category] || 0) + parseFloat(curr.amount);
       return acc;
@@ -86,6 +110,49 @@ export default function Dashboard() {
     return Object.entries(grouped)
       .map(([name, value]) => ({ name, value: Number(value) }))
       .sort((a, b) => b.value - a.value);
+  }, [filteredTransactions]);
+
+  const dailySpendingData = useMemo(() => {
+    const expenses = filteredTransactions.filter(t => t.type === 'Expense');
+    const grouped = expenses.reduce((acc, curr) => {
+      const date = new Date(curr.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      acc[date] = (acc[date] || 0) + parseFloat(curr.amount);
+      return acc;
+    }, {} as Record<string, number>);
+
+    return Object.entries(grouped)
+      .map(([date, value]) => ({ date, value: Number(value) }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [filteredTransactions]);
+
+  const incomeVsExpenseData = useMemo(() => {
+    const income = filteredTransactions.filter(t => t.type === 'Income').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const expense = filteredTransactions.filter(t => t.type === 'Expense').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    return [
+      { name: 'Income', amount: income },
+      { name: 'Expense', amount: expense }
+    ];
+  }, [filteredTransactions]);
+
+  const historicalAverages = useMemo(() => {
+    // Calculate global averages
+    const allMonths = new Set<string>();
+    let totalIncome = 0;
+    let totalExpense = 0;
+    
+    transactions.forEach(t => {
+      const date = new Date(t.createdAt);
+      allMonths.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
+      
+      if (t.type === 'Income') totalIncome += parseFloat(t.amount);
+      if (t.type === 'Expense') totalExpense += parseFloat(t.amount);
+    });
+
+    const monthCount = allMonths.size > 0 ? allMonths.size : 1;
+    return {
+      avgIncome: totalIncome / monthCount,
+      avgExpense: totalExpense / monthCount
+    };
   }, [transactions]);
 
   if (loading && !kpis) {
@@ -99,41 +166,14 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       {/* Tab Navigation */}
-            <div className="flex items-center justify-between border-b border-gray-200 pb-px">
-        <div className="flex space-x-2">
-          <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'overview' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Overview</button>
-          <button onClick={() => setActiveTab('transactions')} className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'transactions' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Transactions</button>
-          <button onClick={() => setActiveTab('debts')} className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'debts' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Debts & Splits</button>
-          <button onClick={() => setActiveTab('analytics')} className={`px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'analytics' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Analytics</button>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-200 pb-px gap-4 sm:gap-0">
+        <div className="flex space-x-2 overflow-x-auto w-full sm:w-auto scrollbar-hide pb-2 sm:pb-0">
+          <button onClick={() => setActiveTab('overview')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'overview' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Overview</button>
+          <button onClick={() => setActiveTab('transactions')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'transactions' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Transactions</button>
+          <button onClick={() => setActiveTab('debts')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'debts' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Debts & Splits</button>
+          <button onClick={() => setActiveTab('analytics')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'analytics' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Analytics</button>
+          <button onClick={() => setActiveTab('settings')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'settings' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Settings</button>
         </div>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="mb-1 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-          onClick={async () => {
-            if (confirm('Are you sure you want to truncate the database and seed the shared data?')) {
-              setLoading(true);
-              try {
-                const res = await fetch('/api/seed', {
-                  method: 'POST',
-                  headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.ok) {
-                  await fetchData();
-                } else {
-                  alert('Failed to seed data');
-                }
-              } catch (e) {
-                console.error(e);
-              } finally {
-                setLoading(false);
-              }
-            }
-          }}
-        >
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Truncate & Seed Shared Data
-        </Button>
       </div>
 
       {activeTab === 'overview' && (
@@ -183,7 +223,7 @@ export default function Dashboard() {
               <CardContent>
                 <div className="space-y-4">
                   {transactions.slice(0, 5).map((tx) => (
-                    <div key={tx.id} className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-0 last:pb-0">
+                    <div key={tx.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 border-b border-gray-100 pb-4 sm:pb-3 pt-2 sm:pt-0 last:border-0 last:pb-0">
                       <div className="flex items-center gap-3">
                         <div className={`flex h-10 w-10 items-center justify-center rounded-full ${tx.type === 'Income' ? 'bg-green-100 text-green-600' : tx.type === 'Transfer' ? 'bg-blue-100 text-blue-600' : 'bg-red-100 text-red-600'}`}>
                           {tx.type === 'Income' ? <ArrowDownRight className="h-5 w-5" /> : tx.type === 'Transfer' ? <RefreshCw className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}
@@ -249,7 +289,7 @@ export default function Dashboard() {
           <CardContent>
              <div className="space-y-4">
               {transactions.map((tx) => (
-                <div key={tx.id} className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-0 last:pb-0">
+                <div key={tx.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 border-b border-gray-100 pb-4 sm:pb-3 pt-2 sm:pt-0 last:border-0 last:pb-0">
                   <div className="flex items-center gap-3">
                     <div className={`flex h-10 w-10 items-center justify-center rounded-full ${tx.type === 'Income' ? 'bg-green-100 text-green-600' : tx.type === 'Transfer' ? 'bg-blue-100 text-blue-600' : 'bg-red-100 text-red-600'}`}>
                       {tx.type === 'Income' ? <ArrowDownRight className="h-5 w-5" /> : tx.type === 'Transfer' ? <RefreshCw className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}
@@ -263,7 +303,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4 pl-12 sm:pl-0">
                     <div className={`font-semibold ${tx.type === 'Income' ? 'text-green-600' : tx.type === 'Expense' ? 'text-gray-900' : 'text-gray-500'}`}>
                       {tx.type === 'Expense' ? '-' : tx.type === 'Income' ? '+' : ''}{parseFloat(tx.amount).toFixed(2)} MAD
                     </div>
@@ -289,7 +329,7 @@ export default function Dashboard() {
           <CardContent>
              <div className="space-y-4">
               {debts.map((debt) => (
-                <div key={debt.id} className="flex items-center justify-between border-b border-gray-100 pb-3 last:border-0 last:pb-0">
+                <div key={debt.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 border-b border-gray-100 pb-4 sm:pb-3 pt-2 sm:pt-0 last:border-0 last:pb-0">
                   <div className="flex items-center gap-3">
                     <div className={`flex h-10 w-10 items-center justify-center rounded-full ${debt.status === 'Cleared' ? 'bg-gray-100 text-gray-400' : debt.type === 'Receivable' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
                       {debt.status === 'Cleared' ? <CheckCircle2 className="h-5 w-5" /> : debt.type === 'Receivable' ? <ArrowDownRight className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}
@@ -305,7 +345,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4 pl-12 sm:pl-0">
                     <div className="text-right">
                       <div className={`font-semibold ${debt.status === 'Cleared' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                         {parseFloat(debt.remainingBalance).toFixed(2)} MAD
@@ -332,38 +372,130 @@ export default function Dashboard() {
 
       {activeTab === 'analytics' && (
         <div className="space-y-6">
+          <div className="flex justify-between items-center bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">Historical Reports</h2>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-500 font-medium">Period:</span>
+              <Select value={analyticsMonth} onChange={(e) => setAnalyticsMonth(e.target.value)}>
+                {availableMonths.map(month => (
+                  <option key={month} value={month}>{month}</option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          
+          {analyticsMonth !== 'All Time' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+               <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm flex items-center justify-between">
+                 <div>
+                   <p className="text-sm font-medium text-gray-500">Monthly Expense</p>
+                   <p className="text-xl font-bold text-gray-900">{incomeVsExpenseData[1].amount.toFixed(2)} MAD</p>
+                 </div>
+                 <div className="text-right">
+                   <p className="text-xs text-gray-400">vs All-Time Avg</p>
+                   <p className={`text-sm font-semibold ${incomeVsExpenseData[1].amount > historicalAverages.avgExpense ? 'text-red-500' : 'text-green-500'}`}>
+                     {((incomeVsExpenseData[1].amount - historicalAverages.avgExpense) / (historicalAverages.avgExpense || 1) * 100).toFixed(1)}%
+                   </p>
+                 </div>
+               </div>
+               
+               <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm flex items-center justify-between">
+                 <div>
+                   <p className="text-sm font-medium text-gray-500">Monthly Income</p>
+                   <p className="text-xl font-bold text-gray-900">{incomeVsExpenseData[0].amount.toFixed(2)} MAD</p>
+                 </div>
+                 <div className="text-right">
+                   <p className="text-xs text-gray-400">vs All-Time Avg</p>
+                   <p className={`text-sm font-semibold ${incomeVsExpenseData[0].amount < historicalAverages.avgIncome ? 'text-red-500' : 'text-green-500'}`}>
+                     {((incomeVsExpenseData[0].amount - historicalAverages.avgIncome) / (historicalAverages.avgIncome || 1) * 100).toFixed(1)}%
+                   </p>
+                 </div>
+               </div>
+            </div>
+          )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Spending by Category</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {categoryData.length > 0 ? (
+                  <div className="h-[300px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={categoryData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          outerRadius={100}
+                          fill="#8884d8"
+                          dataKey="value"
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        >
+                          {categoryData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} MAD`, 'Amount']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="py-4 text-center text-sm text-gray-500">No expense data available for charts.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Income vs Expenses</CardTitle>
+              </CardHeader>
+              <CardContent>
+                 <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={incomeVsExpenseData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} MAD`, 'Amount']} />
+                      <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
+                        {
+                          incomeVsExpenseData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.name === 'Income' ? '#10b981' : '#ef4444'} />
+                          ))
+                        }
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           <Card>
             <CardHeader>
-              <CardTitle>Spending by Category</CardTitle>
+              <CardTitle>Daily Spending Trend</CardTitle>
             </CardHeader>
             <CardContent>
-              {categoryData.length > 0 ? (
-                <div className="h-[400px] w-full">
+              {dailySpendingData.length > 0 ? (
+                <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={categoryData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        outerRadius={150}
-                        fill="#8884d8"
-                        dataKey="value"
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      >
-                        {categoryData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => [`${value.toFixed(2)} MAD`, 'Amount']} />
-                    </PieChart>
+                    <BarChart data={dailySpendingData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} MAD`, 'Amount']} />
+                      <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <p className="py-4 text-center text-sm text-gray-500">No expense data available for charts.</p>
+                <p className="py-4 text-center text-sm text-gray-500">No spending data available.</p>
               )}
             </CardContent>
           </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Top Categories</CardTitle>
@@ -384,7 +516,79 @@ export default function Dashboard() {
           </Card>
         </div>
       )}
+            {activeTab === 'settings' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>New Month Setup</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
+                <h3 className="text-sm font-medium text-blue-800 mb-2">Start a New Month</h3>
+                <p className="text-sm text-blue-600 mb-4">
+                  The dashboard automatically rolls over your monthly spending limits based on your defined payday. 
+                  You can log your new month's income to start fresh.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 mb-6">
+                  <Button 
+                    variant="outline" 
+                    className="border-blue-200 text-blue-700 hover:bg-blue-100"
+                    onClick={() => {
+                       setActiveTab('overview');
+                       window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                  >
+                    Log New Salary / Income
+                  </Button>
+                </div>
+                <hr className="border-blue-200 my-4" />
+                <h3 className="text-sm font-medium text-blue-800 mb-2">Payroll Date (Payday)</h3>
+                <p className="text-sm text-blue-600 mb-4">
+                  Select the day of the month you usually get paid. This resets your monthly pacing KPIs.
+                </p>
+                <div className="flex items-center gap-3">
+                  <Select value={payday.toString()} onChange={(e) => setPayday(parseInt(e.target.value))}>
+                    {Array.from({length: 31}, (_, i) => i + 1).map(day => (
+                      <option key={day} value={day}>{day}</option>
+                    ))}
+                  </Select>
+                  <Button 
+                    disabled={isSavingPayday}
+                    onClick={async () => {
+                      setIsSavingPayday(true);
+                      try {
+                        const res = await fetch('/api/settings', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                          body: JSON.stringify({ payday })
+                        });
+                        if (res.ok) {
+                          await fetchData();
+                          alert('Payday updated successfully!');
+                        }
+                      } catch(e) {
+                        console.error(e);
+                      } finally {
+                        setIsSavingPayday(false);
+                      }
+                    }}
+                  >
+                    {isSavingPayday ? 'Saving...' : 'Save Payday'}
+                  </Button>
+                </div>
+              </div>
 
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
+                 <h3 className="text-sm font-medium text-gray-900 mb-2">Past Data</h3>
+                 <p className="text-sm text-gray-500">
+                   All your past transaction data is automatically kept in your database. 
+                   The KPIs on the Overview tab specifically track your current month's pacing.
+                 </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
