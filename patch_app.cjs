@@ -1,10 +1,7 @@
-import React from 'react';
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+const fs = require('fs');
+let code = fs.readFileSync('src/App.tsx', 'utf8');
 
-import { useState } from 'react';
+const loginReplacement = `import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
@@ -80,33 +77,9 @@ function AppContent() {
         </div>
       </div>
     );
-  }
+  }`;
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <div className="flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
-            <span className="text-lg font-bold tracking-tight text-gray-900">TrueSpend</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-gray-600">{user.email}</span>
-            <Button variant="outline" size="sm" onClick={signOut}>Sign Out</Button>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-        <Dashboard />
-      </main>
-    </div>
-  );
-}
-
-export default function App() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
-  );
-}
+// Use regex to replace everything from imports to `if (!user) { ... return (...) }`
+code = code.replace(/import { AuthProvider[\s\S]*?(?=return \(\n\s*<div className="min-h-screen bg-gray-50">)/m, loginReplacement + '\n\n  ');
+fs.writeFileSync('src/App.tsx', code);
+console.log('Patched App.tsx');

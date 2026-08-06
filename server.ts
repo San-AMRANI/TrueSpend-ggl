@@ -1,7 +1,9 @@
+import fs from 'fs';
 import express from "express";
 import path from "path";
 import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
+import jwt from "jsonwebtoken";
 import { requireAuth, AuthRequest } from "./src/middleware/auth.js";
 import { db } from "./src/db/index.js";
 import { transactions, splits, debts, users } from "./src/db/schema.js";
@@ -17,6 +19,86 @@ async function startServer() {
   // API Routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.post("/api/login", (req, res) => {
+    const { username, password } = req.body;
+    const adminUser = process.env.ADMIN_USERNAME || 'admin';
+    const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
+    
+    if (username === adminUser && password === adminPass) {
+      const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_fallback_key';
+      const token = jwt.sign({ username }, JWT_SECRET, { expiresIn: '7d' });
+      res.json({ token, user: { email: username + '@local.host', uid: username } });
+    } else {
+      res.status(401).json({ error: 'Invalid credentials' });
+    }
+  });
+
+
+  app.post("/api/seed", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.dbUser.id;
+      
+      // Truncate tables for this user (or truncate all)
+      await db.delete(splits).execute();
+      await db.delete(transactions).where(eq(transactions.userId, userId)).execute();
+      await db.delete(debts).where(eq(debts.userId, userId)).execute();
+      
+      const seedData = JSON.parse(fs.readFileSync('./src/db/seed_data.json', 'utf8'));
+      
+      // Insert debts
+      const newDebtsMap = {}; // mapping old id to new id
+      if (seedData.debts && seedData.debts.length > 0) {
+        for (const debt of seedData.debts) {
+          const result = await db.insert(debts).values({
+            userId: userId,
+            contactName: debt.contactName,
+            type: debt.type,
+            originalAmount: debt.originalAmount,
+            remainingBalance: debt.remainingBalance,
+            status: debt.status,
+            createdAt: new Date(debt.createdAt)
+          }).returning();
+          newDebtsMap[debt.id] = result[0].id;
+        }
+      }
+      
+      // Insert transactions
+      const newTxMap = {};
+      if (seedData.transactions && seedData.transactions.length > 0) {
+        for (const tx of seedData.transactions) {
+          const result = await db.insert(transactions).values({
+            userId: userId,
+            createdAt: new Date(tx.createdAt),
+            amount: tx.amount,
+            type: tx.type,
+            sourceWallet: tx.sourceWallet,
+            category: tx.category,
+            notes: tx.notes
+          }).returning();
+          newTxMap[tx.id] = result[0].id;
+        }
+      }
+      
+      // Insert splits
+      if (seedData.splits && seedData.splits.length > 0) {
+        for (const split of seedData.splits) {
+          if (newTxMap[split.transactionId]) {
+            await db.insert(splits).values({
+              transactionId: newTxMap[split.transactionId],
+              reimbursableAmount: split.reimbursableAmount,
+              linkedContactId: split.linkedContactId ? newDebtsMap[split.linkedContactId] : null
+            });
+          }
+        }
+      }
+      
+      res.json({ success: true });
+    } catch (e) {
+      console.error('Seed error:', e);
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.get("/api/kpis", requireAuth, async (req: AuthRequest, res) => {

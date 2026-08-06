@@ -1,46 +1,43 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth, googleAuthProvider } from '../lib/firebase';
-import { signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged, User } from 'firebase/auth';
 
 interface AuthContextType {
-  user: User | null;
+  user: any | null;
   token: string | null;
   loading: boolean;
-  signIn: () => Promise<void>;
-  signOut: () => Promise<void>;
+  signIn: (token: string, user: any) => void;
+  signOut: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        const t = await u.getIdToken();
-        setToken(t);
-      } else {
-        setToken(null);
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    const storedToken = localStorage.getItem('auth_token');
+    const storedUser = localStorage.getItem('auth_user');
+    
+    if (storedToken && storedUser) {
+      setToken(storedToken);
+      setUser(JSON.parse(storedUser));
+    }
+    setLoading(false);
   }, []);
 
-  const signIn = async () => {
-    try {
-      await signInWithPopup(auth, googleAuthProvider);
-    } catch (error) {
-      console.error('Error signing in', error);
-    }
+  const signIn = (newToken: string, newUser: any) => {
+    localStorage.setItem('auth_token', newToken);
+    localStorage.setItem('auth_user', JSON.stringify(newUser));
+    setToken(newToken);
+    setUser(newUser);
   };
 
-  const signOut = async () => {
-    await firebaseSignOut(auth);
+  const signOut = () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    setToken(null);
+    setUser(null);
   };
 
   return (
