@@ -12,6 +12,7 @@ export const users = pgTable('users', {
   email: text('email').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
   payday: integer('payday').default(25),
+  emergencyBuffer: decimal('emergency_buffer').default('0').notNull(),
 });
 
 export const debts = pgTable('debts', {

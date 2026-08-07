@@ -4,7 +4,7 @@ import { Button } from './ui/Button';
 import { Select } from './ui/Select';
 import TransactionForm from './TransactionForm';
 import { useAuth } from '../context/AuthContext';
-import { format } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { Wallet, Landmark, Banknote, UserPlus, FileText, ArrowUpRight, ArrowDownRight, RefreshCw, CheckCircle2, Trash2, PieChart as PieChartIcon } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
@@ -16,22 +16,30 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [debts, setDebts] = useState<any[]>([]);
   const [payday, setPayday] = useState(25);
-  const [isSavingPayday, setIsSavingPayday] = useState(false);
+  const [emergencyBuffer, setEmergencyBuffer] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
   const [analyticsMonth, setAnalyticsMonth] = useState('All Time');
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'debts' | 'analytics' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'debts' | 'analytics' | 'settings' | 'digest'>('overview');
+  const [whatIfAmount, setWhatIfAmount] = useState(0);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [kpiRes, txRes, debtRes] = await Promise.all([
+      const [kpiRes, txRes, debtRes, settingsRes] = await Promise.all([
         fetch('/api/kpis', { headers: { 'Authorization': `Bearer ${token}` } }),
         fetch('/api/transactions', { headers: { 'Authorization': `Bearer ${token}` } }),
-        fetch('/api/debts', { headers: { 'Authorization': `Bearer ${token}` } })
+        fetch('/api/debts', { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch('/api/settings', { headers: { 'Authorization': `Bearer ${token}` } })
       ]);
       if (kpiRes.ok) setKpis(await kpiRes.json());
       if (txRes.ok) setTransactions(await txRes.json());
       if (debtRes.ok) setDebts(await debtRes.json());
+      if (settingsRes.ok) {
+        const settings = await settingsRes.json();
+        setPayday(settings.payday);
+        setEmergencyBuffer(settings.emergencyBuffer);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -80,8 +88,28 @@ export default function Dashboard() {
     }
   };
 
-  
-  
+  const handleSaveSettings = async () => {
+    setIsSaving(true);
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ payday, emergencyBuffer })
+      });
+      if (res.ok) {
+        await fetchData();
+        alert('Settings updated successfully!');
+      }
+    } catch(e) {
+      console.error(e);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
     transactions.forEach(t => {
@@ -155,6 +183,49 @@ export default function Dashboard() {
     };
   }, [transactions]);
 
+  const digestData = useMemo(() => {
+    const lastMonth = subMonths(new Date(), 1);
+    const start = startOfMonth(lastMonth);
+    const end = endOfMonth(lastMonth);
+
+    const lastMonthTxs = transactions.filter(t => {
+        const txDate = new Date(t.createdAt);
+        return txDate >= start && txDate <= end;
+    });
+
+    const income = lastMonthTxs.filter(t => t.type === 'Income').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const expense = lastMonthTxs.filter(t => t.type === 'Expense').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const moneySaved = income - expense;
+
+    const topCategories = lastMonthTxs.filter(t => t.type === 'Expense').reduce((acc, curr) => {
+      acc[curr.category] = (acc[curr.category] || 0) + parseFloat(curr.amount);
+      return acc;
+    }, {} as Record<string, number>);
+
+    const sortedCategories = Object.entries(topCategories)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
+    const lastMonthDebts = debts.filter(d => {
+        const debtDate = new Date(d.createdAt);
+        return debtDate >= start && debtDate <= end;
+    });
+
+    const settledDebts = lastMonthDebts.filter(d => d.status === 'Cleared').length;
+    const newDebts = lastMonthDebts.length;
+
+    return {
+      month: format(lastMonth, 'MMMM yyyy'),
+      moneySaved,
+      topCategories: sortedCategories,
+      debtStats: {
+        settledDebts,
+        newDebts,
+      }
+    }
+  }, [transactions, debts]);
+
   if (loading && !kpis) {
     return <div className="py-12 text-center text-gray-500">Loading your financial data...</div>;
   }
@@ -162,6 +233,10 @@ export default function Dashboard() {
   const activeReceivables = debts.filter(d => d.type === 'Receivable' && d.status === 'Pending').reduce((acc, d) => acc + parseFloat(d.remainingBalance), 0);
   const activePayables = debts.filter(d => d.type === 'Payable' && d.status === 'Pending').reduce((acc, d) => acc + parseFloat(d.remainingBalance), 0);
   const netPosition = (kpis?.totalLiquidity || 0) + activeReceivables - activePayables;
+
+  const simulatedDailyAllowance = whatIfAmount > 0 
+    ? ((kpis?.totalLiquidity || 0) - whatIfAmount - (kpis?.emergencyBuffer || 0)) / (kpis?.daysUntilPayday || 1)
+    : kpis?.dailyAllowance;
 
   return (
     <div className="space-y-8">
@@ -172,6 +247,7 @@ export default function Dashboard() {
           <button onClick={() => setActiveTab('transactions')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'transactions' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Transactions</button>
           <button onClick={() => setActiveTab('debts')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'debts' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Debts & Splits</button>
           <button onClick={() => setActiveTab('analytics')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'analytics' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Analytics</button>
+          <button onClick={() => setActiveTab('digest')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'digest' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Digest</button>
           <button onClick={() => setActiveTab('settings')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'settings' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Settings</button>
         </div>
       </div>
@@ -209,7 +285,7 @@ export default function Dashboard() {
                   <CardTitle className="text-sm font-medium text-gray-500">Daily Allowance</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-blue-600">{kpis?.dailyAllowance?.toFixed(2) || '0.00'} MAD</div>
+                  <div className="text-3xl font-bold text-blue-600">{simulatedDailyAllowance?.toFixed(2) || '0.00'} MAD</div>
                   <p className="mt-1 text-xs text-gray-500">{kpis?.daysUntilPayday || 0} days until payday</p>
                 </CardContent>
               </Card>
@@ -253,6 +329,31 @@ export default function Dashboard() {
           {/* Action Column */}
           <div className="space-y-6">
             <TransactionForm onSuccess={fetchData} />
+
+            <Card className="bg-yellow-50/50 border-yellow-100">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-yellow-800">"What-If" Purchase Simulator</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-yellow-600 mb-4">See how a purchase impacts your daily allowance.</p>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="number"
+                    value={whatIfAmount}
+                    onChange={(e) => setWhatIfAmount(parseFloat(e.target.value))}
+                    className="w-full px-3 py-2 text-sm border border-yellow-200 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                    placeholder="Purchase amount"
+                  />
+                  <Button 
+                    variant="outline"
+                    className="border-yellow-200 text-yellow-700 hover:bg-yellow-100"
+                    onClick={() => setWhatIfAmount(0)}
+                  >
+                    Reset
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
             
             <Card className="bg-blue-50/50 border-blue-100">
               <CardHeader className="pb-2">
@@ -516,32 +617,78 @@ export default function Dashboard() {
           </Card>
         </div>
       )}
+
+      {activeTab === 'digest' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Monthly Digest: {digestData.month}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm font-medium text-gray-500">Money Saved</p>
+                    <p className={`text-2xl font-bold ${digestData.moneySaved >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {digestData.moneySaved.toFixed(2)} MAD
+                    </p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm font-medium text-gray-500">New Debts</p>
+                    <p className="text-2xl font-bold text-orange-600">{digestData.debtStats.newDebts}</p>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm font-medium text-gray-500">Settled Debts</p>
+                    <p className="text-2xl font-bold text-blue-600">{digestData.debtStats.settledDebts}</p>
+                </div>
+            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Top 5 Spending Categories</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {digestData.topCategories.map((item, index) => (
+                    <div key={item.name} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                        <span className="text-sm font-medium text-gray-700">{item.name}</span>
+                      </div>
+                      <span className="text-sm font-semibold text-gray-900">{item.value.toFixed(2)} MAD</span>
+                    </div>
+                  ))}
+                  {digestData.topCategories.length === 0 && (
+                      <p className="py-4 text-center text-sm text-gray-500">No spending data for last month.</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </CardContent>
+        </Card>
+      )}
+
             {activeTab === 'settings' && (
         <Card>
           <CardHeader>
-            <CardTitle>New Month Setup</CardTitle>
+            <CardTitle>Settings</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
-                <h3 className="text-sm font-medium text-blue-800 mb-2">Start a New Month</h3>
-                <p className="text-sm text-blue-600 mb-4">
-                  The dashboard automatically rolls over your monthly spending limits based on your defined payday. 
-                  You can log your new month's income to start fresh.
+              <div className="rounded-lg border border-gray-200 bg-white p-4">
+                <h3 className="text-sm font-medium text-gray-900 mb-2">Emergency Liquidity Buffer</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                  Keep a safety cushion. This amount will be excluded from your daily allowance calculation.
                 </p>
-                <div className="flex flex-col sm:flex-row gap-3 mb-6">
-                  <Button 
-                    variant="outline" 
-                    className="border-blue-200 text-blue-700 hover:bg-blue-100"
-                    onClick={() => {
-                       setActiveTab('overview');
-                       window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                  >
-                    Log New Salary / Income
-                  </Button>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="number"
+                    value={emergencyBuffer}
+                    onChange={(e) => setEmergencyBuffer(parseFloat(e.target.value))}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    placeholder="Buffer amount"
+                  />
                 </div>
-                <hr className="border-blue-200 my-4" />
+              </div>
+
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
                 <h3 className="text-sm font-medium text-blue-800 mb-2">Payroll Date (Payday)</h3>
                 <p className="text-sm text-blue-600 mb-4">
                   Select the day of the month you usually get paid. This resets your monthly pacing KPIs.
@@ -552,38 +699,16 @@ export default function Dashboard() {
                       <option key={day} value={day}>{day}</option>
                     ))}
                   </Select>
-                  <Button 
-                    disabled={isSavingPayday}
-                    onClick={async () => {
-                      setIsSavingPayday(true);
-                      try {
-                        const res = await fetch('/api/settings', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                          body: JSON.stringify({ payday })
-                        });
-                        if (res.ok) {
-                          await fetchData();
-                          alert('Payday updated successfully!');
-                        }
-                      } catch(e) {
-                        console.error(e);
-                      } finally {
-                        setIsSavingPayday(false);
-                      }
-                    }}
-                  >
-                    {isSavingPayday ? 'Saving...' : 'Save Payday'}
-                  </Button>
                 </div>
               </div>
 
-              <div className="rounded-lg border border-gray-200 bg-white p-4">
-                 <h3 className="text-sm font-medium text-gray-900 mb-2">Past Data</h3>
-                 <p className="text-sm text-gray-500">
-                   All your past transaction data is automatically kept in your database. 
-                   The KPIs on the Overview tab specifically track your current month's pacing.
-                 </p>
+              <div className="flex justify-end">
+                <Button 
+                  disabled={isSaving}
+                  onClick={handleSaveSettings}
+                >
+                  {isSaving ? 'Saving...' : 'Save Settings'}
+                </Button>
               </div>
             </div>
           </CardContent>

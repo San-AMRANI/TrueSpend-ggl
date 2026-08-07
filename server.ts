@@ -110,7 +110,6 @@ async function startServer() {
       let cashOnHand = 0;
       let monthlyExpenses = 0;
       let monthlyIncome = 0;
-      let totalFronted = 0;
 
       const currentMonth = new Date().getMonth();
       const currentYear = new Date().getFullYear();
@@ -159,8 +158,12 @@ async function startServer() {
         }
       }
 
+      const emergencyBuffer = parseFloat(req.dbUser.emergencyBuffer as unknown as string);
+      const totalLiquidity = bankBalance + cashOnHand;
+      const availableLiquidity = totalLiquidity - emergencyBuffer;
+
       res.json({
-        totalLiquidity: bankBalance + cashOnHand,
+        totalLiquidity,
         bankBalance,
         cashOnHand,
         monthlyExpenses,
@@ -184,9 +187,10 @@ async function startServer() {
             nextPayday = new Date(now.getFullYear(), now.getMonth() + 1, payday);
           }
           const diff = Math.ceil((nextPayday.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-          return (bankBalance + cashOnHand) / (diff > 0 ? diff : 1);
+          return availableLiquidity / (diff > 0 ? diff : 1);
         })(),
-        payday: req.dbUser.payday || 25
+        payday: req.dbUser.payday || 25,
+        emergencyBuffer
       });
     } catch (e) {
       console.error(e);
@@ -303,7 +307,7 @@ async function startServer() {
 
   app.get("/api/settings", requireAuth, async (req: AuthRequest, res) => {
     try {
-      res.json({ payday: req.dbUser.payday || 25 });
+      res.json({ payday: req.dbUser.payday || 25, emergencyBuffer: req.dbUser.emergencyBuffer || 0 });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Internal Server Error" });
@@ -312,13 +316,29 @@ async function startServer() {
 
   app.post("/api/settings", requireAuth, async (req: AuthRequest, res) => {
     try {
-      const { payday } = req.body;
-      if (payday >= 1 && payday <= 31) {
-        await db.update(users).set({ payday }).where(eq(users.id, req.dbUser.id));
-        res.json({ success: true, payday });
-      } else {
-        res.status(400).json({ error: "Invalid payday" });
+      const { payday, emergencyBuffer } = req.body;
+      const updateData: { payday?: number, emergencyBuffer?: string } = {};
+      if (payday) {
+        if (payday >= 1 && payday <= 31) {
+          updateData.payday = payday;
+        } else {
+          return res.status(400).json({ error: "Invalid payday" });
+        }
       }
+
+      if (emergencyBuffer) {
+        if (emergencyBuffer >= 0) {
+          updateData.emergencyBuffer = String(emergencyBuffer);
+        } else {
+          return res.status(400).json({ error: "Invalid emergency buffer" });
+        }
+      }
+
+      if(Object.keys(updateData).length > 0) {
+        await db.update(users).set(updateData).where(eq(users.id, req.dbUser.id));
+      }
+
+      res.json({ success: true, ...updateData });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Internal Server Error" });
