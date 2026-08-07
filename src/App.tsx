@@ -46,7 +46,7 @@ function AppContent() {
       <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
         <div className="mx-auto w-full max-w-sm text-center">
           <div className="mb-8">
-            <img src="/assets/logo/logo-1.png" alt="TrueSpend Logo" className="mx-auto h-16 w-16" />
+            <img src="/assets/logo/logo.png" alt="TrueSpend Logo" className="mx-auto h-16 w-16" />
           </div>
           <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-900">Welcome to TrueSpend</h1>
           <p className="mb-8 text-gray-500">Log in to track your true economic consumption.</p>
@@ -87,7 +87,7 @@ function AppContent() {
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/assets/logo/logo-1.png" alt="TrueSpend Logo" className="h-8 w-8" />
+            <img src="/assets/logo/logo.png" alt="TrueSpend Logo" className="h-8 w-8" />
             <span className="text-lg font-bold tracking-tight text-gray-900">TrueSpend</span>
           </div>
           <div className="flex items-center gap-4">
