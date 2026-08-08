@@ -29,9 +29,9 @@ export class SettingsController {
 
   async exportSql(req: AuthRequest, res: Response) {
     try {
-      const sqlContent = await settingsService.exportSqlForUser(req.dbUser);
+      const sqlContent = await settingsService.exportSqlDatabase();
       res.setHeader('Content-Type', 'application/sql');
-      res.setHeader('Content-Disposition', 'attachment; filename="truespend_export.sql"');
+      res.setHeader('Content-Disposition', 'attachment; filename="truespend_database_backup.sql"');
       res.send(sqlContent);
     } catch (e) {
       console.error('Error exporting SQL:', e);
