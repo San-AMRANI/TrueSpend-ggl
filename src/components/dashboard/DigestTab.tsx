@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Transaction, Debt } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import { normalizeCategory } from '../../lib/categories';
 import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
@@ -28,7 +29,8 @@ export const DigestTab: React.FC<DigestTabProps> = ({ transactions, debts }) => 
     const topCategoriesMap = lastMonthTxs
       .filter((t) => t.type === 'Expense')
       .reduce((acc, curr) => {
-        acc[curr.category] = (acc[curr.category] || 0) + parseFloat(curr.amount);
+        const category = normalizeCategory(curr.category) || 'Uncategorized';
+        acc[category] = (acc[category] || 0) + parseFloat(curr.amount);
         return acc;
       }, {} as Record<string, number>);
 

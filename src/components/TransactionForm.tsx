@@ -4,6 +4,7 @@ import { Input } from './ui/Input';
 import { Select } from './ui/Select';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { useAuth } from '../context/AuthContext';
+import { expenseCategories, incomeAndTransferCategories } from '../lib/categories';
 
 export default function TransactionForm({ onSuccess }: { onSuccess: () => void }) {
   const { token } = useAuth();
@@ -88,24 +89,18 @@ export default function TransactionForm({ onSuccess }: { onSuccess: () => void }
               <Select required value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
                 <option value="" disabled>Select category</option>
                 <optgroup label="Expenses">
-                  <option value="Food & Dining">Food & Dining</option>
-                  <option value="Groceries">Groceries</option>
-                  <option value="Transportation">Transportation</option>
-                  <option value="Housing & Rent">Housing & Rent</option>
-                  <option value="Utilities">Utilities</option>
-                  <option value="Shopping">Shopping</option>
-                  <option value="Entertainment">Entertainment</option>
-                  <option value="Health & Fitness">Health & Fitness</option>
-                  <option value="Personal Care">Personal Care</option>
-                  <option value="Debt Repayment">Debt Repayment</option>
-                  <option value="Other">Other Expense</option>
+                  {expenseCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category === 'Other' ? 'Other Expense' : category}
+                    </option>
+                  ))}
                 </optgroup>
                 <optgroup label="Income & Transfers">
-                  <option value="Income">Income / Salary</option>
-                  <option value="Transfer">Transfer</option>
-                  <option value="Reimbursement">Reimbursement</option>
-                  <option value="Refund">Refund</option>
-                  <option value="Other Income">Other Income</option>
+                  {incomeAndTransferCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category === 'Income' ? 'Income / Salary' : category}
+                    </option>
+                  ))}
                 </optgroup>
               </Select>
             </div>

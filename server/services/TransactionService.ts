@@ -1,5 +1,6 @@
 import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
+import { normalizeCategory } from '../../src/lib/categories.js';
 
 export interface CreateTransactionDTO {
   amount: number;
@@ -13,7 +14,11 @@ export interface CreateTransactionDTO {
 
 export class TransactionService {
   async getTransactionsForUser(userId: string) {
-    return await transactionRepository.findAllByUserId(userId);
+    const transactions = await transactionRepository.findAllByUserId(userId);
+    return transactions.map((transaction) => ({
+      ...transaction,
+      category: normalizeCategory(transaction.category),
+    }));
   }
 
   async createTransaction(userId: string, dto: CreateTransactionDTO) {
@@ -22,7 +27,7 @@ export class TransactionService {
       amount: String(dto.amount),
       type: dto.type,
       sourceWallet: dto.source_wallet,
-      category: dto.category,
+      category: normalizeCategory(dto.category),
       notes: dto.notes,
     });
 

@@ -3,6 +3,7 @@ import { Transaction } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Select } from '../ui/Select';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { normalizeCategory } from '../../lib/categories';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
 
@@ -38,7 +39,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const categoryData = useMemo(() => {
     const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
     const grouped = expenses.reduce((acc, curr) => {
-      acc[curr.category] = (acc[curr.category] || 0) + parseFloat(curr.amount);
+      const category = normalizeCategory(curr.category) || 'Uncategorized';
+      acc[category] = (acc[category] || 0) + parseFloat(curr.amount);
       return acc;
     }, {} as Record<string, number>);
 
