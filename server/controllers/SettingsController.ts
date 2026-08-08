@@ -26,6 +26,18 @@ export class SettingsController {
       }
     }
   }
+
+  async exportSql(req: AuthRequest, res: Response) {
+    try {
+      const sqlContent = await settingsService.exportSqlForUser(req.dbUser);
+      res.setHeader('Content-Type', 'application/sql');
+      res.setHeader('Content-Disposition', 'attachment; filename="truespend_export.sql"');
+      res.send(sqlContent);
+    } catch (e) {
+      console.error('Error exporting SQL:', e);
+      res.status(500).json({ error: 'Failed to export SQL database dump' });
+    }
+  }
 }
 
 export const settingsController = new SettingsController();

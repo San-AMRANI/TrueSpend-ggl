@@ -1,6 +1,6 @@
 import { db } from '../../src/db/index.js';
 import { transactions, splits } from '../../src/db/schema.js';
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, inArray } from 'drizzle-orm';
 
 export interface CreateTransactionParams {
   userId: string;
@@ -34,6 +34,11 @@ export class TransactionRepository {
 
   async findSplitsByTransactionId(transactionId: string) {
     return await db.select().from(splits).where(eq(splits.transactionId, transactionId));
+  }
+
+  async findSplitsByTransactionIds(transactionIds: string[]) {
+    if (transactionIds.length === 0) return [];
+    return await db.select().from(splits).where(inArray(splits.transactionId, transactionIds));
   }
 
   async createSplit(data: CreateSplitParams) {

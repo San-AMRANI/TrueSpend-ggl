@@ -16,5 +16,22 @@ export const dashboardService = {
   getSettings: (token: string | null) => apiClient.get<UserSettings>('/api/settings', token),
   updateSettings: (payload: { payday?: number; emergencyBuffer?: number }, token: string | null) =>
     apiClient.post<{ success: boolean; payday?: number; emergencyBuffer?: number }>('/api/settings', payload, token),
+  exportSql: async (token: string | null) => {
+    const response = await fetch('/api/settings/export-sql', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      throw new Error('Failed to download SQL export');
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `truespend_export_${new Date().toISOString().slice(0, 10)}.sql`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
   seedData: (token: string | null) => apiClient.post<{ success: boolean }>('/api/seed', {}, token),
 };

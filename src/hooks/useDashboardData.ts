@@ -10,6 +10,7 @@ export function useDashboardData(token: string | null) {
   const [emergencyBuffer, setEmergencyBuffer] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
   const [analyticsMonth, setAnalyticsMonth] = useState<string>('All Time');
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [whatIfAmount, setWhatIfAmount] = useState<number>(0);
@@ -119,6 +120,18 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleExportSql = async () => {
+    setIsExporting(true);
+    try {
+      await dashboardService.exportSql(token);
+    } catch (e) {
+      console.error('Error exporting SQL:', e);
+      alert('Failed to export SQL data.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return {
     kpis,
     transactions,
@@ -129,6 +142,7 @@ export function useDashboardData(token: string | null) {
     setEmergencyBuffer,
     loading,
     isSaving,
+    isExporting,
     analyticsMonth,
     setAnalyticsMonth,
     activeTab,
@@ -142,5 +156,6 @@ export function useDashboardData(token: string | null) {
     handleDeleteTransaction,
     handleSaveSettings,
     handleSeedData,
+    handleExportSql,
   };
 }

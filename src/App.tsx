@@ -9,7 +9,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 
-const logoSrc = `${import.meta.env.BASE_URL}logo-1.png`;
+const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}logo-1.png`;
 
 
 function AppContent() {

@@ -21,6 +21,7 @@ export default function Dashboard() {
     setEmergencyBuffer,
     loading,
     isSaving,
+    isExporting,
     analyticsMonth,
     setAnalyticsMonth,
     activeTab,
@@ -33,6 +34,7 @@ export default function Dashboard() {
     handleEditDebt,
     handleDeleteTransaction,
     handleSaveSettings,
+    handleExportSql,
   } = useDashboardData(token);
 
   if (loading && !kpis) {
@@ -87,7 +89,9 @@ export default function Dashboard() {
           payday={payday}
           setPayday={setPayday}
           isSaving={isSaving}
+          isExporting={isExporting}
           handleSaveSettings={handleSaveSettings}
+          handleExportSql={handleExportSql}
         />
       )}
     </div>
