@@ -268,11 +268,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
       <Card>
         <CardHeader>
-          <CardTitle>Top Categories</CardTitle>
+          <CardTitle>All Categories</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {categoryData.slice(0, 3).map((item, index) => (
+            {categoryData.map((item, index) => (
               <button
                 key={item.name}
                 type="button"
