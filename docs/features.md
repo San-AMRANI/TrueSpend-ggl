@@ -28,6 +28,7 @@ The application is a personal finance tracker focused on liquidity, daily budget
 ### 4. Historical Analytics & Reporting
 - **Period Filtering**: Users can view analytics for "All Time" or filter by specific past months.
 - **Spending by Category**: A pie chart breaking down where money was spent.
+- **Category Drilldown**: Select a pie slice or one of the top three categories to view its total, transaction count, average purchase, and every matching transaction for the selected period.
 - **Income vs Expenses**: A bar chart comparing total inflows and outflows.
 - **Daily Spending Trend**: A time-series chart showing spending spikes over the selected period.
 - **Historical Averages Comparison**: When viewing a specific month, the application calculates the all-time monthly average for Income and Expenses, and displays the percentage variance (+/-) for the selected month against the global average.

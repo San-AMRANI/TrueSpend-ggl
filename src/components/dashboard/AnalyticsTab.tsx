@@ -1,9 +1,12 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Transaction } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Select } from '../ui/Select';
+import { Button } from '../ui/Button';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { normalizeCategory } from '../../lib/categories';
+import { Banknote, Landmark, X } from 'lucide-react';
+import { format } from 'date-fns';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
 
@@ -18,6 +21,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   analyticsMonth,
   setAnalyticsMonth,
 }) => {
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
   const availableMonths = useMemo(() => {
     const months = new Set<string>();
     transactions.forEach((t) => {
@@ -48,6 +53,22 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       .map(([name, value]) => ({ name, value: Number(value) }))
       .sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
+
+  const activeCategory = categoryData.some((category) => category.name === selectedCategory) ? selectedCategory : null;
+
+  const selectedCategoryTransactions = useMemo(() => {
+    if (!activeCategory) return [];
+
+    return filteredTransactions
+      .filter((transaction) => transaction.type === 'Expense')
+      .filter((transaction) => (normalizeCategory(transaction.category) || 'Uncategorized') === activeCategory)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [activeCategory, filteredTransactions]);
+
+  const selectedCategoryTotal = selectedCategoryTransactions.reduce(
+    (total, transaction) => total + parseFloat(transaction.amount),
+    0,
+  );
 
   const dailySpendingData = useMemo(() => {
     const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
@@ -180,7 +201,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                     >
                       {categoryData.map((_entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                          className="cursor-pointer outline-none"
+                          onClick={() => setSelectedCategory(categoryData[index].name)}
+                        />
                       ))}
                     </Pie>
                     <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} MAD`, 'Amount']} />
@@ -246,18 +272,77 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {categoryData.map((item, index) => (
-              <div key={item.name} className="flex items-center justify-between">
+            {categoryData.slice(0, 3).map((item, index) => (
+              <button
+                key={item.name}
+                type="button"
+                aria-pressed={activeCategory === item.name}
+                onClick={() => setSelectedCategory(item.name)}
+                className={`flex w-full items-center justify-between rounded-md p-2 text-left transition-colors ${
+                  activeCategory === item.name ? 'bg-gray-100' : 'hover:bg-gray-50'
+                }`}
+              >
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
                   <span className="text-sm font-medium text-gray-700">{item.name}</span>
                 </div>
                 <span className="text-sm font-semibold text-gray-900">{item.value.toFixed(2)} MAD</span>
-              </div>
+              </button>
             ))}
+            {categoryData.length === 0 && <p className="py-2 text-center text-sm text-gray-500">No expense categories yet.</p>}
           </div>
         </CardContent>
       </Card>
+
+      {activeCategory && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4">
+            <div>
+              <CardTitle>{activeCategory} transactions</CardTitle>
+              <p className="mt-1 text-sm text-gray-500">{analyticsMonth}</p>
+            </div>
+            <Button type="button" variant="ghost" size="icon" aria-label="Close category details" onClick={() => setSelectedCategory(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-lg bg-gray-50 p-3">
+                <p className="text-xs font-medium text-gray-500">Total spent</p>
+                <p className="mt-1 text-lg font-bold text-gray-900">{selectedCategoryTotal.toFixed(2)} MAD</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3">
+                <p className="text-xs font-medium text-gray-500">Transactions</p>
+                <p className="mt-1 text-lg font-bold text-gray-900">{selectedCategoryTransactions.length}</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3">
+                <p className="text-xs font-medium text-gray-500">Average purchase</p>
+                <p className="mt-1 text-lg font-bold text-gray-900">
+                  {(selectedCategoryTotal / selectedCategoryTransactions.length).toFixed(2)} MAD
+                </p>
+              </div>
+            </div>
+
+            <div className="divide-y divide-gray-100">
+              {selectedCategoryTransactions.map((transaction) => (
+                <div key={transaction.id} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-gray-900">{transaction.notes || activeCategory}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+                      <span>{format(new Date(transaction.createdAt), 'MMM d, yyyy')}</span>
+                      <span className="flex items-center gap-1">
+                        {transaction.sourceWallet === 'Bank' ? <Landmark className="h-3 w-3" /> : <Banknote className="h-3 w-3" />}
+                        {transaction.sourceWallet}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="font-semibold text-gray-900">-{parseFloat(transaction.amount).toFixed(2)} MAD</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
