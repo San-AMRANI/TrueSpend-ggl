@@ -250,6 +250,32 @@ async function startServer() {
   app.delete("/api/transactions/:id", requireAuth, async (req: AuthRequest, res) => {
     try {
       const txId = req.params.id;
+      
+      const relatedSplits = await db.select().from(splits).where(eq(splits.transactionId, txId));
+      for (const split of relatedSplits) {
+        if (split.linkedContactId) {
+          const debt = await db.select().from(debts).where(and(eq(debts.id, split.linkedContactId), eq(debts.userId, req.dbUser.id)));
+          if (debt.length > 0) {
+            const currentOriginal = parseFloat(debt[0].originalAmount as unknown as string);
+            const currentRemaining = parseFloat(debt[0].remainingBalance as unknown as string);
+            const reimbursableAmount = parseFloat(split.reimbursableAmount as unknown as string);
+            
+            const newOriginal = currentOriginal - reimbursableAmount;
+            const newRemaining = currentRemaining - reimbursableAmount;
+            
+            if (newOriginal <= 0) {
+              await db.delete(debts).where(eq(debts.id, debt[0].id));
+            } else {
+              await db.update(debts).set({
+                originalAmount: String(newOriginal),
+                remainingBalance: String(newRemaining),
+                status: newRemaining <= 0 ? 'Cleared' : 'Pending'
+              }).where(eq(debts.id, debt[0].id));
+            }
+          }
+        }
+      }
+
       // Delete splits associated with this transaction first
       await db.delete(splits).where(eq(splits.transactionId, txId));
       await db.delete(transactions).where(and(eq(transactions.id, txId), eq(transactions.userId, req.dbUser.id)));
@@ -263,7 +289,26 @@ async function startServer() {
   app.get("/api/debts", requireAuth, async (req: AuthRequest, res) => {
     try {
       const allDebts = await db.select().from(debts).where(eq(debts.userId, req.dbUser.id)).orderBy(desc(debts.createdAt));
-      res.json(allDebts);
+      const allSplits = await db.select().from(splits).where(sql`${splits.linkedContactId} IS NOT NULL`);
+      const allTxs = await db.select().from(transactions).where(eq(transactions.userId, req.dbUser.id));
+      
+      const debtsWithSettlements = allDebts.map(debt => {
+        const debtSplits = allSplits.filter(s => s.linkedContactId === debt.id);
+        const settlements = debtSplits.map(s => {
+          const tx = allTxs.find(t => t.id === s.transactionId);
+          return {
+            id: s.id,
+            amount: s.reimbursableAmount,
+            createdAt: tx ? tx.createdAt : debt.createdAt
+          };
+        }).sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+
+        return {
+          ...debt,
+          settlements
+        };
+      });
+      res.json(debtsWithSettlements);
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Internal Server Error" });
@@ -284,20 +329,83 @@ async function startServer() {
             remainingBalance: String(newRemaining),
             status: newRemaining <= 0 ? 'Cleared' : 'Pending'
           }).where(eq(debts.id, debt_id));
+
+          const txType = debt[0].type === 'Receivable' ? 'Income' : 'Expense';
+          const txCategory = debt[0].type === 'Receivable' ? 'Reimbursement' : 'Debt Repayment';
+          
+          const newTx = await db.insert(transactions).values({
+            userId: req.dbUser.id,
+            amount: String(amount),
+            type: txType,
+            sourceWallet: 'Bank',
+            category: txCategory,
+            notes: `Settlement for ${debt[0].contactName}`,
+          }).returning();
+
+          await db.insert(splits).values({
+            transactionId: newTx[0].id,
+            reimbursableAmount: String(amount),
+            linkedContactId: debt_id,
+          });
+
           return res.status(200).json({ message: "Debt settled" });
         }
         return res.status(404).json({ error: "Debt not found" });
       } else {
-        await db.insert(debts).values({
+        const newDebt = await db.insert(debts).values({
           userId: req.dbUser.id,
           contactName: contact,
           type,
           originalAmount: String(amount),
           remainingBalance: String(amount),
           status: 'Pending',
-        });
-        return res.status(201).json({ message: "Debt created" });
+        }).returning();
+        return res.status(201).json({ message: "Debt created", id: newDebt[0].id });
       }
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+
+  app.put("/api/debts/:id", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const debtId = req.params.id;
+      const { amount, contact, type } = req.body;
+
+      const debt = await db.select().from(debts).where(and(eq(debts.id, debtId), eq(debts.userId, req.dbUser.id)));
+      
+      if (debt.length > 0) {
+        const currentRemaining = parseFloat(debt[0].remainingBalance as unknown as string);
+        const currentOriginal = parseFloat(debt[0].originalAmount as unknown as string);
+        const settledAmount = currentOriginal - currentRemaining;
+
+        const newOriginal = amount;
+        let newRemaining = newOriginal - settledAmount;
+
+        if (newRemaining < 0) newRemaining = 0;
+
+        await db.update(debts).set({
+          contactName: contact,
+          type,
+          originalAmount: String(newOriginal),
+          remainingBalance: String(newRemaining),
+          status: newRemaining <= 0 ? 'Cleared' : 'Pending'
+        }).where(eq(debts.id, debtId));
+        return res.status(200).json({ message: "Debt updated" });
+      }
+      return res.status(404).json({ error: "Debt not found" });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
+  });
+
+  app.delete("/api/debts/:id", requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const debtId = req.params.id;
+      await db.delete(debts).where(and(eq(debts.id, debtId), eq(debts.userId, req.dbUser.id)));
+      res.status(200).json({ message: "Debt deleted" });
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Internal Server Error" });

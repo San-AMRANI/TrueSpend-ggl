@@ -9,17 +9,20 @@ The application is a personal finance tracker focused on liquidity, daily budget
 - **Total Liquidity**: A unified view of available money across Bank and Cash.
 - **Adjusted True Spend**: Monthly expenses minus any reimbursements or debt repayments.
 - **Daily Allowance**: Dynamically calculated safe-to-spend amount per day. It divides the total liquidity by the number of days remaining until the next payday.
-- **Customizable Payday**: Users can specify the exact day of the month they receive their salary, ensuring that the daily allowance and monthly pacing calculations are always accurate.
+- **Customizable Payday & Emergency Buffer**: Users can specify the exact day of the month they receive their salary and a safe liquidity buffer, ensuring that the daily allowance and monthly pacing calculations are always accurate.
 
 ### 2. Transaction Management
 - **Income, Expense, and Transfers**: Users can log multiple types of transactions.
 - **Wallet Tracking**: Differentiates between Bank/Card money and physical Cash. Transfers allow moving money between these two wallets.
 - **Categorization**: Expenses and incomes can be categorized (e.g., Food & Dining, Transportation, Salary).
+- **Cascade Deletion**: When deleting a transaction, any associated split records are removed, and linked debts are automatically updated (reduced or deleted).
 
 ### 3. Expense Splitting & Debt Tracking
 - **Integrated Splitting**: When logging an expense, users can mark it as "Reimbursable (Fronting Money)", specifying how much is owed and by whom.
-- **Debt Ledger**: A dedicated tab to track "Pending" and "Cleared" debts, both payables (money you owe) and receivables (money owed to you).
-- **Settlement**: Users can mark debts as settled (logging partial or full repayments).
+- **Standalone Debts**: Users can manually create standalone debts (Receivables or Payables) without an accompanying expense transaction.
+- **Debt Ledger**: A dedicated tab to track "Pending" and "Cleared" debts.
+- **Settlement & History**: Users can mark debts as settled (logging partial or full repayments). The application tracks and displays a detailed settlement history for each debt. Settling a debt automatically generates the corresponding cash flow transaction.
+- **Debt Management**: Users can edit debt amounts, names, and types, or forgive/delete them directly.
 
 ### 4. Historical Analytics & Reporting
 - **Period Filtering**: Users can view analytics for "All Time" or filter by specific past months.

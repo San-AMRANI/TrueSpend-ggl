@@ -7,7 +7,7 @@
       "amount": "6036.70",
       "type": "Income",
       "sourceWallet": "Bank",
-      "category": "Salary",
+      "category": "Income",
       "notes": "Oracle R&D Center - Salary / Payroll"
     },
     {
@@ -17,7 +17,7 @@
       "amount": "100.00",
       "type": "Income",
       "sourceWallet": "Bank",
-      "category": "Repayment",
+      "category": "Debt Repayment",
       "notes": "Yassmine Amrani - Loan repayment received"
     },
     {
@@ -27,7 +27,7 @@
       "amount": "10.00",
       "type": "Income",
       "sourceWallet": "Cash",
-      "category": "Gift",
+      "category": "Other",
       "notes": "Sister - Cash gift / help"
     },
     {
@@ -37,7 +37,7 @@
       "amount": "200.00",
       "type": "Income",
       "sourceWallet": "Cash",
-      "category": "Repayment",
+      "category": "Debt Repayment",
       "notes": "Friend - Loan repayment received in cash"
     },
     {
@@ -97,7 +97,7 @@
       "amount": "60.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Social",
+      "category": "Entertainment",
       "notes": "McDo Mohammed V (Paid for friends)"
     },
     {
@@ -107,7 +107,7 @@
       "amount": "54.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Social",
+      "category": "Entertainment",
       "notes": "McDo Aeria G-64 (40 friends + 14 personal)"
     },
     {
@@ -117,7 +117,7 @@
       "amount": "50.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Telecom",
+      "category": "Utilities",
       "notes": "Orange Maroc"
     },
     {
@@ -127,7 +127,7 @@
       "amount": "35.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Food",
+      "category": "Food & Dining",
       "notes": "Ben Pause Gourm"
     },
     {
@@ -137,7 +137,7 @@
       "amount": "30.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Transport",
+      "category": "Transportation",
       "notes": "Station Prestig (Fuel)"
     },
     {
@@ -147,7 +147,7 @@
       "amount": "26.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Coffee",
+      "category": "Food & Dining",
       "notes": "Boca Oracle"
     },
     {
@@ -157,7 +157,7 @@
       "amount": "21.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Food",
+      "category": "Food & Dining",
       "notes": "McDo Mohammed V"
     },
     {
@@ -167,7 +167,7 @@
       "amount": "14.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Coffee",
+      "category": "Food & Dining",
       "notes": "Boca Oracle Coffee"
     },
     {
@@ -177,7 +177,7 @@
       "amount": "7.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Coffee",
+      "category": "Food & Dining",
       "notes": "Boca Oracle Coffee"
     },
     {
@@ -187,7 +187,7 @@
       "amount": "26.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Food",
+      "category": "Food & Dining",
       "notes": "Boca Oracle"
     },
     {
@@ -197,7 +197,7 @@
       "amount": "57.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Food",
+      "category": "Food & Dining",
       "notes": "Boca Oracle"
     },
     {
@@ -207,7 +207,7 @@
       "amount": "30.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Coffee",
+      "category": "Food & Dining",
       "notes": "Coffee (Personal)"
     },
     {
@@ -237,7 +237,7 @@
       "amount": "10.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Telecom",
+      "category": "Utilities",
       "notes": "Orange (App top-up)"
     },
     {
@@ -247,7 +247,7 @@
       "amount": "52.30",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Social",
+      "category": "Entertainment",
       "notes": "Marjane (Beach Lunch) (26.15 Personal + 6.15 treated friend + 20 reimbursed)"
     },
     {
@@ -257,7 +257,7 @@
       "amount": "39.85",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Social",
+      "category": "Entertainment",
       "notes": "Marjane (Beach Snacks) (19.93 Personal + 19.92 Friend)"
     },
     {
@@ -267,7 +267,7 @@
       "amount": "30.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Transport",
+      "category": "Transportation",
       "notes": "Train (Transport for self, mom, and sister)"
     },
     {
@@ -277,7 +277,7 @@
       "amount": "138.00",
       "type": "Expense",
       "sourceWallet": "Bank",
-      "category": "Family",
+      "category": "Other",
       "notes": "Shawarma (Dinner)"
     },
     {
@@ -347,7 +347,7 @@
       "amount": "300.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Wardrobe",
+      "category": "Shopping",
       "notes": "Suit rental"
     },
     {
@@ -357,7 +357,7 @@
       "amount": "200.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Social",
+      "category": "Entertainment",
       "notes": "Loan to friend"
     },
     {
@@ -367,7 +367,7 @@
       "amount": "72.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Food",
+      "category": "Food & Dining",
       "notes": "McDonalds"
     },
     {
@@ -377,7 +377,7 @@
       "amount": "50.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Family",
+      "category": "Other",
       "notes": "Cash to Mom"
     },
     {
@@ -397,7 +397,7 @@
       "amount": "45.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Grooming",
+      "category": "Personal Care",
       "notes": "Barbershop (1)"
     },
     {
@@ -407,7 +407,7 @@
       "amount": "35.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Transport",
+      "category": "Transportation",
       "notes": "Station fuel"
     },
     {
@@ -417,7 +417,7 @@
       "amount": "20.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Transport",
+      "category": "Transportation",
       "notes": "Station fuel"
     },
     {
@@ -427,7 +427,7 @@
       "amount": "15.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Coffee",
+      "category": "Food & Dining",
       "notes": "Coffee"
     },
     {
@@ -437,7 +437,7 @@
       "amount": "14.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Coffee",
+      "category": "Food & Dining",
       "notes": "McCafé"
     },
     {
@@ -447,7 +447,7 @@
       "amount": "30.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Transport",
+      "category": "Transportation",
       "notes": "Fuel"
     },
     {
@@ -457,7 +457,7 @@
       "amount": "20.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Grooming",
+      "category": "Personal Care",
       "notes": "Barbershop (2)"
     },
     {
@@ -467,7 +467,7 @@
       "amount": "190.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Wardrobe",
+      "category": "Shopping",
       "notes": "Clothes (Initial Payment)"
     },
     {
@@ -477,7 +477,7 @@
       "amount": "20.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Social",
+      "category": "Entertainment",
       "notes": "Uber (1) to Cinema (10 Personal + 10 Friend)"
     },
     {
@@ -497,7 +497,7 @@
       "amount": "33.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Social",
+      "category": "Entertainment",
       "notes": "Uber (2) from Cinema (16.50 Personal + 16.50 Friend)"
     },
     {
@@ -507,7 +507,7 @@
       "amount": "30.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Transport",
+      "category": "Transportation",
       "notes": "Fuel (Bike)"
     },
     {
@@ -527,7 +527,7 @@
       "amount": "1.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Adjustment",
+      "category": "Other",
       "notes": "System Adjustment"
     },
     {
@@ -537,7 +537,7 @@
       "amount": "6.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Social",
+      "category": "Entertainment",
       "notes": "Beach Seller"
     },
     {
@@ -547,7 +547,7 @@
       "amount": "4.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Transport",
+      "category": "Transportation",
       "notes": "Parking"
     },
     {
@@ -557,7 +557,7 @@
       "amount": "10.00",
       "type": "Expense",
       "sourceWallet": "Cash",
-      "category": "Grooming",
+      "category": "Personal Care",
       "notes": "Barbershop (3)"
     }
   ],

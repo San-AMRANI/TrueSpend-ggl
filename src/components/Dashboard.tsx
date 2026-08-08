@@ -3,9 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
 import TransactionForm from './TransactionForm';
+import DebtForm from './DebtForm';
 import { useAuth } from '../context/AuthContext';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
-import { Wallet, Landmark, Banknote, UserPlus, FileText, ArrowUpRight, ArrowDownRight, RefreshCw, CheckCircle2, Trash2, PieChart as PieChartIcon } from 'lucide-react';
+import { Wallet, Landmark, Banknote, UserPlus, FileText, ArrowUpRight, ArrowDownRight, RefreshCw, CheckCircle2, Trash2, Edit2, History, PieChart as PieChartIcon, LayoutDashboard, ArrowRightLeft, Users, BarChart2, Settings } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
@@ -65,6 +66,54 @@ export default function Dashboard() {
       });
       if (res.ok) {
         fetchData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteDebt = async (debtId: string) => {
+    if (!confirm('Are you sure you want to delete this debt? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`/api/debts/${debtId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        fetchData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleEditDebt = async (debtId: string, currentAmount: string, currentContact: string, currentType: string) => {
+    const newAmount = prompt('Enter the updated original amount:', currentAmount);
+    if (newAmount === null) return;
+    const newContact = prompt('Enter the updated contact name:', currentContact);
+    if (newContact === null) return;
+    
+    // For simplicity, we just keep the currentType, or user can edit amount/name.
+    
+    try {
+      const res = await fetch(`/api/debts/${debtId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          amount: parseFloat(newAmount),
+          contact: newContact,
+          type: currentType
+        })
+      });
+      if (res.ok) {
+        fetchData();
+      } else {
+        alert('Failed to update debt');
       }
     } catch (e) {
       console.error(e);
@@ -203,7 +252,7 @@ export default function Dashboard() {
     }, {} as Record<string, number>);
 
     const sortedCategories = Object.entries(topCategories)
-      .map(([name, value]) => ({ name, value }))
+      .map(([name, value]) => ({ name, value: Number(value) }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
 
@@ -239,10 +288,10 @@ export default function Dashboard() {
     : kpis?.dailyAllowance;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-20 sm:pb-0">
       {/* Tab Navigation */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-200 pb-px gap-4 sm:gap-0">
-        <div className="flex space-x-2 overflow-x-auto w-full sm:w-auto scrollbar-hide pb-2 sm:pb-0">
+                  <div className="hidden sm:flex flex-col sm:flex-row sm:items-center justify-between border-b border-gray-200 pb-px gap-4 sm:gap-0">
+        <div className="flex space-x-2 w-full sm:w-auto pb-2 sm:pb-0">
           <button onClick={() => setActiveTab('overview')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'overview' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Overview</button>
           <button onClick={() => setActiveTab('transactions')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'transactions' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Transactions</button>
           <button onClick={() => setActiveTab('debts')} className={`whitespace-nowrap px-3 sm:px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'debts' ? 'border-b-2 border-gray-900 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Debts & Splits</button>
@@ -423,52 +472,80 @@ export default function Dashboard() {
       )}
 
       {activeTab === 'debts' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Debts & Splits</CardTitle>
-          </CardHeader>
-          <CardContent>
-             <div className="space-y-4">
-              {debts.map((debt) => (
-                <div key={debt.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 border-b border-gray-100 pb-4 sm:pb-3 pt-2 sm:pt-0 last:border-0 last:pb-0">
-                  <div className="flex items-center gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-full ${debt.status === 'Cleared' ? 'bg-gray-100 text-gray-400' : debt.type === 'Receivable' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
-                      {debt.status === 'Cleared' ? <CheckCircle2 className="h-5 w-5" /> : debt.type === 'Receivable' ? <ArrowDownRight className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{debt.contactName}</p>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span>{format(new Date(debt.createdAt), 'MMM d, yyyy')}</span>
-                        <span>•</span>
-                        <span>{debt.type === 'Receivable' ? 'Owes you' : 'You owe'}</span>
-                        <span>•</span>
-                        <span className={debt.status === 'Pending' ? 'text-amber-600 font-medium' : 'text-green-600 font-medium'}>{debt.status}</span>
+        <>
+          <DebtForm onSuccess={fetchData} />
+          <Card>
+            <CardHeader>
+              <CardTitle>Debts & Splits</CardTitle>
+            </CardHeader>
+            <CardContent>
+               <div className="space-y-4">
+                {debts.map((debt) => (
+                  <div key={debt.id} className="flex flex-col border-b border-gray-100 pb-4 sm:pb-3 pt-2 sm:pt-0 last:border-0 last:pb-0">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-10 w-10 items-center justify-center rounded-full ${debt.status === 'Cleared' ? 'bg-gray-100 text-gray-400' : debt.type === 'Receivable' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
+                          {debt.status === 'Cleared' ? <CheckCircle2 className="h-5 w-5" /> : debt.type === 'Receivable' ? <ArrowDownRight className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{debt.contactName}</p>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <span>{format(new Date(debt.createdAt), 'MMM d, yyyy')}</span>
+                            <span>•</span>
+                            <span>{debt.type === 'Receivable' ? 'Owes you' : 'You owe'}</span>
+                            <span>•</span>
+                            <span className={debt.status === 'Pending' ? 'text-amber-600 font-medium' : 'text-green-600 font-medium'}>{debt.status}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4 pl-12 sm:pl-0">
+                        <div className="text-right">
+                          <div className={`font-semibold ${debt.status === 'Cleared' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                            {parseFloat(debt.remainingBalance).toFixed(2)} MAD
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            of {parseFloat(debt.originalAmount).toFixed(2)} MAD
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {debt.status === 'Pending' && (
+                            <Button size="sm" variant="outline" onClick={() => handleSettle(debt.id, parseFloat(debt.remainingBalance))}>
+                              Settle Full
+                            </Button>
+                          )}
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-gray-400 hover:text-blue-600" onClick={() => handleEditDebt(debt.id, debt.originalAmount, debt.contactName, debt.type)}>
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-gray-400 hover:text-red-600" onClick={() => handleDeleteDebt(debt.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4 pl-12 sm:pl-0">
-                    <div className="text-right">
-                      <div className={`font-semibold ${debt.status === 'Cleared' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
-                        {parseFloat(debt.remainingBalance).toFixed(2)} MAD
+                    {debt.settlements && debt.settlements.length > 0 && (
+                      <div className="mt-4 pl-12 sm:pl-12">
+                        <div className="text-xs font-semibold text-gray-500 flex items-center gap-1 mb-2">
+                          <History className="h-3 w-3" /> Settlement History
+                        </div>
+                        <div className="space-y-1">
+                          {debt.settlements.map((s: any) => (
+                            <div key={s.id} className="flex items-center justify-between text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
+                              <span>{format(new Date(s.createdAt), 'MMM d, yyyy - h:mm a')}</span>
+                              <span className="font-medium text-gray-900">{parseFloat(s.amount).toFixed(2)} MAD</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-500">
-                        of {parseFloat(debt.originalAmount).toFixed(2)} MAD
-                      </div>
-                    </div>
-                    {debt.status === 'Pending' && (
-                      <Button size="sm" variant="outline" onClick={() => handleSettle(debt.id, parseFloat(debt.remainingBalance))}>
-                        Settle Full
-                      </Button>
                     )}
                   </div>
-                </div>
-              ))}
-              {debts.length === 0 && (
-                <p className="py-4 text-center text-sm text-gray-500">No debts or splits recorded.</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+                ))}
+                {debts.length === 0 && (
+                  <p className="py-4 text-center text-sm text-gray-500">No debts or splits recorded.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </>
       )}
 
       {activeTab === 'analytics' && (
@@ -714,6 +791,34 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       )}
-    </div>
+    
+      {/* Mobile Bottom Navigation */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 px-4 py-2 flex justify-between items-center shadow-[0_-2px_10px_rgba(0,0,0,0.05)] safe-area-bottom">
+        <button onClick={() => setActiveTab('overview')} className={`flex flex-col items-center p-2 ${activeTab === 'overview' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
+          <LayoutDashboard className="h-5 w-5 mb-1" />
+          <span className="text-[10px] font-medium">Home</span>
+        </button>
+        <button onClick={() => setActiveTab('transactions')} className={`flex flex-col items-center p-2 ${activeTab === 'transactions' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
+          <ArrowRightLeft className="h-5 w-5 mb-1" />
+          <span className="text-[10px] font-medium">Txns</span>
+        </button>
+        <button onClick={() => setActiveTab('debts')} className={`flex flex-col items-center p-2 ${activeTab === 'debts' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
+          <Users className="h-5 w-5 mb-1" />
+          <span className="text-[10px] font-medium">Debts</span>
+        </button>
+        <button onClick={() => setActiveTab('analytics')} className={`flex flex-col items-center p-2 ${activeTab === 'analytics' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
+          <BarChart2 className="h-5 w-5 mb-1" />
+          <span className="text-[10px] font-medium">Stats</span>
+        </button>
+        <button onClick={() => setActiveTab('digest')} className={`flex flex-col items-center p-2 ${activeTab === 'digest' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
+          <FileText className="h-5 w-5 mb-1" />
+          <span className="text-[10px] font-medium">Digest</span>
+        </button>
+        <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center p-2 ${activeTab === 'settings' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}>
+          <Settings className="h-5 w-5 mb-1" />
+          <span className="text-[10px] font-medium">Settings</span>
+        </button>
+      </div>
+</div>
   );
 }
