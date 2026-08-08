@@ -9,6 +9,7 @@ export interface CreateTransactionParams {
   sourceWallet: 'Bank' | 'Cash';
   category?: string;
   notes?: string;
+  createdAt?: Date;
 }
 
 export interface CreateSplitParams {

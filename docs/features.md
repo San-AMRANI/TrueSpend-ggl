@@ -14,7 +14,8 @@ The application is a personal finance tracker focused on liquidity, daily budget
 ### 2. Transaction Management
 - **Income, Expense, and Transfers**: Users can log multiple types of transactions.
 - **Wallet Tracking**: Differentiates between Bank/Card money and physical Cash. Transfers allow moving money between these two wallets.
-- **Categorization**: Expenses and incomes can be categorized (e.g., Food & Dining, Transportation, Salary).
+- **Consistent Categories**: Expenses and incomes use one shared category list across entry, analytics, and reports. Existing spelling and naming variants are consolidated in reports without changing historical records.
+- **Transaction Dates**: Transactions can be backdated, so monthly analytics and spending trends reflect when the money was actually spent.
 - **Cascade Deletion**: When deleting a transaction, any associated split records are removed, and linked debts are automatically updated (reduced or deleted).
 
 ### 3. Expense Splitting & Debt Tracking

@@ -45,6 +45,7 @@ Most API endpoints require authentication using a JWT token. The token should be
       "source_wallet": "Bank", // "Bank", "Cash"
       "category": "Groceries",
       "notes": "Weekly shop",
+      "transaction_date": "2026-08-08", // Optional, defaults to today
       "reimbursable_amount": 50.00, // Optional
       "linked_contact_name": "John Doe" // Optional
     }

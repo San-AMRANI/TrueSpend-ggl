@@ -17,9 +17,11 @@ export class TransactionController {
     try {
       const created = await transactionService.createTransaction(req.dbUser.id, req.body);
       res.status(201).json({ message: 'Transaction created', id: created.id });
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      res.status(500).json({ error: 'Internal Server Error' });
+      res.status(e.message === 'Invalid transaction date' ? 400 : 500).json({
+        error: e.message === 'Invalid transaction date' ? e.message : 'Internal Server Error',
+      });
     }
   }
 

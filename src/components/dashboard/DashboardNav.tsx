@@ -44,7 +44,7 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
         </div>
       </nav>
 
-      <nav aria-label="Dashboard sections" className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
+      <nav aria-label="Dashboard sections" className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur md:hidden mb-0">
         <div className="mx-auto grid max-w-lg grid-cols-6">
           {tabs.map((tab) => {
             const Icon = tab.icon;

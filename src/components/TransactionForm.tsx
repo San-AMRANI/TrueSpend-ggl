@@ -9,12 +9,14 @@ import { expenseCategories, incomeAndTransferCategories } from '../lib/categorie
 export default function TransactionForm({ onSuccess }: { onSuccess: () => void }) {
   const { token } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     amount: '',
     type: 'Expense',
     source_wallet: 'Bank',
     category: '',
     notes: '',
+    transaction_date: new Date().toISOString().slice(0, 10),
   });
   const [isSplit, setIsSplit] = useState(false);
   const [splitData, setSplitData] = useState({
@@ -24,6 +26,7 @@ export default function TransactionForm({ onSuccess }: { onSuccess: () => void }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
     try {
       const payload = {
@@ -41,14 +44,25 @@ export default function TransactionForm({ onSuccess }: { onSuccess: () => void }
         },
         body: JSON.stringify(payload)
       });
-      if (res.ok) {
-        onSuccess();
-        setFormData({ amount: '', type: 'Expense', source_wallet: 'Bank', category: '', notes: '' });
-        setIsSplit(false);
-        setSplitData({ reimbursable_amount: '', linked_contact_name: '' });
+      if (!res.ok) {
+        const response = await res.json().catch(() => ({}));
+        throw new Error(response.error || 'Unable to save the transaction.');
       }
+
+      onSuccess();
+      setFormData({
+        amount: '',
+        type: 'Expense',
+        source_wallet: 'Bank',
+        category: '',
+        notes: '',
+        transaction_date: new Date().toISOString().slice(0, 10),
+      });
+      setIsSplit(false);
+      setSplitData({ reimbursable_amount: '', linked_contact_name: '' });
     } catch (err) {
       console.error(err);
+      setError(err instanceof Error ? err.message : 'Unable to save the transaction.');
     } finally {
       setLoading(false);
     }
@@ -74,6 +88,17 @@ export default function TransactionForm({ onSuccess }: { onSuccess: () => void }
                 <option value="Transfer">Transfer (e.g. ATM)</option>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Transaction Date</label>
+            <Input
+              required
+              type="date"
+              value={formData.transaction_date}
+              onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
+            />
+            <p className="text-xs text-gray-500">Used in monthly reports and spending trends.</p>
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -132,6 +157,8 @@ export default function TransactionForm({ onSuccess }: { onSuccess: () => void }
               )}
             </div>
           )}
+
+          {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
 
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Saving...' : 'Save Transaction'}
