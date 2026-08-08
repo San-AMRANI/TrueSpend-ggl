@@ -27,7 +27,7 @@ export const dashboardService = {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `truespend_export_${new Date().toISOString().slice(0, 10)}.sql`;
+    a.download = `truespend_database_backup_${new Date().toISOString().slice(0, 10)}.sql`;
     document.body.appendChild(a);
     a.click();
     a.remove();

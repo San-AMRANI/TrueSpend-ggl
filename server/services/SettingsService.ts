@@ -1,6 +1,6 @@
 import { userRepository } from '../repositories/UserRepository.js';
-import { debtRepository } from '../repositories/DebtRepository.js';
-import { transactionRepository } from '../repositories/TransactionRepository.js';
+import { db } from '../../src/db/index.js';
+import { debts, splits, transactions, users } from '../../src/db/schema.js';
 
 export interface UpdateSettingsDTO {
   payday?: number;
@@ -41,21 +41,26 @@ export class SettingsService {
     return { success: true, ...updateData };
   }
 
-  async exportSqlForUser(dbUser: any): Promise<string> {
-    const userId = dbUser.id;
-    const userDebts = await debtRepository.findAllByUserId(userId);
-    const userTxs = await transactionRepository.findAllByUserId(userId);
-    const txIds = userTxs.map((t) => t.id);
-    const userSplits = await transactionRepository.findSplitsByTransactionIds(txIds);
+  async exportSqlDatabase(): Promise<string> {
+    const [allUsers, allDebts, allTransactions, allSplits] = await Promise.all([
+      db.select().from(users),
+      db.select().from(debts),
+      db.select().from(transactions),
+      db.select().from(splits),
+    ]);
 
     const escapeStr = (str: string | null | undefined) => {
       if (str === null || str === undefined) return 'NULL';
       return `'${String(str).replace(/'/g, "''")}'`;
     };
 
-    const escapeNum = (num: any) => {
+    const escapeNum = (num: string | number | null | undefined) => {
       if (num === null || num === undefined) return 'NULL';
-      return String(num);
+      const value = String(num);
+      if (!/^-?\d+(\.\d+)?$/.test(value)) {
+        throw new Error(`Cannot export invalid numeric value: ${value}`);
+      }
+      return value;
     };
 
     const escapeDate = (date: Date | string | null | undefined) => {
@@ -67,10 +72,14 @@ export class SettingsService {
     const lines: string[] = [];
 
     lines.push('-- ====================================================');
-    lines.push('-- TrueSpend PostgreSQL Database Export');
+    lines.push('-- TrueSpend Complete PostgreSQL Database Backup');
     lines.push(`-- Exported At: ${new Date().toISOString()}`);
-    lines.push(`-- User Email: ${dbUser.email}`);
+    lines.push(`-- Records: ${allUsers.length} users, ${allTransactions.length} transactions, ${allDebts.length} debts, ${allSplits.length} splits`);
+    lines.push('-- Restore this script into a new or empty PostgreSQL database.');
     lines.push('-- ====================================================\n');
+
+    lines.push('BEGIN;');
+    lines.push("CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";\n");
 
     lines.push('-- 1. ENUMS CREATION');
     lines.push(`DO $$ BEGIN
@@ -90,7 +99,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
 
     lines.push('-- 2. SCHEMA TABLES');
-    lines.push(`CREATE TABLE IF NOT EXISTS users (
+    lines.push(`CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     uid TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL,
@@ -99,9 +108,9 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
     emergency_buffer DECIMAL DEFAULT '0' NOT NULL
 );`);
 
-    lines.push(`CREATE TABLE IF NOT EXISTS debts (
+    lines.push(`CREATE TABLE debts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id),
     contact_name TEXT NOT NULL,
     type debt_type NOT NULL,
     original_amount DECIMAL NOT NULL,
@@ -110,9 +119,9 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
     created_at TIMESTAMP DEFAULT NOW()
 );`);
 
-    lines.push(`CREATE TABLE IF NOT EXISTS transactions (
+    lines.push(`CREATE TABLE transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id),
     created_at TIMESTAMP DEFAULT NOW(),
     amount DECIMAL NOT NULL,
     type transaction_type NOT NULL,
@@ -121,56 +130,63 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
     notes TEXT
 );`);
 
-    lines.push(`CREATE TABLE IF NOT EXISTS splits (
+    lines.push(`CREATE TABLE splits (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    transaction_id UUID NOT NULL REFERENCES transactions(id),
     reimbursable_amount DECIMAL NOT NULL,
-    linked_contact_id UUID REFERENCES debts(id) ON DELETE SET NULL
+    linked_contact_id UUID REFERENCES debts(id)
 );\n`);
 
     lines.push('-- 3. DATA INSERTS\n');
 
-    lines.push('-- Users Data');
-    lines.push(`INSERT INTO users (id, uid, email, created_at, payday, emergency_buffer)`);
-    lines.push(`VALUES (${escapeStr(dbUser.id)}, ${escapeStr(dbUser.uid)}, ${escapeStr(dbUser.email)}, ${escapeDate(dbUser.createdAt)}, ${escapeNum(dbUser.payday ?? 25)}, ${escapeNum(dbUser.emergencyBuffer ?? 0)})`);
-    lines.push(`ON CONFLICT (id) DO UPDATE SET payday = EXCLUDED.payday, emergency_buffer = EXCLUDED.emergency_buffer;\n`);
+    if (allUsers.length > 0) {
+      lines.push('-- Users Data');
+      for (const user of allUsers) {
+        lines.push(
+          `INSERT INTO users (id, uid, email, created_at, payday, emergency_buffer) ` +
+            `VALUES (${escapeStr(user.id)}, ${escapeStr(user.uid)}, ${escapeStr(user.email)}, ${escapeDate(user.createdAt)}, ${escapeNum(user.payday ?? 25)}, ${escapeNum(user.emergencyBuffer ?? 0)});`
+        );
+      }
+      lines.push('');
+    }
 
-    if (userDebts.length > 0) {
+    if (allDebts.length > 0) {
       lines.push('-- Debts Data');
-      for (const d of userDebts) {
+      for (const d of allDebts) {
         lines.push(
           `INSERT INTO debts (id, user_id, contact_name, type, original_amount, remaining_balance, status, created_at) ` +
             `VALUES (${escapeStr(d.id)}, ${escapeStr(d.userId)}, ${escapeStr(d.contactName)}, ${escapeStr(d.type)}::debt_type, ${escapeNum(d.originalAmount)}, ${escapeNum(d.remainingBalance)}, ${escapeStr(d.status)}::debt_status, ${escapeDate(d.createdAt)}) ` +
-            `ON CONFLICT (id) DO NOTHING;`
+            `;`
         );
       }
       lines.push('');
     }
 
-    if (userTxs.length > 0) {
+    if (allTransactions.length > 0) {
       lines.push('-- Transactions Data');
-      for (const t of userTxs) {
+      for (const t of allTransactions) {
         lines.push(
           `INSERT INTO transactions (id, user_id, created_at, amount, type, source_wallet, category, notes) ` +
             `VALUES (${escapeStr(t.id)}, ${escapeStr(t.userId)}, ${escapeDate(t.createdAt)}, ${escapeNum(t.amount)}, ${escapeStr(t.type)}::transaction_type, ${escapeStr(t.sourceWallet)}::wallet_type, ${escapeStr(t.category)}, ${escapeStr(t.notes)}) ` +
-            `ON CONFLICT (id) DO NOTHING;`
+            `;`
         );
       }
       lines.push('');
     }
 
-    if (userSplits.length > 0) {
+    if (allSplits.length > 0) {
       lines.push('-- Splits Data');
-      for (const s of userSplits) {
+      for (const s of allSplits) {
         lines.push(
           `INSERT INTO splits (id, transaction_id, reimbursable_amount, linked_contact_id) ` +
             `VALUES (${escapeStr(s.id)}, ${escapeStr(s.transactionId)}, ${escapeNum(s.reimbursableAmount)}, ${escapeStr(s.linkedContactId)}) ` +
-            `ON CONFLICT (id) DO NOTHING;`
+            `;`
         );
       }
       lines.push('');
     }
 
+    lines.push('COMMIT;');
     return lines.join('\n');
   }
 }
