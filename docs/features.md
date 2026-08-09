@@ -10,6 +10,7 @@ The application is a personal finance tracker focused on liquidity, daily budget
 - **Adjusted True Spend**: Monthly expenses minus any reimbursements or debt repayments.
 - **Daily Allowance**: Dynamically calculated safe-to-spend amount per day. It divides the total liquidity by the number of days remaining until the next payday.
 - **Customizable Payday & Emergency Buffer**: Users can specify the exact day of the month they receive their salary and a safe liquidity buffer, ensuring that the daily allowance and monthly pacing calculations are always accurate.
+- **Daily Allowance Tracking**: Each day’s allowance is fixed from that day’s opening balance. Expense outflows reduce the amount left for today; an 80% warning and a critical over-budget alert help prevent overspending. The next day recalculates from the new balance.
 
 ### 2. Transaction Management
 - **Income, Expense, and Transfers**: Users can log multiple types of transactions.

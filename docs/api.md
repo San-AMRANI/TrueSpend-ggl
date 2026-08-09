@@ -27,6 +27,10 @@ Most API endpoints require authentication using a JWT token. The token should be
       "adjustedTrueSpend": 450,
       "daysUntilPayday": 12,
       "dailyAllowance": 100,
+      "dailySpent": 30,
+      "dailyRemaining": 70,
+      "dailyUsagePercent": 30,
+      "dailyStatus": "on_track",
       "payday": 25,
       "emergencyBuffer": 0
     }
