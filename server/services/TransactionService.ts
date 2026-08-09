@@ -13,16 +13,34 @@ export interface CreateTransactionDTO {
   linked_contact_name?: string;
 }
 
+export interface UpdateTransactionDTO extends Omit<CreateTransactionDTO, 'type'> {
+  type?: CreateTransactionDTO['type'];
+}
+
 export class TransactionService {
   async getTransactionsForUser(userId: string) {
     const transactions = await transactionRepository.findAllByUserId(userId);
-    return transactions.map((transaction) => ({
-      ...transaction,
-      category: normalizeCategory(transaction.category),
-    }));
+    const [allSplits, allDebts] = await Promise.all([
+      transactionRepository.findSplitsByTransactionIds(transactions.map((transaction) => transaction.id)),
+      debtRepository.findAllByUserId(userId),
+    ]);
+    const splitByTransactionId = new Map(allSplits.map((split) => [split.transactionId, split]));
+    const debtById = new Map(allDebts.map((debt) => [debt.id, debt]));
+    return transactions.map((transaction) => {
+      const split = splitByTransactionId.get(transaction.id);
+      return {
+        ...transaction,
+        category: normalizeCategory(transaction.category),
+        reimbursableAmount: split?.reimbursableAmount,
+        linkedContactId: split?.linkedContactId,
+        linkedContactName: split?.linkedContactId ? debtById.get(split.linkedContactId)?.contactName : null,
+      };
+    });
   }
 
   async createTransaction(userId: string, dto: CreateTransactionDTO) {
+    this.validateAmount(dto.amount);
+    this.validateReimbursement(dto.amount, dto.reimbursable_amount);
     const createdAt = this.parseTransactionDate(dto.transaction_date);
     const newTx = await transactionRepository.create({
       userId,
@@ -54,6 +72,81 @@ export class TransactionService {
     return newTx;
   }
 
+  async updateTransaction(userId: string, transactionId: string, dto: UpdateTransactionDTO) {
+    const current = await transactionRepository.findByIdAndUserId(transactionId, userId);
+    if (!current) throw new Error('Transaction not found');
+    if (dto.type && dto.type !== current.type) {
+      throw new Error('Transaction type cannot be changed. Delete and create a new transaction instead.');
+    }
+    this.validateAmount(dto.amount);
+    this.validateReimbursement(dto.amount, dto.reimbursable_amount);
+
+    const createdAt = this.parseTransactionDate(dto.transaction_date);
+    const existingSplit = (await transactionRepository.findSplitsByTransactionId(transactionId))[0];
+    const reimbursementWasUpdated = dto.reimbursable_amount !== undefined;
+
+    if (current.type !== 'Expense' && reimbursementWasUpdated && dto.reimbursable_amount && dto.reimbursable_amount > 0) {
+      throw new Error('Only expense transactions can be reimbursable');
+    }
+
+    if (current.type === 'Expense' && reimbursementWasUpdated) {
+      const newReimbursableAmount = dto.reimbursable_amount || 0;
+      if (existingSplit?.linkedContactId) {
+        const debt = await debtRepository.findByIdAndUserId(existingSplit.linkedContactId, userId);
+        if (!debt) throw new Error('Linked debt not found');
+        const oldReimbursableAmount = parseFloat(existingSplit.reimbursableAmount as unknown as string);
+        const originalAmount = parseFloat(debt.originalAmount as unknown as string);
+        const settledAmount = originalAmount - parseFloat(debt.remainingBalance as unknown as string);
+        if (newReimbursableAmount < settledAmount) {
+          throw new Error('The reimbursement cannot be lower than the amount already settled.');
+        }
+
+        if (newReimbursableAmount === 0) {
+          const linkedSplits = await transactionRepository.findSplitsByDebtId(debt.id);
+          if (linkedSplits.some((split) => split.transactionId !== transactionId)) {
+            throw new Error('This reimbursement has settlements. Adjust the debt before removing it from the expense.');
+          }
+          await transactionRepository.deleteSplitById(existingSplit.id);
+          await debtRepository.deleteByIdAndUserId(debt.id, userId);
+        } else {
+          const newOriginalAmount = originalAmount + (newReimbursableAmount - oldReimbursableAmount);
+          await debtRepository.update(debt.id, userId, {
+            originalAmount: String(newOriginalAmount),
+            remainingBalance: String(newOriginalAmount - settledAmount),
+            status: newOriginalAmount === settledAmount ? 'Cleared' : 'Pending',
+            ...(dto.linked_contact_name ? { contactName: dto.linked_contact_name.trim() } : {}),
+          });
+          await transactionRepository.updateSplit(existingSplit.id, { reimbursableAmount: String(newReimbursableAmount) });
+        }
+      } else if (newReimbursableAmount > 0) {
+        const contactName = dto.linked_contact_name?.trim();
+        if (!contactName) throw new Error('A contact name is required for a reimbursable expense');
+        const debt = await debtRepository.create({
+          userId,
+          contactName,
+          type: 'Receivable',
+          originalAmount: String(newReimbursableAmount),
+          remainingBalance: String(newReimbursableAmount),
+          status: 'Pending',
+        });
+        await transactionRepository.createSplit({
+          transactionId,
+          reimbursableAmount: String(newReimbursableAmount),
+          linkedContactId: debt.id,
+        });
+      }
+    }
+
+    const updated = await transactionRepository.update(transactionId, userId, {
+      amount: String(dto.amount),
+      sourceWallet: dto.source_wallet,
+      category: normalizeCategory(dto.category),
+      notes: dto.notes,
+      ...(createdAt ? { createdAt } : {}),
+    });
+    return updated;
+  }
+
   private parseTransactionDate(date?: string) {
     if (!date) return undefined;
 
@@ -70,34 +163,36 @@ export class TransactionService {
   }
 
   async deleteTransaction(userId: string, transactionId: string) {
+    const transaction = await transactionRepository.findByIdAndUserId(transactionId, userId);
+    if (!transaction) throw new Error('Transaction not found');
     const relatedSplits = await transactionRepository.findSplitsByTransactionId(transactionId);
 
     for (const split of relatedSplits) {
       if (split.linkedContactId) {
         const debt = await debtRepository.findByIdAndUserId(split.linkedContactId, userId);
         if (debt) {
-          const currentOriginal = parseFloat(debt.originalAmount as unknown as string);
-          const currentRemaining = parseFloat(debt.remainingBalance as unknown as string);
-          const reimbursableAmount = parseFloat(split.reimbursableAmount as unknown as string);
-
-          const newOriginal = currentOriginal - reimbursableAmount;
-          const newRemaining = currentRemaining - reimbursableAmount;
-
-          if (newOriginal <= 0) {
-            await debtRepository.deleteByIdAndUserId(debt.id, userId);
-          } else {
-            await debtRepository.update(debt.id, userId, {
-              originalAmount: String(newOriginal),
-              remainingBalance: String(newRemaining),
-              status: newRemaining <= 0 ? 'Cleared' : 'Pending',
-            });
+          const linkedSplits = await transactionRepository.findSplitsByDebtId(debt.id);
+          if (linkedSplits.some((linkedSplit) => linkedSplit.transactionId !== transactionId)) {
+            throw new Error('This linked reimbursement has settlement history. Adjust the debt before deleting the expense.');
           }
+          await debtRepository.deleteByIdAndUserId(debt.id, userId);
         }
       }
     }
 
     await transactionRepository.deleteSplitsByTransactionId(transactionId);
     await transactionRepository.deleteByIdAndUserId(transactionId, userId);
+  }
+
+  private validateAmount(amount: number) {
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero');
+  }
+
+  private validateReimbursement(amount: number, reimbursableAmount?: number) {
+    if (reimbursableAmount === undefined) return;
+    if (!Number.isFinite(reimbursableAmount) || reimbursableAmount < 0 || reimbursableAmount > amount) {
+      throw new Error('Reimbursable amount must be between zero and the transaction amount');
+    }
   }
 }
 

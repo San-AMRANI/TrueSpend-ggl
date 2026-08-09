@@ -1,0 +1,58 @@
+import { normalizeCategory } from '../../src/lib/categories.js';
+import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
+
+export interface UpsertCategoryBudgetDTO {
+  category: string;
+  year: number;
+  month: number;
+  amount: number;
+}
+
+export class CategoryBudgetService {
+  async getBudgetsForUser(userId: string) {
+    return categoryBudgetRepository.findAllByUserId(userId);
+  }
+
+  async upsertBudget(userId: string, dto: UpsertCategoryBudgetDTO) {
+    const category = normalizeCategory(dto.category);
+    if (!category) throw new Error('A category is required');
+    if (!Number.isInteger(dto.year) || dto.year < 2000 || dto.year > 2200) throw new Error('Invalid budget year');
+    if (!Number.isInteger(dto.month) || dto.month < 1 || dto.month > 12) throw new Error('Invalid budget month');
+    if (!Number.isFinite(dto.amount) || dto.amount < 0) throw new Error('Budget amount must be zero or greater');
+
+    return categoryBudgetRepository.upsert({
+      userId,
+      category,
+      year: dto.year,
+      month: dto.month,
+      amount: String(dto.amount),
+    });
+  }
+
+  async copyPreviousMonth(userId: string, year: number, month: number) {
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+      throw new Error('Invalid budget month');
+    }
+    const previous = month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
+    const [previousBudgets, currentBudgets] = await Promise.all([
+      categoryBudgetRepository.findByMonth(userId, previous.year, previous.month),
+      categoryBudgetRepository.findByMonth(userId, year, month),
+    ]);
+    const currentCategories = new Set(currentBudgets.map((budget) => budget.category));
+    const copied = [];
+    for (const budget of previousBudgets) {
+      if (!currentCategories.has(budget.category)) {
+        copied.push(await categoryBudgetRepository.upsert({
+          userId,
+          category: budget.category,
+          year,
+          month,
+          amount: String(budget.amount),
+        }));
+      }
+    }
+    return { copied: copied.length };
+  }
+}
+
+export const categoryBudgetService = new CategoryBudgetService();

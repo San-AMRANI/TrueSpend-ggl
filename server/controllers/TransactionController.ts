@@ -35,6 +35,16 @@ export class TransactionController {
       res.status(500).json({ error: 'Internal Server Error' });
     }
   }
+
+  async updateTransaction(req: AuthRequest, res: Response) {
+    try {
+      const updated = await transactionService.updateTransaction(req.dbUser.id, req.params.id, req.body);
+      res.json({ message: 'Transaction updated', transaction: updated });
+    } catch (e: any) {
+      console.error(e);
+      res.status(e.message?.includes('not found') ? 404 : 400).json({ error: e.message || 'Unable to update transaction' });
+    }
+  }
 }
 
 export const transactionController = new TransactionController();

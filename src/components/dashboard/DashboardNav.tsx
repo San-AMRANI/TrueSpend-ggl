@@ -1,6 +1,6 @@
 import React from 'react';
 import { DashboardTab } from '../../types';
-import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings } from 'lucide-react';
+import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards } from 'lucide-react';
 
 interface DashboardNavProps {
   activeTab: DashboardTab;
@@ -11,6 +11,8 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
   const tabs: { id: DashboardTab; label: string; icon: React.FC<{ className?: string }> }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
+    { id: 'budgets', label: 'Budgets', icon: WalletCards },
+    { id: 'what-if', label: 'What-If', icon: Calculator },
     { id: 'debts', label: 'Debts & Splits', icon: Users },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },
     { id: 'digest', label: 'Digest', icon: FileText },
@@ -45,7 +47,7 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
       </nav>
 
       <nav aria-label="Dashboard sections" className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur md:hidden mb-0">
-        <div className="mx-auto grid max-w-lg grid-cols-6">
+        <div className="mx-auto grid max-w-lg grid-cols-4">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -69,4 +71,3 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
     </>
   );
 };
-

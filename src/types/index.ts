@@ -29,6 +29,21 @@ export interface Transaction {
   sourceWallet: 'Bank' | 'Cash';
   category: string;
   notes?: string;
+  reimbursableAmount?: string;
+  linkedContactId?: string | null;
+  linkedContactName?: string | null;
+}
+
+export interface CategoryBudget {
+  id: string;
+  userId: string;
+  category: string;
+  year: number;
+  /** 1-based calendar month. */
+  month: number;
+  amount: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DebtSettlement {
@@ -54,4 +69,4 @@ export interface UserSettings {
   emergencyBuffer: number;
 }
 
-export type DashboardTab = 'overview' | 'transactions' | 'debts' | 'analytics' | 'settings' | 'digest';
+export type DashboardTab = 'overview' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest';

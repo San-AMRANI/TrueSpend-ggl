@@ -5,6 +5,7 @@ import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { normalizeCategory } from '../../lib/categories';
+import { getSpendingChange, monthLabel, transactionMonth } from '../../lib/finance';
 import { Banknote, Landmark, X } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -55,6 +56,34 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   }, [filteredTransactions]);
 
   const activeCategory = categoryData.some((category) => category.name === selectedCategory) ? selectedCategory : null;
+
+  const comparisonMonth = useMemo(() => {
+    if (analyticsMonth === 'All Time') {
+      const now = new Date();
+      return { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 };
+    }
+    const date = new Date(`${analyticsMonth} 1`);
+    return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
+  }, [analyticsMonth]);
+
+  const spendingChange = useMemo(
+    () => getSpendingChange(transactions, comparisonMonth.year, comparisonMonth.month),
+    [comparisonMonth, transactions],
+  );
+
+  const changeCategories = useMemo(() => {
+    const categories = new Set<string>();
+    transactions.filter((transaction) => transaction.type === 'Expense').forEach((transaction) => {
+      const ref = transactionMonth(transaction);
+      const previous = comparisonMonth.month === 1 ? { year: comparisonMonth.year - 1, month: 12 } : { year: comparisonMonth.year, month: comparisonMonth.month - 1 };
+      if ((ref.year === comparisonMonth.year && ref.month === comparisonMonth.month) || (ref.year === previous.year && ref.month === previous.month)) {
+        categories.add(normalizeCategory(transaction.category) || 'Uncategorized');
+      }
+    });
+    return Array.from(categories)
+      .map((category) => ({ category, ...getSpendingChange(transactions, comparisonMonth.year, comparisonMonth.month, category) }))
+      .sort((a, b) => Math.abs(b.difference) - Math.abs(a.difference));
+  }, [comparisonMonth, transactions]);
 
   const selectedCategoryTransactions = useMemo(() => {
     if (!activeCategory) return [];
@@ -131,6 +160,30 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </Select>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Spending Change</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_2fr]">
+            <div className="rounded-lg bg-gray-50 p-4">
+              <p className="text-sm font-medium text-gray-500">Overall · {monthLabel(comparisonMonth.year, comparisonMonth.month)}</p>
+              <p className="mt-1 text-2xl font-bold text-gray-900">{spendingChange.current.toFixed(2)} MAD</p>
+              <p className="mt-1 text-sm text-gray-500">vs {spendingChange.previous.toFixed(2)} MAD last month</p>
+              {spendingChange.percentage === null ? (
+                <p className="mt-2 text-sm font-semibold text-gray-700">{spendingChange.current > 0 ? `+${spendingChange.current.toFixed(2)} MAD · No spending last month` : 'No spending in either month'}</p>
+              ) : (
+                <p className={`mt-2 text-sm font-semibold ${spendingChange.difference > 0 ? 'text-red-600' : spendingChange.difference < 0 ? 'text-green-600' : 'text-gray-600'}`}>{spendingChange.percentage > 0 ? '+' : ''}{spendingChange.percentage.toFixed(1)}% vs last month</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              {changeCategories.slice(0, 6).map((item) => <div key={item.category} className="flex items-center justify-between gap-4 rounded-md border border-gray-100 px-3 py-2"><div><p className="text-sm font-medium text-gray-800">{item.category}</p><p className="text-xs text-gray-500">{item.current.toFixed(0)} → {item.previous.toFixed(0)} MAD</p></div><span className={`text-sm font-semibold ${item.difference > 0 ? 'text-red-600' : item.difference < 0 ? 'text-green-600' : 'text-gray-500'}`}>{item.percentage === null ? (item.current > 0 ? `+${item.current.toFixed(0)} MAD` : '—') : `${item.percentage > 0 ? '+' : ''}${item.percentage.toFixed(1)}%`}</span></div>)}
+              {changeCategories.length === 0 && <p className="py-4 text-center text-sm text-gray-500">No category spending to compare yet.</p>}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {analyticsMonth !== 'All Time' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

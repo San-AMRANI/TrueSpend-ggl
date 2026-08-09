@@ -98,8 +98,10 @@ export class DebtService {
     const settledAmount = currentOriginal - currentRemaining;
 
     const newOriginal = dto.amount;
+    if (!Number.isFinite(newOriginal) || newOriginal < settledAmount) {
+      throw new Error('The original amount cannot be lower than the amount already settled.');
+    }
     let newRemaining = newOriginal - settledAmount;
-    if (newRemaining < 0) newRemaining = 0;
 
     await debtRepository.update(debtId, userId, {
       contactName: dto.contact,
