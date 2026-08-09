@@ -268,32 +268,27 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
       <Card>
         <CardHeader>
-          <CardTitle>Categories</CardTitle>
+          <CardTitle>All Categories</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
-            {categoryData.map((item, index) => {
-              const totalExpenses = categoryData.reduce((sum, c) => sum + c.value, 0);
-              const percentage = totalExpenses > 0 ? ((item.value / totalExpenses) * 100).toFixed(1) : '0';
-              return (
-                <button
-                  key={item.name}
-                  type="button"
-                  aria-pressed={activeCategory === item.name}
-                  onClick={() => setSelectedCategory(item.name)}
-                  className={`flex w-full items-center justify-between rounded-lg p-2.5 text-left transition-colors ${
-                    activeCategory === item.name ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50 border border-transparent'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                    <span className="text-sm font-medium text-gray-700">{item.name}</span>
-                    <span className="text-xs text-gray-400">({percentage}%)</span>
-                  </div>
-                  <span className="text-sm font-semibold text-gray-900">{item.value.toFixed(2)} MAD</span>
-                </button>
-              );
-            })}
+          <div className="space-y-4">
+            {categoryData.map((item, index) => (
+              <button
+                key={item.name}
+                type="button"
+                aria-pressed={activeCategory === item.name}
+                onClick={() => setSelectedCategory(item.name)}
+                className={`flex w-full items-center justify-between rounded-md p-2 text-left transition-colors ${
+                  activeCategory === item.name ? 'bg-gray-100' : 'hover:bg-gray-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                  <span className="text-sm font-medium text-gray-700">{item.name}</span>
+                </div>
+                <span className="text-sm font-semibold text-gray-900">{item.value.toFixed(2)} MAD</span>
+              </button>
+            ))}
             {categoryData.length === 0 && <p className="py-2 text-center text-sm text-gray-500">No expense categories yet.</p>}
           </div>
         </CardContent>
