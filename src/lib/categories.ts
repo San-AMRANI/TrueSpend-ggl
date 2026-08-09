@@ -1,22 +1,17 @@
 export const expenseCategories = [
-  'Food & Dining',
-  'Groceries',
-  'Transportation',
-  'Housing & Rent',
-  'Utilities',
-  'Shopping',
-  'Entertainment',
-  'Health & Fitness',
-  'Personal Care',
   'Debt Repayment',
   'Medical',
   'Wardrobe',
   'Social',
+  'Groceries',
+  'Food & Dining',
+  'Transportation',
+  'Utilities',
+  'Entertainment',
   'Family',
   'Coffee',
   'Grooming',
   'Telecom',
-  'Other',
 ] as const;
 
 export const incomeAndTransferCategories = [
@@ -48,12 +43,17 @@ const aliases = new Map<string, string>([
   ['eat out', 'Food & Dining'],
   ['transport', 'Transportation'],
   ['transportation and fuel', 'Transportation'],
-  ['rent', 'Housing & Rent'],
-  ['housing', 'Housing & Rent'],
+  ['rent', 'Utilities'],
+  ['housing', 'Utilities'],
+  ['housing rent', 'Utilities'],
+  ['housing and rent', 'Utilities'],
   ['bills', 'Utilities'],
+  ['health fitness', 'Medical'],
   ['medical expenses', 'Medical'],
+  ['shopping', 'Wardrobe'],
   ['clothing', 'Wardrobe'],
   ['clothes', 'Wardrobe'],
+  ['personal care', 'Grooming'],
   ['socializing', 'Social'],
   ['family expenses', 'Family'],
   ['coffee shop', 'Coffee'],
@@ -62,15 +62,14 @@ const aliases = new Map<string, string>([
   ['phone', 'Telecom'],
   ['mobile', 'Telecom'],
   ['internet', 'Telecom'],
-  ['other expense', 'Other'],
   ['salary', 'Income'],
   ['income salary', 'Income'],
   ['repayment', 'Debt Repayment'],
 ]);
 
 /**
- * Returns a consistent category label for grouping and future database writes.
- * Unknown custom categories are kept (trimmed) instead of losing user data.
+ * Returns a fixed category label for new writes and analytics. Legacy values that do not
+ * have a safe equivalent remain unchanged, so historic transaction rows are never lost.
  */
 export const normalizeCategory = (category?: string | null) => {
   const trimmedCategory = category?.trim().replace(/\s+/g, ' ') ?? '';

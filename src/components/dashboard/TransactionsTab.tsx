@@ -33,7 +33,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({ transactions, 
     onSelectionHandled?.();
   }, [onSelectionHandled, selectedTransactionId, transactions]);
 
-  const categories = useMemo(() => Array.from(new Set([...expenseCategories, ...transactions.filter((transaction) => transaction.type === 'Expense').map((transaction) => transaction.category).filter(Boolean)])).sort(), [transactions]);
+  const categories = useMemo(() => [...expenseCategories], []);
   const visibleTransactions = useMemo(() => filterTransactions(transactions, filters), [filters, transactions]);
   const activeFilterCount = [filters.datePreset !== 'all', Boolean(filters.types?.length), Boolean(filters.categories?.length), Boolean(filters.wallets?.length), filters.minAmount !== undefined, filters.maxAmount !== undefined, filters.reimbursable !== 'all', filters.debtRelationship !== 'all'].filter(Boolean).length;
   const update = (patch: Partial<TransactionFilters>) => setFilters((current) => ({ ...current, ...patch }));
