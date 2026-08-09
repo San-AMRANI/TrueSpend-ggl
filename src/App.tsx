@@ -99,7 +99,7 @@ function AppContent() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-7xl p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8">
+      <main className="mx-auto max-w-7xl p-3 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8">
         <Dashboard />
       </main>
     </div>
