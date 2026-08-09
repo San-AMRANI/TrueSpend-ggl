@@ -9,6 +9,7 @@ export interface CreateDebtParams {
   originalAmount: string;
   remainingBalance: string;
   status: 'Pending' | 'Cleared';
+  dueDate?: Date;
   createdAt?: Date;
 }
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DashboardTab } from '../../types';
-import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, ChevronDown, ChevronUp } from 'lucide-react';
+import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface DashboardNavProps {
   activeTab: DashboardTab;
@@ -9,6 +9,7 @@ interface DashboardNavProps {
 
 const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.FC<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
+  { id: 'calendar', label: 'Calendar', shortLabel: 'Calendar', icon: CalendarDays },
   { id: 'analytics', label: 'Analytics', shortLabel: 'Analytics', icon: BarChart2 },
   { id: 'transactions', label: 'Transactions', shortLabel: 'Transactions', icon: ArrowRightLeft },
   { id: 'debts', label: 'Debts & Splits', shortLabel: 'Debts', icon: Users },
@@ -61,7 +62,7 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
     <nav aria-label="Dashboard sections" onTouchStart={(event) => { touchStartY.current = event.touches[0].clientY; if (isExpanded) cancelCollapse(); }} onTouchEnd={handleTouchEnd} className="fixed inset-x-0 bottom-0 z-50 m-0 mb-0 border-t border-gray-200 bg-white/95 px-2 pb-0 pt-1 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
       <div className="mx-auto max-w-lg">
         <button type="button" aria-expanded={isExpanded} aria-label={isExpanded ? 'Collapse all navigation pages' : 'Expand all navigation pages'} onClick={() => isExpanded ? close() : open()} className="flex h-5 w-full items-center justify-center text-gray-400"><span className="mr-1 h-1 w-9 rounded-full bg-gray-300" />{isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}</button>
-        <div className={`grid grid-cols-4 overflow-hidden transition-[max-height,opacity] duration-300 ease-out ${isExpanded ? 'max-h-36 opacity-100' : 'pointer-events-none max-h-0 opacity-0'}`}>{tabs.map((tab) => renderTab(tab, true))}</div>
+        <div className={`grid grid-cols-4 overflow-hidden transition-[max-height,opacity] duration-300 ease-out ${isExpanded ? 'max-h-52 opacity-100' : 'pointer-events-none max-h-0 opacity-0'}`}>{tabs.map((tab) => renderTab(tab, true))}</div>
         <div className={`grid grid-cols-4 overflow-hidden transition-[max-height,opacity] duration-300 ease-out ${isExpanded ? 'pointer-events-none max-h-0 opacity-0' : 'max-h-16 opacity-100'}`}>{tabs.filter((tab) => quickTabIds.includes(tab.id)).map((tab) => renderTab(tab, true))}</div>
       </div>
     </nav>

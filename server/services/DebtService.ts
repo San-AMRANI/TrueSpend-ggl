@@ -6,12 +6,14 @@ export interface SettleDebtDTO {
   contact?: string;
   type?: 'Receivable' | 'Payable';
   debt_id?: string;
+  due_date?: string;
 }
 
 export interface UpdateDebtDTO {
   amount: number;
   contact: string;
   type: 'Receivable' | 'Payable';
+  due_date?: string;
 }
 
 export class DebtService {
@@ -82,6 +84,7 @@ export class DebtService {
         originalAmount: String(dto.amount),
         remainingBalance: String(dto.amount),
         status: 'Pending',
+        dueDate: this.parseDueDate(dto.due_date),
       });
       return { message: 'Debt created', id: newDebt.id };
     }
@@ -109,9 +112,18 @@ export class DebtService {
       originalAmount: String(newOriginal),
       remainingBalance: String(newRemaining),
       status: newRemaining <= 0 ? 'Cleared' : 'Pending',
+      ...(dto.due_date !== undefined ? { dueDate: this.parseDueDate(dto.due_date) } : {}),
     });
 
     return { message: 'Debt updated' };
+  }
+
+  private parseDueDate(value?: string) {
+    if (!value) return undefined;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Invalid due date');
+    const date = new Date(`${value}T12:00:00.000Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new Error('Invalid due date');
+    return date;
   }
 
   async deleteDebt(userId: string, debtId: string) {

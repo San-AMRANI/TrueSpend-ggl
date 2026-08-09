@@ -23,6 +23,7 @@ export const debts = pgTable('debts', {
   originalAmount: decimal('original_amount').notNull(),
   remainingBalance: decimal('remaining_balance').notNull(),
   status: debtStatusEnum('status').notNull(),
+  dueDate: timestamp('due_date'),
   createdAt: timestamp('created_at').defaultNow(),
 });
 

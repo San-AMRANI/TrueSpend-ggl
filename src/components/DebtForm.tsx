@@ -12,6 +12,7 @@ export default function DebtForm({ onSuccess }: { onSuccess: () => void }) {
     amount: '',
     contact: '',
     type: 'Receivable',
+    due_date: '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -28,11 +29,12 @@ export default function DebtForm({ onSuccess }: { onSuccess: () => void }) {
           amount: parseFloat(formData.amount),
           contact: formData.contact,
           type: formData.type,
+          due_date: formData.due_date || undefined,
         })
       });
       if (res.ok) {
         onSuccess();
-        setFormData({ amount: '', contact: '', type: 'Receivable' });
+        setFormData({ amount: '', contact: '', type: 'Receivable', due_date: '' });
       }
     } catch (err) {
       console.error(err);
@@ -55,6 +57,10 @@ export default function DebtForm({ onSuccess }: { onSuccess: () => void }) {
           <div className="w-full sm:w-1/4">
             <label className="text-xs font-medium text-gray-500 mb-1 block">Amount</label>
             <Input required type="number" step="0.01" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} placeholder="0.00" />
+          </div>
+          <div className="w-full sm:w-1/4">
+            <label className="text-xs font-medium text-gray-500 mb-1 block">Due Date</label>
+            <Input type="date" value={formData.due_date} onChange={e => setFormData({...formData, due_date: e.target.value})} />
           </div>
           <div className="w-full sm:w-1/4">
             <label className="text-xs font-medium text-gray-500 mb-1 block">Type</label>
