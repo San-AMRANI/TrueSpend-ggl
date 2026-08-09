@@ -8,6 +8,8 @@ import { DebtsTab } from './dashboard/DebtsTab';
 import { AnalyticsTab } from './dashboard/AnalyticsTab';
 import { DigestTab } from './dashboard/DigestTab';
 import { SettingsTab } from './dashboard/SettingsTab';
+import { BudgetsTab } from './dashboard/BudgetsTab';
+import { WhatIfTab } from './dashboard/WhatIfTab';
 
 export default function Dashboard() {
   const { token } = useAuth();
@@ -15,6 +17,7 @@ export default function Dashboard() {
     kpis,
     transactions,
     debts,
+    budgets,
     payday,
     setPayday,
     emergencyBuffer,
@@ -28,11 +31,16 @@ export default function Dashboard() {
     setActiveTab,
     whatIfAmount,
     setWhatIfAmount,
+    selectedTransactionId,
+    setSelectedTransactionId,
     fetchData,
     handleSettleDebt,
     handleDeleteDebt,
     handleEditDebt,
     handleDeleteTransaction,
+    handleSaveCategoryBudget,
+    handleCopyPreviousMonthBudgets,
+    openTransaction,
     handleSaveSettings,
     handleExportSql,
   } = useDashboardData(token);
@@ -50,17 +58,33 @@ export default function Dashboard() {
           kpis={kpis}
           transactions={transactions}
           debts={debts}
-          whatIfAmount={whatIfAmount}
-          setWhatIfAmount={setWhatIfAmount}
+          budgets={budgets}
           setActiveTab={setActiveTab}
-          fetchData={fetchData}
+          openTransaction={openTransaction}
           handleSettle={handleSettleDebt}
         />
       )}
 
       {activeTab === 'transactions' && (
-        <TransactionsTab transactions={transactions} handleDeleteTx={handleDeleteTransaction} />
+        <TransactionsTab
+          transactions={transactions}
+          handleDeleteTx={handleDeleteTransaction}
+          fetchData={fetchData}
+          selectedTransactionId={selectedTransactionId}
+          onSelectionHandled={() => setSelectedTransactionId(null)}
+        />
       )}
+
+      {activeTab === 'budgets' && (
+        <BudgetsTab
+          budgets={budgets}
+          transactions={transactions}
+          onSaveBudget={handleSaveCategoryBudget}
+          onCopyPrevious={handleCopyPreviousMonthBudgets}
+        />
+      )}
+
+      {activeTab === 'what-if' && <WhatIfTab kpis={kpis} amount={whatIfAmount} setAmount={setWhatIfAmount} />}
 
       {activeTab === 'debts' && (
         <DebtsTab

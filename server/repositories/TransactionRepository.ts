@@ -32,6 +32,23 @@ export class TransactionRepository {
     return newTx[0];
   }
 
+  async findByIdAndUserId(id: string, userId: string) {
+    const result = await db
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
+    return result[0] || null;
+  }
+
+  async update(id: string, userId: string, data: Partial<CreateTransactionParams>) {
+    const result = await db
+      .update(transactions)
+      .set(data)
+      .where(and(eq(transactions.id, id), eq(transactions.userId, userId)))
+      .returning();
+    return result[0] || null;
+  }
+
   async findSplitsByTransactionId(transactionId: string) {
     return await db.select().from(splits).where(eq(splits.transactionId, transactionId));
   }
@@ -48,6 +65,19 @@ export class TransactionRepository {
 
   async deleteSplitsByTransactionId(transactionId: string) {
     await db.delete(splits).where(eq(splits.transactionId, transactionId));
+  }
+
+  async updateSplit(id: string, data: Partial<CreateSplitParams>) {
+    const result = await db.update(splits).set(data).where(eq(splits.id, id)).returning();
+    return result[0] || null;
+  }
+
+  async deleteSplitById(id: string) {
+    await db.delete(splits).where(eq(splits.id, id));
+  }
+
+  async findSplitsByDebtId(debtId: string) {
+    return db.select().from(splits).where(eq(splits.linkedContactId, debtId));
   }
 
   async deleteByIdAndUserId(id: string, userId: string) {

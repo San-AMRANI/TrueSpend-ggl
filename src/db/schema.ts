@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, uuid, text, timestamp, decimal, pgEnum, integer } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, decimal, pgEnum, integer, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const transactionTypeEnum = pgEnum('transaction_type', ['Income', 'Expense', 'Transfer', 'Debt Repayment']);
 export const walletEnum = pgEnum('wallet_type', ['Bank', 'Cash']);
@@ -44,9 +44,32 @@ export const splits = pgTable('splits', {
   linkedContactId: uuid('linked_contact_id').references(() => debts.id),
 });
 
+export const categoryBudgets = pgTable(
+  'category_budgets',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id').references(() => users.id).notNull(),
+    category: text('category').notNull(),
+    year: integer('year').notNull(),
+    month: integer('month').notNull(),
+    amount: decimal('amount').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('category_budgets_user_category_month_unique').on(
+      table.userId,
+      table.category,
+      table.year,
+      table.month,
+    ),
+  ],
+);
+
 export const usersRelations = relations(users, ({ many }) => ({
   transactions: many(transactions),
   debts: many(debts),
+  categoryBudgets: many(categoryBudgets),
 }));
 
 export const transactionsRelations = relations(transactions, ({ one }) => ({
@@ -75,5 +98,12 @@ export const splitsRelations = relations(splits, ({ one }) => ({
   linkedContact: one(debts, {
     fields: [splits.linkedContactId],
     references: [debts.id],
+  }),
+}));
+
+export const categoryBudgetsRelations = relations(categoryBudgets, ({ one }) => ({
+  user: one(users, {
+    fields: [categoryBudgets.userId],
+    references: [users.id],
   }),
 }));

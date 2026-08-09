@@ -1,11 +1,18 @@
 import { apiClient } from './apiClient';
-import { KPI, Transaction, Debt, UserSettings } from '../../types';
+import { CategoryBudget, KPI, Transaction, Debt, UserSettings } from '../../types';
 
 export const dashboardService = {
   getKpis: (token: string | null) => apiClient.get<KPI>('/api/kpis', token),
   getTransactions: (token: string | null) => apiClient.get<Transaction[]>('/api/transactions', token),
   deleteTransaction: (id: string, token: string | null) =>
     apiClient.delete<{ message: string }>(`/api/transactions/${id}`, token),
+  updateTransaction: (id: string, payload: Record<string, unknown>, token: string | null) =>
+    apiClient.put<{ message: string; transaction: Transaction }>(`/api/transactions/${id}`, payload, token),
+  getCategoryBudgets: (token: string | null) => apiClient.get<CategoryBudget[]>('/api/category-budgets', token),
+  saveCategoryBudget: (payload: { category: string; year: number; month: number; amount: number }, token: string | null) =>
+    apiClient.put<CategoryBudget>('/api/category-budgets', payload, token),
+  copyPreviousMonthBudgets: (year: number, month: number, token: string | null) =>
+    apiClient.post<{ copied: number }>('/api/category-budgets/copy-previous', { year, month }, token),
   getDebts: (token: string | null) => apiClient.get<Debt[]>('/api/debts', token),
   settleDebt: (debtId: string, amount: number, token: string | null) =>
     apiClient.post<{ message: string }>('/api/debts', { debt_id: debtId, amount }, token),

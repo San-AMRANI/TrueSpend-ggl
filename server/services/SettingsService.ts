@@ -1,6 +1,6 @@
 import { userRepository } from '../repositories/UserRepository.js';
 import { db } from '../../src/db/index.js';
-import { debts, splits, transactions, users } from '../../src/db/schema.js';
+import { categoryBudgets, debts, splits, transactions, users } from '../../src/db/schema.js';
 
 export interface UpdateSettingsDTO {
   payday?: number;
@@ -42,11 +42,12 @@ export class SettingsService {
   }
 
   async exportSqlDatabase(): Promise<string> {
-    const [allUsers, allDebts, allTransactions, allSplits] = await Promise.all([
+    const [allUsers, allDebts, allTransactions, allSplits, allCategoryBudgets] = await Promise.all([
       db.select().from(users),
       db.select().from(debts),
       db.select().from(transactions),
       db.select().from(splits),
+      db.select().from(categoryBudgets),
     ]);
 
     const escapeStr = (str: string | null | undefined) => {
@@ -74,7 +75,7 @@ export class SettingsService {
     lines.push('-- ====================================================');
     lines.push('-- TrueSpend Complete PostgreSQL Database Backup');
     lines.push(`-- Exported At: ${new Date().toISOString()}`);
-    lines.push(`-- Records: ${allUsers.length} users, ${allTransactions.length} transactions, ${allDebts.length} debts, ${allSplits.length} splits`);
+    lines.push(`-- Records: ${allUsers.length} users, ${allTransactions.length} transactions, ${allDebts.length} debts, ${allSplits.length} splits, ${allCategoryBudgets.length} category budgets`);
     lines.push('-- Restore this script into a new or empty PostgreSQL database.');
     lines.push('-- ====================================================\n');
 
@@ -137,6 +138,18 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
     linked_contact_id UUID REFERENCES debts(id)
 );\n`);
 
+    lines.push(`CREATE TABLE category_budgets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    category TEXT NOT NULL,
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
+    amount DECIMAL NOT NULL CHECK (amount >= 0),
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    CONSTRAINT category_budgets_user_category_month_unique UNIQUE (user_id, category, year, month)
+);\n`);
+
     lines.push('-- 3. DATA INSERTS\n');
 
     if (allUsers.length > 0) {
@@ -181,6 +194,17 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
           `INSERT INTO splits (id, transaction_id, reimbursable_amount, linked_contact_id) ` +
             `VALUES (${escapeStr(s.id)}, ${escapeStr(s.transactionId)}, ${escapeNum(s.reimbursableAmount)}, ${escapeStr(s.linkedContactId)}) ` +
             `;`
+        );
+      }
+      lines.push('');
+    }
+
+    if (allCategoryBudgets.length > 0) {
+      lines.push('-- Category Budgets Data');
+      for (const budget of allCategoryBudgets) {
+        lines.push(
+          `INSERT INTO category_budgets (id, user_id, category, year, month, amount, created_at, updated_at) ` +
+            `VALUES (${escapeStr(budget.id)}, ${escapeStr(budget.userId)}, ${escapeStr(budget.category)}, ${escapeNum(budget.year)}, ${escapeNum(budget.month)}, ${escapeNum(budget.amount)}, ${escapeDate(budget.createdAt)}, ${escapeDate(budget.updatedAt)});`,
         );
       }
       lines.push('');

@@ -89,7 +89,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               The export contains every stored record and table schema (<code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">users</code>,{' '}
               <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">transactions</code>,{' '}
               <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">debts</code>,{' '}
-              <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">splits</code>), custom enum types, categories, and structured INSERT statements. Restore it into a new or empty PostgreSQL database.
+              <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">splits</code>, and <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">category_budgets</code>), custom enum types, categories, and structured INSERT statements. Restore it into a new or empty PostgreSQL database.
             </p>
             <div className="pt-2">
               <Button

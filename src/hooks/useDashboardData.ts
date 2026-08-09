@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
-import { KPI, Transaction, Debt, DashboardTab } from '../types';
+import { CategoryBudget, KPI, Transaction, Debt, DashboardTab } from '../types';
 
 export function useDashboardData(token: string | null) {
   const [kpis, setKpis] = useState<KPI | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
+  const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
   const [payday, setPayday] = useState<number>(25);
   const [emergencyBuffer, setEmergencyBuffer] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
@@ -14,16 +15,18 @@ export function useDashboardData(token: string | null) {
   const [analyticsMonth, setAnalyticsMonth] = useState<string>('All Time');
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [whatIfAmount, setWhatIfAmount] = useState<number>(0);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData] = await Promise.all([
+      const [kpiData, txData, debtData, settingsData, budgetData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
         dashboardService.getSettings(token),
+        dashboardService.getCategoryBudgets(token),
       ]);
 
       setKpis(kpiData);
@@ -31,6 +34,7 @@ export function useDashboardData(token: string | null) {
       setDebts(debtData);
       setPayday(settingsData.payday);
       setEmergencyBuffer(settingsData.emergencyBuffer);
+      setBudgets(budgetData);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -93,6 +97,22 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleSaveCategoryBudget = async (category: string, year: number, month: number, amount: number) => {
+    await dashboardService.saveCategoryBudget({ category, year, month, amount }, token);
+    await fetchData();
+  };
+
+  const handleCopyPreviousMonthBudgets = async (year: number, month: number) => {
+    const result = await dashboardService.copyPreviousMonthBudgets(year, month, token);
+    await fetchData();
+    return result.copied;
+  };
+
+  const openTransaction = (transactionId: string) => {
+    setSelectedTransactionId(transactionId);
+    setActiveTab('transactions');
+  };
+
   const handleSaveSettings = async (newPayday: number, newBuffer: number) => {
     setIsSaving(true);
     try {
@@ -136,6 +156,7 @@ export function useDashboardData(token: string | null) {
     kpis,
     transactions,
     debts,
+    budgets,
     payday,
     setPayday,
     emergencyBuffer,
@@ -149,11 +170,16 @@ export function useDashboardData(token: string | null) {
     setActiveTab,
     whatIfAmount,
     setWhatIfAmount,
+    selectedTransactionId,
+    setSelectedTransactionId,
     fetchData,
     handleSettleDebt,
     handleDeleteDebt,
     handleEditDebt,
     handleDeleteTransaction,
+    handleSaveCategoryBudget,
+    handleCopyPreviousMonthBudgets,
+    openTransaction,
     handleSaveSettings,
     handleSeedData,
     handleExportSql,
