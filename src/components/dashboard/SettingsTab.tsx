@@ -85,11 +85,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
             <h3 className="text-sm font-semibold text-gray-900">Export Database as SQL</h3>
             <p className="text-xs text-gray-600 leading-relaxed">
-              Download your complete financial record formatted as a standard PostgreSQL database script.
-              The export contains table schemas (<code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">users</code>,{' '}
+              Download a full TrueSpend PostgreSQL database backup, not just the current user’s data.
+              The export contains every stored record and table schema (<code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">users</code>,{' '}
               <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">transactions</code>,{' '}
               <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">debts</code>,{' '}
-              <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">splits</code>), custom enum types, and structured INSERT statements reflecting your actual database schema.
+              <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">splits</code>), custom enum types, categories, and structured INSERT statements. Restore it into a new or empty PostgreSQL database.
             </p>
             <div className="pt-2">
               <Button

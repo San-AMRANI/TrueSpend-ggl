@@ -7,37 +7,68 @@ export class KpiService {
 
     let bankBalance = 0;
     let cashOnHand = 0;
+    let openingBankBalance = 0;
+    let openingCashOnHand = 0;
     let monthlyExpenses = 0;
     let monthlyIncome = 0;
+    let dailySpent = 0;
 
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const toCalendarDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const isExpenseOutflow = (type: string) => type === 'Expense' || type === 'Debt Repayment';
+    const applyTransaction = (
+      transaction: (typeof allTx)[number],
+      balances: { bank: number; cash: number },
+    ) => {
+      const amount = parseFloat(transaction.amount as unknown as string);
+
+      if (transaction.sourceWallet === 'Bank') {
+        if (transaction.type === 'Income') balances.bank += amount;
+        if (isExpenseOutflow(transaction.type)) balances.bank -= amount;
+        if (transaction.type === 'Transfer') {
+          balances.bank -= amount;
+          balances.cash += amount;
+        }
+      } else if (transaction.sourceWallet === 'Cash') {
+        if (transaction.type === 'Income') balances.cash += amount;
+        if (isExpenseOutflow(transaction.type)) balances.cash -= amount;
+        if (transaction.type === 'Transfer') {
+          balances.cash -= amount;
+          balances.bank += amount;
+        }
+      }
+    };
 
     for (const tx of allTx) {
       const txAmount = parseFloat(tx.amount as unknown as string);
       const txDate = new Date(tx.createdAt!);
+      const transactionDay = toCalendarDay(txDate);
 
-      if (tx.sourceWallet === 'Bank') {
-        if (tx.type === 'Income') bankBalance += txAmount;
-        if (tx.type === 'Expense') bankBalance -= txAmount;
-        if (tx.type === 'Transfer') {
-          bankBalance -= txAmount;
-          cashOnHand += txAmount;
-        }
-        if (tx.type === 'Debt Repayment') bankBalance -= txAmount;
-      } else if (tx.sourceWallet === 'Cash') {
-        if (tx.type === 'Income') cashOnHand += txAmount;
-        if (tx.type === 'Expense') cashOnHand -= txAmount;
-        if (tx.type === 'Transfer') {
-          cashOnHand -= txAmount;
-          bankBalance += txAmount;
-        }
-        if (tx.type === 'Debt Repayment') cashOnHand -= txAmount;
+      if (transactionDay < today) {
+        const openingBalances = { bank: openingBankBalance, cash: openingCashOnHand };
+        applyTransaction(tx, openingBalances);
+        openingBankBalance = openingBalances.bank;
+        openingCashOnHand = openingBalances.cash;
       }
 
-      if (txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
+      if (transactionDay <= today) {
+        const currentBalances = { bank: bankBalance, cash: cashOnHand };
+        applyTransaction(tx, currentBalances);
+        bankBalance = currentBalances.bank;
+        cashOnHand = currentBalances.cash;
+      }
+
+      if (transactionDay <= today && txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
         if (tx.type === 'Expense') monthlyExpenses += txAmount;
         if (tx.type === 'Income') monthlyIncome += txAmount;
+      }
+
+      if (transactionDay.getTime() === today.getTime() && isExpenseOutflow(tx.type)) {
+        dailySpent += txAmount;
       }
     }
 
@@ -46,7 +77,8 @@ export class KpiService {
 
     for (const tx of allTx) {
       const txDate = new Date(tx.createdAt!);
-      if (txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
+      const transactionDay = toCalendarDay(txDate);
+      if (transactionDay <= today && txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
         const txAmount = parseFloat(tx.amount as unknown as string);
         if (tx.type === 'Expense' && (tx.category === 'Debt Repayment' || tx.category === 'Loan' || tx.category === 'Transfer')) {
           debtRepayments += txAmount;
@@ -59,17 +91,24 @@ export class KpiService {
 
     const emergencyBuffer = parseFloat(dbUser.emergencyBuffer as unknown as string) || 0;
     const totalLiquidity = bankBalance + cashOnHand;
-    const availableLiquidity = totalLiquidity - emergencyBuffer;
+    const openingLiquidity = openingBankBalance + openingCashOnHand;
+    const openingAvailableLiquidity = openingLiquidity - emergencyBuffer;
 
     const payday = dbUser.payday || 25;
-    const now = new Date();
     let nextPayday = new Date(now.getFullYear(), now.getMonth(), payday);
     if (now.getDate() >= payday) {
       nextPayday = new Date(now.getFullYear(), now.getMonth() + 1, payday);
     }
-    const diff = Math.ceil((nextPayday.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const diff = Math.ceil((nextPayday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     const daysUntilPayday = diff > 0 ? diff : 1;
-    const dailyAllowance = availableLiquidity / daysUntilPayday;
+    const dailyAllowance = openingAvailableLiquidity / daysUntilPayday;
+    const dailyRemaining = dailyAllowance - dailySpent;
+    const dailyUsagePercent = dailyAllowance > 0 ? (dailySpent / dailyAllowance) * 100 : dailySpent > 0 ? 100 : 0;
+    const dailyStatus = dailyRemaining < 0 || dailyUsagePercent >= 100
+      ? 'critical'
+      : dailyUsagePercent >= 80
+        ? 'warning'
+        : 'on_track';
 
     return {
       totalLiquidity,
@@ -80,6 +119,10 @@ export class KpiService {
       adjustedTrueSpend: monthlyExpenses - debtRepayments - reimbursements,
       daysUntilPayday,
       dailyAllowance,
+      dailySpent,
+      dailyRemaining,
+      dailyUsagePercent,
+      dailyStatus,
       payday,
       emergencyBuffer
     };

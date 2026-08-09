@@ -12,6 +12,10 @@ export interface KPI {
   adjustedTrueSpend: number;
   daysUntilPayday: number;
   dailyAllowance: number;
+  dailySpent: number;
+  dailyRemaining: number;
+  dailyUsagePercent: number;
+  dailyStatus: 'on_track' | 'warning' | 'critical';
   payday: number;
   emergencyBuffer: number;
 }

@@ -31,10 +31,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     .filter((d) => d.type === 'Receivable' && d.status === 'Pending')
     .reduce((acc, d) => acc + parseFloat(d.remainingBalance), 0);
 
-  const simulatedDailyAllowance =
-    whatIfAmount > 0
-      ? ((kpis?.totalLiquidity || 0) - whatIfAmount - (kpis?.emergencyBuffer || 0)) / (kpis?.daysUntilPayday || 1)
-      : kpis?.dailyAllowance;
+  const simulatedDailyRemaining = (kpis?.dailyRemaining || 0) - whatIfAmount;
+  const simulatedStatus = simulatedDailyRemaining < 0 ? 'critical' : simulatedDailyRemaining <= (kpis?.dailyAllowance || 0) * 0.2 ? 'warning' : 'on_track';
+  const dailyStatusStyles = {
+    on_track: 'text-blue-600',
+    warning: 'text-amber-600',
+    critical: 'text-red-600',
+  };
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -67,11 +70,16 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-500">Daily Allowance</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">Daily Allowance Left</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-blue-600">{simulatedDailyAllowance?.toFixed(2) || '0.00'} MAD</div>
+              <div className={`text-3xl font-bold ${dailyStatusStyles[kpis?.dailyStatus || 'on_track']}`}>{kpis?.dailyRemaining?.toFixed(2) || '0.00'} MAD</div>
+              <p className="mt-1 text-xs text-gray-500">
+                {kpis?.dailySpent?.toFixed(2) || '0.00'} spent of {kpis?.dailyAllowance?.toFixed(2) || '0.00'} today
+              </p>
               <p className="mt-1 text-xs text-gray-500">{kpis?.daysUntilPayday || 0} days until payday</p>
+              {kpis?.dailyStatus === 'warning' && <p className="mt-2 text-xs font-medium text-amber-600">You are close to today’s allowance.</p>}
+              {kpis?.dailyStatus === 'critical' && <p className="mt-2 text-xs font-medium text-red-600">You have exceeded today’s allowance.</p>}
             </CardContent>
           </Card>
         </div>
@@ -147,7 +155,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <CardTitle className="text-sm font-semibold text-yellow-800">"What-If" Purchase Simulator</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-yellow-600 mb-4">See how a purchase impacts your daily allowance.</p>
+            <p className="text-xs text-yellow-600 mb-4">See how a purchase affects today’s remaining allowance.</p>
             <div className="flex items-center gap-3">
               <input
                 type="number"
@@ -164,6 +172,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 Reset
               </Button>
             </div>
+            {whatIfAmount > 0 && (
+              <p className={`mt-3 text-xs font-medium ${dailyStatusStyles[simulatedStatus]}`}>
+                After this purchase: {simulatedDailyRemaining.toFixed(2)} MAD left today.
+                {simulatedStatus === 'warning' && ' This would leave you close to your limit.'}
+                {simulatedStatus === 'critical' && ' This would exceed today’s allowance.'}
+              </p>
+            )}
           </CardContent>
         </Card>
 

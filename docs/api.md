@@ -27,6 +27,10 @@ Most API endpoints require authentication using a JWT token. The token should be
       "adjustedTrueSpend": 450,
       "daysUntilPayday": 12,
       "dailyAllowance": 100,
+      "dailySpent": 30,
+      "dailyRemaining": 70,
+      "dailyUsagePercent": 30,
+      "dailyStatus": "on_track",
       "payday": 25,
       "emergencyBuffer": 0
     }
@@ -93,3 +97,5 @@ Most API endpoints require authentication using a JWT token. The token should be
 - **POST `/api/settings`**
   - Description: Updates the user's settings.
   - Body: `{ "payday": 25, "emergencyBuffer": 500 }`
+- **GET `/api/settings/export-sql`**
+  - Description: Downloads a complete PostgreSQL backup of the TrueSpend database, including every user, transaction, debt, split, category value, enum, and table definition. Restore it into a new or empty database.
