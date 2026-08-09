@@ -10,6 +10,7 @@ import { DigestTab } from './dashboard/DigestTab';
 import { SettingsTab } from './dashboard/SettingsTab';
 import { BudgetsTab } from './dashboard/BudgetsTab';
 import { WhatIfTab } from './dashboard/WhatIfTab';
+import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 
 export default function Dashboard() {
   const { token } = useAuth();
@@ -74,6 +75,8 @@ export default function Dashboard() {
           onSelectionHandled={() => setSelectedTransactionId(null)}
         />
       )}
+
+      {activeTab === 'calendar' && <FinancialCalendarTab transactions={transactions} debts={debts} payday={payday} openTransaction={openTransaction} setActiveTab={setActiveTab} />}
 
       {activeTab === 'budgets' && (
         <BudgetsTab

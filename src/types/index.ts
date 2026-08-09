@@ -61,6 +61,7 @@ export interface Debt {
   remainingBalance: string;
   status: 'Pending' | 'Cleared';
   createdAt: string;
+  dueDate?: string | null;
   settlements?: DebtSettlement[];
 }
 
@@ -69,4 +70,4 @@ export interface UserSettings {
   emergencyBuffer: number;
 }
 
-export type DashboardTab = 'overview' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest';
+export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest';
