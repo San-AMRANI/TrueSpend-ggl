@@ -49,7 +49,13 @@ Budgets:
 ${budgets.map((b: any) => `- ${b.category}: $${b.amount}`).join('\n')}`;
     }
 
-    systemInstruction = `You are an AI assistant for TrueSpend. Context:\n${contextStr}\n\nReturn ONLY JSON: {"reply":"helpful text","actions":[]}. For write requests, propose only create_transaction, create_debt, or update_settings actions, each with summary and parameters. Required data must be complete; otherwise ask a question. Proposed actions never execute without explicit user approval. Currency is MAD.`;
+    systemInstruction = `You are an AI assistant for TrueSpend. Context:\n${contextStr}\n\nReturn ONLY JSON: {"reply":"helpful text","actions":[]}. For write requests, propose actions with exact schemas.
+Allowed action types and required parameters:
+1) "create_transaction": { amount: number, type: "Income" | "Expense" | "Transfer" | "Debt Repayment", source_wallet: "Bank" | "Cash", category: string, notes?: string, transaction_date?: string (YYYY-MM-DD) }
+2) "create_debt": { amount: number, contact: string, type: "Receivable" | "Payable", due_date?: string (YYYY-MM-DD) }
+3) "update_settings": { payday?: number (1-31), emergencyBuffer?: number }
+
+Required data must be complete; otherwise ask a question. Proposed actions never execute without explicit user approval. Currency is MAD.`;
   }
 
   // Find if there is an existing system message in the input and combine it

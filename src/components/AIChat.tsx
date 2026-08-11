@@ -119,10 +119,13 @@ export function AIChat() {
     if (!approve) { setMessages(prev => prev.map((item, i) => i === index ? { ...item, actionStatus: 'rejected' } : item)); return; }
     try {
       const response = await fetch('/api/chat/actions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ actions: message.actions }) });
-      if (!response.ok) throw new Error('Action could not be completed');
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Action could not be completed');
+      }
       await fetchData();
       setMessages(prev => prev.map((item, i) => i === index ? { ...item, actionStatus: 'approved' } : item));
-    } catch (error) { console.error(error); alert('The approved action could not be completed. No further actions were run.'); }
+    } catch (error: any) { console.error(error); alert(error.message || 'The approved action could not be completed. No further actions were run.'); }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
