@@ -1,63 +1,29 @@
 import dotenv from 'dotenv';
+import { GoogleGenAI } from '@google/genai';
+
 dotenv.config();
 
-let cachedFreeModels: string[] = [];
-let currentModelIndex = 0;
-let lastModelFetch = 0;
-const CACHE_TTL = 1000 * 60 * 60 * 12; // 12 hours
-
-export async function getFreeModels(): Promise<string[]> {
-  const now = Date.now();
-  if (cachedFreeModels.length > 0 && (now - lastModelFetch < CACHE_TTL)) {
-    return cachedFreeModels;
-  }
-
-  try {
-    const response = await fetch('https://openrouter.ai/api/v1/models');
-    if (!response.ok) {
-      throw new Error(`Failed to fetch models: ${response.statusText}`);
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+  httpOptions: {
+    headers: {
+      'User-Agent': 'aistudio-build',
     }
-    
-    const data = await response.json();
-    
-    // Filter for free models. Pricing prompt and completion are "0" or 0.
-    const freeModels = data.data
-      .filter((model: any) => {
-        const pricing = model.pricing;
-        return pricing && (pricing.prompt === '0' || pricing.prompt === 0) && (pricing.completion === '0' || pricing.completion === 0);
-      })
-      .map((model: any) => model.id);
-      
-    if (freeModels.length > 0) {
-      cachedFreeModels = freeModels;
-      lastModelFetch = now;
-      currentModelIndex = 0;
-    }
-    
-    return cachedFreeModels;
-  } catch (error) {
-    console.error('Error fetching OpenRouter models:', error);
-    // Return a default known free model if fetch fails
-    return cachedFreeModels.length > 0 ? cachedFreeModels : ['meta-llama/llama-3-8b-instruct:free'];
   }
-}
+});
 
 export async function getChatCompletion(messages: any[], contextData?: any): Promise<any> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY environment variable is not set');
+    throw new Error('GEMINI_API_KEY environment variable is not set');
   }
 
-  const freeModels = await getFreeModels();
-  if (freeModels.length === 0) {
-    throw new Error('No free models available');
-  }
+  let systemInstruction = `You are an AI assistant for TrueSpend. Return ONLY JSON: {"reply":"text","actions":[]}. Actions are proposals only and need explicit approval.`;
 
-  // Prepend context if provided
-  let apiMessages = [...messages];
   if (contextData) {
     const { kpis, transactions = [], debts = [], budgets = [], emergencyBuffer, payday } = contextData;
     let contextStr = 'No financial data available yet.';
+
     if (kpis) {
       contextStr = `TrueSpend Financial Summary:
 - Total Liquidity (Total Balance): $${kpis.totalLiquidity}
@@ -83,58 +49,45 @@ Budgets:
 ${budgets.map((b: any) => `- ${b.category}: $${b.amount}`).join('\n')}`;
     }
 
-    // Add system context at the beginning if not already there
-    if (apiMessages[0]?.role === 'system') {
-      apiMessages[0].content = `Context:\n${contextStr}\n\n${apiMessages[0].content}`;
-    } else {
-      apiMessages.unshift({ role: 'system', content: `You are an AI assistant for TrueSpend. Context:\n${contextStr}\n\nReturn ONLY JSON: {"reply":"helpful text","actions":[]}. For write requests, propose only create_transaction, create_debt, or update_settings actions, each with summary and parameters. Required data must be complete; otherwise ask a question. Proposed actions never execute without explicit user approval. Currency is MAD.` });
-    }
-  } else {
-      if (apiMessages.length > 0 && apiMessages[0]?.role !== 'system') {
-         apiMessages.unshift({ role: 'system', content: `You are an AI assistant for TrueSpend. Return ONLY JSON: {"reply":"text","actions":[]}. Actions are proposals only and need explicit approval.` });
-      }
+    systemInstruction = `You are an AI assistant for TrueSpend. Context:\n${contextStr}\n\nReturn ONLY JSON: {"reply":"helpful text","actions":[]}. For write requests, propose only create_transaction, create_debt, or update_settings actions, each with summary and parameters. Required data must be complete; otherwise ask a question. Proposed actions never execute without explicit user approval. Currency is MAD.`;
   }
 
-  const maxRetries = Math.min(freeModels.length, 5); // Try up to 5 models
-  let attempts = 0;
-
-  while (attempts < maxRetries) {
-    const currentModelId = freeModels[currentModelIndex];
-    console.log(`Attempting chat with model: ${currentModelId}`);
-
-    try {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': 'https://truespend.app', // Required by OpenRouter
-          'X-Title': 'TrueSpend AI Chat',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: currentModelId,
-          messages: apiMessages
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        return {
-          ...data,
-          modelUsed: currentModelId
-        };
-      } else {
-        const errorText = await response.text();
-        console.error(`Model ${currentModelId} failed: ${response.status} ${errorText}`);
-      }
-    } catch (error) {
-      console.error(`Error with model ${currentModelId}:`, error);
-    }
-
-    // Move to next model
-    currentModelIndex = (currentModelIndex + 1) % freeModels.length;
-    attempts++;
+  // Find if there is an existing system message in the input and combine it
+  const inputSystemMsg = messages.find((m: any) => m.role === 'system');
+  if (inputSystemMsg) {
+    systemInstruction = `${systemInstruction}\n\nAdditional Instructions:\n${inputSystemMsg.content}`;
   }
 
-  throw new Error('All free model attempts failed. Please try again later.');
+  // Filter out system messages for Gemini contents
+  const geminiMessages = messages
+    .filter((m: any) => m.role !== 'system')
+    .map((m: any) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content || ' ' }]
+    }));
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents: geminiMessages,
+      config: {
+        systemInstruction,
+        responseMimeType: 'application/json',
+      }
+    });
+
+    return {
+      choices: [
+        {
+          message: {
+            content: response.text
+          }
+        }
+      ],
+      modelUsed: 'gemini-3.6-flash'
+    };
+  } catch (error) {
+    console.error('Error calling Gemini API:', error);
+    throw new Error('Failed to communicate with AI');
+  }
 }
