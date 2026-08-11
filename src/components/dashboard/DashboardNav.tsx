@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DashboardTab } from '../../types';
-import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, ChevronDown, ChevronUp } from 'lucide-react';
+import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, ChevronDown, ChevronUp, Bot } from 'lucide-react';
 
 interface DashboardNavProps {
   activeTab: DashboardTab;
@@ -17,9 +17,10 @@ const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.F
   { id: 'what-if', label: 'What-If', shortLabel: 'What-If', icon: Calculator },
   { id: 'digest', label: 'Digest', shortLabel: 'Digest', icon: FileText },
   { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
+  { id: 'chat', label: 'AI Chat', shortLabel: 'AI Chat', icon: Bot },
 ];
 
-const quickTabIds: DashboardTab[] = ['overview', 'analytics', 'transactions', 'debts'];
+const quickTabIds: DashboardTab[] = ['overview', 'analytics', 'transactions', 'chat'];
 
 export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActiveTab }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -34,7 +35,7 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
   const open = () => {
     cancelCollapse();
     setIsExpanded(true);
-    collapseTimer.current = window.setTimeout(() => setIsExpanded(false), 5500);
+    collapseTimer.current = window.setTimeout(() => setIsExpanded(false), 5500) as any;
   };
   const chooseTab = (tab: DashboardTab) => { setActiveTab(tab); close(); };
 

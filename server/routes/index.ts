@@ -6,6 +6,7 @@ import debtRoutes from './debtRoutes.js';
 import settingsRoutes from './settingsRoutes.js';
 import seedRoutes from './seedRoutes.js';
 import categoryBudgetRoutes from './categoryBudgetRoutes.js';
+import chatRoutes from './chatRoutes.js';
 
 const apiRouter = Router();
 
@@ -20,5 +21,6 @@ apiRouter.use('/', debtRoutes);
 apiRouter.use('/', settingsRoutes);
 apiRouter.use('/', seedRoutes);
 apiRouter.use('/', categoryBudgetRoutes);
+apiRouter.use('/chat', chatRoutes);
 
 export default apiRouter;

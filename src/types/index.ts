@@ -70,4 +70,4 @@ export interface UserSettings {
   emergencyBuffer: number;
 }
 
-export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest';
+export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat';
