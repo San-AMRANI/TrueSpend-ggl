@@ -10,7 +10,13 @@ export const chatWithAi = async (req: Request, res: Response) => {
     }
 
     const completion = await getChatCompletion(messages, contextData);
-    res.json(completion);
+    const content = completion.choices?.[0]?.message?.content || '';
+    try {
+      const parsed = JSON.parse(content.replace(/^```json\s*|\s*```$/g, ''));
+      res.json({ reply: String(parsed.reply || ''), actions: Array.isArray(parsed.actions) ? parsed.actions : [] });
+    } catch {
+      res.json({ reply: content, actions: [] });
+    }
   } catch (error: any) {
     console.error('Chat error:', error);
     res.status(500).json({ error: error.message || 'Failed to communicate with AI' });

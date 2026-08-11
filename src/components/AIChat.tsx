@@ -7,9 +7,12 @@ import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { useDashboardData } from '../hooks/useDashboardData';
 
+interface AiAction { type: string; summary: string; parameters: Record<string, unknown>; }
 interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  actions?: AiAction[];
+  actionStatus?: 'approved' | 'rejected';
 }
 
 export function AIChat() {
@@ -37,7 +40,8 @@ export function AIChat() {
     debts, 
     budgets,
     emergencyBuffer,
-    payday
+    payday,
+    fetchData
   } = useDashboardData(token);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -96,9 +100,8 @@ export function AIChat() {
 
       const data = await response.json();
       
-      if (data.choices && data.choices.length > 0) {
-        const aiContent = data.choices[0].message.content;
-        setMessages(prev => [...prev, { role: 'assistant', content: aiContent }]);
+      if (data.reply) {
+        setMessages(prev => [...prev, { role: 'assistant', content: data.reply, actions: data.actions || [] }]);
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: 'I am sorry, I did not receive a proper response.' }]);
       }
@@ -108,6 +111,18 @@ export function AIChat() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleAction = async (index: number, approve: boolean) => {
+    const message = messages[index];
+    if (!message.actions?.length) return;
+    if (!approve) { setMessages(prev => prev.map((item, i) => i === index ? { ...item, actionStatus: 'rejected' } : item)); return; }
+    try {
+      const response = await fetch('/api/chat/actions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ actions: message.actions }) });
+      if (!response.ok) throw new Error('Action could not be completed');
+      await fetchData();
+      setMessages(prev => prev.map((item, i) => i === index ? { ...item, actionStatus: 'approved' } : item));
+    } catch (error) { console.error(error); alert('The approved action could not be completed. No further actions were run.'); }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -160,6 +175,7 @@ export function AIChat() {
                   <Markdown>{msg.content}</Markdown>
                 </div>
               )}
+              {msg.role === 'assistant' && msg.actions?.length && <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3"><p className="text-xs font-semibold text-indigo-900">Proposed action{msg.actions.length > 1 ? 's' : ''}</p>{msg.actions.map((action, actionIndex) => <p key={actionIndex} className="mt-1 text-xs text-indigo-800">• {action.summary}</p>)}{!msg.actionStatus ? <div className="mt-3 flex gap-2"><button onClick={() => handleAction(idx, true)} className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white">Approve</button><button onClick={() => handleAction(idx, false)} className="rounded border border-indigo-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-800">Reject</button></div> : <p className="mt-3 text-xs font-semibold text-indigo-800">{msg.actionStatus === 'approved' ? 'Approved and completed.' : 'Rejected — no changes made.'}</p>}</div>}
             </div>
           </div>
         ))}

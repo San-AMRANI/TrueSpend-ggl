@@ -87,11 +87,11 @@ ${budgets.map((b: any) => `- ${b.category}: $${b.amount}`).join('\n')}`;
     if (apiMessages[0]?.role === 'system') {
       apiMessages[0].content = `Context:\n${contextStr}\n\n${apiMessages[0].content}`;
     } else {
-      apiMessages.unshift({ role: 'system', content: `You are an AI assistant for TrueSpend, a personal finance app. use always currency: MAD.. Here is the current context of the app and user data:\n${contextStr}\n\nBe helpful, concise, and analyze the user's financial data to answer their questions. use always currency: MAD.` });
+      apiMessages.unshift({ role: 'system', content: `You are an AI assistant for TrueSpend. Context:\n${contextStr}\n\nReturn ONLY JSON: {"reply":"helpful text","actions":[]}. For write requests, propose only create_transaction, create_debt, or update_settings actions, each with summary and parameters. Required data must be complete; otherwise ask a question. Proposed actions never execute without explicit user approval. Currency is MAD.` });
     }
   } else {
       if (apiMessages.length > 0 && apiMessages[0]?.role !== 'system') {
-         apiMessages.unshift({ role: 'system', content: `You are an AI assistant for TrueSpend, a personal finance app. use always currency: MAD.. Be helpful, concise, and provide financial advice where appropriate.` });
+         apiMessages.unshift({ role: 'system', content: `You are an AI assistant for TrueSpend. Return ONLY JSON: {"reply":"text","actions":[]}. Actions are proposals only and need explicit approval.` });
       }
   }
 
