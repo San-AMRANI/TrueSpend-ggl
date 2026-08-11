@@ -49,8 +49,15 @@ Budgets:
 ${budgets.map((b: any) => `- ${b.category}: $${b.amount}`).join('\n')}`;
     }
 
-    systemInstruction = `You are an AI assistant for TrueSpend. Context:\n${contextStr}\n\nReturn ONLY JSON: {"reply":"helpful text","actions":[]}. For write requests, propose actions with exact schemas.
-Allowed action types and required parameters:
+    systemInstruction = `You are an AI assistant for TrueSpend. Context:\n${contextStr}\n\nReturn ONLY JSON: {"reply":"helpful text","actions":[]}.
+For write requests, propose actions with exact schemas. EACH action in the "actions" array MUST match this structure:
+{
+  "type": "create_transaction" | "create_debt" | "update_settings",
+  "summary": "Short user-friendly description of the action",
+  "parameters": { /* action specific parameters */ }
+}
+
+Allowed action types and their REQUIRED parameters object:
 1) "create_transaction": { amount: number, type: "Income" | "Expense" | "Transfer" | "Debt Repayment", source_wallet: "Bank" | "Cash", category: string, notes?: string, transaction_date?: string (YYYY-MM-DD) }
 2) "create_debt": { amount: number, contact: string, type: "Receivable" | "Payable", due_date?: string (YYYY-MM-DD) }
 3) "update_settings": { payday?: number (1-31), emergencyBuffer?: number }

@@ -6,7 +6,24 @@ export type AiAction = { type: 'create_transaction' | 'create_debt' | 'update_se
 
 const permitted = new Set<AiAction['type']>(['create_transaction', 'create_debt', 'update_settings']);
 
-export const sanitizeAiActions = (value: unknown): AiAction[] => Array.isArray(value) ? value.filter((item: any) => item && permitted.has(item.type) && item.parameters && typeof item.summary === 'string').map((item: any) => ({ type: item.type, parameters: item.parameters, summary: item.summary })) : [];
+export const sanitizeAiActions = (value: unknown): AiAction[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item: any) => item && permitted.has(item.type))
+    .map((item: any) => {
+      // If AI forgot to nest parameters, assume root properties (except type/summary) are parameters
+      let parameters = item.parameters;
+      if (!parameters || typeof parameters !== 'object') {
+        const { type, summary, ...rest } = item;
+        parameters = rest;
+      }
+      return {
+        type: item.type,
+        parameters: parameters || {},
+        summary: typeof item.summary === 'string' ? item.summary : `Proposed action: ${item.type}`
+      };
+    });
+};
 
 export async function executeApprovedAiActions(userId: string, actions: AiAction[]) {
   const safe = sanitizeAiActions(actions);
