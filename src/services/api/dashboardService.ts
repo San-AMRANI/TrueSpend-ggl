@@ -40,5 +40,7 @@ export const dashboardService = {
     a.remove();
     window.URL.revokeObjectURL(url);
   },
+  importSql: (sql: string, token: string | null) =>
+    apiClient.post<{ success: boolean; message: string; restored: Record<string, number> }>('/api/settings/import-sql', { sql }, token),
   seedData: (token: string | null) => apiClient.post<{ success: boolean }>('/api/seed', {}, token),
 };

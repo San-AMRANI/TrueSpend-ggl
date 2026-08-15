@@ -13,6 +13,7 @@ export function useDashboardData(token: string | null) {
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
   const [analyticsMonth, setAnalyticsMonth] = useState<string>('All Time');
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [whatIfAmount, setWhatIfAmount] = useState<number>(0);
@@ -157,6 +158,17 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleImportSql = async (sql: string) => {
+    setIsImporting(true);
+    try {
+      const result = await dashboardService.importSql(sql, token);
+      await fetchData();
+      return result;
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   return {
     kpis,
     transactions,
@@ -171,6 +183,7 @@ export function useDashboardData(token: string | null) {
     loading,
     isSaving,
     isExporting,
+    isImporting,
     analyticsMonth,
     setAnalyticsMonth,
     activeTab,
@@ -190,5 +203,6 @@ export function useDashboardData(token: string | null) {
     handleSaveSettings,
     handleSeedData,
     handleExportSql,
+    handleImportSql,
   };
 }

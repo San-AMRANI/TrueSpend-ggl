@@ -102,6 +102,9 @@ Most API endpoints require authentication using a JWT token. The token should be
   - Body: `{ "payday": 25, "emergencyBuffer": 500 }`
 - **GET `/api/settings/export-sql`**
   - Description: Downloads a complete PostgreSQL backup of the TrueSpend database, including every user, transaction, debt, split, category value, enum, and table definition. Restore it into a new or empty database.
+- **POST `/api/settings/import-sql`**
+  - Description: Restores a SQL backup previously exported by TrueSpend. The backup is validated and all current TrueSpend records are replaced atomically; if validation or import fails, the existing records are preserved.
+  - Body: `{ "sql": "-- TrueSpend Complete PostgreSQL Database Backup..." }`
 
 ### Category Budgets
 - **GET `/api/category-budgets`**

@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
-import { Database, Download, Moon, Sun, Monitor } from 'lucide-react';
+import { Database, Download, Moon, Sun, Monitor, Upload } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 
 interface SettingsTabProps {
@@ -14,8 +14,10 @@ interface SettingsTabProps {
   setSalary: (val: number) => void;
   isSaving: boolean;
   isExporting?: boolean;
+  isImporting?: boolean;
   handleSaveSettings: (payday: number, buffer: number, salary: number) => void;
   handleExportSql?: () => void;
+  handleImportSql?: (sql: string) => Promise<{ message: string }>;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -27,10 +29,40 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   setSalary,
   isSaving,
   isExporting = false,
+  isImporting = false,
   handleSaveSettings,
   handleExportSql,
+  handleImportSql,
 }) => {
   const { theme, setTheme } = useTheme();
+  const importFileRef = useRef<HTMLInputElement>(null);
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !handleImportSql) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('This backup is larger than the 10 MB import limit.');
+      return;
+    }
+
+    const sql = await file.text();
+    if (!sql.slice(0, 500).includes('-- TrueSpend Complete PostgreSQL Database Backup')) {
+      alert('Please select a SQL backup exported by TrueSpend.');
+      return;
+    }
+
+    if (!confirm('Restore this backup? All current TrueSpend data will be permanently replaced. Export a new backup first if you need the current data.')) return;
+
+    try {
+      const result = await handleImportSql(sql);
+      alert(result.message);
+    } catch (error: any) {
+      console.error('SQL import failed:', error);
+      alert(error?.message || 'Could not import the SQL backup. Your existing data was not changed.');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -163,6 +195,24 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <Download className="h-4 w-4 text-blue-600" />
                 {isExporting ? 'Generating SQL Export...' : 'Export Data as SQL (.sql)'}
               </Button>
+            </div>
+            <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Restore from SQL Backup</h3>
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                Choose a <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200">.sql</code> file exported by TrueSpend. The backup is validated before a single transaction replaces the current records, so a failed import leaves your data unchanged.
+              </p>
+              <input ref={importFileRef} type="file" accept=".sql,application/sql,text/plain" onChange={handleImportFile} className="hidden" />
+              <div className="pt-3">
+                <Button
+                  variant="outline"
+                  disabled={isImporting}
+                  onClick={() => importFileRef.current?.click()}
+                  className="flex items-center gap-2 border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                >
+                  <Upload className="h-4 w-4" />
+                  {isImporting ? 'Restoring Backup...' : 'Import & Restore SQL Backup'}
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>

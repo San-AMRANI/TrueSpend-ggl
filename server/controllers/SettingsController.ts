@@ -38,6 +38,19 @@ export class SettingsController {
       res.status(500).json({ error: 'Failed to export SQL database dump' });
     }
   }
+
+  async importSql(req: AuthRequest, res: Response) {
+    try {
+      const restored = await settingsService.importSqlDatabase(req.body?.sql);
+      const recordCount = Object.values(restored).reduce((total, count) => total + Number(count), 0);
+      res.json({ success: true, restored, message: `Restore complete: ${recordCount} records imported.` });
+    } catch (e: any) {
+      console.error('Error importing SQL backup:', e);
+      const message = e?.message || 'Failed to import the SQL backup';
+      const isValidationError = message.startsWith('Please select') || message.startsWith('This backup') || message.startsWith('Invalid TrueSpend');
+      res.status(isValidationError ? 400 : 500).json({ error: isValidationError ? message : 'Failed to import the SQL backup' });
+    }
+  }
 }
 
 export const settingsController = new SettingsController();

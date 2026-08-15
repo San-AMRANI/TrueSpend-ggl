@@ -29,6 +29,7 @@ export default function Dashboard() {
     loading,
     isSaving,
     isExporting,
+    isImporting,
     analyticsMonth,
     setAnalyticsMonth,
     activeTab,
@@ -47,6 +48,7 @@ export default function Dashboard() {
     openTransaction,
     handleSaveSettings,
     handleExportSql,
+    handleImportSql,
   } = useDashboardData(token);
 
   if (loading && !kpis) {
@@ -120,8 +122,10 @@ export default function Dashboard() {
           setPayday={setPayday}
           isSaving={isSaving}
           isExporting={isExporting}
+          isImporting={isImporting}
           handleSaveSettings={handleSaveSettings}
           handleExportSql={handleExportSql}
+          handleImportSql={handleImportSql}
         />
       )}
 

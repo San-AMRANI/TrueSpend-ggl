@@ -1,6 +1,126 @@
 import { userRepository } from '../repositories/UserRepository.js';
-import { db } from '../../src/db/index.js';
+import { createPool, db } from '../../src/db/index.js';
 import { categoryBudgets, debts, splits, transactions, users } from '../../src/db/schema.js';
+
+const TRUE_SPEND_BACKUP_HEADER = '-- TrueSpend Complete PostgreSQL Database Backup';
+const MAX_BACKUP_SIZE_BYTES = 10 * 1024 * 1024;
+
+type BackupTable = 'users' | 'debts' | 'transactions' | 'splits' | 'category_budgets';
+
+type BackupRow = {
+  table: BackupTable;
+  columns: string[];
+  values: Array<string | null>;
+};
+
+const backupTables = new Set<BackupTable>(['users', 'debts', 'transactions', 'splits', 'category_budgets']);
+const allowedColumns: Record<BackupTable, ReadonlySet<string>> = {
+  users: new Set(['id', 'uid', 'email', 'created_at', 'payday', 'emergency_buffer', 'salary']),
+  debts: new Set(['id', 'user_id', 'contact_name', 'type', 'original_amount', 'remaining_balance', 'status', 'due_date', 'created_at']),
+  transactions: new Set(['id', 'user_id', 'created_at', 'amount', 'type', 'source_wallet', 'category', 'notes']),
+  splits: new Set(['id', 'transaction_id', 'reimbursable_amount', 'linked_contact_id']),
+  category_budgets: new Set(['id', 'user_id', 'category', 'year', 'month', 'amount', 'created_at', 'updated_at']),
+};
+
+const restoreOrder: BackupTable[] = ['users', 'debts', 'transactions', 'splits', 'category_budgets'];
+
+function splitSqlValues(valuesSql: string): string[] {
+  const values: string[] = [];
+  let valueStart = 0;
+  let inString = false;
+
+  for (let index = 0; index < valuesSql.length; index += 1) {
+    if (valuesSql[index] === "'") {
+      if (inString && valuesSql[index + 1] === "'") {
+        index += 1;
+      } else {
+        inString = !inString;
+      }
+    } else if (valuesSql[index] === ',' && !inString) {
+      values.push(valuesSql.slice(valueStart, index).trim());
+      valueStart = index + 1;
+    }
+  }
+
+  if (inString) throw new Error('Invalid TrueSpend backup: an SQL string is not closed.');
+  values.push(valuesSql.slice(valueStart).trim());
+  return values;
+}
+
+function parseSqlValue(value: string): string | null {
+  const withoutCast = value.replace(/::[a-z_][a-z0-9_]*\s*$/i, '').trim();
+  if (withoutCast.toUpperCase() === 'NULL') return null;
+  if (/^-?\d+(\.\d+)?$/.test(withoutCast)) return withoutCast;
+
+  if (withoutCast.startsWith("'") && withoutCast.endsWith("'")) {
+    return withoutCast.slice(1, -1).replace(/''/g, "'");
+  }
+
+  throw new Error('Invalid TrueSpend backup: an unsupported SQL value was found.');
+}
+
+function getInsertStatements(sqlContent: string): string[] {
+  const inserts: string[] = [];
+  const startPattern = /INSERT\s+INTO\s+(users|debts|transactions|splits|category_budgets)\b/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = startPattern.exec(sqlContent)) !== null) {
+    let inString = false;
+    let statementEnd = -1;
+
+    for (let index = match.index; index < sqlContent.length; index += 1) {
+      if (sqlContent[index] === "'") {
+        if (inString && sqlContent[index + 1] === "'") {
+          index += 1;
+        } else {
+          inString = !inString;
+        }
+      } else if (sqlContent[index] === ';' && !inString) {
+        statementEnd = index + 1;
+        break;
+      }
+    }
+
+    if (statementEnd === -1) throw new Error('Invalid TrueSpend backup: an INSERT statement is incomplete.');
+    inserts.push(sqlContent.slice(match.index, statementEnd));
+    startPattern.lastIndex = statementEnd;
+  }
+
+  return inserts;
+}
+
+function parseBackupRows(sqlContent: unknown): BackupRow[] {
+  if (typeof sqlContent !== 'string' || !sqlContent.slice(0, 500).includes(TRUE_SPEND_BACKUP_HEADER)) {
+    throw new Error('Please select a SQL backup exported by TrueSpend.');
+  }
+  if (Buffer.byteLength(sqlContent, 'utf8') > MAX_BACKUP_SIZE_BYTES) {
+    throw new Error('This backup is larger than the 10 MB import limit.');
+  }
+
+  const rows: BackupRow[] = [];
+  for (const statement of getInsertStatements(sqlContent)) {
+    const parsed = /^INSERT\s+INTO\s+([a-z_]+)\s*\(([^)]+)\)\s*VALUES\s*\(([\s\S]*)\)\s*;$/i.exec(statement.trim());
+    if (!parsed || !backupTables.has(parsed[1] as BackupTable)) {
+      throw new Error('Invalid TrueSpend backup: an INSERT statement could not be read.');
+    }
+
+    const table = parsed[1] as BackupTable;
+    const columns = parsed[2].split(',').map((column) => column.trim().toLowerCase());
+    const rawValues = splitSqlValues(parsed[3]);
+
+    if (columns.length !== rawValues.length || columns.length === 0 || columns.some((column) => !allowedColumns[table].has(column))) {
+      throw new Error('Invalid TrueSpend backup: table columns do not match this version of TrueSpend.');
+    }
+
+    rows.push({ table, columns, values: rawValues.map(parseSqlValue) });
+  }
+
+  if (!rows.some((row) => row.table === 'users')) {
+    throw new Error('This backup does not contain any TrueSpend user records.');
+  }
+
+  return rows;
+}
 
 export interface UpdateSettingsDTO {
   payday?: number;
@@ -116,7 +236,8 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
     email TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
     payday INTEGER DEFAULT 25,
-    emergency_buffer DECIMAL DEFAULT '0' NOT NULL
+    emergency_buffer DECIMAL DEFAULT '0' NOT NULL,
+    salary DECIMAL DEFAULT '0' NOT NULL
 );`);
 
     lines.push(`CREATE TABLE debts (
@@ -127,6 +248,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
     original_amount DECIMAL NOT NULL,
     remaining_balance DECIMAL NOT NULL,
     status debt_status NOT NULL,
+    due_date TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW()
 );`);
 
@@ -177,8 +299,8 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
       lines.push('-- Debts Data');
       for (const d of allDebts) {
         lines.push(
-          `INSERT INTO debts (id, user_id, contact_name, type, original_amount, remaining_balance, status, created_at) ` +
-            `VALUES (${escapeStr(d.id)}, ${escapeStr(d.userId)}, ${escapeStr(d.contactName)}, ${escapeStr(d.type)}::debt_type, ${escapeNum(d.originalAmount)}, ${escapeNum(d.remainingBalance)}, ${escapeStr(d.status)}::debt_status, ${escapeDate(d.createdAt)}) ` +
+          `INSERT INTO debts (id, user_id, contact_name, type, original_amount, remaining_balance, status, due_date, created_at) ` +
+            `VALUES (${escapeStr(d.id)}, ${escapeStr(d.userId)}, ${escapeStr(d.contactName)}, ${escapeStr(d.type)}::debt_type, ${escapeNum(d.originalAmount)}, ${escapeNum(d.remainingBalance)}, ${escapeStr(d.status)}::debt_status, ${escapeDate(d.dueDate)}, ${escapeDate(d.createdAt)}) ` +
             `;`
         );
       }
@@ -222,6 +344,42 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
 
     lines.push('COMMIT;');
     return lines.join('\n');
+  }
+
+  async importSqlDatabase(sqlContent: unknown) {
+    const backupRows = parseBackupRows(sqlContent);
+    const rowsByTable = new Map<BackupTable, BackupRow[]>();
+    for (const table of restoreOrder) rowsByTable.set(table, []);
+    for (const row of backupRows) rowsByTable.get(row.table)!.push(row);
+
+    const client = await createPool().connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('LOCK TABLE splits, transactions, debts, category_budgets, users IN ACCESS EXCLUSIVE MODE');
+      await client.query('DELETE FROM splits');
+      await client.query('DELETE FROM transactions');
+      await client.query('DELETE FROM debts');
+      await client.query('DELETE FROM category_budgets');
+      await client.query('DELETE FROM users');
+
+      for (const table of restoreOrder) {
+        for (const row of rowsByTable.get(table)!) {
+          const placeholders = row.values.map((_, index) => `$${index + 1}`).join(', ');
+          await client.query(
+            `INSERT INTO ${row.table} (${row.columns.join(', ')}) VALUES (${placeholders})`,
+            row.values,
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      return Object.fromEntries(restoreOrder.map((table) => [table, rowsByTable.get(table)!.length]));
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 
