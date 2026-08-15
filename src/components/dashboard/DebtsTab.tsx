@@ -40,7 +40,7 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
                     <div
                       className={`flex h-10 w-10 items-center justify-center rounded-full ${
                         debt.status === 'Cleared'
-                          ? 'bg-gray-100 text-gray-400 dark:bg-gray-800'
+                          ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:bg-gray-800'
                           : debt.type === 'Receivable'
                           ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
                           : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
@@ -69,7 +69,7 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
                   </div>
                   <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-4 pl-12 sm:pl-0">
                     <div className="text-right">
-                      <div className={`font-semibold ${debt.status === 'Cleared' ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-900 dark:text-gray-100'}`}>
+                      <div className={`font-semibold ${debt.status === 'Cleared' ? 'text-gray-400 dark:text-gray-500 dark:text-gray-400 line-through' : 'text-gray-900 dark:text-gray-100'}`}>
                         {parseFloat(debt.remainingBalance).toFixed(2)} MAD
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">of {parseFloat(debt.originalAmount).toFixed(2)} MAD</div>

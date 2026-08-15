@@ -33,7 +33,7 @@ export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, amount, setAmount })
           </div>
           {amount > 0 ? (
             <div className="space-y-4">
-              <div className={`rounded-lg border p-4 ${isCritical ? 'border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-900/20' : isWarning ? 'border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/20' : 'border-blue-100 bg-white dark:border-blue-900/50 dark:bg-gray-900'}`}>
+              <div className={`rounded-lg border p-4 ${isCritical ? 'border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-900/20' : isWarning ? 'border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-900/20' : 'border-blue-100 bg-white dark:bg-gray-900 dark:border-blue-900/50 dark:bg-gray-900'}`}>
                 <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">After this purchase</p>
                 <p className={`mt-1 text-3xl font-bold ${isCritical ? 'text-red-600 dark:text-red-400' : isWarning ? 'text-amber-600 dark:text-amber-400' : 'text-blue-600 dark:text-blue-400'}`}>{result.dailyRemainingAfterPurchase.toFixed(2)} MAD left today</p>
                 <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{isCritical ? 'This would exceed today’s allowance.' : isWarning ? 'This would leave you close to today’s limit.' : 'This purchase stays within today’s allowance.'}</p>

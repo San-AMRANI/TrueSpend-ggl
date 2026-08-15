@@ -50,7 +50,7 @@ export default function Dashboard() {
   } = useDashboardData(token);
 
   if (loading && !kpis) {
-    return <div className="py-12 text-center text-gray-500">Loading your financial data...</div>;
+    return <div className="py-12 text-center text-gray-500 dark:text-gray-400">Loading your financial data...</div>;
   }
 
   return (

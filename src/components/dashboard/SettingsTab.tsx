@@ -51,7 +51,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
                     theme === 'light'
                       ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 dark:bg-gray-800/50 dark:hover:bg-gray-800/50 dark:bg-gray-800/50 dark:hover:bg-gray-800'
                   }`}
                 >
                   <Sun className="h-4 w-4" />
@@ -62,7 +62,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
                     theme === 'dark'
                       ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 dark:bg-gray-800/50 dark:hover:bg-gray-800/50 dark:bg-gray-800/50 dark:hover:bg-gray-800'
                   }`}
                 >
                   <Moon className="h-4 w-4" />
@@ -73,7 +73,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
                     theme === 'system'
                       ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 dark:bg-gray-800/50 dark:hover:bg-gray-800/50 dark:bg-gray-800/50 dark:hover:bg-gray-800'
                   }`}
                 >
                   <Monitor className="h-4 w-4" />
@@ -158,7 +158,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 variant="outline"
                 disabled={isExporting}
                 onClick={handleExportSql}
-                className="flex items-center gap-2 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-white border-gray-300 dark:border-gray-700"
+                className="flex items-center gap-2 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-800 dark:text-white border-gray-300 dark:border-gray-700"
               >
                 <Download className="h-4 w-4 text-blue-600" />
                 {isExporting ? 'Generating SQL Export...' : 'Export Data as SQL (.sql)'}

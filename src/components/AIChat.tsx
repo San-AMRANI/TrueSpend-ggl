@@ -144,7 +144,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     <div className="bg-transparent sm:rounded-lg overflow-visible flex flex-col h-[calc(100vh-10rem)] min-h-[400px] m-0 p-0 relative">
       
       {/* Mobile Absolute Delete Button */}
-      <button onClick={handleReset} className="sm:hidden absolute top-2 right-2 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors p-2 z-10 bg-white/80 dark:bg-gray-800/80 rounded-full shadow-sm" title="Clear Chat">
+      <button onClick={handleReset} className="sm:hidden absolute top-2 right-2 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors p-2 z-10 bg-white dark:bg-gray-900/80 dark:bg-gray-800/80 rounded-full shadow-sm" title="Clear Chat">
         <Trash2 className="w-5 h-5" />
       </button>
 
@@ -178,7 +178,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               {msg.role === 'user' ? (
                 msg.content
               ) : (
-                <div className="prose prose-sm max-w-none text-gray-800 dark:text-gray-200 prose-p:leading-relaxed prose-pre:text-gray-800 dark:prose-pre:text-gray-200 prose-pre:bg-gray-50 dark:prose-pre:bg-gray-900 prose-strong:text-indigo-900 dark:prose-strong:text-indigo-300 prose-headings:text-indigo-900 dark:prose-headings:text-indigo-300 prose-headings:font-semibold prose-a:text-indigo-600 dark:prose-a:text-indigo-400">
+                <div className="prose prose-sm max-w-none text-gray-800 dark:text-gray-200 prose-p:leading-relaxed prose-pre:text-gray-800 dark:text-gray-200 dark:prose-pre:text-gray-200 prose-pre:bg-gray-50 dark:bg-gray-800/50 dark:prose-pre:bg-gray-900 prose-strong:text-indigo-900 dark:prose-strong:text-indigo-300 prose-headings:text-indigo-900 dark:prose-headings:text-indigo-300 prose-headings:font-semibold prose-a:text-indigo-600 dark:prose-a:text-indigo-400">
                   <Markdown>{msg.content}</Markdown>
                 </div>
               )}
