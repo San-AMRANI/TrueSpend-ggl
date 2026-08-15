@@ -11,6 +11,7 @@ import { SettingsTab } from './dashboard/SettingsTab';
 import { BudgetsTab } from './dashboard/BudgetsTab';
 import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
+import { AIChat } from './AIChat';
 
 export default function Dashboard() {
   const { token } = useAuth();
@@ -51,7 +52,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative">
       <DashboardNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {activeTab === 'overview' && (
@@ -121,6 +122,8 @@ export default function Dashboard() {
           handleExportSql={handleExportSql}
         />
       )}
+
+      {activeTab === 'chat' && <AIChat />}
     </div>
   );
 }
