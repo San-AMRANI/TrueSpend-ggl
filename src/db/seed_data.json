@@ -1,0 +1,577 @@
+{
+  "transactions": [
+    {
+      "id": "89c8884b-ec4e-47d2-b163-6c2102f1c462",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T09:00:00.000Z",
+      "amount": "6036.70",
+      "type": "Income",
+      "sourceWallet": "Bank",
+      "category": "Income",
+      "notes": "Oracle R&D Center - Salary / Payroll"
+    },
+    {
+      "id": "4fbf85d1-c2b0-4224-8fbc-5b6c75ac9271",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T10:00:00.000Z",
+      "amount": "100.00",
+      "type": "Income",
+      "sourceWallet": "Bank",
+      "category": "Debt Repayment",
+      "notes": "Yassmine Amrani - Loan repayment received"
+    },
+    {
+      "id": "b65a3459-d14a-4735-b0aa-e21fb66bcd70",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T11:00:00.000Z",
+      "amount": "10.00",
+      "type": "Income",
+      "sourceWallet": "Cash",
+      "category": "Other",
+      "notes": "Sister - Cash gift / help"
+    },
+    {
+      "id": "08e740ec-61db-4912-ba28-562746844e2a",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T12:00:00.000Z",
+      "amount": "200.00",
+      "type": "Income",
+      "sourceWallet": "Cash",
+      "category": "Debt Repayment",
+      "notes": "Friend - Loan repayment received in cash"
+    },
+    {
+      "id": "b0baf187-2796-4b54-8534-d0660d95ed3a",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-05T09:00:00.000Z",
+      "amount": "100.00",
+      "type": "Income",
+      "sourceWallet": "Bank",
+      "category": "Reimbursement",
+      "notes": "Friend - Reimbursement for cat supplies"
+    },
+    {
+      "id": "a912d1e4-500c-42a9-912d-2765b0986c62",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-05T10:00:00.000Z",
+      "amount": "20.00",
+      "type": "Income",
+      "sourceWallet": "Cash",
+      "category": "Reimbursement",
+      "notes": "Friend - Partial reimbursement for Saturday beach lunch"
+    },
+    {
+      "id": "c0ff4579-7987-43a5-81bb-e1b14879d30a",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T10:00:00.000Z",
+      "amount": "2100.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Debt Repayment",
+      "notes": "Yassmine Amrani (Loan Repayment)"
+    },
+    {
+      "id": "91d75fdf-5105-4f0e-9917-48cfec99a876",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T11:00:00.000Z",
+      "amount": "196.05",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Groceries",
+      "notes": "Marjane Bouskoura"
+    },
+    {
+      "id": "405f5ba1-ddcf-4daa-a18a-41d8462b9d1d",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T12:00:00.000Z",
+      "amount": "191.37",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Utilities",
+      "notes": "SRM Casablanca-Settat"
+    },
+    {
+      "id": "b8c00320-aa30-43f6-9452-26ddffeb64e3",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T13:00:00.000Z",
+      "amount": "60.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Entertainment",
+      "notes": "McDo Mohammed V (Paid for friends)"
+    },
+    {
+      "id": "5a27a7a6-55c9-4c46-93b2-f2c3762dfaba",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T14:00:00.000Z",
+      "amount": "54.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Entertainment",
+      "notes": "McDo Aeria G-64 (40 friends + 14 personal)"
+    },
+    {
+      "id": "aad386fb-471d-4087-b167-88838e2ce26e",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T15:00:00.000Z",
+      "amount": "50.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Utilities",
+      "notes": "Orange Maroc"
+    },
+    {
+      "id": "2d7151cb-580f-42c0-a039-e3baa08b6f12",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T16:00:00.000Z",
+      "amount": "35.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Food & Dining",
+      "notes": "Ben Pause Gourm"
+    },
+    {
+      "id": "4990c7ff-8a48-4f70-8c66-73ace675a5ab",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T17:00:00.000Z",
+      "amount": "30.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Transportation",
+      "notes": "Station Prestig (Fuel)"
+    },
+    {
+      "id": "09695d80-e4ee-415a-a732-6c7fe97d4c7b",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-03T09:00:00.000Z",
+      "amount": "26.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Food & Dining",
+      "notes": "Boca Oracle"
+    },
+    {
+      "id": "c4817a64-4d4c-4ec4-b70f-bd7750737a4b",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-03T10:00:00.000Z",
+      "amount": "21.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Food & Dining",
+      "notes": "McDo Mohammed V"
+    },
+    {
+      "id": "6bb1b900-102b-4634-8503-9144e8d81c30",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-03T11:00:00.000Z",
+      "amount": "14.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Food & Dining",
+      "notes": "Boca Oracle Coffee"
+    },
+    {
+      "id": "e08fa862-bd29-445e-b6fa-8c5e2dcb1532",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-03T12:00:00.000Z",
+      "amount": "7.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Food & Dining",
+      "notes": "Boca Oracle Coffee"
+    },
+    {
+      "id": "144b81c9-2d40-499f-8043-35c4f9415e28",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-03T13:00:00.000Z",
+      "amount": "26.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Food & Dining",
+      "notes": "Boca Oracle"
+    },
+    {
+      "id": "7a1c115c-3a91-4229-b926-49a8d4046e9d",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-03T14:00:00.000Z",
+      "amount": "57.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Food & Dining",
+      "notes": "Boca Oracle"
+    },
+    {
+      "id": "e6e63222-3f66-4c60-82db-6ddf3bb522e5",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-03T15:00:00.000Z",
+      "amount": "30.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Food & Dining",
+      "notes": "Coffee (Personal)"
+    },
+    {
+      "id": "b8b012db-100b-40ae-8612-588b9a6b42b5",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-03T16:00:00.000Z",
+      "amount": "127.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Entertainment",
+      "notes": "Cinema (Spider-Man) (50 Personal + 77 Social)"
+    },
+    {
+      "id": "c5ca666f-7168-4582-86b2-1dfe05d99025",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-03T17:00:00.000Z",
+      "amount": "105.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Groceries",
+      "notes": "Supermarket (14 Biscuits + 91 Cat supplies - Reimbursed)"
+    },
+    {
+      "id": "50cbe421-f851-480e-97f9-f79791102c56",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-04T10:00:00.000Z",
+      "amount": "10.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Utilities",
+      "notes": "Orange (App top-up)"
+    },
+    {
+      "id": "b346e3ee-9a70-49fc-be63-52d1f5762160",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-05T11:00:00.000Z",
+      "amount": "52.30",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Entertainment",
+      "notes": "Marjane (Beach Lunch) (26.15 Personal + 6.15 treated friend + 20 reimbursed)"
+    },
+    {
+      "id": "93c5cf82-3bb6-4273-aa12-588690d3f859",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-05T12:00:00.000Z",
+      "amount": "39.85",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Entertainment",
+      "notes": "Marjane (Beach Snacks) (19.93 Personal + 19.92 Friend)"
+    },
+    {
+      "id": "1148ef96-ba8e-451b-b2a0-6b8f0c2c2647",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-06T10:00:00.000Z",
+      "amount": "30.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Transportation",
+      "notes": "Train (Transport for self, mom, and sister)"
+    },
+    {
+      "id": "45115fc5-00c0-4154-bd8a-7ce1b84624ad",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-06T19:00:00.000Z",
+      "amount": "138.00",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Other",
+      "notes": "Shawarma (Dinner)"
+    },
+    {
+      "id": "e6428106-4d53-486b-bac6-9d096deb0e2b",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-06T20:00:00.000Z",
+      "amount": "20.65",
+      "type": "Expense",
+      "sourceWallet": "Bank",
+      "category": "Groceries",
+      "notes": "Marjane (Soap, water, drinks)"
+    },
+    {
+      "id": "ff9fa324-85b7-411b-a51e-d8781db979ed",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T13:00:00.000Z",
+      "amount": "400.00",
+      "type": "Transfer",
+      "sourceWallet": "Bank",
+      "category": "Transfer",
+      "notes": "MehDi Card withdrawal"
+    },
+    {
+      "id": "9d3f696b-6c6b-4608-ba7e-0b86d5101b0a",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T14:00:00.000Z",
+      "amount": "300.00",
+      "type": "Transfer",
+      "sourceWallet": "Bank",
+      "category": "Transfer",
+      "notes": "Suit rental withdrawal"
+    },
+    {
+      "id": "efa6b687-488c-4f81-bd46-392a97fcabb5",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T15:00:00.000Z",
+      "amount": "100.00",
+      "type": "Transfer",
+      "sourceWallet": "Bank",
+      "category": "Transfer",
+      "notes": "Mom & chicken withdrawal"
+    },
+    {
+      "id": "d9613b82-a546-4493-9227-2f88f71b7a9a",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T16:00:00.000Z",
+      "amount": "50.00",
+      "type": "Transfer",
+      "sourceWallet": "Bank",
+      "category": "Transfer",
+      "notes": "Barbershop withdrawal"
+    },
+    {
+      "id": "0271a8de-026d-4873-b420-80088bb64085",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-04T09:00:00.000Z",
+      "amount": "100.00",
+      "type": "Transfer",
+      "sourceWallet": "Bank",
+      "category": "Transfer",
+      "notes": "Friday ATM Withdrawal"
+    },
+    {
+      "id": "7e2c3ff4-99ab-4986-a50f-2ad849c3092a",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T14:30:00.000Z",
+      "amount": "300.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Shopping",
+      "notes": "Suit rental"
+    },
+    {
+      "id": "1a654590-918c-4fac-a389-6cede175e3e6",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T15:00:00.000Z",
+      "amount": "200.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Entertainment",
+      "notes": "Loan to friend"
+    },
+    {
+      "id": "2cc708c9-09e9-4e36-923e-8e4b5f7f4cb2",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T16:00:00.000Z",
+      "amount": "72.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Food & Dining",
+      "notes": "McDonalds"
+    },
+    {
+      "id": "c2a6b126-445b-4196-a006-82451d641bf5",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T17:00:00.000Z",
+      "amount": "50.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Other",
+      "notes": "Cash to Mom"
+    },
+    {
+      "id": "78927f93-c8e1-479d-a352-8c375bdce848",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T18:00:00.000Z",
+      "amount": "50.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Groceries",
+      "notes": "Chicken"
+    },
+    {
+      "id": "15c019c7-d7b0-427d-a11f-880d1512bc38",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-01T19:00:00.000Z",
+      "amount": "45.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Personal Care",
+      "notes": "Barbershop (1)"
+    },
+    {
+      "id": "959acffe-a5a3-499d-bed8-753b1131f004",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T09:00:00.000Z",
+      "amount": "35.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Transportation",
+      "notes": "Station fuel"
+    },
+    {
+      "id": "e8ab3b1a-9780-45b8-b0d3-706707bfe95a",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T10:00:00.000Z",
+      "amount": "20.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Transportation",
+      "notes": "Station fuel"
+    },
+    {
+      "id": "971d45d4-e252-4531-b49a-c73b710bc9a3",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T11:00:00.000Z",
+      "amount": "15.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Food & Dining",
+      "notes": "Coffee"
+    },
+    {
+      "id": "70ff5c3f-869d-4571-8880-955a95126576",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T12:00:00.000Z",
+      "amount": "14.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Food & Dining",
+      "notes": "McCafé"
+    },
+    {
+      "id": "9bdfb42d-1507-49de-8c80-89938926f3a3",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T13:00:00.000Z",
+      "amount": "30.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Transportation",
+      "notes": "Fuel"
+    },
+    {
+      "id": "7928df28-b5cf-4db0-a285-fc5f072fe2bb",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T14:00:00.000Z",
+      "amount": "20.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Personal Care",
+      "notes": "Barbershop (2)"
+    },
+    {
+      "id": "71f5dd70-6385-4637-b3c4-840c34951020",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-02T15:00:00.000Z",
+      "amount": "190.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Shopping",
+      "notes": "Clothes (Initial Payment)"
+    },
+    {
+      "id": "f39ecf2b-f7a4-40bd-a28b-4c57efe7f4a0",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-04T18:00:00.000Z",
+      "amount": "20.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Entertainment",
+      "notes": "Uber (1) to Cinema (10 Personal + 10 Friend)"
+    },
+    {
+      "id": "84273859-ab49-4b93-b2cd-bfaaa28930a1",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-04T19:00:00.000Z",
+      "amount": "26.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Entertainment",
+      "notes": "Chips & Water (Cinema)"
+    },
+    {
+      "id": "37f3b8dc-edfc-461c-afa6-955fb2debac5",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-04T22:00:00.000Z",
+      "amount": "33.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Entertainment",
+      "notes": "Uber (2) from Cinema (16.50 Personal + 16.50 Friend)"
+    },
+    {
+      "id": "9f642dae-f4de-4466-b009-e0bc0071e794",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-04T23:00:00.000Z",
+      "amount": "30.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Transportation",
+      "notes": "Fuel (Bike)"
+    },
+    {
+      "id": "1ea3b0fb-0a39-4731-b75a-6f9a9c449c70",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-05T09:00:00.000Z",
+      "amount": "10.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Debt Repayment",
+      "notes": "Clothes Repayment"
+    },
+    {
+      "id": "e88a6a12-a3cd-4b1f-82d1-7c56b4d7b261",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-05T10:00:00.000Z",
+      "amount": "1.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Other",
+      "notes": "System Adjustment"
+    },
+    {
+      "id": "88d91732-6b10-4883-88af-508e8cb80423",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-05T14:00:00.000Z",
+      "amount": "6.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Entertainment",
+      "notes": "Beach Seller"
+    },
+    {
+      "id": "332caa7b-ad4c-430f-a77d-edf69e161b4f",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-05T15:00:00.000Z",
+      "amount": "4.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Transportation",
+      "notes": "Parking"
+    },
+    {
+      "id": "86a7defa-7b66-4af9-ae7d-1795a9feace5",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "createdAt": "2026-08-06T12:00:00.000Z",
+      "amount": "10.00",
+      "type": "Expense",
+      "sourceWallet": "Cash",
+      "category": "Personal Care",
+      "notes": "Barbershop (3)"
+    }
+  ],
+  "debts": [
+    {
+      "id": "3817fc0f-c383-4887-b283-87cf8acc7ccf",
+      "userId": "0686cb04-7bd6-44f4-8005-044908704711",
+      "contactName": "Clothes Seller",
+      "type": "Payable",
+      "originalAmount": "210.00",
+      "remainingBalance": "10.00",
+      "status": "Pending",
+      "createdAt": "2026-08-01T08:00:00.000Z"
+    }
+  ],
+  "splits": []
+}
