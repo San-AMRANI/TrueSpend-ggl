@@ -59,19 +59,19 @@ export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <Card className="w-full max-w-md bg-white shadow-xl">
-        <CardHeader className="pb-3 border-b border-gray-100">
+      <Card className="w-full max-w-md bg-white dark:bg-gray-900 shadow-xl">
+        <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-800">
           <CardTitle className="text-base font-semibold">
             Settle Debt: {debt.contactName}
           </CardTitle>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             {debt.type === 'Receivable' ? 'Money owed to you' : 'Money you owe'} · Remaining: {parseFloat(debt.remainingBalance).toFixed(2)} MAD
           </p>
         </CardHeader>
         <CardContent className="pt-4 space-y-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1 block">
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
                 Settlement Amount (MAD)
               </label>
               <Input
@@ -86,7 +86,7 @@ export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose,
             </div>
 
             <div>
-              <label className="text-xs font-medium text-gray-700 mb-1 block">
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
                 Transaction Category
               </label>
               <Select
@@ -130,7 +130,7 @@ export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose,
                   </>
                 )}
               </Select>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 A transaction will be logged with this category for budget and report tracking.
               </p>
             </div>

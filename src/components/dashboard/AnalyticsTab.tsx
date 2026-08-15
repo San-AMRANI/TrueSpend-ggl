@@ -193,7 +193,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{incomeVsExpenseData[1].amount.toFixed(2)} MAD</p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-gray-400 dark:text-gray-500">vs All-Time Avg</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">vs All-Time Avg</p>
               <p
                 className={`text-sm font-semibold ${
                   incomeVsExpenseData[1].amount > historicalAverages.avgExpense ? 'text-red-500 dark:text-red-400' : 'text-green-500 dark:text-green-400'
@@ -215,7 +215,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{incomeVsExpenseData[0].amount.toFixed(2)} MAD</p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-gray-400 dark:text-gray-500">vs All-Time Avg</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">vs All-Time Avg</p>
               <p
                 className={`text-sm font-semibold ${
                   incomeVsExpenseData[0].amount < historicalAverages.avgIncome ? 'text-red-500 dark:text-red-400' : 'text-green-500 dark:text-green-400'
@@ -332,7 +332,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 aria-pressed={activeCategory === item.name}
                 onClick={() => setSelectedCategory(item.name)}
                 className={`flex w-full items-center justify-between rounded-md p-2 text-left transition-colors ${
-                  activeCategory === item.name ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                  activeCategory === item.name ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50 dark:bg-gray-800/50 dark:hover:bg-gray-800/50 dark:bg-gray-800/50 dark:hover:bg-gray-800/50'
                 }`}
               >
                 <div className="flex items-center gap-2">
