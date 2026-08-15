@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Send, Loader2, Trash2 } from 'lucide-react';
 import Markdown from 'react-markdown';
 
@@ -6,13 +6,15 @@ const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { useDashboardData } from '../hooks/useDashboardData';
+import { buildAiContextSnapshot } from '../lib/aiContext';
 
-interface AiAction { type: string; summary: string; parameters: Record<string, unknown>; }
+interface AiAction { type: string; summary: string; }
 interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   actions?: AiAction[];
   actionStatus?: 'approved' | 'rejected';
+  approvalToken?: string;
 }
 
 export function AIChat() {
@@ -31,6 +33,7 @@ export function AIChat() {
   });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [actionInProgress, setActionInProgress] = useState<number | null>(null);
   const { token } = useAuth();
   
   // Get dashboard data to use as context
@@ -43,6 +46,10 @@ export function AIChat() {
     payday,
     fetchData
   } = useDashboardData(token);
+  const aiContext = useMemo(
+    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, emergencyBuffer, payday }),
+    [kpis, transactions, debts, budgets, emergencyBuffer, payday],
+  );
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -70,17 +77,11 @@ export function AIChat() {
     setIsLoading(true);
 
     try {
-      // Create api messages array
-      const apiMessages = [...messages, userMsg].filter(m => m.role !== 'system');
-      
-      const contextData = {
-        kpis,
-        transactions,
-        debts,
-        budgets,
-        emergencyBuffer,
-        payday
-      };
+      // Keep long histories and large accounts from turning into oversized LLM requests.
+      const apiMessages = [...messages, userMsg]
+        .filter(m => m.role !== 'system')
+        .slice(-8)
+        .map(({ role, content }) => ({ role, content: content.slice(0, 1200) }));
 
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -90,7 +91,7 @@ export function AIChat() {
         },
         body: JSON.stringify({
           messages: apiMessages,
-          contextData
+          contextData: aiContext
         })
       });
 
@@ -101,7 +102,12 @@ export function AIChat() {
       const data = await response.json();
       
       if (data.reply) {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.reply, actions: data.actions || [] }]);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: data.reply,
+          actions: data.actions || [],
+          approvalToken: data.approvalToken,
+        }]);
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: 'I am sorry, I did not receive a proper response.' }]);
       }
@@ -116,16 +122,37 @@ export function AIChat() {
   const handleAction = async (index: number, approve: boolean) => {
     const message = messages[index];
     if (!message.actions?.length) return;
-    if (!approve) { setMessages(prev => prev.map((item, i) => i === index ? { ...item, actionStatus: 'rejected' } : item)); return; }
+    if (!approve) {
+      if (message.approvalToken) {
+        void fetch('/api/chat/actions/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ approvalToken: message.approvalToken }),
+        });
+      }
+      setMessages(prev => prev.map((item, i) => i === index ? { ...item, actionStatus: 'rejected' } : item));
+      return;
+    }
+    if (!message.approvalToken) {
+      alert('This proposal has expired. Please ask the assistant to prepare it again.');
+      return;
+    }
+
+    setActionInProgress(index);
     try {
-      const response = await fetch('/api/chat/actions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ actions: message.actions }) });
+      const response = await fetch('/api/chat/actions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ approvalToken: message.approvalToken }) });
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
         throw new Error(errData.error || 'Action could not be completed');
       }
       await fetchData();
       setMessages(prev => prev.map((item, i) => i === index ? { ...item, actionStatus: 'approved' } : item));
-    } catch (error: any) { console.error(error); alert(error.message || 'The approved action could not be completed. No further actions were run.'); }
+    } catch (error: any) {
+      console.error(error);
+      alert(error.message || 'The approved action could not be completed. No further actions were run.');
+    } finally {
+      setActionInProgress(null);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -178,7 +205,22 @@ export function AIChat() {
                   <Markdown>{msg.content}</Markdown>
                 </div>
               )}
-              {msg.role === 'assistant' && msg.actions?.length && <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3"><p className="text-xs font-semibold text-indigo-900">Proposed action{msg.actions.length > 1 ? 's' : ''}</p>{msg.actions.map((action, actionIndex) => <p key={actionIndex} className="mt-1 text-xs text-indigo-800">• {action.summary}</p>)}{!msg.actionStatus ? <div className="mt-3 flex gap-2"><button onClick={() => handleAction(idx, true)} className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white">Approve</button><button onClick={() => handleAction(idx, false)} className="rounded border border-indigo-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-800">Reject</button></div> : <p className="mt-3 text-xs font-semibold text-indigo-800">{msg.actionStatus === 'approved' ? 'Approved and completed.' : 'Rejected — no changes made.'}</p>}</div>}
+              {msg.role === 'assistant' && msg.actions?.length && (
+                <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                  <p className="text-xs font-semibold text-indigo-900">Proposed action{msg.actions.length > 1 ? 's' : ''}</p>
+                  {msg.actions.map((action, actionIndex) => (
+                    <p key={actionIndex} className="mt-1 text-xs text-indigo-800">&bull; {action.summary}</p>
+                  ))}
+                  {!msg.actionStatus ? msg.approvalToken ? (
+                    <div className="mt-3 flex gap-2">
+                      <button disabled={actionInProgress === idx} onClick={() => handleAction(idx, true)} className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-wait disabled:opacity-60">{actionInProgress === idx ? 'Applying…' : 'Approve'}</button>
+                      <button disabled={actionInProgress === idx} onClick={() => handleAction(idx, false)} className="rounded border border-indigo-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-800 disabled:opacity-60">Reject</button>
+                    </div>
+                  ) : <p className="mt-3 text-xs text-indigo-800">This proposal expired. Ask the assistant to prepare it again.</p> : (
+                    <p className="mt-3 text-xs font-semibold text-indigo-800">{msg.actionStatus === 'approved' ? 'Approved and completed.' : 'Rejected — no changes made.'}</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         ))}
