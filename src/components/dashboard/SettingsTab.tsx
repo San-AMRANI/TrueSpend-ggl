@@ -2,7 +2,8 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
-import { Database, Download } from 'lucide-react';
+import { Database, Download, Moon, Sun, Monitor } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
 
 interface SettingsTabProps {
   emergencyBuffer: number;
@@ -29,6 +30,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   handleSaveSettings,
   handleExportSql,
 }) => {
+  const { theme, setTheme } = useTheme();
+
   return (
     <div className="space-y-6">
       <Card>
@@ -37,9 +40,51 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <h3 className="text-sm font-medium text-gray-900 mb-2">Emergency Liquidity Buffer</h3>
-              <p className="text-sm text-gray-500 mb-4">
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Appearance</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                Choose between light and dark mode, or sync with your system.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setTheme('light')}
+                  className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                    theme === 'light'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <Sun className="h-4 w-4" />
+                  Light
+                </button>
+                <button
+                  onClick={() => setTheme('dark')}
+                  className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                    theme === 'dark'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <Moon className="h-4 w-4" />
+                  Dark
+                </button>
+                <button
+                  onClick={() => setTheme('system')}
+                  className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                    theme === 'system'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <Monitor className="h-4 w-4" />
+                  System
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Emergency Liquidity Buffer</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                 Keep a safety cushion. This amount will be excluded from your daily allowance calculation.
               </p>
               <div className="flex items-center gap-3">
@@ -47,20 +92,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   type="number"
                   value={emergencyBuffer}
                   onChange={(e) => setEmergencyBuffer(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
                   placeholder="Buffer amount"
                 />
               </div>
             </div>
 
-            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
-              <h3 className="text-sm font-medium text-blue-800 mb-2">Payroll Settings</h3>
-              <p className="text-sm text-blue-600 mb-4">
+            <div className="rounded-lg border border-blue-100 dark:border-blue-900 bg-blue-50 dark:bg-blue-950 p-4">
+              <h3 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">Payroll Settings</h3>
+              <p className="text-sm text-blue-600 dark:text-blue-400 mb-4">
                 Set your payroll date and expected salary to automatically deposit your salary into your bank account on payday.
               </p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-medium text-blue-900 mb-1">Payday (Date)</label>
+                  <label className="block text-xs font-medium text-blue-900 dark:text-blue-200 mb-1">Payday (Date)</label>
                   <Select value={payday.toString()} onChange={(e) => setPayday(parseInt(e.target.value))}>
                     {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
                       <option key={day} value={day}>
@@ -70,12 +115,12 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   </Select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-blue-900 mb-1">Monthly Salary Amount</label>
+                  <label className="block text-xs font-medium text-blue-900 dark:text-blue-200 mb-1">Monthly Salary Amount</label>
                   <input
                     type="number"
                     value={salary}
                     onChange={(e) => setSalary(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 text-sm border border-blue-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    className="w-full px-3 py-2 text-sm border border-blue-200 dark:border-blue-800 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white"
                     placeholder="Salary amount"
                   />
                 </div>
@@ -99,21 +144,21 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-gray-900">Export Database as SQL</h3>
-            <p className="text-xs text-gray-600 leading-relaxed">
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Export Database as SQL</h3>
+            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
               Download a full TrueSpend PostgreSQL database backup, not just the current user’s data.
-              The export contains every stored record and table schema (<code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">users</code>,{' '}
-              <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">transactions</code>,{' '}
-              <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">debts</code>,{' '}
-              <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">splits</code>, and <code className="bg-gray-200 px-1 py-0.5 rounded text-gray-800">category_budgets</code>), custom enum types, categories, and structured INSERT statements. Restore it into a new or empty PostgreSQL database.
+              The export contains every stored record and table schema (<code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200">users</code>,{' '}
+              <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200">transactions</code>,{' '}
+              <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200">debts</code>,{' '}
+              <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200">splits</code>, and <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200">category_budgets</code>), custom enum types, categories, and structured INSERT statements. Restore it into a new or empty PostgreSQL database.
             </p>
             <div className="pt-2">
               <Button
                 variant="outline"
                 disabled={isExporting}
                 onClick={handleExportSql}
-                className="flex items-center gap-2 bg-white hover:bg-gray-100 text-gray-800 border-gray-300"
+                className="flex items-center gap-2 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-white border-gray-300 dark:border-gray-700"
               >
                 <Download className="h-4 w-4 text-blue-600" />
                 {isExporting ? 'Generating SQL Export...' : 'Export Data as SQL (.sql)'}

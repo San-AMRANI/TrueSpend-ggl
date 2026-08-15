@@ -6,6 +6,7 @@ import React from 'react';
 
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 
@@ -43,40 +44,40 @@ function AppContent() {
     }
   };
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center"><p className="text-gray-500">Loading...</p></div>;
+  if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900"><p className="text-gray-500 dark:text-gray-400">Loading...</p></div>;
 
   if (!user) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
         <div className="mx-auto w-full max-w-sm text-center">
           <div className="mb-8">
             <img src={appIconSrc} alt="TrueSpend Logo" className="mx-auto h-16 w-16" />
           </div>
-          <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-900">Welcome to TrueSpend</h1>
-          <p className="mb-8 text-gray-500">Log in to track your true economic consumption.</p>
+          <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Welcome to TrueSpend</h1>
+          <p className="mb-8 text-gray-500 dark:text-gray-400">Log in to track your true economic consumption.</p>
           
           <form onSubmit={handleLogin} className="space-y-4 text-left">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Username</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
               <input 
                 type="text" 
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-white shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Password</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
               <input 
                 type="password" 
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-white shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 required
               />
             </div>
-            {loginError && <p className="text-sm text-red-600">{loginError}</p>}
+            {loginError && <p className="text-sm text-red-600 dark:text-red-400">{loginError}</p>}
             <Button type="submit" disabled={isSubmitting} size="lg" className="w-full">
               {isSubmitting ? 'Signing in...' : 'Sign In'}
             </Button>
@@ -87,15 +88,15 @@ function AppContent() {
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gray-50">
-      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 sm:px-6 lg:px-8">
+    <div className="min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+      <header className="sticky top-0 z-10 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-2">
             <img src={appIconSrc} alt="TrueSpend Logo" className="h-8 w-8" />
-            <span className="text-lg font-bold tracking-tight text-gray-900">TrueSpend</span>
+            <span className="text-lg font-bold tracking-tight text-gray-900 dark:text-white">TrueSpend</span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="hidden sm:block text-sm font-medium text-gray-600">{user.email}</span>
+            <span className="hidden sm:block text-sm font-medium text-gray-600 dark:text-gray-300">{user.email}</span>
             <Button variant="outline" size="sm" onClick={signOut}>Sign Out</Button>
           </div>
         </div>
@@ -109,8 +110,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
