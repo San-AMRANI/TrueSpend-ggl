@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Send, Loader2, Trash2 } from 'lucide-react';
 import Markdown from 'react-markdown';
 
@@ -6,6 +6,23 @@ const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { useDashboardData } from '../hooks/useDashboardData';
+import { buildAiContextSnapshot } from '../lib/aiContext';
+
+const CHAT_SESSION_STORAGE_KEY = 'truespend_chat_session';
+const QUICK_PROMPTS = [
+  'How am I doing this month?',
+  'What can I safely spend today?',
+  'Where can I reduce my spending?',
+];
+
+function getChatSessionId() {
+  const existing = localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+  if (existing && /^[A-Za-z0-9_-]{1,128}$/.test(existing)) return existing;
+
+  const sessionId = crypto.randomUUID().replace(/-/g, '_');
+  localStorage.setItem(CHAT_SESSION_STORAGE_KEY, sessionId);
+  return sessionId;
+}
 
 interface AiAction { type: string; summary: string; parameters: Record<string, unknown>; }
 interface Message {
@@ -35,6 +52,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   });
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [chatSessionId] = useState(getChatSessionId);
   const { token } = useAuth();
   
   // Get dashboard data to use as context
@@ -47,6 +65,10 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     payday,
     fetchData
   } = useDashboardData(token);
+  const aiContext = useMemo(
+    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, emergencyBuffer, payday }),
+    [kpis, transactions, debts, budgets, emergencyBuffer, payday],
+  );
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -65,26 +87,21 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     }
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  const handleSend = async (draft = input) => {
+    const content = draft.trim();
+    if (!content || isLoading) return;
     
-    const userMsg: Message = { role: 'user', content: input.trim() };
+    const userMsg: Message = { role: 'user', content };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
 
     try {
-      // Create api messages array
-      const apiMessages = [...messages, userMsg].filter(m => m.role !== 'system');
-      
-      const contextData = {
-        kpis,
-        transactions,
-        debts,
-        budgets,
-        emergencyBuffer,
-        payday
-      };
+      // Prevent a long chat or account history from becoming an oversized AI prompt.
+      const apiMessages = [...messages, userMsg]
+        .filter(m => m.role !== 'system')
+        .slice(-8)
+        .map(({ role, content: messageContent }) => ({ role, content: messageContent.slice(0, 1200) }));
 
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -94,12 +111,14 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         },
         body: JSON.stringify({
           messages: apiMessages,
-          contextData
+          contextData: aiContext,
+          sessionId: chatSessionId,
         })
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get response');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to get response');
       }
 
       const data = await response.json();
@@ -196,6 +215,22 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {messages.length <= 1 && (
+        <div className="flex flex-wrap gap-2 px-1 pb-3">
+          {QUICK_PROMPTS.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              disabled={isLoading}
+              onClick={() => void handleSend(prompt)}
+              className="rounded-full border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {prompt}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Input */}
       <div className="relative flex items-center max-w-4xl mx-auto w-full shrink-0">
