@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Debt } from '../../types';
 import DebtForm from '../DebtForm';
+import { SettleDebtModal } from '../SettleDebtModal';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { CheckCircle2, ArrowDownRight, ArrowUpRight, Edit2, Trash2, History } from 'lucide-react';
@@ -9,7 +10,7 @@ import { format } from 'date-fns';
 interface DebtsTabProps {
   debts: Debt[];
   fetchData: () => void;
-  handleSettle: (debtId: string, amount: number) => void;
+  handleSettle: (debtId: string, amount: number) => Promise<void> | void;
   handleEditDebt: (debtId: string, currentAmount: string, currentContact: string, currentType: string) => void;
   handleDeleteDebt: (debtId: string) => void;
 }
@@ -21,6 +22,8 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
   handleEditDebt,
   handleDeleteDebt,
 }) => {
+  const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
+
   return (
     <>
       <DebtForm onSuccess={fetchData} />
@@ -73,8 +76,8 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
                     </div>
                     <div className="flex items-center gap-2">
                       {debt.status === 'Pending' && (
-                        <Button size="sm" variant="outline" onClick={() => handleSettle(debt.id, parseFloat(debt.remainingBalance))}>
-                          Settle Full
+                        <Button size="sm" variant="outline" onClick={() => setSettlingDebt(debt)}>
+                          Settle
                         </Button>
                       )}
                       <Button
@@ -117,6 +120,11 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
           </div>
         </CardContent>
       </Card>
+      <SettleDebtModal
+        debt={settlingDebt}
+        onClose={() => setSettlingDebt(null)}
+        onConfirm={handleSettle}
+      />
     </>
   );
 };

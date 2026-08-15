@@ -194,7 +194,9 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
   const results: Array<{ type: AiActionType; summary: string; result: unknown }> = [];
 
   for (const action of prepared) {
-    const p = action.parameters as Record<string, any>;
+    // `prepareAction` has already narrowed every payload to the exact schema for
+    // its action type. Keep that validated shape when dispatching to typed services.
+    const p: any = action.parameters;
     let result: unknown;
     switch (action.type) {
       case 'create_transaction': result = await transactionService.createTransaction(userId, p); break;
