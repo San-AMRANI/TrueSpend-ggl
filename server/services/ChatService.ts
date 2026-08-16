@@ -116,8 +116,8 @@ export async function getChatCompletion(messages: unknown, contextData?: unknown
         models,
         messages: [{ role: 'system', content: createSystemInstruction(contextData) }, ...chatMessages],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 350,
-        temperature: 0.2,
+        max_completion_tokens: 700,
+        temperature: 0.8,
         stream: false,
         ...(validSessionId ? { session_id: validSessionId } : {}),
         provider: {
