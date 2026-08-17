@@ -5,7 +5,7 @@ import path from 'path';
 dotenv.config();
 
 const WORKING_MODEL_CACHE_FILE = path.join(process.cwd(), '.last_working_model');
-const DEFAULT_FREE_MODEL = 'liquid/lfm-2.5-2.6b:free';
+const DEFAULT_FREE_MODEL = 'google/gemini-2.0-flash-lite-preview-02-05:free';
 const FREE_ROUTER_MODEL = 'openrouter/free';
 const MAX_HISTORY_MESSAGES = 8;
 const MAX_MESSAGE_CHARS = 1_200;
@@ -69,11 +69,21 @@ function serializeContext(contextData: unknown): string {
 function createSystemInstruction(contextData?: unknown) {
   const context = serializeContext(contextData);
 
-  return `You are TrueSpend's financial assistant. Return one valid JSON object only, with no Markdown fence: {"reply":"text","actions":[]}.
-Use MAD. Keep replies concise (normally under 140 words), factual, and helpful. Never say a change is complete until the user approves it.
+  return `You are TrueSpend's financial AI assistant. You must ONLY return a raw JSON object, without any Markdown formatting, code fences, or backticks.
+Format: {"reply":"your text","actions":[]}
+Currency: MAD.
+Rules:
+- Be concise, factual, and helpful. Keep replies under 140 words.
+- For parsing transactions: If the user says they "bought", "spent", "paid for" an item (like coffee, potatoes, juice), it is an "Expense". If someone "gave" them money or they "received" it, it is "Income".
+- For actions, propose an action if all details are known. If details like wallet (Bank or Cash) or category are missing, ask a short follow-up question instead of creating the action.
+- Do NOT say a change is completed until the user approves it. You are proposing it.
+- Every action must be {"type":"...","summary":"clear description","parameters":{...}}
 
-For a write request, create an action only when all required details are known; otherwise ask one short follow-up question. Every action is a proposal and must be {"type":"...","summary":"clear description","parameters":{...}}.
-Allowed actions: create_transaction {amount, type:"Income"|"Expense"|"Transfer"|"Debt Repayment", source_wallet:"Bank"|"Cash", category, notes?, transaction_date?:"YYYY-MM-DD"}; create_debt {amount, contact, type:"Receivable"|"Payable", due_date?:"YYYY-MM-DD"}; update_settings {payday?:1..31, emergencyBuffer?:number, salary?:number}; upsert_budget {category, amount, year, month}.
+Allowed actions:
+- create_transaction {amount: number, type:"Income"|"Expense"|"Transfer"|"Debt Repayment", source_wallet:"Bank"|"Cash", category: string, notes?: string, transaction_date?:"YYYY-MM-DD"}
+- create_debt {amount: number, contact: string, type:"Receivable"|"Payable", due_date?:"YYYY-MM-DD"}
+- update_settings {payday?:number, emergencyBuffer?:number, salary?:number}
+- upsert_budget {category: string, amount: number, year: number, month: number}
 
 Financial snapshot: ${context}`;
 }
@@ -140,12 +150,26 @@ export async function getChatCompletion(messages: unknown, contextData?: unknown
       throw new Error('The AI returned an empty response');
     }
 
-    const cleanContent = content.replace(/```[a-zA-Z]*\s*/g, '').replace(/```\s*/g, '').trim();
+    let cleanContent = content.replace(/```[a-zA-Z]*\s*/g, '').replace(/```\s*/g, '').trim();
     try {
       JSON.parse(cleanContent);
     } catch {
-      throw new Error('The AI returned an invalid response. Please try again.');
+      const firstBrace = cleanContent.indexOf('{');
+      const lastBrace = cleanContent.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        cleanContent = cleanContent.substring(firstBrace, lastBrace + 1);
+        try {
+          JSON.parse(cleanContent);
+        } catch {
+          throw new Error('The AI returned an invalid response. Please try again.');
+        }
+      } else {
+        throw new Error('The AI returned an invalid response. Please try again.');
+      }
     }
+    
+    // Update the data object with the cleaned content so the controller receives valid JSON
+    data.choices[0].message.content = cleanContent;
 
     const modelUsed = typeof data.model === 'string' ? data.model : preferredModel;
     setLastWorkingModel(modelUsed);

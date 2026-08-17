@@ -128,9 +128,12 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: 'I am sorry, I did not receive a proper response.' }]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Chat error:', error);
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again later.' }]);
+      const errorMessage = error.message && error.message !== 'Failed to fetch' 
+        ? `Error: ${error.message}` 
+        : 'Sorry, I encountered an error. Please try again later.';
+      setMessages(prev => [...prev, { role: 'assistant', content: errorMessage }]);
     } finally {
       setIsLoading(false);
     }

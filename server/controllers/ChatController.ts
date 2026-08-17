@@ -12,8 +12,7 @@ export const chatWithAi = async (req: Request, res: Response) => {
     const completion = await getChatCompletion(messages, contextData, sessionId);
     const content = completion.choices?.[0]?.message?.content || '';
     try {
-      const cleanContent = content.replace(/```[a-zA-Z]*\s*/g, '').replace(/```\s*/g, '').trim();
-      const parsed = JSON.parse(cleanContent);
+      const parsed = JSON.parse(content);
       res.json({
         reply: String(parsed.reply || ''),
         actions: Array.isArray(parsed.actions) ? parsed.actions : [],
