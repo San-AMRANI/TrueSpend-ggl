@@ -10,7 +10,7 @@ const FREE_ROUTER_MODEL = 'openrouter/free';
 const MAX_HISTORY_MESSAGES = 8;
 const MAX_MESSAGE_CHARS = 1_200;
 const MAX_CONTEXT_CHARS = 12_000;
-const REQUEST_TIMEOUT_MS = 18_000;
+const REQUEST_TIMEOUT_MS = 22_000;
 
 type ChatMessage = {
   role: 'user' | 'assistant';
