@@ -5,7 +5,7 @@ import path from 'path';
 dotenv.config();
 
 const WORKING_MODEL_CACHE_FILE = path.join(process.cwd(), '.last_working_model');
-const DEFAULT_FREE_MODEL = 'google/gemini-2.0-flash-lite-preview-02-05:free';
+const DEFAULT_FREE_MODEL = 'meta-llama/llama-3-8b-instruct:free';
 const FREE_ROUTER_MODEL = 'openrouter/free';
 const MAX_HISTORY_MESSAGES = 8;
 const MAX_MESSAGE_CHARS = 1_200;
