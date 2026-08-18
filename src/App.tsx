@@ -4,7 +4,7 @@ import React from 'react';
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Button } from './components/ui/Button';
@@ -24,6 +24,12 @@ function AppContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpen = () => setIsSidebarOpen(true);
+    window.addEventListener('truespend:openSidebar', handleOpen);
+    return () => window.removeEventListener('truespend:openSidebar', handleOpen);
+  }, []);
 
   const tabs: { id: DashboardTab; label: string; icon: any }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },

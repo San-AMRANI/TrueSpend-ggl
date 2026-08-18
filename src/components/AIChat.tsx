@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Loader2, Trash2, Mic, MicOff, Copy, Check, ChevronDown, Sparkles, Bot } from 'lucide-react';
+import { Send, Loader2, Trash2, Mic, MicOff, Copy, Check, ChevronDown, Sparkles, Bot, Menu } from 'lucide-react';
 import Markdown from 'react-markdown';
 
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
@@ -459,6 +459,13 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         {/* ─── Mobile compact header ─────────────────────────────── */}
         <div className="sm:hidden flex items-center justify-between px-4 py-3 bg-white/80 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('truespend:openSidebar'))}
+              title="Open menu"
+              className="p-1.5 -ml-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:text-white dark:hover:bg-gray-800 transition-colors"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
             <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm p-1.5">
               <img src={appIconSrc} alt="Spex" className="w-full h-full object-contain drop-shadow-sm" />
             </div>
