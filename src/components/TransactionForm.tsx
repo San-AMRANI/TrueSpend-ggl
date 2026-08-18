@@ -122,35 +122,39 @@ export default function TransactionForm({ onSuccess, transaction, onCancel }: Tr
   const activeCategories = formData.type === 'Expense' ? expenseCategories : incomeAndTransferCategories;
   const hasLegacyCategory = Boolean(formData.category) && !(activeCategories as readonly string[]).includes(formData.category);
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
-        <CardTitle>{isEditing ? 'Edit Transaction' : 'Log Transaction'}</CardTitle>
-        {isEditing && <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>}
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {isEditing && <p className="rounded-md bg-blue-50 dark:bg-blue-900/30 p-3 text-xs text-blue-700 dark:text-blue-300">Transaction type is fixed to keep wallet and debt records consistent. Create a new transaction if the type needs to change.</p>}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2"><label className="text-sm font-medium">Amount</label><Input required disabled={!isEditable} min="0.01" type="number" step="0.01" value={formData.amount} onChange={(event) => setFormData({ ...formData, amount: event.target.value })} placeholder="0.00" /></div>
-            <div className="space-y-2"><label className="text-sm font-medium">Type</label><Select disabled={isEditing || !isEditable} value={formData.type} onChange={(event) => setFormData({ ...formData, type: event.target.value as FormData['type'] })}><option value="Expense">Expense</option><option value="Income">Income</option><option value="Transfer">Transfer (e.g. ATM)</option></Select></div>
-          </div>
-          <div className="space-y-2"><label className="text-sm font-medium">Transaction Date</label><Input required disabled={!isEditable} type="date" value={formData.transaction_date} onChange={(event) => setFormData({ ...formData, transaction_date: event.target.value })} /><p className="text-xs text-gray-500 dark:text-gray-400">This date controls your reports, budgets, and trends.</p></div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-2"><label className="text-sm font-medium">Wallet</label><Select disabled={!isEditable} value={formData.source_wallet} onChange={(event) => setFormData({ ...formData, source_wallet: event.target.value as FormData['source_wallet'] })}><option value="Bank">Bank / Card</option><option value="Cash">Physical Cash</option></Select></div>
-            <div className="space-y-2"><label className="text-sm font-medium">Category</label><Select required disabled={!isEditable} value={formData.category} onChange={(event) => setFormData({ ...formData, category: event.target.value })}><option value="" disabled>Select category</option>{hasLegacyCategory && <option value={formData.category}>Legacy category: {formData.category}</option>}<optgroup label="Expenses">{expenseCategories.map((category) => <option key={category} value={category}>{category}</option>)}</optgroup><optgroup label="Income & Transfers">{incomeAndTransferCategories.map((category) => <option key={category} value={category}>{category === 'Income' ? 'Income / Salary' : category}</option>)}</optgroup></Select>{hasLegacyCategory && <p className="text-xs text-amber-600 dark:text-amber-400">This is a legacy category. Choose one of the fixed categories when you are ready to recategorize it.</p>}</div>
-          </div>
-          <div className="space-y-2"><label className="text-sm font-medium">Notes</label><Input disabled={!isEditable} value={formData.notes} onChange={(event) => setFormData({ ...formData, notes: event.target.value })} placeholder="Optional details" /></div>
-          {formData.type === 'Expense' && (
-            <div className="space-y-4 rounded-lg border dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50/50 dark:bg-gray-900/50 p-4">
-              <label className="flex items-center gap-2"><input disabled={!isEditable} type="checkbox" checked={isSplit} onChange={(event) => setIsSplit(event.target.checked)} className="rounded border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-gray-900 dark:focus:ring-gray-100" /><span className="text-sm font-medium">Split / Reimbursable (Fronting Money)</span></label>
-              {isSplit && <div className="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2"><div className="space-y-2"><label className="text-sm font-medium">Reimbursable Amount</label><Input required type="number" min="0.01" max={formData.amount || undefined} step="0.01" disabled={!isEditable} value={splitData.reimbursable_amount} onChange={(event) => setSplitData({ ...splitData, reimbursable_amount: event.target.value })} placeholder="0.00" /></div><div className="space-y-2"><label className="text-sm font-medium">Who Owes You?</label><Input required disabled={!isEditable} value={splitData.linked_contact_name} onChange={(event) => setSplitData({ ...splitData, linked_contact_name: event.target.value })} placeholder="Contact name" /></div></div>}
-            </div>
-          )}
-          {error && <p className="text-sm text-red-600 dark:text-red-400" role="alert">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading || !isEditable}>{loading ? 'Saving...' : isEditing ? 'Save Changes' : 'Save Transaction'}</Button>
-        </form>
-      </CardContent>
-    </Card>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in duration-200">
+      <div className="w-full max-w-lg m-auto animate-in zoom-in-95 duration-200">
+        <Card className="shadow-2xl border-gray-200 dark:border-gray-700">
+          <CardHeader className="flex flex-row items-center justify-between gap-3 pb-3 border-b border-gray-100 dark:border-gray-800">
+            <CardTitle>{isEditing ? 'Edit Transaction' : 'Log Transaction'}</CardTitle>
+            <Button type="button" variant="ghost" size="sm" onClick={onCancel || onSuccess} className="h-8 px-2 text-gray-500 hover:text-gray-900 dark:hover:text-white">✕ Close</Button>
+          </CardHeader>
+          <CardContent className="pt-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {isEditing && <p className="rounded-md bg-blue-50 dark:bg-blue-900/30 p-3 text-xs text-blue-700 dark:text-blue-300">Transaction type is fixed to keep wallet and debt records consistent. Create a new transaction if the type needs to change.</p>}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2"><label className="text-sm font-medium">Amount</label><Input required disabled={!isEditable} min="0.01" type="number" step="0.01" value={formData.amount} onChange={(event) => setFormData({ ...formData, amount: event.target.value })} placeholder="0.00" /></div>
+                <div className="space-y-2"><label className="text-sm font-medium">Type</label><Select disabled={isEditing || !isEditable} value={formData.type} onChange={(event) => setFormData({ ...formData, type: event.target.value as FormData['type'] })}><option value="Expense">Expense</option><option value="Income">Income</option><option value="Transfer">Transfer (e.g. ATM)</option></Select></div>
+              </div>
+              <div className="space-y-2"><label className="text-sm font-medium">Transaction Date</label><Input required disabled={!isEditable} type="date" value={formData.transaction_date} onChange={(event) => setFormData({ ...formData, transaction_date: event.target.value })} /><p className="text-xs text-gray-500 dark:text-gray-400">This date controls your reports, budgets, and trends.</p></div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2"><label className="text-sm font-medium">Wallet</label><Select disabled={!isEditable} value={formData.source_wallet} onChange={(event) => setFormData({ ...formData, source_wallet: event.target.value as FormData['source_wallet'] })}><option value="Bank">Bank / Card</option><option value="Cash">Physical Cash</option></Select></div>
+                <div className="space-y-2"><label className="text-sm font-medium">Category</label><Select required disabled={!isEditable} value={formData.category} onChange={(event) => setFormData({ ...formData, category: event.target.value })}><option value="" disabled>Select category</option>{hasLegacyCategory && <option value={formData.category}>Legacy category: {formData.category}</option>}<optgroup label="Expenses">{expenseCategories.map((category) => <option key={category} value={category}>{category}</option>)}</optgroup><optgroup label="Income & Transfers">{incomeAndTransferCategories.map((category) => <option key={category} value={category}>{category === 'Income' ? 'Income / Salary' : category}</option>)}</optgroup></Select>{hasLegacyCategory && <p className="text-xs text-amber-600 dark:text-amber-400">This is a legacy category. Choose one of the fixed categories when you are ready to recategorize it.</p>}</div>
+              </div>
+              <div className="space-y-2"><label className="text-sm font-medium">Notes</label><Input disabled={!isEditable} value={formData.notes} onChange={(event) => setFormData({ ...formData, notes: event.target.value })} placeholder="Optional details" /></div>
+              {formData.type === 'Expense' && (
+                <div className="space-y-4 rounded-lg border dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50/50 dark:bg-gray-900/50 p-4">
+                  <label className="flex items-center gap-2"><input disabled={!isEditable} type="checkbox" checked={isSplit} onChange={(event) => setIsSplit(event.target.checked)} className="rounded border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-gray-900 dark:focus:ring-gray-100" /><span className="text-sm font-medium">Split / Reimbursable (Fronting Money)</span></label>
+                  {isSplit && <div className="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2"><div className="space-y-2"><label className="text-sm font-medium">Reimbursable Amount</label><Input required type="number" min="0.01" max={formData.amount || undefined} step="0.01" disabled={!isEditable} value={splitData.reimbursable_amount} onChange={(event) => setSplitData({ ...splitData, reimbursable_amount: event.target.value })} placeholder="0.00" /></div><div className="space-y-2"><label className="text-sm font-medium">Who Owes You?</label><Input required disabled={!isEditable} value={splitData.linked_contact_name} onChange={(event) => setSplitData({ ...splitData, linked_contact_name: event.target.value })} placeholder="Contact name" /></div></div>}
+                </div>
+              )}
+              {error && <p className="text-sm text-red-600 dark:text-red-400" role="alert">{error}</p>}
+              <Button type="submit" className="w-full" disabled={loading || !isEditable}>{loading ? 'Saving...' : isEditing ? 'Save Changes' : 'Save Transaction'}</Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }
 

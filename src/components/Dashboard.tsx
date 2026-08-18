@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { DashboardNav } from './dashboard/DashboardNav';
@@ -61,6 +61,14 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     setActiveTabRaw(tab);
     onTabChange?.(tab);
   };
+
+  useEffect(() => {
+    const handleSetTab = (e: any) => {
+      setActiveTab(e.detail);
+    };
+    window.addEventListener('truespend:setTab', handleSetTab);
+    return () => window.removeEventListener('truespend:setTab', handleSetTab);
+  }, []);
 
   if (loading && !kpis) {
     return <div className="py-12 text-center text-gray-500 dark:text-gray-400">Loading your financial data...</div>;

@@ -125,10 +125,12 @@ All amounts are in MAD (Moroccan Dirhams). When displaying amounts, always inclu
 - "borrowed from", "[person] lent me" → Payable debt
 
 ## ALLOWED ACTIONS
+CRITICAL RULE: If the user provides the necessary details for a transaction or setting change, you MUST include the corresponding action object in the \`actions\` array. Do not just describe what you did in the \`reply\` string. The UI relies entirely on the \`actions\` array to display the action proposal card so the user can approve it.
+
 Every action must be: {"type":"...","summary":"clear plain-language description of what will happen","parameters":{...}}
 
 - **create_transaction**: {amount: number, type:"Income"|"Expense"|"Transfer"|"Debt Repayment", source_wallet:"Bank"|"Cash", category: string, notes?: string, transaction_date?:"YYYY-MM-DD"}
-  - Common categories: Food & Drink, Transport, Shopping, Entertainment, Health, Housing, Utilities, Education, Personal Care, Savings, Other
+  - Common categories: Food & Dining, Transport, Shopping, Entertainment, Health, Housing, Utilities, Education, Personal Care, Savings, Others
 - **create_debt**: {amount: number, contact: string, type:"Receivable"|"Payable", due_date?:"YYYY-MM-DD", notes?:string}
 - **update_settings**: {payday?:number(1-31), emergencyBuffer?:number, salary?:number}
 - **upsert_budget**: {category: string, amount: number, year: number, month: number}
