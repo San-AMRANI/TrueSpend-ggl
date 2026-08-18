@@ -12,8 +12,13 @@ import { BudgetsTab } from './dashboard/BudgetsTab';
 import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { AIChat } from './AIChat';
+import type { DashboardTab } from '../types';
 
-export default function Dashboard() {
+interface DashboardProps {
+  onTabChange?: (tab: DashboardTab) => void;
+}
+
+export default function Dashboard({ onTabChange }: DashboardProps = {}) {
   const { token } = useAuth();
   const {
     kpis,
@@ -33,7 +38,7 @@ export default function Dashboard() {
     analyticsMonth,
     setAnalyticsMonth,
     activeTab,
-    setActiveTab,
+    setActiveTab: setActiveTabRaw,
     whatIfAmount,
     setWhatIfAmount,
     selectedTransactionId,
@@ -50,6 +55,12 @@ export default function Dashboard() {
     handleExportSql,
     handleImportSql,
   } = useDashboardData(token);
+
+  // Notify parent whenever tab changes (used to hide header on mobile chat)
+  const setActiveTab = (tab: DashboardTab) => {
+    setActiveTabRaw(tab);
+    onTabChange?.(tab);
+  };
 
   if (loading && !kpis) {
     return <div className="py-12 text-center text-gray-500 dark:text-gray-400">Loading your financial data...</div>;
@@ -117,7 +128,9 @@ export default function Dashboard() {
       {activeTab === 'settings' && (
         <SettingsTab
           emergencyBuffer={emergencyBuffer}
-          setEmergencyBuffer={setEmergencyBuffer} salary={salary} setSalary={setSalary}
+          setEmergencyBuffer={setEmergencyBuffer}
+          salary={salary}
+          setSalary={setSalary}
           payday={payday}
           setPayday={setPayday}
           isSaving={isSaving}

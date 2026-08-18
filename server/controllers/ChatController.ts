@@ -16,6 +16,7 @@ export const chatWithAi = async (req: Request, res: Response) => {
       res.json({
         reply: String(parsed.reply || ''),
         actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 3).map(String) : [],
         responseTimeMs: completion.responseTimeMs,
       });
     } catch {

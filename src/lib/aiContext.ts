@@ -1,7 +1,7 @@
 import type { CategoryBudget, Debt, KPI, Transaction } from '../types';
 
-const RECENT_TRANSACTION_LIMIT = 16;
-const MAX_NOTE_LENGTH = 72;
+const RECENT_TRANSACTION_LIMIT = 20;
+const MAX_NOTE_LENGTH = 80;
 
 const toAmount = (value: string | number | null | undefined) => {
   const amount = Number(value);
@@ -31,10 +31,28 @@ const totalByCategory = (transactions: Transaction[], from?: Date) => {
     .slice(0, 10);
 };
 
+const incomeThisMonth = (transactions: Transaction[], from: Date) =>
+  transactions
+    .filter((t) => t.type === 'Income' && new Date(t.createdAt) >= from)
+    .reduce((sum, t) => sum + toAmount(t.amount), 0);
+
+const expensesThisMonth = (transactions: Transaction[], from: Date) =>
+  transactions
+    .filter((t) => (t.type === 'Expense' || t.type === 'Debt Repayment') && new Date(t.createdAt) >= from)
+    .reduce((sum, t) => sum + toAmount(t.amount), 0);
+
+const expensesLastMonth = (transactions: Transaction[], lastMonthStart: Date, lastMonthEnd: Date) =>
+  transactions
+    .filter((t) => {
+      const d = new Date(t.createdAt);
+      return (t.type === 'Expense' || t.type === 'Debt Repayment') && d >= lastMonthStart && d < lastMonthEnd;
+    })
+    .reduce((sum, t) => sum + toAmount(t.amount), 0);
+
 /**
  * Reduces account data to the information the assistant needs most often. This avoids
  * sending an ever-growing transaction history with every chat message while retaining
- * current KPIs, category trends, and recent records that could be referenced in a reply.
+ * current KPIs, category trends, recent records, budget utilization, and spending trends.
  */
 export function buildAiContextSnapshot({
   kpis,
@@ -53,12 +71,63 @@ export function buildAiContextSnapshot({
 }) {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const dayOfMonth = now.getDate();
+  const daysRemainingInMonth = daysInMonth - dayOfMonth;
+
   const sortedTransactions = [...transactions].sort(
     (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
   );
 
+  const thisMonthByCategory = totalByCategory(transactions, monthStart);
+  const thisMonthIncome = incomeThisMonth(transactions, monthStart);
+  const thisMonthExpenses = expensesThisMonth(transactions, monthStart);
+  const lastMonthExpenses = expensesLastMonth(transactions, lastMonthStart, lastMonthEnd);
+  const netPositionThisMonth = Number((thisMonthIncome - thisMonthExpenses).toFixed(2));
+  const spendingVsLastMonth =
+    lastMonthExpenses > 0
+      ? Number((((thisMonthExpenses - lastMonthExpenses) / lastMonthExpenses) * 100).toFixed(1))
+      : null;
+
+  // Budget utilization: match budgets to spending for the current month
+  const currentMonthBudgets = budgets.filter(
+    (b) => b.year === now.getFullYear() && b.month === now.getMonth() + 1,
+  );
+  const budgetUtilization = currentMonthBudgets.map((b) => {
+    const spent = thisMonthByCategory.find((c) => c.category === b.category)?.amount ?? 0;
+    const limit = toAmount(b.amount);
+    const remaining = Number((limit - spent).toFixed(2));
+    const pctUsed = limit > 0 ? Number(((spent / limit) * 100).toFixed(1)) : null;
+    return {
+      category: b.category,
+      limit,
+      spent: Number(spent.toFixed(2)),
+      remaining,
+      pctUsed,
+      overBudget: remaining < 0,
+    };
+  });
+
+  // Debt summary
+  const activeDebts = debts.filter((d) => d.status === 'active');
+  const totalPayable = activeDebts
+    .filter((d) => d.type === 'Payable')
+    .reduce((sum, d) => sum + toAmount(d.remainingBalance), 0);
+  const totalReceivable = activeDebts
+    .filter((d) => d.type === 'Receivable')
+    .reduce((sum, d) => sum + toAmount(d.remainingBalance), 0);
+  const overdueDebts = activeDebts
+    .filter((d) => d.dueDate && new Date(d.dueDate) < now)
+    .map((d) => ({ contact: d.contactName, type: d.type, remaining: toAmount(d.remainingBalance), dueDate: toDateKey(d.dueDate) }));
+
   return {
     asOf: toDateKey(now),
+    dayOfMonth,
+    daysInMonth,
+    daysRemainingInMonth,
     currency: 'MAD',
     kpis: kpis
       ? {
@@ -75,9 +144,22 @@ export function buildAiContextSnapshot({
         }
       : null,
     settings: { payday, emergencyBuffer: toAmount(emergencyBuffer) },
+    monthSummary: {
+      income: Number(thisMonthIncome.toFixed(2)),
+      expenses: Number(thisMonthExpenses.toFixed(2)),
+      netPosition: netPositionThisMonth,
+      spendingVsLastMonthPct: spendingVsLastMonth,
+      lastMonthExpenses: Number(lastMonthExpenses.toFixed(2)),
+    },
     spending: {
-      thisMonthByCategory: totalByCategory(transactions, monthStart),
+      thisMonthByCategory,
       allTimeByCategory: totalByCategory(transactions),
+    },
+    budgetUtilization,
+    debtSummary: {
+      totalPayable: Number(totalPayable.toFixed(2)),
+      totalReceivable: Number(totalReceivable.toFixed(2)),
+      overdueDebts,
     },
     recentTransactions: sortedTransactions.slice(0, RECENT_TRANSACTION_LIMIT).map((transaction) => ({
       id: transaction.id,
@@ -96,8 +178,5 @@ export function buildAiContextSnapshot({
       status: debt.status,
       dueDate: debt.dueDate ? toDateKey(debt.dueDate) : undefined,
     })),
-    budgets: budgets
-      .filter((budget) => budget.year === now.getFullYear() && budget.month === now.getMonth() + 1)
-      .map((budget) => ({ category: budget.category, amount: toAmount(budget.amount) })),
   };
 }

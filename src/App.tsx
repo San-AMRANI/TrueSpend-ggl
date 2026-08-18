@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
+import type { DashboardTab } from './types';
 
 const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}logo-1.png`;
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
@@ -20,6 +21,11 @@ function AppContent() {
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+
+  // On mobile, hide the top header when the chat tab is active so the chat
+  // can use the full viewport height as a fixed overlay.
+  const isChatOnMobile = activeTab === 'chat';
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,7 +95,8 @@ function AppContent() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
-      <header className="sticky top-0 z-10 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 sm:px-6 lg:px-8">
+      {/* Header — hidden on mobile when the chat tab is active (chat becomes a full-screen overlay) */}
+      <header className={`sticky top-0 z-10 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 sm:px-6 lg:px-8 ${isChatOnMobile ? 'hidden sm:block' : ''}`}>
         <div className="mx-auto flex max-w-7xl items-center justify-between">
           <div className="flex items-center gap-2">
             <img src={appIconSrc} alt="TrueSpend Logo" className="h-8 w-8" />
@@ -101,8 +108,8 @@ function AppContent() {
           </div>
         </div>
       </header>
-      <main className="mx-auto min-w-0 max-w-7xl overflow-x-hidden p-3 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8">
-        <Dashboard />
+      <main className={`mx-auto min-w-0 max-w-7xl overflow-x-hidden ${isChatOnMobile ? 'p-0 sm:p-6 sm:pb-24 md:pb-6 lg:p-8' : 'p-3 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8'}`}>
+        <Dashboard onTabChange={setActiveTab} />
       </main>
     </div>
   );
