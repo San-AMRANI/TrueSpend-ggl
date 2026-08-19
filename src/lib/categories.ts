@@ -1,25 +1,24 @@
 export const expenseCategories = [
-  'Debt Repayment',
-  'Medical',
-  'Wardrobe',
-  'Social',
-  'Groceries',
-  'Food & Dining',
-  'Transportation',
-  'Utilities',
-  'Entertainment',
-  'Family',
-  'Coffee',
-  'Grooming',
-  'Telecom',
+  '🏠 Housing & Utilities',
+  '🛒 Groceries',
+  '🍔 Dining & Takeaway',
+  '☕ Coffee & Quick Food',
+  '🚗 Transportation',
+  '📱 Telecom & Subscriptions',
+  '🩺 Health & Medical',
+  '👕 Personal & Clothing',
+  '🎬 Entertainment',
+  '👥 Social',
+  '👨‍👩‍👦 Family & Gifts',
+  '📚 Education & Development',
+  '💳 Debt & Obligations',
+  '💰 Savings & Goals',
+  '🚨 Unexpected',
 ] as const;
 
 export const incomeAndTransferCategories = [
-  'Income',
-  'Transfer',
-  'Reimbursement',
-  'Refund',
-  'Other Income',
+  '📥 Income',
+  '🔄 Transfer',
 ] as const;
 
 const categoryKey = (category: string) =>
@@ -35,36 +34,83 @@ const canonicalCategories = [...expenseCategories, ...incomeAndTransferCategorie
 const canonicalByKey = new Map(canonicalCategories.map((category) => [categoryKey(category), category]));
 
 const aliases = new Map<string, string>([
-  ['food', 'Food & Dining'],
-  ['foods', 'Food & Dining'],
-  ['dining', 'Food & Dining'],
-  ['restaurant', 'Food & Dining'],
-  ['restaurants', 'Food & Dining'],
-  ['eat out', 'Food & Dining'],
-  ['transport', 'Transportation'],
-  ['transportation and fuel', 'Transportation'],
-  ['rent', 'Utilities'],
-  ['housing', 'Utilities'],
-  ['housing rent', 'Utilities'],
-  ['housing and rent', 'Utilities'],
-  ['bills', 'Utilities'],
-  ['health fitness', 'Medical'],
-  ['medical expenses', 'Medical'],
-  ['shopping', 'Wardrobe'],
-  ['clothing', 'Wardrobe'],
-  ['clothes', 'Wardrobe'],
-  ['personal care', 'Grooming'],
-  ['socializing', 'Social'],
-  ['family expenses', 'Family'],
-  ['coffee shop', 'Coffee'],
-  ['barber', 'Grooming'],
-  ['barbershop', 'Grooming'],
-  ['phone', 'Telecom'],
-  ['mobile', 'Telecom'],
-  ['internet', 'Telecom'],
-  ['salary', 'Income'],
-  ['income salary', 'Income'],
-  ['repayment', 'Debt Repayment'],
+  // Housing
+  ['rent', '🏠 Housing & Utilities'],
+  ['housing', '🏠 Housing & Utilities'],
+  ['housing rent', '🏠 Housing & Utilities'],
+  ['housing and rent', '🏠 Housing & Utilities'],
+  ['utilities', '🏠 Housing & Utilities'],
+  ['bills', '🏠 Housing & Utilities'],
+  // Groceries
+  ['groceries', '🛒 Groceries'],
+  ['supermarket', '🛒 Groceries'],
+  // Dining
+  ['food', '🍔 Dining & Takeaway'],
+  ['foods', '🍔 Dining & Takeaway'],
+  ['dining', '🍔 Dining & Takeaway'],
+  ['food and dining', '🍔 Dining & Takeaway'],
+  ['restaurant', '🍔 Dining & Takeaway'],
+  ['restaurants', '🍔 Dining & Takeaway'],
+  ['eat out', '🍔 Dining & Takeaway'],
+  ['takeaway', '🍔 Dining & Takeaway'],
+  // Coffee
+  ['coffee', '☕ Coffee & Quick Food'],
+  ['coffee shop', '☕ Coffee & Quick Food'],
+  ['cafe', '☕ Coffee & Quick Food'],
+  // Transport
+  ['transport', '🚗 Transportation'],
+  ['transportation', '🚗 Transportation'],
+  ['transportation and fuel', '🚗 Transportation'],
+  // Telecom
+  ['telecom', '📱 Telecom & Subscriptions'],
+  ['phone', '📱 Telecom & Subscriptions'],
+  ['mobile', '📱 Telecom & Subscriptions'],
+  ['internet', '📱 Telecom & Subscriptions'],
+  ['subscriptions', '📱 Telecom & Subscriptions'],
+  // Health
+  ['medical', '🩺 Health & Medical'],
+  ['health', '🩺 Health & Medical'],
+  ['health fitness', '🩺 Health & Medical'],
+  ['medical expenses', '🩺 Health & Medical'],
+  ['pharmacy', '🩺 Health & Medical'],
+  // Personal & Clothing
+  ['wardrobe', '👕 Personal & Clothing'],
+  ['clothing', '👕 Personal & Clothing'],
+  ['clothes', '👕 Personal & Clothing'],
+  ['shopping', '👕 Personal & Clothing'],
+  ['grooming', '👕 Personal & Clothing'],
+  ['personal care', '👕 Personal & Clothing'],
+  ['barber', '👕 Personal & Clothing'],
+  ['barbershop', '👕 Personal & Clothing'],
+  // Entertainment
+  ['entertainment', '🎬 Entertainment'],
+  // Social
+  ['social', '👥 Social'],
+  ['socializing', '👥 Social'],
+  // Family & Gifts
+  ['family', '👨‍👩‍👦 Family & Gifts'],
+  ['family expenses', '👨‍👩‍👦 Family & Gifts'],
+  ['gift', '👨‍👩‍👦 Family & Gifts'],
+  ['gifts', '👨‍👩‍👦 Family & Gifts'],
+  // Education
+  ['education', '📚 Education & Development'],
+  // Debt
+  ['debt repayment', '💳 Debt & Obligations'],
+  ['repayment', '💳 Debt & Obligations'],
+  ['reimbursement', '💳 Debt & Obligations'],
+  ['loan', '💳 Debt & Obligations'],
+  ['debt', '💳 Debt & Obligations'],
+  // Savings
+  ['savings', '💰 Savings & Goals'],
+  ['savings and goals', '💰 Savings & Goals'],
+  // Income
+  ['salary', '📥 Income'],
+  ['income', '📥 Income'],
+  ['income salary', '📥 Income'],
+  ['refund', '📥 Income'],
+  ['other income', '📥 Income'],
+  // Transfer
+  ['transfer', '🔄 Transfer'],
 ]);
 
 /**

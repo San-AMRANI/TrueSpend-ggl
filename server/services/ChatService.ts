@@ -130,7 +130,8 @@ CRITICAL RULE: If the user provides the necessary details for a transaction or s
 Every action must be: {"type":"...","summary":"clear plain-language description of what will happen","parameters":{...}}
 
 - **create_transaction**: {amount: number, type:"Income"|"Expense"|"Transfer"|"Debt Repayment", source_wallet:"Bank"|"Cash", category: string, notes?: string, transaction_date?:"YYYY-MM-DD"}
-  - Common categories: Food & Dining, Transport, Shopping, Entertainment, Health, Housing, Utilities, Education, Personal Care, Savings, Others
+  - Expense categories: 🏠 Housing & Utilities, 🛒 Groceries, 🍔 Dining & Takeaway, ☕ Coffee & Quick Food, 🚗 Transportation, 📱 Telecom & Subscriptions, 🩺 Health & Medical, 👕 Personal & Clothing, 🎬 Entertainment, 👥 Social, 👨‍👩‍👦 Family & Gifts, 📚 Education & Development, 💳 Debt & Obligations, 💰 Savings & Goals, 🚨 Unexpected
+  - System categories: 📥 Income (for income/salary transactions), 🔄 Transfer (for wallet transfers)
 - **create_debt**: {amount: number, contact: string, type:"Receivable"|"Payable", due_date?:"YYYY-MM-DD", notes?:string}
 - **update_settings**: {payday?:number(1-31), emergencyBuffer?:number, salary?:number}
 - **upsert_budget**: {category: string, amount: number, year: number, month: number}

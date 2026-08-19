@@ -162,7 +162,7 @@ export function generateFacts(
   }
 
   // Coffee habit
-  const coffeeTxs = thisMonthExpenses.filter((t) => normalizeCategory(t.category) === 'Coffee');
+  const coffeeTxs = thisMonthExpenses.filter((t) => normalizeCategory(t.category) === '☕ Coffee & Quick Food');
   if (coffeeTxs.length >= 2) {
     const coffeeTotal = coffeeTxs.reduce((s, t) => s + amountOf(t), 0);
     facts.push({

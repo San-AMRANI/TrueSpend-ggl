@@ -19,7 +19,7 @@ export class KpiService {
         return txDate.getMonth() === currentMonth && 
                txDate.getFullYear() === currentYear && 
                tx.type === 'Income' && 
-               tx.category === 'Salary' && 
+               (tx.category === '📥 Income' || tx.category === 'Salary') && 
                tx.notes === 'Auto-deposited salary';
       });
 
@@ -29,7 +29,7 @@ export class KpiService {
           amount: salary.toString(),
           type: 'Income',
           sourceWallet: 'Bank',
-          category: 'Salary',
+          category: '📥 Income',
           notes: 'Auto-deposited salary',
           createdAt: new Date(currentYear, currentMonth, payday, 9, 0, 0), // 9 AM on payday
         });
@@ -107,10 +107,10 @@ export class KpiService {
       const transactionDay = toCalendarDay(txDate);
       if (transactionDay <= today && txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
         const txAmount = parseFloat(tx.amount as unknown as string);
-        if (tx.type === 'Expense' && (tx.category === 'Debt Repayment' || tx.category === 'Loan' || tx.category === 'Transfer')) {
+        if (tx.type === 'Expense' && (tx.category === '💳 Debt & Obligations' || tx.category === 'Debt Repayment' || tx.category === 'Loan' || tx.category === '🔄 Transfer' || tx.category === 'Transfer')) {
           debtRepayments += txAmount;
         }
-        if (tx.type === 'Income' && (tx.category === 'Reimbursement' || tx.category === 'Repayment' || tx.category === 'Refund' || tx.category === 'Transfer')) {
+        if (tx.type === 'Income' && (tx.category === '📥 Income' || tx.category === 'Reimbursement' || tx.category === 'Repayment' || tx.category === 'Refund' || tx.category === '🔄 Transfer' || tx.category === 'Transfer')) {
           reimbursements += txAmount;
         }
       }
