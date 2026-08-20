@@ -35,22 +35,72 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-const AUTO_BUDGET_RULES: Record<string, number> = {
-  '🏠 Housing & Utilities': 25,
-  '🛒 Groceries': 12,
-  '🚗 Transportation': 5,
-  '🩺 Health & Medical': 5,
-  '📱 Telecom & Subscriptions': 3,
-  '🍔 Dining & Takeaway': 7,
-  '👕 Personal & Clothing': 5,
-  '🎬 Entertainment': 5,
-  '👥 Social': 5,
-  '☕ Coffee & Quick Food': 3,
-  '👨‍👩‍👦 Family & Gifts': 3,
-  '📚 Education & Development': 2,
-  '💰 Savings & Goals': 10,
-  '💳 Debt & Obligations': 5,
-  '🚨 Unexpected': 5,
+type PlanKey = 'balanced' | 'savings_first' | 'essentials';
+
+const BUDGET_PLANS: Record<PlanKey, { name: string; description: string; rules: Record<string, number> }> = {
+  balanced: {
+    name: '50/30/20 — Balanced',
+    description: '50% Needs • 30% Wants • 20% Savings & Debt. Classic, widely recommended rule.',
+    rules: {
+      '🏠 Housing & Utilities': 25,
+      '🛒 Groceries': 12,
+      '🚗 Transportation': 5,
+      '🩺 Health & Medical': 5,
+      '📱 Telecom & Subscriptions': 3,
+      '🍔 Dining & Takeaway': 7,
+      '👕 Personal & Clothing': 5,
+      '🎬 Entertainment': 5,
+      '👥 Social': 5,
+      '☕ Coffee & Quick Food': 3,
+      '👨‍👩‍👦 Family & Gifts': 3,
+      '📚 Education & Development': 2,
+      '💰 Savings & Goals': 10,
+      '💳 Debt & Obligations': 5,
+      '🚨 Unexpected': 5,
+    },
+  },
+  savings_first: {
+    name: '60/20/20 — Savings First',
+    description: '60% Needs • 20% Wants • 20% Savings & Debt. Great if you want to save aggressively.',
+    rules: {
+      '🏠 Housing & Utilities': 28,
+      '🛒 Groceries': 14,
+      '🚗 Transportation': 7,
+      '🩺 Health & Medical': 6,
+      '📱 Telecom & Subscriptions': 5,
+      '🍔 Dining & Takeaway': 5,
+      '👕 Personal & Clothing': 4,
+      '🎬 Entertainment': 3,
+      '👥 Social': 3,
+      '☕ Coffee & Quick Food': 2,
+      '👨‍👩‍👦 Family & Gifts': 2,
+      '📚 Education & Development': 1,
+      '💰 Savings & Goals': 12,
+      '💳 Debt & Obligations': 5,
+      '🚨 Unexpected': 3,
+    },
+  },
+  essentials: {
+    name: '70/20/10 — Essentials Mode',
+    description: '70% Needs • 20% Wants • 10% Savings. For tight months when essentials come first.',
+    rules: {
+      '🏠 Housing & Utilities': 30,
+      '🛒 Groceries': 15,
+      '🚗 Transportation': 10,
+      '🩺 Health & Medical': 7,
+      '📱 Telecom & Subscriptions': 5,
+      '🍔 Dining & Takeaway': 6,
+      '👕 Personal & Clothing': 5,
+      '🎬 Entertainment': 3,
+      '👥 Social': 3,
+      '☕ Coffee & Quick Food': 2,
+      '👨‍👩‍👦 Family & Gifts': 1,
+      '📚 Education & Development': 3,
+      '💰 Savings & Goals': 5,
+      '💳 Debt & Obligations': 3,
+      '🚨 Unexpected': 2,
+    },
+  },
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -468,6 +518,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
   const [autoBudgetOpen, setAutoBudgetOpen] = useState(false);
   const [autoBudgetLoading, setAutoBudgetLoading] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<PlanKey>('balanced');
 
   const isCurrentMonth = monthRef.year === today.getUTCFullYear() && monthRef.month === today.getUTCMonth() + 1;
 
@@ -559,31 +610,56 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
 
   const overBudgetCount = categoryData.filter((c) => c.amount !== undefined && c.spent > c.amount).length;
 
-  const totalIncome = useMemo(() => {
-    let income = salary || 0;
+  // ─── Income Calculation ───────────────────────────────────────────────────────
+  // Source of truth: ALL Income-type transactions for the selected month.
+  // The KpiService auto-deposits salary as a '📥 Income' transaction on payday,
+  // so we never need to add the `salary` prop separately here — it's already in
+  // the transactions array. If the user hasn't reached payday yet, we fall back
+  // to the configured salary as an estimate.
+  const incomeBreakdown = useMemo(() => {
+    const items: { label: string; amount: number }[] = [];
+    let total = 0;
+
     transactions.forEach(tx => {
+      if (tx.type !== 'Income') return;
       const d = new Date(tx.createdAt);
-      if (d.getUTCFullYear() === monthRef.year && d.getUTCMonth() + 1 === monthRef.month) {
-        if (tx.type === 'Income' && tx.category === '📥 Income') {
-          income += amountOf(tx);
-        }
-      }
+      if (d.getUTCFullYear() !== monthRef.year || d.getUTCMonth() + 1 !== monthRef.month) return;
+      const amt = parseFloat(tx.amount as any) || 0;
+      if (amt <= 0) return;
+      total += amt;
+      items.push({
+        label: tx.notes || tx.category || 'Income',
+        amount: amt,
+      });
     });
-    return income;
+
+    // If no income transactions found for this month, use the configured salary
+    // as a planning estimate (payday hasn't arrived yet, or salary not auto-deposited)
+    const baseSalary = parseFloat(salary as any) || 0;
+    if (total === 0 && baseSalary > 0) {
+      items.push({ label: 'Estimated Salary (not yet deposited)', amount: baseSalary });
+      total = baseSalary;
+    }
+
+    return { items, total };
   }, [transactions, salary, monthRef]);
+
+  const totalIncome = incomeBreakdown.total;
+
 
   const handleApplyAutoBudget = async () => {
     setAutoBudgetLoading(true);
     try {
-      const newBudgets = Object.entries(AUTO_BUDGET_RULES).map(([cat, pct]) => ({
+      const rules = BUDGET_PLANS[selectedPlan].rules;
+      const newBudgets = Object.entries(rules).map(([cat, pct]) => ({
         category: cat,
         year: monthRef.year,
         month: monthRef.month,
-        amount: (totalIncome * pct) / 100,
+        amount: Math.round((totalIncome * pct) / 100),
       }));
       await onSaveBudgetsBatch(newBudgets);
       setAutoBudgetOpen(false);
-      showToast('Auto-budget applied successfully!');
+      showToast(`Auto-budget applied using the ${BUDGET_PLANS[selectedPlan].name} plan!`);
     } catch (err: any) {
       showToast(err.message || 'Failed to apply auto-budget.', 'error');
     } finally {
@@ -829,51 +905,92 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
 
       {/* ── Auto-Budget Modal ── */}
       {autoBudgetOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <Card className="w-full max-w-lg shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !autoBudgetLoading && setAutoBudgetOpen(false)}>
+          <Card className="w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-indigo-500" />
-                Auto-Budget for {monthLabel(monthRef.year, monthRef.month)}
+                Auto-Budget — {monthLabel(monthRef.year, monthRef.month)}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Base Salary</span>
-                  <span className="font-medium">{salary.toFixed(2)} MAD</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">Extra Income (This month)</span>
-                  <span className="font-medium text-emerald-600">+{(totalIncome - salary).toFixed(2)} MAD</span>
-                </div>
-                <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-between font-bold">
+
+              {/* Income sources */}
+              <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Income this month</p>
+                {incomeBreakdown.items.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic">No income found for this month and no salary configured in Settings.</p>
+                ) : (
+                  incomeBreakdown.items.map((item, i) => (
+                    <div key={i} className="flex justify-between text-sm">
+                      <span className="text-gray-600 dark:text-gray-300 truncate flex-1 pr-4">{item.label}</span>
+                      <span className="font-medium text-emerald-600 shrink-0">+{item.amount.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD</span>
+                    </div>
+                  ))
+                )}
+                <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-between font-bold text-base">
                   <span>Total Available Income</span>
-                  <span>{totalIncome.toFixed(2)} MAD</span>
+                  <span className="text-indigo-600 dark:text-indigo-400">{totalIncome.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD</span>
                 </div>
               </div>
 
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                This will automatically distribute your income across all categories using the 50/30/20 rule. 
-                <strong className="text-red-500 font-medium ml-1">Warning: This will overwrite your existing budgets for this month.</strong>
+              {/* Plan selector */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Budget plan</p>
+                <div className="grid grid-cols-1 gap-2">
+                  {Object.entries(BUDGET_PLANS).map(([key, plan]) => (
+                    <label key={key} className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                      selectedPlan === key
+                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300'
+                    }`}>
+                      <input type="radio" name="plan" value={key} checked={selectedPlan === key} onChange={() => setSelectedPlan(key as any)} className="mt-1 accent-indigo-600" />
+                      <div className="flex-1">
+                        <p className="font-semibold text-sm">{plan.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{plan.description}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Preview */}
+              {totalIncome > 0 && (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Category breakdown preview</p>
+                  <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+                    {Object.entries(BUDGET_PLANS[selectedPlan].rules).map(([cat, pct]) => (
+                      <div key={cat} className="flex justify-between py-1.5 px-3">
+                        <span className="truncate flex-1 pr-4 text-gray-700 dark:text-gray-300">{cat}</span>
+                        <span className="text-gray-400 shrink-0 mr-4 w-10 text-right">{pct}%</span>
+                        <span className="font-semibold shrink-0 w-28 text-right text-gray-900 dark:text-gray-100">{((totalIncome * pct) / 100).toLocaleString('fr-MA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} MAD</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {totalIncome === 0 && (
+                <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3 text-sm text-amber-700 dark:text-amber-300">
+                  ⚠️ No income detected. Please configure your salary in <strong>Settings</strong> or add income transactions first.
+                </div>
+              )}
+
+              <p className="text-xs text-gray-400">
+                ⚠️ Applying will <strong>overwrite</strong> all existing budgets for {monthLabel(monthRef.year, monthRef.month)}.
               </p>
 
-              <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 text-sm">
-                {Object.entries(AUTO_BUDGET_RULES).map(([cat, pct]) => (
-                  <div key={cat} className="flex justify-between py-1 px-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded">
-                    <span className="truncate flex-1 pr-4">{cat}</span>
-                    <span className="text-gray-400 shrink-0 mr-4 w-12 text-right">{pct}%</span>
-                    <span className="font-medium shrink-0 w-24 text-right">{((totalIncome * pct) / 100).toFixed(0)} MAD</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex justify-end gap-3 pt-1">
                 <Button type="button" variant="outline" onClick={() => setAutoBudgetOpen(false)} disabled={autoBudgetLoading}>
                   Cancel
                 </Button>
-                <Button type="button" onClick={handleApplyAutoBudget} disabled={autoBudgetLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                  {autoBudgetLoading ? 'Applying...' : 'Apply Auto-Budget'}
+                <Button
+                  type="button"
+                  onClick={handleApplyAutoBudget}
+                  disabled={autoBudgetLoading || totalIncome === 0}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50"
+                >
+                  {autoBudgetLoading ? 'Applying…' : 'Apply Auto-Budget'}
                 </Button>
               </div>
             </CardContent>
@@ -883,4 +1000,3 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
     </div>
   );
 };
-
