@@ -108,6 +108,12 @@ export function useDashboardData(token: string | null) {
     await fetchData();
   };
 
+  const handleSaveCategoryBudgetsBatch = async (budgets: { category: string; year: number; month: number; amount: number }[]) => {
+    await dashboardService.saveCategoryBudgetsBatch(budgets, token);
+    await fetchData();
+  };
+
+
   const handleCopyPreviousMonthBudgets = async (year: number, month: number) => {
     const result = await dashboardService.copyPreviousMonthBudgets(year, month, token);
     await fetchData();
@@ -203,6 +209,7 @@ export function useDashboardData(token: string | null) {
     handleEditDebt,
     handleDeleteTransaction,
     handleSaveCategoryBudget,
+    handleSaveCategoryBudgetsBatch,
     handleCopyPreviousMonthBudgets,
     handleDeleteCategoryBudget,
     openTransaction,

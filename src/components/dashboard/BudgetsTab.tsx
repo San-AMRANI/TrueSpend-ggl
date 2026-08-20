@@ -32,13 +32,34 @@ import {
   LayoutGrid,
   PieChart,
   Layers,
+  Sparkles,
 } from 'lucide-react';
+
+const AUTO_BUDGET_RULES: Record<string, number> = {
+  '🏠 Housing & Utilities': 25,
+  '🛒 Groceries': 12,
+  '🚗 Transportation': 5,
+  '🩺 Health & Medical': 5,
+  '📱 Telecom & Subscriptions': 3,
+  '🍔 Dining & Takeaway': 7,
+  '👕 Personal & Clothing': 5,
+  '🎬 Entertainment': 5,
+  '👥 Social': 5,
+  '☕ Coffee & Quick Food': 3,
+  '👨‍👩‍👦 Family & Gifts': 3,
+  '📚 Education & Development': 2,
+  '💰 Savings & Goals': 10,
+  '💳 Debt & Obligations': 5,
+  '🚨 Unexpected': 5,
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface BudgetsTabProps {
   budgets: CategoryBudget[];
   transactions: Transaction[];
+  salary: number;
   onSaveBudget: (category: string, year: number, month: number, amount: number) => Promise<void>;
+  onSaveBudgetsBatch: (budgets: { category: string; year: number; month: number; amount: number }[]) => Promise<void>;
   onCopyPrevious: (year: number, month: number) => Promise<number>;
   onDeleteBudget: (id: string) => Promise<void>;
 }
@@ -433,7 +454,7 @@ function EnvelopeView({ budgets, transactions, year, month, onSave, onDelete }: 
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, onSaveBudget, onCopyPrevious, onDeleteBudget }) => {
+export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, salary, onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onDeleteBudget }) => {
   const today = new Date();
   const [monthRef, setMonthRef] = useState({ year: today.getUTCFullYear(), month: today.getUTCMonth() + 1 });
   const [budgetModel, setBudgetModel] = useState<BudgetModel>('category');
@@ -442,6 +463,9 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, o
   const [addSaving, setAddSaving] = useState(false);
   const [copyLoading, setCopyLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  
+  const [autoBudgetOpen, setAutoBudgetOpen] = useState(false);
+  const [autoBudgetLoading, setAutoBudgetLoading] = useState(false);
 
   const isCurrentMonth = monthRef.year === today.getUTCFullYear() && monthRef.month === today.getUTCMonth() + 1;
 
@@ -520,6 +544,38 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, o
 
   const overBudgetCount = categoryData.filter((c) => c.amount !== undefined && c.spent > c.amount).length;
 
+  const totalIncome = useMemo(() => {
+    let income = salary || 0;
+    transactions.forEach(tx => {
+      const d = new Date(tx.createdAt);
+      if (d.getUTCFullYear() === monthRef.year && d.getUTCMonth() + 1 === monthRef.month) {
+        if (tx.type === 'Income' && tx.category === '📥 Income') {
+          income += amountOf(tx);
+        }
+      }
+    });
+    return income;
+  }, [transactions, salary, monthRef]);
+
+  const handleApplyAutoBudget = async () => {
+    setAutoBudgetLoading(true);
+    try {
+      const newBudgets = Object.entries(AUTO_BUDGET_RULES).map(([cat, pct]) => ({
+        category: cat,
+        year: monthRef.year,
+        month: monthRef.month,
+        amount: (totalIncome * pct) / 100,
+      }));
+      await onSaveBudgetsBatch(newBudgets);
+      setAutoBudgetOpen(false);
+      showToast('Auto-budget applied successfully!');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to apply auto-budget.', 'error');
+    } finally {
+      setAutoBudgetLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
 
@@ -537,8 +593,12 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, o
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Budget Planner</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">Plan, track, and control your monthly spending</p>
         </div>
-        {/* Month navigator */}
+        {/* Month navigator & Auto Budget */}
         <div className="flex items-center gap-2">
+          <Button type="button" onClick={() => setAutoBudgetOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-600 dark:hover:bg-indigo-700 dark:text-white mr-2">
+            <Sparkles className="mr-2 h-4 w-4" />
+            Auto-Budget
+          </Button>
           <Button type="button" variant="outline" size="icon" onClick={() => navigate(-1)} aria-label="Previous month">
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -743,6 +803,61 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, o
           onDelete={onDeleteBudget}
         />
       )}
+
+      {/* ── Auto-Budget Modal ── */}
+      {autoBudgetOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <Card className="w-full max-w-lg shadow-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-indigo-500" />
+                Auto-Budget for {monthLabel(monthRef.year, monthRef.month)}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Base Salary</span>
+                  <span className="font-medium">{salary.toFixed(2)} MAD</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500 dark:text-gray-400">Extra Income (This month)</span>
+                  <span className="font-medium text-emerald-600">+{(totalIncome - salary).toFixed(2)} MAD</span>
+                </div>
+                <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-between font-bold">
+                  <span>Total Available Income</span>
+                  <span>{totalIncome.toFixed(2)} MAD</span>
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                This will automatically distribute your income across all categories using the 50/30/20 rule. 
+                <strong className="text-red-500 font-medium ml-1">Warning: This will overwrite your existing budgets for this month.</strong>
+              </p>
+
+              <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-2 text-sm">
+                {Object.entries(AUTO_BUDGET_RULES).map(([cat, pct]) => (
+                  <div key={cat} className="flex justify-between py-1 px-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded">
+                    <span className="truncate flex-1 pr-4">{cat}</span>
+                    <span className="text-gray-400 shrink-0 mr-4 w-12 text-right">{pct}%</span>
+                    <span className="font-medium shrink-0 w-24 text-right">{((totalIncome * pct) / 100).toFixed(0)} MAD</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => setAutoBudgetOpen(false)} disabled={autoBudgetLoading}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={handleApplyAutoBudget} disabled={autoBudgetLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                  {autoBudgetLoading ? 'Applying...' : 'Apply Auto-Budget'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };
+

@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { db } from '../../src/db/index.js';
 import { categoryBudgets } from '../../src/db/schema.js';
 
@@ -44,6 +44,31 @@ export class CategoryBudgetRepository {
       .where(and(eq(categoryBudgets.id, id), eq(categoryBudgets.userId, userId)))
       .returning();
     return result[0] ?? null;
+  }
+
+  async batchUpsert(userId: string, budgets: { category: string; year: number; month: number; amount: string }[]) {
+    const values = budgets.map((b) => ({
+      userId,
+      category: b.category,
+      year: b.year,
+      month: b.month,
+      amount: b.amount,
+      updatedAt: new Date(),
+    }));
+
+    const result = await db
+      .insert(categoryBudgets)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [categoryBudgets.userId, categoryBudgets.category, categoryBudgets.year, categoryBudgets.month],
+        set: {
+          amount: sql`EXCLUDED.amount`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    return result;
   }
 }
 

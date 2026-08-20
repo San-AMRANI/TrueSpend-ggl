@@ -49,6 +49,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     handleEditDebt,
     handleDeleteTransaction,
     handleSaveCategoryBudget,
+    handleSaveCategoryBudgetsBatch,
     handleCopyPreviousMonthBudgets,
     handleDeleteCategoryBudget,
     openTransaction,
@@ -107,7 +108,9 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
       <BudgetsTab
           budgets={budgets}
           transactions={transactions}
+          salary={salary}
           onSaveBudget={handleSaveCategoryBudget}
+          onSaveBudgetsBatch={handleSaveCategoryBudgetsBatch}
           onCopyPrevious={handleCopyPreviousMonthBudgets}
           onDeleteBudget={handleDeleteCategoryBudget}
         />

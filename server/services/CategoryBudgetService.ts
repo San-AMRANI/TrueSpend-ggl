@@ -59,6 +59,27 @@ export class CategoryBudgetService {
     if (!deleted) throw new Error('Budget not found or not owned by user');
     return deleted;
   }
+
+  async batchUpsertBudgets(userId: string, budgets: { category: string; year: number; month: number; amount: number }[]) {
+    if (!Array.isArray(budgets)) throw new Error('Budgets must be an array');
+    
+    const validBudgets = budgets.map((b) => {
+      if (!b.category || typeof b.category !== 'string') throw new Error('Invalid category in batch');
+      if (!Number.isInteger(b.year) || !Number.isInteger(b.month) || b.month < 1 || b.month > 12) {
+        throw new Error(`Invalid year/month for category ${b.category}`);
+      }
+      if (typeof b.amount !== 'number' || b.amount < 0) {
+        throw new Error(`Invalid amount for category ${b.category}`);
+      }
+      return {
+        ...b,
+        amount: String(b.amount),
+      };
+    });
+
+    if (validBudgets.length === 0) return [];
+    return categoryBudgetRepository.batchUpsert(userId, validBudgets);
+  }
 }
 
 export const categoryBudgetService = new CategoryBudgetService();

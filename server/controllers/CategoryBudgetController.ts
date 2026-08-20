@@ -42,6 +42,17 @@ export class CategoryBudgetController {
       res.status(404).json({ error: error.message || 'Unable to delete budget' });
     }
   }
+
+  async batchUpsert(req: AuthRequest, res: Response) {
+    try {
+      const { budgets } = req.body;
+      const savedBudgets = await categoryBudgetService.batchUpsertBudgets(req.dbUser.id, budgets);
+      res.status(200).json(savedBudgets);
+    } catch (error: any) {
+      console.error(error);
+      res.status(400).json({ error: error.message || 'Unable to batch save budgets' });
+    }
+  }
 }
 
 export const categoryBudgetController = new CategoryBudgetController();
