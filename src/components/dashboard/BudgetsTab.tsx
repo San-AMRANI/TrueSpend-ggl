@@ -61,6 +61,7 @@ interface BudgetsTabProps {
   onSaveBudget: (category: string, year: number, month: number, amount: number) => Promise<void>;
   onSaveBudgetsBatch: (budgets: { category: string; year: number; month: number; amount: number }[]) => Promise<void>;
   onCopyPrevious: (year: number, month: number) => Promise<number>;
+  onClearMonth: (year: number, month: number) => Promise<number>;
   onDeleteBudget: (id: string) => Promise<void>;
 }
 
@@ -454,7 +455,7 @@ function EnvelopeView({ budgets, transactions, year, month, onSave, onDelete }: 
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, salary, onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onDeleteBudget }) => {
+export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, salary, onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onClearMonth, onDeleteBudget }) => {
   const today = new Date();
   const [monthRef, setMonthRef] = useState({ year: today.getUTCFullYear(), month: today.getUTCMonth() + 1 });
   const [budgetModel, setBudgetModel] = useState<BudgetModel>('category');
@@ -466,6 +467,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
   
   const [autoBudgetOpen, setAutoBudgetOpen] = useState(false);
   const [autoBudgetLoading, setAutoBudgetLoading] = useState(false);
+  const [clearLoading, setClearLoading] = useState(false);
 
   const isCurrentMonth = monthRef.year === today.getUTCFullYear() && monthRef.month === today.getUTCMonth() + 1;
 
@@ -539,6 +541,19 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
       showToast('Failed to copy budgets.', 'error');
     } finally {
       setCopyLoading(false);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!confirm(`Are you sure you want to delete all budgets for ${monthLabel(monthRef.year, monthRef.month)}?`)) return;
+    setClearLoading(true);
+    try {
+      const n = await onClearMonth(monthRef.year, monthRef.month);
+      showToast(n > 0 ? `Cleared ${n} budget${n !== 1 ? 's' : ''}.` : 'No budgets to clear.');
+    } catch {
+      showToast('Failed to clear budgets.', 'error');
+    } finally {
+      setClearLoading(false);
     }
   };
 
@@ -728,10 +743,18 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
 
       {/* ── Copy + Donut ── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <Button type="button" variant="outline" disabled={copyLoading} onClick={handleCopy}>
-          <Copy className="mr-2 h-4 w-4" />
-          {copyLoading ? 'Copying…' : "Copy previous month's budgets"}
-        </Button>
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" disabled={copyLoading} onClick={handleCopy}>
+            <Copy className="mr-2 h-4 w-4" />
+            {copyLoading ? 'Copying…' : "Copy previous month's budgets"}
+          </Button>
+          {budgetRows.length > 0 && totalBudget > 0 && (
+            <Button type="button" variant="outline" disabled={clearLoading} onClick={handleClearAll} className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-900/30">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Clear All
+            </Button>
+          )}
+        </div>
         {categoryData.filter((c) => c.spent > 0).length > 0 && (
           <div className="flex items-center gap-4 flex-wrap">
             <DonutChart categories={categoryData.map(c => ({ label: c.label, value: c.spent, color: c.color }))} />

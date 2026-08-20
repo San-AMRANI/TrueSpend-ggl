@@ -70,6 +70,18 @@ export class CategoryBudgetRepository {
 
     return result;
   }
+
+  async deleteAllByMonth(userId: string, year: number, month: number) {
+    const result = await db
+      .delete(categoryBudgets)
+      .where(and(
+        eq(categoryBudgets.userId, userId),
+        eq(categoryBudgets.year, year),
+        eq(categoryBudgets.month, month)
+      ))
+      .returning();
+    return { count: result.length };
+  }
 }
 
 export const categoryBudgetRepository = new CategoryBudgetRepository();

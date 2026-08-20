@@ -120,6 +120,12 @@ export function useDashboardData(token: string | null) {
     return result.copied;
   };
 
+  const handleClearCategoryBudgetsMonth = async (year: number, month: number) => {
+    const result = await dashboardService.clearCategoryBudgetsMonth(year, month, token);
+    await fetchData();
+    return result.count;
+  };
+
   const handleDeleteCategoryBudget = async (id: string) => {
     await dashboardService.deleteCategoryBudget(id, token);
     await fetchData();
@@ -211,6 +217,7 @@ export function useDashboardData(token: string | null) {
     handleSaveCategoryBudget,
     handleSaveCategoryBudgetsBatch,
     handleCopyPreviousMonthBudgets,
+    handleClearCategoryBudgetsMonth,
     handleDeleteCategoryBudget,
     openTransaction,
     handleSaveSettings,

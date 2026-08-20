@@ -15,6 +15,8 @@ export const dashboardService = {
     apiClient.put<CategoryBudget[]>('/api/category-budgets/batch', { budgets }, token),
   copyPreviousMonthBudgets: (year: number, month: number, token: string | null) =>
     apiClient.post<{ copied: number }>('/api/category-budgets/copy-previous', { year, month }, token),
+  clearCategoryBudgetsMonth: (year: number, month: number, token: string | null) =>
+    apiClient.delete<{ count: number }>(`/api/category-budgets/month/${year}/${month}`, token),
   deleteCategoryBudget: (id: string, token: string | null) =>
     apiClient.delete<CategoryBudget>(`/api/category-budgets/${id}`, token),
   getDebts: (token: string | null) => apiClient.get<Debt[]>('/api/debts', token),

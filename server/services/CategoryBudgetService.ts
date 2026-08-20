@@ -80,6 +80,13 @@ export class CategoryBudgetService {
     if (validBudgets.length === 0) return [];
     return categoryBudgetRepository.batchUpsert(userId, validBudgets);
   }
+
+  async clearMonthBudgets(userId: string, year: number, month: number) {
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+      throw new Error('Invalid budget month');
+    }
+    return categoryBudgetRepository.deleteAllByMonth(userId, year, month);
+  }
 }
 
 export const categoryBudgetService = new CategoryBudgetService();

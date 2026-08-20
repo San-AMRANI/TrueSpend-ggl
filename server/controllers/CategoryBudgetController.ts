@@ -53,6 +53,18 @@ export class CategoryBudgetController {
       res.status(400).json({ error: error.message || 'Unable to batch save budgets' });
     }
   }
+
+  async clearMonthBudgets(req: AuthRequest, res: Response) {
+    try {
+      const year = parseInt(req.params.year, 10);
+      const month = parseInt(req.params.month, 10);
+      const deleted = await categoryBudgetService.clearMonthBudgets(req.dbUser.id, year, month);
+      res.json(deleted);
+    } catch (error: any) {
+      console.error(error);
+      res.status(400).json({ error: error.message || 'Unable to clear budgets' });
+    }
+  }
 }
 
 export const categoryBudgetController = new CategoryBudgetController();
