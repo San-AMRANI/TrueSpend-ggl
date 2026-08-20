@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
 import { CategoryBudget, KPI, Transaction, Debt, DashboardTab } from '../types';
+import { useNotifications } from './useNotifications';
 
 export function useDashboardData(token: string | null) {
   const [kpis, setKpis] = useState<KPI | null>(null);
@@ -18,6 +19,8 @@ export function useDashboardData(token: string | null) {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [whatIfAmount, setWhatIfAmount] = useState<number>(0);
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
+
+  const notifications = useNotifications();
 
   const fetchData = useCallback(async () => {
     if (!token) return;
@@ -44,6 +47,56 @@ export function useDashboardData(token: string | null) {
       setLoading(false);
     }
   }, [token]);
+
+  // When fresh data arrives, schedule (or re-schedule) the daily notification
+  useEffect(() => {
+    if (!kpis) return;
+    const now = new Date();
+    const monthlyBudgets = budgets.filter(
+      b => b.year === now.getUTCFullYear() && b.month === now.getUTCMonth() + 1,
+    );
+    const totalBudget = monthlyBudgets.reduce((s, b) => s + parseFloat(b.amount as any), 0);
+    const totalSpent = transactions
+      .filter(tx => {
+        if (tx.type !== 'Expense') return false;
+        const d = new Date(tx.createdAt);
+        return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() + 1 === now.getUTCMonth() + 1;
+      })
+      .reduce((s, tx) => s + parseFloat(tx.amount as any), 0);
+    const monthlyIncome = parseFloat((kpis as any).monthlyIncome ?? 0);
+    const monthlyExpenses = parseFloat((kpis as any).monthlyExpenses ?? 0);
+
+    const overspentCategories = monthlyBudgets
+      .filter(b => {
+        const spent = transactions
+          .filter(tx => {
+            const d = new Date(tx.createdAt);
+            return tx.type === 'Expense' && tx.category === b.category &&
+              d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() + 1 === now.getUTCMonth() + 1;
+          })
+          .reduce((s, tx) => s + parseFloat(tx.amount as any), 0);
+        return spent > parseFloat(b.amount as any);
+      })
+      .map(b => b.category);
+
+    const topCategory =
+      monthlyBudgets.sort((a, b) => parseFloat(b.amount as any) - parseFloat(a.amount as any))[0]
+        ?.category ?? null;
+
+    notifications.scheduleDaily({
+      monthlyExpenses,
+      monthlyIncome,
+      totalBudget,
+      totalSpent,
+      daysUntilPayday: (kpis as any).daysUntilPayday ?? 0,
+      dailyAllowance: (kpis as any).dailyAllowance ?? 0,
+      dailyRemaining: (kpis as any).dailyRemaining ?? 0,
+      overspentCategories,
+      topCategory,
+      savings: Math.max(0, monthlyIncome - monthlyExpenses),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kpis, budgets, transactions]);
 
   useEffect(() => {
     fetchData();
@@ -224,5 +277,6 @@ export function useDashboardData(token: string | null) {
     handleSeedData,
     handleExportSql,
     handleImportSql,
+    notifications,
   };
 }

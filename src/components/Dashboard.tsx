@@ -57,6 +57,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     handleSaveSettings,
     handleExportSql,
     handleImportSql,
+    notifications,
   } = useDashboardData(token);
 
   // Notify parent whenever tab changes (used to hide header on mobile chat)
@@ -154,6 +155,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
           handleSaveSettings={handleSaveSettings}
           handleExportSql={handleExportSql}
           handleImportSql={handleImportSql}
+          notifications={notifications}
         />
       )}
 

@@ -905,15 +905,17 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
 
       {/* ── Auto-Budget Modal ── */}
       {autoBudgetOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => !autoBudgetLoading && setAutoBudgetOpen(false)}>
-          <Card className="w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
-            <CardHeader>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/50 backdrop-blur-sm" onClick={() => !autoBudgetLoading && setAutoBudgetOpen(false)}>
+          <Card className="w-full sm:max-w-lg shadow-2xl rounded-t-2xl sm:rounded-2xl max-h-[92dvh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <CardHeader className="flex-shrink-0 pb-2">
+              {/* drag handle on mobile */}
+              <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 mx-auto mb-3 sm:hidden" />
               <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-indigo-500" />
-                Auto-Budget — {monthLabel(monthRef.year, monthRef.month)}
+                <Sparkles className="h-5 w-5 text-indigo-500 shrink-0" />
+                <span className="truncate">Auto-Budget — {monthLabel(monthRef.year, monthRef.month)}</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 overflow-y-auto flex-1 pb-6">
 
               {/* Income sources */}
               <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-4 space-y-2">
