@@ -171,16 +171,32 @@ export function useNotifications() {
   }, []);
 
   // Fire a notification immediately (for preview / debug)
-  const sendNow = useCallback((data: NotifData) => {
+  const sendNow = useCallback(async (data: NotifData) => {
     if (!supported || permission !== 'granted') return;
     const { title, body } = buildInsight(data);
-    new Notification(title, {
+    const options = {
       body,
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
+      icon: '/logo.png',
+      badge: '/logo.png',
       tag: 'truespend-daily',
       requireInteraction: false,
-    });
+    };
+
+    if ('serviceWorker' in navigator) {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          await reg.showNotification(title, options);
+          markSentToday();
+          return;
+        }
+      } catch (e) {
+        console.error('Service worker notification failed', e);
+      }
+    }
+
+    // Fallback for desktop browsers without SW
+    new Notification(title, options);
     markSentToday();
   }, [supported, permission]);
 
