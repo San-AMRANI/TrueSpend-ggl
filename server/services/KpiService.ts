@@ -110,7 +110,7 @@ export class KpiService {
         if (tx.type === 'Expense' && (tx.category === '💳 Debt & Obligations' || tx.category === 'Debt Repayment' || tx.category === 'Loan' || tx.category === '🔄 Transfer' || tx.category === 'Transfer')) {
           debtRepayments += txAmount;
         }
-        if (tx.type === 'Income' && (tx.category === '📥 Income' || tx.category === 'Reimbursement' || tx.category === 'Repayment' || tx.category === 'Refund' || tx.category === '🔄 Transfer' || tx.category === 'Transfer')) {
+        if (tx.type === 'Income' && (tx.category === '💳 Debt & Obligations' || tx.category === 'Reimbursement' || tx.category === 'Repayment' || tx.category === 'Refund' || tx.category === '🔄 Transfer' || tx.category === 'Transfer')) {
           reimbursements += txAmount;
         }
       }
