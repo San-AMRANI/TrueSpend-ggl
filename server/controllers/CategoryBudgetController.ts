@@ -30,6 +30,18 @@ export class CategoryBudgetController {
       res.status(400).json({ error: error.message || 'Unable to copy budgets' });
     }
   }
+
+  async deleteBudget(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      if (!id) { res.status(400).json({ error: 'Budget id is required' }); return; }
+      const deleted = await categoryBudgetService.deleteBudget(req.dbUser.id, id);
+      res.json(deleted);
+    } catch (error: any) {
+      console.error(error);
+      res.status(404).json({ error: error.message || 'Unable to delete budget' });
+    }
+  }
 }
 
 export const categoryBudgetController = new CategoryBudgetController();

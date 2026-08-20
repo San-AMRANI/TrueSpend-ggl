@@ -37,6 +37,14 @@ export class CategoryBudgetRepository {
       .from(categoryBudgets)
       .where(and(eq(categoryBudgets.userId, userId), eq(categoryBudgets.year, year), eq(categoryBudgets.month, month)));
   }
+
+  async deleteById(id: string, userId: string) {
+    const result = await db
+      .delete(categoryBudgets)
+      .where(and(eq(categoryBudgets.id, id), eq(categoryBudgets.userId, userId)))
+      .returning();
+    return result[0] ?? null;
+  }
 }
 
 export const categoryBudgetRepository = new CategoryBudgetRepository();

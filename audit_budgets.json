@@ -1,0 +1,66 @@
+[
+  {
+    "category": "Telecom",
+    "budget_count": "3"
+  },
+  {
+    "category": "Social",
+    "budget_count": "4"
+  },
+  {
+    "category": "Food & Dining",
+    "budget_count": "4"
+  },
+  {
+    "category": "Long-term Wealth",
+    "budget_count": "1"
+  },
+  {
+    "category": "Entertainment",
+    "budget_count": "3"
+  },
+  {
+    "category": "Utilities",
+    "budget_count": "4"
+  },
+  {
+    "category": "Medical",
+    "budget_count": "4"
+  },
+  {
+    "category": "Grooming",
+    "budget_count": "3"
+  },
+  {
+    "category": "Debt Repayment",
+    "budget_count": "1"
+  },
+  {
+    "category": "Groceries",
+    "budget_count": "4"
+  },
+  {
+    "category": "Short-term Goals",
+    "budget_count": "1"
+  },
+  {
+    "category": "Transportation",
+    "budget_count": "4"
+  },
+  {
+    "category": "Essentials",
+    "budget_count": "1"
+  },
+  {
+    "category": "Wardrobe",
+    "budget_count": "4"
+  },
+  {
+    "category": "Coffee",
+    "budget_count": "4"
+  },
+  {
+    "category": "Family",
+    "budget_count": "4"
+  }
+]

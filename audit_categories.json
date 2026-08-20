@@ -1,0 +1,102 @@
+[
+  {
+    "category": "Food & Dining",
+    "tx_count": "38",
+    "total_amount": "721.25"
+  },
+  {
+    "category": "Transfer",
+    "tx_count": "27",
+    "total_amount": "5738.97"
+  },
+  {
+    "category": "Social",
+    "tx_count": "24",
+    "total_amount": "1395.45"
+  },
+  {
+    "category": "Coffee",
+    "tx_count": "24",
+    "total_amount": "491.70"
+  },
+  {
+    "category": "Transport",
+    "tx_count": "21",
+    "total_amount": "567.00"
+  },
+  {
+    "category": "Groceries",
+    "tx_count": "20",
+    "total_amount": "1213.00"
+  },
+  {
+    "category": "Food",
+    "tx_count": "15",
+    "total_amount": "633.00"
+  },
+  {
+    "category": "Family",
+    "tx_count": "13",
+    "total_amount": "704.00"
+  },
+  {
+    "category": "Transportation",
+    "tx_count": "12",
+    "total_amount": "352"
+  },
+  {
+    "category": "Wardrobe",
+    "tx_count": "9",
+    "total_amount": "2310.00"
+  },
+  {
+    "category": "Grooming",
+    "tx_count": "9",
+    "total_amount": "225.00"
+  },
+  {
+    "category": "Telecom",
+    "tx_count": "6",
+    "total_amount": "180.00"
+  },
+  {
+    "category": "Entertainment",
+    "tx_count": "6",
+    "total_amount": "459.00"
+  },
+  {
+    "category": "Repayment",
+    "tx_count": "6",
+    "total_amount": "900.00"
+  },
+  {
+    "category": "Debt Repayment",
+    "tx_count": "6",
+    "total_amount": "6330.00"
+  },
+  {
+    "category": "Reimbursement",
+    "tx_count": "6",
+    "total_amount": "360.00"
+  },
+  {
+    "category": "Medical",
+    "tx_count": "5",
+    "total_amount": "1868.97"
+  },
+  {
+    "category": "Utilities",
+    "tx_count": "4",
+    "total_amount": "584.11"
+  },
+  {
+    "category": "Salary",
+    "tx_count": "3",
+    "total_amount": "18110.10"
+  },
+  {
+    "category": "Gift",
+    "tx_count": "3",
+    "total_amount": "30.00"
+  }
+]

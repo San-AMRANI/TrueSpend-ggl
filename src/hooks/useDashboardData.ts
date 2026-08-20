@@ -114,6 +114,11 @@ export function useDashboardData(token: string | null) {
     return result.copied;
   };
 
+  const handleDeleteCategoryBudget = async (id: string) => {
+    await dashboardService.deleteCategoryBudget(id, token);
+    await fetchData();
+  };
+
   const openTransaction = (transactionId: string) => {
     setSelectedTransactionId(transactionId);
     setActiveTab('transactions');
@@ -199,6 +204,7 @@ export function useDashboardData(token: string | null) {
     handleDeleteTransaction,
     handleSaveCategoryBudget,
     handleCopyPreviousMonthBudgets,
+    handleDeleteCategoryBudget,
     openTransaction,
     handleSaveSettings,
     handleSeedData,

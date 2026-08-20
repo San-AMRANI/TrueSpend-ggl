@@ -50,6 +50,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     handleDeleteTransaction,
     handleSaveCategoryBudget,
     handleCopyPreviousMonthBudgets,
+    handleDeleteCategoryBudget,
     openTransaction,
     handleSaveSettings,
     handleExportSql,
@@ -103,11 +104,12 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
       {activeTab === 'calendar' && <FinancialCalendarTab transactions={transactions} debts={debts} payday={payday} openTransaction={openTransaction} setActiveTab={setActiveTab} />}
 
       {activeTab === 'budgets' && (
-        <BudgetsTab
+      <BudgetsTab
           budgets={budgets}
           transactions={transactions}
           onSaveBudget={handleSaveCategoryBudget}
           onCopyPrevious={handleCopyPreviousMonthBudgets}
+          onDeleteBudget={handleDeleteCategoryBudget}
         />
       )}
 

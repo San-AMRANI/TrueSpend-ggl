@@ -53,6 +53,12 @@ export class CategoryBudgetService {
     }
     return { copied: copied.length };
   }
+
+  async deleteBudget(userId: string, id: string) {
+    const deleted = await categoryBudgetRepository.deleteById(id, userId);
+    if (!deleted) throw new Error('Budget not found or not owned by user');
+    return deleted;
+  }
 }
 
 export const categoryBudgetService = new CategoryBudgetService();
