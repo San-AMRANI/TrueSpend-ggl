@@ -239,6 +239,9 @@ export async function getChatCompletion(
   const models = lastWorking
     ? [lastWorking, ...MODEL_CANDIDATES.filter((m) => m !== lastWorking)]
     : MODEL_CANDIDATES;
+    
+  // OpenRouter supports a maximum of 3 models in the fallback array
+  const openRouterModels = models.slice(0, 3);
 
   const requestStartedAt = Date.now();
   let lastError: Error = new Error('Unknown error');
@@ -256,7 +259,7 @@ export async function getChatCompletion(
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            models,
+            models: openRouterModels,
             messages: [{ role: 'system', content: systemMessage }, ...chatMessages],
             response_format: { type: 'json_object' },
             max_completion_tokens: 1200,
@@ -314,7 +317,7 @@ export async function getChatCompletion(
 
       data.choices[0].message.content = JSON.stringify(parsed);
 
-      const modelUsed = typeof data.model === 'string' ? data.model : models[0];
+      const modelUsed = typeof data.model === 'string' ? data.model : openRouterModels[0];
       setLastWorkingModel(modelUsed);
 
       return {
