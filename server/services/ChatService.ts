@@ -11,7 +11,6 @@ const WORKING_MODEL_CACHE_FILE = path.join(process.cwd(), '.last_working_model')
 // Preference: capable free models first, then OpenRouter's free route as final fallback.
 const MODEL_CANDIDATES = [
   'google/gemini-2.0-flash-exp:free',       // Fast, capable, free
-  'google/gemma-3-27b-it:free',              // Strong 27B model
   'meta-llama/llama-3.3-70b-instruct:free', // Llama 70B - very capable
   'deepseek/deepseek-chat-v3-0324:free',     // DeepSeek v3 - excellent reasoning
   'openrouter/free',                          // Final fallback: OpenRouter picks any free model
