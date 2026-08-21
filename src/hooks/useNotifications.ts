@@ -221,17 +221,27 @@ export function useNotifications() {
     // Check if the Notification Triggers API is supported (Chrome/Edge/Android)
     // This allows scheduling the notification at the OS level even if the app is closed.
     if ('showTrigger' in Notification.prototype && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistration().then(reg => {
-        if (reg && !alreadySentToday() && dataRef.current) {
+      navigator.serviceWorker.ready.then(reg => {
+        const isTargetToday = target.getDate() === now.getDate();
+        const shouldSchedule = !isTargetToday || !alreadySentToday();
+        
+        if (reg && shouldSchedule && dataRef.current) {
           const { title, body } = buildInsight(dataRef.current);
-          reg.showNotification(title, {
-            body,
-            icon: '/logo.png',
-            badge: '/logo.png',
-            tag: 'truespend-daily',
-            // @ts-ignore
-            showTrigger: new TimestampTrigger(target.getTime()),
-          }).catch(err => console.error('Failed to schedule with showTrigger', err));
+          
+          // First, clear any previously scheduled notification with the same tag
+          reg.getNotifications({ tag: 'truespend-daily', includeUncontrolled: true }).then(notifications => {
+            notifications.forEach(n => n.close());
+            
+            // Then schedule the new one
+            reg.showNotification(title, {
+              body,
+              icon: '/logo.png',
+              badge: '/logo.png',
+              tag: 'truespend-daily',
+              // @ts-ignore
+              showTrigger: new TimestampTrigger(target.getTime()),
+            }).catch(err => console.error('Failed to schedule with showTrigger', err));
+          });
         }
       });
       
@@ -244,7 +254,8 @@ export function useNotifications() {
 
     // Fallback: in-memory timeout (only works if the tab remains open)
     timerRef.current = setTimeout(() => {
-      if (!alreadySentToday() && dataRef.current) {
+      const isTargetToday = target.getDate() === new Date().getDate();
+      if ((!isTargetToday || !alreadySentToday()) && dataRef.current) {
         sendNow(dataRef.current);
       }
       // After firing, reschedule for next day (keep the loop alive)
