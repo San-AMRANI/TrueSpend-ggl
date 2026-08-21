@@ -1,5 +1,6 @@
 import { CategoryBudget, KPI, Transaction } from '../types';
 import { normalizeCategory } from './categories';
+import { getFinancialMonthRef, isInFinancialMonth, financialMonthLabel } from './financialMonth';
 
 export const BUDGET_STATUS_THRESHOLDS = {
   warning: 80,
@@ -30,27 +31,25 @@ export const amountOf = (transaction: Pick<Transaction, 'amount'>) => Number.par
 
 export const transactionDate = (transaction: Pick<Transaction, 'createdAt'>) => new Date(transaction.createdAt);
 
-/** Transaction dates are stored at noon UTC, keeping a user-selected calendar day stable across timezones. */
-export const transactionMonth = (transaction: Pick<Transaction, 'createdAt'>): MonthRef => {
+/** Returns the financial month reference for a transaction based on the user's payday. */
+export const transactionMonth = (transaction: Pick<Transaction, 'createdAt'>, payday: number): MonthRef => {
   const date = transactionDate(transaction);
-  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
+  return getFinancialMonthRef(date, payday);
 };
 
-export const monthLabel = (year: number, month: number) =>
-  new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+export const monthLabel = (year: number, month: number) => financialMonthLabel(year, month);
 
-export const isInMonth = (transaction: Pick<Transaction, 'createdAt'>, year: number, month: number) => {
-  const ref = transactionMonth(transaction);
-  return ref.year === year && ref.month === month;
+export const isInMonth = (transaction: Pick<Transaction, 'createdAt'>, year: number, month: number, payday: number = 25) => {
+  return isInFinancialMonth(transactionDate(transaction), payday, year, month);
 };
 
 export const isExpense = (transaction: Pick<Transaction, 'type'>) => transaction.type === 'Expense';
 
-export const getExpensesForMonth = (transactions: Transaction[], year: number, month: number) =>
-  transactions.filter((transaction) => isExpense(transaction) && isInMonth(transaction, year, month));
+export const getExpensesForMonth = (transactions: Transaction[], year: number, month: number, payday: number = 25) =>
+  transactions.filter((transaction) => isExpense(transaction) && isInMonth(transaction, year, month, payday));
 
-export const getCategorySpending = (transactions: Transaction[], category: string, year: number, month: number) =>
-  getExpensesForMonth(transactions, year, month)
+export const getCategorySpending = (transactions: Transaction[], category: string, year: number, month: number, payday: number = 25) =>
+  getExpensesForMonth(transactions, year, month, payday)
     .filter((transaction) => normalizeCategory(transaction.category) === normalizeCategory(category))
     .reduce((total, transaction) => total + amountOf(transaction), 0);
 
@@ -73,9 +72,9 @@ export const getBudgetStatus = (budgetAmount: number | undefined, spent: number)
   return { status, usagePercentage, remaining: budgetAmount - spent };
 };
 
-export const getSpendingChange = (transactions: Transaction[], year: number, month: number, category?: string) => {
+export const getSpendingChange = (transactions: Transaction[], year: number, month: number, category?: string, payday: number = 25) => {
   const previous = month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
-  const total = (ref: MonthRef) => getExpensesForMonth(transactions, ref.year, ref.month)
+  const total = (ref: MonthRef) => getExpensesForMonth(transactions, ref.year, ref.month, payday)
     .filter((transaction) => !category || normalizeCategory(transaction.category) === normalizeCategory(category))
     .reduce((sum, transaction) => sum + amountOf(transaction), 0);
   const current = total({ year, month });
@@ -89,20 +88,18 @@ export const getSpendingChange = (transactions: Transaction[], year: number, mon
   };
 };
 
-export const getSpendingPace = (actual: number, monthlyBudget: number, year: number, month: number, now = new Date()) => {
-  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const current = { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 };
-  const elapsedDays = year < current.year || (year === current.year && month < current.month)
-    ? daysInMonth
-    : year > current.year || (year === current.year && month > current.month)
-      ? 0
-      : now.getUTCDate();
-  const ideal = monthlyBudget * elapsedDays / daysInMonth;
-  return { ideal, actual, difference: actual - ideal, elapsedDays, daysInMonth };
+import { getFinancialMonthBounds } from './financialMonth';
+
+export const getSpendingPace = (actual: number, monthlyBudget: number, year: number, month: number, payday: number = 25, now = new Date()) => {
+  const { start, end } = getFinancialMonthBounds(payday, year, month);
+  const totalDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const elapsedDays = Math.max(0, Math.min(totalDays, Math.round((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1));
+  const ideal = monthlyBudget * elapsedDays / totalDays;
+  return { ideal, actual, difference: actual - ideal, elapsedDays, daysInMonth: totalDays };
 };
 
-export const getLargestExpenses = (transactions: Transaction[], year: number, month: number, count = 5) =>
-  getExpensesForMonth(transactions, year, month)
+export const getLargestExpenses = (transactions: Transaction[], year: number, month: number, payday: number = 25, count = 5) =>
+  getExpensesForMonth(transactions, year, month, payday)
     .slice()
     .sort((a, b) => amountOf(b) - amountOf(a))
     .slice(0, count);
@@ -120,11 +117,13 @@ export const filterTransactions = (transactions: Transaction[], filters: Transac
 
   const matchesDate = (transaction: Transaction) => {
     const key = dateKey(transactionDate(transaction));
+    // Provide a default payday for filters if not available in context.
+    const filterPayday = 25; 
     switch (filters.datePreset) {
       case 'today': return key === today;
       case 'week': return key >= dateKey(weekStart) && key <= today;
-      case 'month': return isInMonth(transaction, currentMonth.year, currentMonth.month);
-      case 'last-month': return isInMonth(transaction, previousMonth.year, previousMonth.month);
+      case 'month': return isInMonth(transaction, currentMonth.year, currentMonth.month, filterPayday);
+      case 'last-month': return isInMonth(transaction, previousMonth.year, previousMonth.month, filterPayday);
       case 'custom': return (!filters.startDate || key >= filters.startDate) && (!filters.endDate || key <= filters.endDate);
       default: return true;
     }

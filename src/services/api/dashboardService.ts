@@ -20,8 +20,8 @@ export const dashboardService = {
   deleteCategoryBudget: (id: string, token: string | null) =>
     apiClient.delete<CategoryBudget>(`/api/category-budgets/${id}`, token),
   getDebts: (token: string | null) => apiClient.get<Debt[]>('/api/debts', token),
-  settleDebt: (debtId: string, amount: number, token: string | null, category?: string) =>
-    apiClient.post<{ message: string }>('/api/debts', { debt_id: debtId, amount, category }, token),
+  settleDebt: (debtId: string, amount: number, token: string | null, category?: string, wallet?: 'Bank' | 'Cash') =>
+    apiClient.post<{ message: string }>('/api/debts', { debt_id: debtId, amount, category, wallet }, token),
   updateDebt: (debtId: string, payload: { amount: number; contact: string; type: string }, token: string | null) =>
     apiClient.put<{ message: string }>(`/api/debts/${debtId}`, payload, token),
   deleteDebt: (debtId: string, token: string | null) =>

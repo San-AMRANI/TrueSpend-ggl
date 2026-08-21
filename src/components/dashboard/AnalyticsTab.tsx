@@ -6,6 +6,7 @@ import { Button } from '../ui/Button';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { normalizeCategory } from '../../lib/categories';
 import { getSpendingChange, monthLabel, transactionMonth } from '../../lib/finance';
+import { getFinancialMonthsFromTransactions, isInFinancialMonth, financialMonthLabel, getCurrentFinancialMonth, getFinancialMonthBounds, getFinancialMonthRef } from '../../lib/financialMonth';
 import { Banknote, Landmark, X } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -13,34 +14,31 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
 
 interface AnalyticsTabProps {
   transactions: Transaction[];
+  payday: number;
   analyticsMonth: string;
   setAnalyticsMonth: (month: string) => void;
 }
 
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   transactions,
+  payday,
   analyticsMonth,
   setAnalyticsMonth,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
+  const availableMonthRefs = useMemo(() => getFinancialMonthsFromTransactions(transactions, payday), [transactions, payday]);
+
   const availableMonths = useMemo(() => {
-    const months = new Set<string>();
-    transactions.forEach((t) => {
-      const date = new Date(t.createdAt);
-      months.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
-    });
-    const sorted = Array.from(months).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-    return ['All Time', ...sorted];
-  }, [transactions]);
+    return ['All Time', ...availableMonthRefs.map(m => financialMonthLabel(m.year, m.month))];
+  }, [availableMonthRefs]);
 
   const filteredTransactions = useMemo(() => {
     if (analyticsMonth === 'All Time') return transactions;
-    return transactions.filter((t) => {
-      const date = new Date(t.createdAt);
-      return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) === analyticsMonth;
-    });
-  }, [transactions, analyticsMonth]);
+    const ref = availableMonthRefs.find(m => financialMonthLabel(m.year, m.month) === analyticsMonth);
+    if (!ref) return transactions;
+    return transactions.filter((t) => isInFinancialMonth(new Date(t.createdAt), payday, ref.year, ref.month));
+  }, [transactions, analyticsMonth, availableMonthRefs, payday]);
 
   const categoryData = useMemo(() => {
     const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
@@ -59,31 +57,30 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const comparisonMonth = useMemo(() => {
     if (analyticsMonth === 'All Time') {
-      const now = new Date();
-      return { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 };
+      return getCurrentFinancialMonth(payday);
     }
-    const date = new Date(`${analyticsMonth} 1`);
-    return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
-  }, [analyticsMonth]);
+    const ref = availableMonthRefs.find(m => financialMonthLabel(m.year, m.month) === analyticsMonth);
+    return ref || getCurrentFinancialMonth(payday);
+  }, [analyticsMonth, availableMonthRefs, payday]);
 
   const spendingChange = useMemo(
-    () => getSpendingChange(transactions, comparisonMonth.year, comparisonMonth.month),
-    [comparisonMonth, transactions],
+    () => getSpendingChange(transactions, comparisonMonth.year, comparisonMonth.month, undefined, payday),
+    [comparisonMonth, transactions, payday],
   );
 
   const changeCategories = useMemo(() => {
     const categories = new Set<string>();
     transactions.filter((transaction) => transaction.type === 'Expense').forEach((transaction) => {
-      const ref = transactionMonth(transaction);
+      const ref = transactionMonth(transaction, payday);
       const previous = comparisonMonth.month === 1 ? { year: comparisonMonth.year - 1, month: 12 } : { year: comparisonMonth.year, month: comparisonMonth.month - 1 };
       if ((ref.year === comparisonMonth.year && ref.month === comparisonMonth.month) || (ref.year === previous.year && ref.month === previous.month)) {
         categories.add(normalizeCategory(transaction.category) || 'Uncategorized');
       }
     });
     return Array.from(categories)
-      .map((category) => ({ category, ...getSpendingChange(transactions, comparisonMonth.year, comparisonMonth.month, category) }))
+      .map((category) => ({ category, ...getSpendingChange(transactions, comparisonMonth.year, comparisonMonth.month, category, payday) }))
       .sort((a, b) => Math.abs(b.difference) - Math.abs(a.difference));
-  }, [comparisonMonth, transactions]);
+  }, [comparisonMonth, transactions, payday]);
 
   const selectedCategoryTransactions = useMemo(() => {
     if (!activeCategory) return [];

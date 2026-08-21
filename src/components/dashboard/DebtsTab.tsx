@@ -10,7 +10,7 @@ import { format } from 'date-fns';
 interface DebtsTabProps {
   debts: Debt[];
   fetchData: () => void;
-  handleSettle: (debtId: string, amount: number, category?: string) => Promise<void> | void;
+  handleSettle: (debtId: string, amount: number, category?: string, wallet?: 'Bank' | 'Cash') => Promise<void> | void;
   handleEditDebt: (debtId: string, currentAmount: string, currentContact: string, currentType: string) => void;
   handleDeleteDebt: (debtId: string) => void;
 }
@@ -124,8 +124,8 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
       <SettleDebtModal
         debt={settlingDebt}
         onClose={() => setSettlingDebt(null)}
-        onConfirm={async (debtId, amount, category) => {
-          await handleSettle(debtId, amount, category);
+        onConfirm={async (debtId, amount, category, wallet) => {
+          await handleSettle(debtId, amount, category, wallet);
         }}
       />
     </>

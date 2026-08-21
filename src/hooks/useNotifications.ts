@@ -218,6 +218,31 @@ export function useNotifications() {
 
     const delay = target.getTime() - now.getTime();
 
+    // Check if the Notification Triggers API is supported (Chrome/Edge/Android)
+    // This allows scheduling the notification at the OS level even if the app is closed.
+    if ('showTrigger' in Notification.prototype && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then(reg => {
+        if (reg && !alreadySentToday() && dataRef.current) {
+          const { title, body } = buildInsight(dataRef.current);
+          reg.showNotification(title, {
+            body,
+            icon: '/logo.png',
+            badge: '/logo.png',
+            tag: 'truespend-daily',
+            // @ts-ignore
+            showTrigger: new TimestampTrigger(target.getTime()),
+          }).catch(err => console.error('Failed to schedule with showTrigger', err));
+        }
+      });
+      
+      // Reschedule for the next day via a loose timeout just to keep the loop going if the app stays open
+      timerRef.current = setTimeout(() => {
+        scheduleDaily(dataRef.current!);
+      }, delay + 60000); // 1 minute after trigger
+      return;
+    }
+
+    // Fallback: in-memory timeout (only works if the tab remains open)
     timerRef.current = setTimeout(() => {
       if (!alreadySentToday() && dataRef.current) {
         sendNow(dataRef.current);

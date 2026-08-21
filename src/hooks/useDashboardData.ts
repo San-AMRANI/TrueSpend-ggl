@@ -102,9 +102,9 @@ export function useDashboardData(token: string | null) {
     fetchData();
   }, [fetchData]);
 
-  const handleSettleDebt = async (debtId: string, amount: number, category?: string) => {
+  const handleSettleDebt = async (debtId: string, amount: number, category?: string, wallet?: 'Bank' | 'Cash') => {
     try {
-      await dashboardService.settleDebt(debtId, amount, token, category);
+      await dashboardService.settleDebt(debtId, amount, token, category, wallet);
       await fetchData();
     } catch (e) {
       console.error('Error settling debt:', e);

@@ -103,11 +103,11 @@ const BUDGET_PLANS: Record<PlanKey, { name: string; description: string; rules: 
   },
 };
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 interface BudgetsTabProps {
   budgets: CategoryBudget[];
   transactions: Transaction[];
   salary: number;
+  payday: number;
   onSaveBudget: (category: string, year: number, month: number, amount: number) => Promise<void>;
   onSaveBudgetsBatch: (budgets: { category: string; year: number; month: number; amount: number }[]) => Promise<void>;
   onCopyPrevious: (year: number, month: number) => Promise<number>;
@@ -230,17 +230,18 @@ interface BudgetCardProps {
   spent: number;
   year: number;
   month: number;
+  payday: number;
   onSave: (amount: number) => Promise<void>;
   onDelete: (() => Promise<void>) | undefined;
   isCurrentMonth: boolean;
 }
 
-function BudgetCard({ category, budget, spent, year, month, onSave, onDelete, isCurrentMonth }: BudgetCardProps) {
+function BudgetCard({ category, budget, spent, year, month, payday, onSave, onDelete, isCurrentMonth }: BudgetCardProps) {
   const amount = budget ? parseFloat(budget.amount) : undefined;
   const status = getBudgetStatus(amount, spent);
   const statusCfg = statusConfig[status.status];
   const StatusIcon = statusCfg.icon;
-  const pace = amount !== undefined ? getSpendingPace(spent, amount, year, month) : null;
+  const pace = amount !== undefined ? getSpendingPace(spent, amount, year, month, payday) : null;
   const daysWarning = amount !== undefined && isCurrentMonth ? predictDaysToOverspend(spent, amount, year, month) : null;
   const color = categoryColor(category);
 
@@ -377,13 +378,13 @@ const NEEDS_CATEGORIES = ['🏠 Housing & Utilities', '🛒 Groceries', '🚗 Tr
 const WANTS_CATEGORIES = ['🍔 Dining & Takeaway', '☕ Coffee & Quick Food', '🎬 Entertainment', '👥 Social', '👕 Personal & Clothing', '👨‍👩‍👦 Family & Gifts'];
 const SAVINGS_CATEGORIES = ['💰 Savings & Goals', '📚 Education & Development', '💳 Debt & Obligations'];
 
-function Rule503020View({ transactions, totalBudget, year, month }: { transactions: Transaction[]; totalBudget: number; year: number; month: number }) {
+function Rule503020View({ transactions, totalBudget, year, month, payday }: { transactions: Transaction[]; totalBudget: number; year: number; month: number; payday: number }) {
   const totalSpent = useMemo(() => {
-    return getExpensesForMonth(transactions, year, month).reduce((s, tx) => s + amountOf(tx), 0);
-  }, [transactions, year, month]);
+    return getExpensesForMonth(transactions, year, month, payday).reduce((s, tx) => s + amountOf(tx), 0);
+  }, [transactions, year, month, payday]);
 
   const getGroupSpent = (cats: string[]) =>
-    getExpensesForMonth(transactions, year, month)
+    getExpensesForMonth(transactions, year, month, payday)
       .filter((tx) => cats.includes(tx.category ?? ''))
       .reduce((s, tx) => s + amountOf(tx), 0);
 
@@ -433,17 +434,18 @@ function Rule503020View({ transactions, totalBudget, year, month }: { transactio
 }
 
 // ─── Envelope View ────────────────────────────────────────────────────────────
-function EnvelopeView({ budgets, transactions, year, month, onSave, onDelete }: {
+function EnvelopeView({ budgets, transactions, year, month, payday, onSave, onDelete }: {
   budgets: CategoryBudget[];
   transactions: Transaction[];
   year: number;
   month: number;
+  payday: number;
   onSave: (cat: string, amount: number) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
   const monthBudgets = budgets.filter((b) => b.year === year && b.month === month);
   const totalEnvelope = monthBudgets.reduce((s, b) => s + parseFloat(b.amount), 0);
-  const totalSpent = monthBudgets.reduce((s, b) => s + getCategorySpending(transactions, b.category, year, month), 0);
+  const totalSpent = monthBudgets.reduce((s, b) => s + getCategorySpending(transactions, b.category, year, month, payday), 0);
   const totalLeft = totalEnvelope - totalSpent;
 
   return (
@@ -467,7 +469,7 @@ function EnvelopeView({ budgets, transactions, year, month, onSave, onDelete }: 
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">No envelopes for this month. Add category budgets above.</p>
         )}
         {monthBudgets.map((b) => {
-          const spent = getCategorySpending(transactions, b.category, year, month);
+          const spent = getCategorySpending(transactions, b.category, year, month, payday);
           const amount = parseFloat(b.amount);
           const left = amount - spent;
           const pct = amount > 0 ? Math.min(100, (spent / amount) * 100) : 0;
@@ -504,10 +506,11 @@ function EnvelopeView({ budgets, transactions, year, month, onSave, onDelete }: 
   );
 }
 
+import { getCurrentFinancialMonth } from '../../lib/financialMonth';
+
 // ─── Main Component ───────────────────────────────────────────────────────────
-export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, salary, onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onClearMonth, onDeleteBudget }) => {
-  const today = new Date();
-  const [monthRef, setMonthRef] = useState({ year: today.getUTCFullYear(), month: today.getUTCMonth() + 1 });
+export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, salary, payday, onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onClearMonth, onDeleteBudget }) => {
+  const [monthRef, setMonthRef] = useState(() => getCurrentFinancialMonth(payday));
   const [budgetModel, setBudgetModel] = useState<BudgetModel>('category');
   const [newCategory, setNewCategory] = useState<string>(expenseCategories[0]);
   const [newAmount, setNewAmount] = useState('');
@@ -520,7 +523,8 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
   const [clearLoading, setClearLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<PlanKey>('balanced');
 
-  const isCurrentMonth = monthRef.year === today.getUTCFullYear() && monthRef.month === today.getUTCMonth() + 1;
+  const currentFM = getCurrentFinancialMonth(payday);
+  const isCurrentMonth = monthRef.year === currentFM.year && monthRef.month === currentFM.month;
 
   const showToast = useCallback((msg: string, type: 'success' | 'error' = 'success') => {
     setToast({ msg, type });
@@ -553,16 +557,16 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
     [budgets, monthRef]);
 
   const totalSpent = useMemo(() =>
-    budgetRows.reduce((s, cat) => s + getCategorySpending(transactions, cat, monthRef.year, monthRef.month), 0),
-    [budgetRows, transactions, monthRef]);
+    budgetRows.reduce((s, cat) => s + getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payday), 0),
+    [budgetRows, transactions, monthRef, payday]);
 
-  const pace = useMemo(() => getSpendingPace(totalSpent, totalBudget, monthRef.year, monthRef.month), [totalSpent, totalBudget, monthRef]);
+  const pace = useMemo(() => getSpendingPace(totalSpent, totalBudget, monthRef.year, monthRef.month, payday), [totalSpent, totalBudget, monthRef, payday]);
 
   const categoryData = useMemo(() => budgetRows.map((cat) => {
     const budget = budgetFor(budgets, cat, monthRef.year, monthRef.month);
-    const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month);
+    const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payday);
     return { label: cat, spent, color: categoryColor(cat), amount: budget ? parseFloat(budget.amount) : undefined };
-  }), [budgets, transactions, budgetRows, monthRef]);
+  }), [budgets, transactions, budgetRows, monthRef, payday]);
 
   const healthScore = useMemo(() => computeBudgetHealthScore(categoryData), [categoryData]);
   const { grade, color: gradeColor } = gradeFromScore(healthScore);
@@ -693,7 +697,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
           <Button type="button" variant="outline" size="icon" onClick={() => navigate(-1)} aria-label="Previous month">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="outline" onClick={() => setMonthRef({ year: today.getUTCFullYear(), month: today.getUTCMonth() + 1 })}>
+          <Button type="button" variant="outline" onClick={() => setMonthRef(getCurrentFinancialMonth(payday))}>
             {monthLabel(monthRef.year, monthRef.month)}
           </Button>
           <Button type="button" variant="outline" size="icon" onClick={() => navigate(1)} aria-label="Next month">
@@ -854,7 +858,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {budgetRows.map((cat) => {
                 const budget = budgetFor(budgets, cat, monthRef.year, monthRef.month);
-                const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month);
+                const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payday);
                 return (
                   <BudgetCard
                     key={cat}
@@ -863,6 +867,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
                     spent={spent}
                     year={monthRef.year}
                     month={monthRef.month}
+                    payday={payday}
                     isCurrentMonth={isCurrentMonth}
                     onSave={(amount) => onSaveBudget(cat, monthRef.year, monthRef.month, amount)}
                     onDelete={budget ? () => onDeleteBudget(budget.id) : undefined}
@@ -889,6 +894,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
           totalBudget={totalBudget}
           year={monthRef.year}
           month={monthRef.month}
+          payday={payday}
         />
       )}
 
@@ -898,6 +904,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
           transactions={transactions}
           year={monthRef.year}
           month={monthRef.month}
+          payday={payday}
           onSave={(cat, amount) => onSaveBudget(cat, monthRef.year, monthRef.month, amount)}
           onDelete={onDeleteBudget}
         />

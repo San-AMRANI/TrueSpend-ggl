@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SettleDebtModal } from '../SettleDebtModal';
 import { getSpendingPace, isInMonth } from '../../lib/finance';
+import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 import { generateFacts, selectFacts } from '../../lib/financialFacts';
 import { FinancialFactsCarousel } from './FinancialFactsCarousel';
 import { ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Landmark, RefreshCw, WalletCards } from 'lucide-react';
@@ -16,22 +17,24 @@ interface OverviewTabProps {
   budgets: CategoryBudget[];
   setActiveTab: (tab: DashboardTab) => void;
   openTransaction: (transactionId: string) => void;
-  handleSettle: (debtId: string, amount: number, category?: string) => Promise<void> | void;
+  handleSettle: (debtId: string, amount: number, category?: string, wallet?: 'Bank' | 'Cash') => Promise<void> | void;
+  payday: number;
 }
 
-export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, debts, budgets, setActiveTab, openTransaction, handleSettle }) => {
+export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, debts, budgets, setActiveTab, openTransaction, handleSettle, payday }) => {
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
-  const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth() + 1;
+  
+  const currentFm = getCurrentFinancialMonth(payday);
+  const year = currentFm.year;
+  const month = currentFm.month;
 
   const monthlyBudget = budgets
     .filter((budget) => budget.year === year && budget.month === month)
     .reduce((sum, budget) => sum + Number.parseFloat(budget.amount), 0);
   const monthlyActual = transactions
-    .filter((transaction) => transaction.type === 'Expense' && isInMonth(transaction, year, month))
+    .filter((transaction) => transaction.type === 'Expense' && isInMonth(transaction, year, month, payday))
     .reduce((sum, transaction) => sum + Number.parseFloat(transaction.amount), 0);
-  const pace = getSpendingPace(monthlyActual, monthlyBudget, year, month);
+  const pace = getSpendingPace(monthlyActual, monthlyBudget, year, month, payday);
   const activeReceivables = debts
     .filter((debt) => debt.type === 'Receivable' && debt.status === 'Pending')
     .reduce((sum, debt) => sum + Number.parseFloat(debt.remainingBalance), 0);
@@ -200,8 +203,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
       <SettleDebtModal
         debt={settlingDebt}
         onClose={() => setSettlingDebt(null)}
-        onConfirm={async (debtId, amount, category) => {
-          await handleSettle(debtId, amount, category);
+        onConfirm={async (debtId, amount, category, wallet) => {
+          await handleSettle(debtId, amount, category, wallet);
         }}
       />
     </div>

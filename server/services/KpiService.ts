@@ -1,4 +1,5 @@
 import { transactionRepository } from '../repositories/TransactionRepository.js';
+import { getCurrentFinancialMonth, isInFinancialMonth } from '../../src/lib/financialMonth.js';
 
 export class KpiService {
   async getKpisForUser(dbUser: any) {
@@ -9,15 +10,13 @@ export class KpiService {
     const payday = dbUser.payday || 25;
     
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    const currentFm = getCurrentFinancialMonth(payday);
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     if (salary > 0 && now.getDate() >= payday) {
       const hasSalaryThisMonth = allTx.some(tx => {
         const txDate = new Date(tx.createdAt!);
-        return txDate.getMonth() === currentMonth && 
-               txDate.getFullYear() === currentYear && 
+        return isInFinancialMonth(txDate, payday, currentFm.year, currentFm.month) && 
                tx.type === 'Income' && 
                (tx.category === '📥 Income' || tx.category === 'Salary') && 
                tx.notes === 'Auto-deposited salary';
@@ -31,7 +30,7 @@ export class KpiService {
           sourceWallet: 'Bank',
           category: '📥 Income',
           notes: 'Auto-deposited salary',
-          createdAt: new Date(currentYear, currentMonth, payday, 9, 0, 0), // 9 AM on payday
+          createdAt: new Date(now.getFullYear(), now.getMonth(), payday, 9, 0, 0), // 9 AM on payday
         });
         allTx = await transactionRepository.findAllByUserId(userId); // reload
       }
@@ -89,7 +88,7 @@ export class KpiService {
         cashOnHand = currentBalances.cash;
       }
 
-      if (transactionDay <= today && txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
+      if (transactionDay <= today && isInFinancialMonth(txDate, payday, currentFm.year, currentFm.month)) {
         if (tx.type === 'Expense') monthlyExpenses += txAmount;
         if (tx.type === 'Income') monthlyIncome += txAmount;
       }
@@ -105,7 +104,7 @@ export class KpiService {
     for (const tx of allTx) {
       const txDate = new Date(tx.createdAt!);
       const transactionDay = toCalendarDay(txDate);
-      if (transactionDay <= today && txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
+      if (transactionDay <= today && isInFinancialMonth(txDate, payday, currentFm.year, currentFm.month)) {
         const txAmount = parseFloat(tx.amount as unknown as string);
         if (tx.type === 'Expense' && (tx.category === '💳 Debt & Obligations' || tx.category === 'Debt Repayment' || tx.category === 'Loan' || tx.category === '🔄 Transfer' || tx.category === 'Transfer')) {
           debtRepayments += txAmount;

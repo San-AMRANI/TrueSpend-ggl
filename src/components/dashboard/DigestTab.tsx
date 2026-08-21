@@ -2,20 +2,21 @@ import React, { useMemo } from 'react';
 import { Transaction, Debt } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { normalizeCategory } from '../../lib/categories';
-import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
+import { getCurrentFinancialMonth, getPreviousFinancialMonth, getFinancialMonthBounds, financialMonthLabel } from '../../lib/financialMonth';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
 interface DigestTabProps {
   transactions: Transaction[];
   debts: Debt[];
+  payday: number;
 }
 
-export const DigestTab: React.FC<DigestTabProps> = ({ transactions, debts }) => {
+export const DigestTab: React.FC<DigestTabProps> = ({ transactions, debts, payday }) => {
   const digestData = useMemo(() => {
-    const lastMonth = subMonths(new Date(), 1);
-    const start = startOfMonth(lastMonth);
-    const end = endOfMonth(lastMonth);
+    const currentFm = getCurrentFinancialMonth(payday);
+    const lastFm = getPreviousFinancialMonth(payday, currentFm.year, currentFm.month);
+    const { start, end } = getFinancialMonthBounds(payday, lastFm.year, lastFm.month);
 
     const lastMonthTxs = transactions.filter((t) => {
       const txDate = new Date(t.createdAt);
@@ -48,7 +49,7 @@ export const DigestTab: React.FC<DigestTabProps> = ({ transactions, debts }) => 
     const newDebts = lastMonthDebts.length;
 
     return {
-      month: format(lastMonth, 'MMMM yyyy'),
+      month: financialMonthLabel(lastFm.year, lastFm.month),
       moneySaved,
       topCategories: sortedCategories,
       debtStats: {
@@ -56,7 +57,7 @@ export const DigestTab: React.FC<DigestTabProps> = ({ transactions, debts }) => 
         newDebts,
       },
     };
-  }, [transactions, debts]);
+  }, [transactions, debts, payday]);
 
   return (
     <Card>

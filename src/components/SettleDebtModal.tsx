@@ -9,12 +9,13 @@ import { expenseCategories, incomeAndTransferCategories } from '../lib/categorie
 interface SettleDebtModalProps {
   debt: Debt | null;
   onClose: () => void;
-  onConfirm: (debtId: string, amount: number, category?: string) => Promise<void>;
+  onConfirm: (debtId: string, amount: number, category?: string, wallet?: 'Bank' | 'Cash') => Promise<void>;
 }
 
 export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose, onConfirm }) => {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
+  const [wallet, setWallet] = useState<'Bank' | 'Cash'>('Bank');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -23,6 +24,7 @@ export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose,
       setAmount(debt.remainingBalance);
       const defaultCat = debt.type === 'Receivable' ? 'Reimbursement' : 'Debt Repayment';
       setCategory(defaultCat);
+      setWallet('Bank'); // sensible default — most settlements go through Bank
       setError('');
     }
   }, [debt]);
@@ -47,7 +49,7 @@ export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose,
 
     setLoading(true);
     try {
-      await onConfirm(debt.id, numAmount, category || defaultCategoryLabel);
+      await onConfirm(debt.id, numAmount, category || defaultCategoryLabel, wallet);
       onClose();
     } catch (err) {
       console.error(err);
@@ -70,6 +72,7 @@ export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose,
         </CardHeader>
         <CardContent className="pt-4 space-y-4">
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Amount */}
             <div>
               <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
                 Settlement Amount (MAD)
@@ -85,6 +88,26 @@ export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose,
               />
             </div>
 
+            {/* Wallet */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                Wallet
+              </label>
+              <Select
+                value={wallet}
+                onChange={(e) => setWallet(e.target.value as 'Bank' | 'Cash')}
+              >
+                <option value="Bank">🏦 Bank</option>
+                <option value="Cash">💵 Cash</option>
+              </Select>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {debt.type === 'Receivable'
+                  ? 'Which wallet will receive this money?'
+                  : 'Which wallet are you paying from?'}
+              </p>
+            </div>
+
+            {/* Category */}
             <div>
               <label className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 block">
                 Transaction Category

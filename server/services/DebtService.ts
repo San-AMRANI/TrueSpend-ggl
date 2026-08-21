@@ -7,6 +7,8 @@ export interface SettleDebtDTO {
   type?: 'Receivable' | 'Payable';
   debt_id?: string;
   due_date?: string;
+  /** Wallet that sends or receives the settlement money. Defaults to 'Bank'. */
+  wallet?: 'Bank' | 'Cash';
 }
 
 export interface UpdateDebtDTO {
@@ -59,12 +61,13 @@ export class DebtService {
 
       const txType = debt.type === 'Receivable' ? 'Income' : 'Expense';
       const txCategory = debt.type === 'Receivable' ? 'Reimbursement' : 'Debt Repayment';
+      const txWallet = (dto.wallet === 'Cash' ? 'Cash' : 'Bank') as 'Bank' | 'Cash';
 
       const newTx = await transactionRepository.create({
         userId,
         amount: String(dto.amount),
         type: txType,
-        sourceWallet: 'Bank',
+        sourceWallet: txWallet,
         category: txCategory,
         notes: `Settlement for ${debt.contactName}`,
       });

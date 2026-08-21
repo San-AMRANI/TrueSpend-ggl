@@ -91,6 +91,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
           setActiveTab={setActiveTab}
           openTransaction={openTransaction}
           handleSettle={handleSettleDebt}
+          payday={payday}
         />
       )}
 
@@ -111,6 +112,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
           budgets={budgets}
           transactions={transactions}
           salary={salary}
+          payday={payday}
           onSaveBudget={handleSaveCategoryBudget}
           onSaveBudgetsBatch={handleSaveCategoryBudgetsBatch}
           onCopyPrevious={handleCopyPreviousMonthBudgets}
@@ -134,12 +136,13 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
       {activeTab === 'analytics' && (
         <AnalyticsTab
           transactions={transactions}
+          payday={payday}
           analyticsMonth={analyticsMonth}
           setAnalyticsMonth={setAnalyticsMonth}
         />
       )}
 
-      {activeTab === 'digest' && <DigestTab transactions={transactions} debts={debts} />}
+      {activeTab === 'digest' && <DigestTab transactions={transactions} debts={debts} payday={payday} />}
 
       {activeTab === 'settings' && (
         <SettingsTab
