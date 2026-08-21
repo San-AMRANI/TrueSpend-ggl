@@ -311,8 +311,7 @@ export async function getChatCompletion(
           body: JSON.stringify({
             models: openRouterModels,
             messages: [{ role: 'system', content: systemMessage }, ...chatMessages],
-            response_format: { type: 'json_object' },
-            max_completion_tokens: 1200,
+            max_completion_tokens: 3000,
             temperature: 0.7,
             stream: false,
             ...(validSessionId ? { session_id: validSessionId } : {}),
@@ -336,9 +335,15 @@ export async function getChatCompletion(
       }
 
       const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(`OpenRouter error: ${data.error.message || JSON.stringify(data.error)}`);
+      }
+
       const rawContent = data.choices?.[0]?.message?.content;
 
       if (typeof rawContent !== 'string' || !rawContent.trim()) {
+        console.error('Empty response from OpenRouter. Raw data:', JSON.stringify(data, null, 2));
         throw new Error('The AI returned an empty response. Please try again.');
       }
 
