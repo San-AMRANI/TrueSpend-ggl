@@ -6,21 +6,44 @@ dotenv.config();
 
 const WORKING_MODEL_CACHE_FILE = path.join(process.cwd(), '.last_working_model');
 
-// ── Model priority list ────────────────────────────────────────────────────────
-// We try models in order. The first one that responds within the timeout is used.
-// Preference: capable free models first, then OpenRouter's free route as final fallback.
-const MODEL_CANDIDATES = [
-  'google/gemini-2.0-flash-exp:free',       // Fast, capable, free
-  'meta-llama/llama-3.3-70b-instruct:free', // Llama 70B - very capable
-  'deepseek/deepseek-chat-v3-0324:free',     // DeepSeek v3 - excellent reasoning
-  'openrouter/free',                          // Final fallback: OpenRouter picks any free model
-];
-
 const MAX_HISTORY_MESSAGES = 16;
 const MAX_MESSAGE_CHARS = 2_000;
 const MAX_CONTEXT_CHARS = 18_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_RETRIES = 2;
+
+// ── Dynamic Model Caching ──────────────────────────────────────────────────
+let cachedFreeModels: string[] = [];
+let lastModelFetchTime = 0;
+
+async function getAvailableFreeModels(): Promise<string[]> {
+  const now = Date.now();
+  // Cache for 1 hour to avoid spamming the endpoint
+  if (cachedFreeModels.length > 0 && now - lastModelFetchTime < 1000 * 60 * 60) {
+    return cachedFreeModels;
+  }
+
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/models');
+    if (res.ok) {
+      const data = await res.json();
+      const free = data.data
+        .filter((m: any) => m.pricing && m.pricing.prompt === "0" && m.pricing.completion === "0")
+        .map((m: any) => m.id);
+      
+      if (free.length > 0) {
+        cachedFreeModels = free;
+        lastModelFetchTime = now;
+        return free;
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch dynamic free models from OpenRouter:', error);
+  }
+
+  // Absolute minimum fallbacks if fetch fails
+  return ['google/gemini-2.0-flash-exp:free', 'openrouter/free'];
+}
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -233,11 +256,39 @@ export async function getChatCompletion(
       ? sessionId
       : undefined;
 
-  // Build model list: prefer last working model, then candidates list (deduped)
+  // Dynamically fetch free models and pick the top 3
+  const freeModels = await getAvailableFreeModels();
+  
+  // Prefer these top-tier families if they have free models available right now
+  const preferredKeywords = ['gemini', 'llama', 'deepseek'];
+  const candidates: string[] = [];
+  
+  for (const kw of preferredKeywords) {
+    const found = freeModels.find(m => m.toLowerCase().includes(kw));
+    if (found && !candidates.includes(found)) {
+      candidates.push(found);
+    }
+  }
+  
+  // Fill the rest with any other available free models
+  for (const m of freeModels) {
+    if (candidates.length >= 3) break;
+    if (!candidates.includes(m) && m !== 'openrouter/free') {
+      candidates.push(m);
+    }
+  }
+  
+  // Ensure openrouter/free is in the list as the final fallback
+  if (!candidates.includes('openrouter/free')) {
+    candidates.push('openrouter/free');
+  }
+
   const lastWorking = getLastWorkingModel();
-  const models = lastWorking
-    ? [lastWorking, ...MODEL_CANDIDATES.filter((m) => m !== lastWorking)]
-    : MODEL_CANDIDATES;
+  
+  // Build final array: Last working (if still free) -> Top candidates
+  let models = lastWorking && freeModels.includes(lastWorking)
+    ? [lastWorking, ...candidates.filter(m => m !== lastWorking)]
+    : candidates;
     
   // OpenRouter supports a maximum of 3 models in the fallback array
   const openRouterModels = models.slice(0, 3);
