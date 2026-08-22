@@ -30,6 +30,7 @@ Budgets are tracked on a rolling basis tied to the user's custom payday. The app
 ### Settings & User Preferences
 - **Custom Payday Tracking**: Financial months reset on a custom date (e.g., the 25th of the month) rather than the 1st of the calendar month. This drives all KPI and budget calculations.
 - **Salary & Emergency Buffer**: Set fixed incomes and emergency thresholds to drive the What-If and KPI engines.
+- **Daily Insights & Push Notifications**: Users can opt-in to daily browser notifications summarizing their budget pacing, overspent categories, or remaining daily allowance. These are scheduled client-side using Web Notifications and Service Workers.
 - **Full Data Sovereignty**: Users can export their entire database profile to raw SQL via the **Export to SQL** button, and similarly import raw `.sql` backups to instantly restore their profile across instances.
 
 ## The AI Assistant (TrueSpend Copilot)

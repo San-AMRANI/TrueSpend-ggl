@@ -38,6 +38,10 @@ Located in `lib/finance.ts` and `lib/financialMonth.ts`.
 - Calculations rely on calculating the exact delta between `(current date)` and `(last payday)`. 
 - The `getFinancialMonthBounds` function drives the logic for KPIs, determining what constitutes the "Current Month".
 
+### Push Notifications & Background Workers
+- **Web Notifications API**: Managed via `useNotifications` hook. Allows the app to schedule local browser push notifications based on financial thresholds (e.g. daily insights).
+- **Service Worker**: Uses `navigator.serviceWorker` to display notifications even when the web application is not strictly in focus. Configuration is managed in `localStorage`.
+
 ### AI Action Gateway
 The application features a robust two-way AI system:
 1. **Prompt Injection**: The UI sends the user's KPI summary and last 20 transactions invisibly alongside their chat message.
