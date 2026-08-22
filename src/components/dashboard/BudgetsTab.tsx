@@ -385,7 +385,7 @@ function Rule503020View({ budgets, transactions, totalBudget, year, month, payda
 
   const calculateFromBudgets = () => {
     if (totalBudget === 0) return;
-    const getGroupBudget = (cats: string[]) => budgets.filter(b => b.year === year && b.month === month && cats.includes(b.category)).reduce((s, b) => s + b.amount, 0);
+    const getGroupBudget = (cats: string[]) => budgets.filter(b => b.year === year && b.month === month && cats.includes(b.category)).reduce((s, b) => s + (Number(b.amount) || 0), 0);
     const nB = getGroupBudget(NEEDS_CATEGORIES);
     const wB = getGroupBudget(WANTS_CATEGORIES);
     const sB = getGroupBudget(SAVINGS_CATEGORIES);
