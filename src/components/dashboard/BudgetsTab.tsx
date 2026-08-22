@@ -378,7 +378,23 @@ const NEEDS_CATEGORIES = ['🏠 Housing & Utilities', '🛒 Groceries', '🚗 Tr
 const WANTS_CATEGORIES = ['🍔 Dining & Takeaway', '☕ Coffee & Quick Food', '🎬 Entertainment', '👥 Social', '👕 Personal & Clothing', '👨‍👩‍👦 Family & Gifts'];
 const SAVINGS_CATEGORIES = ['💰 Savings & Goals', '📚 Education & Development', '💳 Debt & Obligations'];
 
-function Rule503020View({ transactions, totalBudget, year, month, payday }: { transactions: Transaction[]; totalBudget: number; year: number; month: number; payday: number }) {
+function Rule503020View({ budgets, transactions, totalBudget, year, month, payday }: { budgets: CategoryBudget[]; transactions: Transaction[]; totalBudget: number; year: number; month: number; payday: number }) {
+  const [needsPct, setNeedsPct] = useState(50);
+  const [wantsPct, setWantsPct] = useState(30);
+  const [savingsPct, setSavingsPct] = useState(20);
+
+  const calculateFromBudgets = () => {
+    if (totalBudget === 0) return;
+    const getGroupBudget = (cats: string[]) => budgets.filter(b => b.year === year && b.month === month && cats.includes(b.category)).reduce((s, b) => s + b.amount, 0);
+    const nB = getGroupBudget(NEEDS_CATEGORIES);
+    const wB = getGroupBudget(WANTS_CATEGORIES);
+    const sB = getGroupBudget(SAVINGS_CATEGORIES);
+    
+    setNeedsPct(Math.round((nB / totalBudget) * 100));
+    setWantsPct(Math.round((wB / totalBudget) * 100));
+    setSavingsPct(Math.round((sB / totalBudget) * 100));
+  };
+
   const totalSpent = useMemo(() => {
     return getExpensesForMonth(transactions, year, month, payday).reduce((s, tx) => s + amountOf(tx), 0);
   }, [transactions, year, month, payday]);
@@ -389,17 +405,22 @@ function Rule503020View({ transactions, totalBudget, year, month, payday }: { tr
       .reduce((s, tx) => s + amountOf(tx), 0);
 
   const groups = [
-    { label: 'Needs', pct: 50, categories: NEEDS_CATEGORIES, color: '#6366f1', spent: getGroupSpent(NEEDS_CATEGORIES) },
-    { label: 'Wants', pct: 30, categories: WANTS_CATEGORIES, color: '#f97316', spent: getGroupSpent(WANTS_CATEGORIES) },
-    { label: 'Savings & Debt', pct: 20, categories: SAVINGS_CATEGORIES, color: '#10b981', spent: getGroupSpent(SAVINGS_CATEGORIES) },
+    { label: 'Needs', pct: needsPct, setPct: setNeedsPct, categories: NEEDS_CATEGORIES, color: '#6366f1', spent: getGroupSpent(NEEDS_CATEGORIES) },
+    { label: 'Wants', pct: wantsPct, setPct: setWantsPct, categories: WANTS_CATEGORIES, color: '#f97316', spent: getGroupSpent(WANTS_CATEGORIES) },
+    { label: 'Savings & Debt', pct: savingsPct, setPct: setSavingsPct, categories: SAVINGS_CATEGORIES, color: '#10b981', spent: getGroupSpent(SAVINGS_CATEGORIES) },
   ];
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        The 50/30/20 rule divides your monthly spending into Needs (50%), Wants (30%), and Savings & Debt repayment (20%).
-        {totalBudget > 0 ? ` Based on your ${totalBudget.toFixed(0)} MAD total budget.` : ' Set category budgets to see your total.'}
-      </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          The 50/30/20 rule divides your monthly spending. Modify these percentages below or calculate them automatically.
+          {totalBudget > 0 ? ` Based on your ${totalBudget.toFixed(0)} MAD total budget.` : ' Set category budgets to see your total.'}
+        </p>
+        <Button variant="outline" size="sm" onClick={calculateFromBudgets} className="whitespace-nowrap shrink-0">
+          <Target className="mr-2 h-4 w-4" /> Calculate from Budgets
+        </Button>
+      </div>
       <div className="grid gap-4 sm:grid-cols-3">
         {groups.map((g) => {
           const target = totalBudget > 0 ? (g.pct / 100) * totalBudget : 0;
@@ -408,8 +429,17 @@ function Rule503020View({ transactions, totalBudget, year, month, payday }: { tr
           return (
             <Card key={g.label} className="overflow-hidden">
               <div className="h-1" style={{ background: g.color }} />
-              <CardHeader className="pb-2 pt-4">
-                <CardTitle className="text-sm">{g.label} · {g.pct}%</CardTitle>
+              <CardHeader className="pb-2 pt-4 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-sm">{g.label}</CardTitle>
+                <div className="flex items-center gap-1">
+                  <Input 
+                    type="number" 
+                    value={g.pct} 
+                    onChange={(e) => g.setPct(Number(e.target.value) || 0)} 
+                    className="w-16 h-7 text-xs text-right p-1"
+                  />
+                  <span className="text-xs text-gray-500">%</span>
+                </div>
               </CardHeader>
               <CardContent className="space-y-2">
                 <p className="text-2xl font-bold tabular-nums" style={{ color: g.color }}>{g.spent.toFixed(0)} MAD</p>
@@ -890,6 +920,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
 
       {budgetModel === '503020' && (
         <Rule503020View
+          budgets={budgets}
           transactions={transactions}
           totalBudget={totalBudget}
           year={monthRef.year}
