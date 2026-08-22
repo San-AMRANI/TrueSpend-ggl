@@ -297,16 +297,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       const apiMessages = [...messages, userMsg]
         .filter(m => m.role !== 'system')
         .slice(-10)
-        .map((msg) => ({
-          role: msg.role,
-          content: msg.role === 'assistant'
-            ? JSON.stringify({
-                reply: msg.content.slice(0, 1000) + (msg.content.length > 1000 ? '...' : ''),
-                actions: msg.actions || [],
-                suggestions: msg.suggestions || [],
-              })
-            : msg.content.slice(0, 1400),
-        }));
+        .map(({ role, content: messageContent }) => ({ role, content: messageContent.slice(0, 1400) }));
 
       const response = await fetch('/api/chat', {
         method: 'POST',

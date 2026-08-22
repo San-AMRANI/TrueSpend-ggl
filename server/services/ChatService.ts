@@ -250,6 +250,12 @@ export async function getChatCompletion(
   const chatMessages = normalizeMessages(messages);
   if (!chatMessages.length) throw new Error('At least one chat message is required');
 
+  // Inject a strict reminder on the final user message to prevent the model from copying the assistant's plain text history
+  const lastMsg = chatMessages[chatMessages.length - 1];
+  if (lastMsg && lastMsg.role === 'user') {
+    lastMsg.content += '\n\n[CRITICAL REMINDER: Your response MUST be ONLY a raw JSON object matching the required schema. Do not output markdown fences, plain text, or any preamble. Just the raw JSON.]';
+  }
+
   const systemMessage = createSystemInstruction(contextData);
   const validSessionId =
     typeof sessionId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(sessionId)
