@@ -229,7 +229,7 @@ export function useNotifications() {
           const { title, body } = buildInsight(dataRef.current);
           
           // First, clear any previously scheduled notification with the same tag
-          reg.getNotifications({ tag: 'truespend-daily', includeUncontrolled: true }).then(notifications => {
+          reg.getNotifications({ tag: 'truespend-daily' }).then(notifications => {
             notifications.forEach(n => n.close());
             
             // Then schedule the new one

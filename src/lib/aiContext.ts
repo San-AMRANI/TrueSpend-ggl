@@ -92,8 +92,8 @@ export function buildAiContextSnapshot({
   );
   const remainingFmDays = totalFmDays - elapsedFmDays;
 
-  const isIncome = (t: Transaction) => t.type === 'Income';
-  const isExpense = (t: Transaction) => t.type === 'Expense' || t.type === 'Debt Repayment';
+  const isIncome = (type: Transaction['type']) => type === 'Income';
+  const isExpense = (type: Transaction['type']) => type === 'Expense' || type === 'Debt Repayment';
 
   const thisMonthIncome = sumTransactions(transactions, fmStart, now, isIncome);
   const thisMonthExpenses = sumTransactions(transactions, fmStart, now, isExpense);
@@ -141,7 +141,7 @@ export function buildAiContextSnapshot({
   });
 
   // Debt summary
-  const activeDebts = debts.filter((d) => d.status === 'active' || d.status === 'Pending');
+  const activeDebts = debts.filter((d) => d.status === 'Pending');
   const totalPayable = activeDebts
     .filter((d) => d.type === 'Payable')
     .reduce((sum, d) => sum + toAmount(d.remainingBalance), 0);
