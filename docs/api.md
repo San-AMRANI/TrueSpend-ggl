@@ -1,154 +1,133 @@
-# API Documentation
+# API Reference
+
+This document outlines the REST API exposed by the TrueSpend Express server. All requests require authentication via Firebase Auth tokens, which should be provided in the `Authorization: Bearer <token>` header.
 
 ## Authentication
-Most API endpoints require authentication using a JWT token. The token should be included in the `Authorization` header as a Bearer token:
-`Authorization: Bearer <token>`
 
-## Endpoints
+### `POST /api/auth/login`
+- **Description**: Authenticate user and create their database record if they do not exist yet.
+- **Body**: `{ "email": "user@example.com" }`
 
-### Auth & System
-- **GET `/api/health`**
-  - Returns: `{ "status": "ok" }`
-- **POST `/api/login`**
-  - Body: `{ "username": "admin", "password": "password" }`
-  - Returns: `{ "token": "<jwt>", "user": { ... } }`
-- **POST `/api/seed`**
-  - Description: Clears all current user data and populates the database with comprehensive sample seed data (transactions, debts, settings, and budgets).
-  - Returns: `{ "message": "Seed data inserted" }`
+## Transactions
 
-### KPIs & Analytics
-- **GET `/api/kpis`**
-  - Description: Returns key performance indicators for the current monthly cycle (based on the user's defined payday).
-  - Returns:
-    ```json
-    {
-      "bankBalance": 1000,
-      "cashOnHand": 200,
-      "totalLiquidity": 1200,
-      "monthlyExpenses": 500,
-      "monthlyIncome": 2000,
-      "adjustedTrueSpend": 450,
-      "daysUntilPayday": 12,
-      "dailyAllowance": 100,
-      "dailySpent": 30,
-      "dailyRemaining": 70,
-      "dailyUsagePercent": 30,
-      "dailyStatus": "on_track",
-      "payday": 25,
-      "emergencyBuffer": 0
-    }
-    ```
+### `GET /api/transactions`
+- **Description**: Retrieves all transactions for the authenticated user.
+- **Query Params**: None (returns all transactions, client handles local filtering/sorting).
 
-### Transactions
-- **GET `/api/transactions`**
-  - Description: Retrieves all transactions sorted by date descending.
-- **POST `/api/transactions`**
-  - Description: Logs a new transaction. If `reimbursable_amount` is provided, it automatically creates a corresponding debt record.
-  - Body:
-    ```json
-    {
-      "amount": 150.50,
-      "type": "Expense", // "Expense", "Income", "Transfer"
-      "source_wallet": "Bank", // "Bank", "Cash"
-      "category": "Groceries",
-      "notes": "Weekly shop",
-      "transaction_date": "2026-08-08", // Optional, defaults to today
-      "reimbursable_amount": 50.00, // Optional
-      "linked_contact_name": "John Doe" // Optional
-    }
-    ```
-- **DELETE `/api/transactions/:id`**
-  - Description: Deletes a specific transaction. It also deletes any associated split records and cascades updates to the linked debt (reducing the debt's original amount, or deleting the debt if its original amount drops to zero).
+### `POST /api/transactions`
+- **Description**: Creates a new transaction.
+- **Body**: 
+  ```json
+  {
+    "amount": 100.50,
+    "type": "Expense",
+    "sourceWallet": "Bank",
+    "category": "🛒 Groceries",
+    "notes": "Weekly shop",
+    "createdAt": "2026-08-22T10:00:00Z"
+  }
+  ```
 
-### Debts & Splits
-- **GET `/api/debts`**
-  - Description: Retrieves all debts (receivables and payables), including their settlement history.
-- **POST `/api/debts`**
-  - Description: Acts as a dual-purpose route for either creating a new debt or settling an existing debt. When settling an existing debt, a new transaction (Income for Receivables, Expense for Payables) and split record are automatically created to maintain cash flow tracking.
-  - Body (Create):
-    ```json
-    {
-      "amount": 100.00,
-      "contact": "Jane Doe",
-      "type": "Payable"
-    }
-    ```
-  - Body (Settle):
-    ```json
-    {
-      "debt_id": "uuid",
-      "amount": 50.00
-    }
-    ```
-- **PUT `/api/debts/:id`**
-  - Description: Updates an existing debt's details and recalculates the remaining balance based on the new original amount.
-  - Body:
-    ```json
-    {
-      "amount": 120.00,
-      "contact": "Jane Doe",
-      "type": "Payable"
-    }
-    ```
-- **DELETE `/api/debts/:id`**
-  - Description: Deletes a debt record directly, allowing for removal or forgiveness of a debt.
+### `PUT /api/transactions/:id`
+- **Description**: Updates an existing transaction by ID.
+- **Body**: Partial updates to the transaction object.
 
-### Settings
-- **GET `/api/settings`**
-  - Description: Retrieves user settings (e.g., payday, emergencyBuffer).
-  - Returns: `{ "payday": 25, "emergencyBuffer": 0 }`
-- **POST `/api/settings`**
-  - Description: Updates the user's settings.
-  - Body: `{ "payday": 25, "emergencyBuffer": 500 }`
-- **GET `/api/settings/export-sql`**
-  - Description: Downloads a complete PostgreSQL backup of the TrueSpend database, including every user, transaction, debt, split, category value, enum, and table definition. Restore it into a new or empty database.
-- **POST `/api/settings/import-sql`**
-  - Description: Restores a SQL backup previously exported by TrueSpend. The backup is validated and all current TrueSpend records are replaced atomically; if validation or import fails, the existing records are preserved.
-  - Body: `{ "sql": "-- TrueSpend Complete PostgreSQL Database Backup..." }`
+### `DELETE /api/transactions/:id`
+- **Description**: Deletes a transaction by ID.
 
-### Category Budgets
-- **GET `/api/category-budgets`**
-  - Description: Retrieves all category budgets for the current user.
-- **PUT `/api/category-budgets`**
-  - Description: Upserts (creates or updates) a budget for a specific category, year, and month.
-  - Body:
-    ```json
-    {
-      "category": "Groceries",
-      "year": 2026,
-      "month": 8,
-      "amount": 500
-    }
-    ```
-- **POST `/api/category-budgets/copy-previous`**
-  - Description: Copies all category budgets from the previous month to the specified target year and month.
-  - Body: `{ "year": 2026, "month": 8 }`
-  - Returns: `{ "success": true, "copied": 5 }`
+## Budgets
 
-### AI Chat Assistant
-- **POST `/api/chat`**
-  - Description: Sends a chat message to the Gemini AI assistant. It provides the AI with the user's current financial context (KPIs, transactions, debts, budgets) to generate personalized advice and propose actions.
-  - Body:
-    ```json
-    {
-      "messages": [
-        { "role": "user", "content": "I just spent 50 MAD on coffee, please log it." }
-      ]
-    }
-    ```
-  - Returns: `{ "reply": "...", "actions": [...] }`
-- **POST `/api/chat/actions`**
-  - Description: Executes an array of actions proposed by the AI Assistant after the user explicitly approves them.
-  - Body:
-    ```json
-    {
-      "actions": [
-        {
-          "type": "create_transaction",
-          "summary": "Log 50 MAD expense for coffee",
-          "parameters": { "amount": 50, "type": "Expense", "source_wallet": "Cash", "category": "Food & Dining" }
-        }
-      ]
-    }
-    ```
-  - Returns: `{ "success": true, "results": [...] }`
+### `GET /api/category-budgets`
+- **Description**: Gets all category budgets for the user across all months.
+
+### `PUT /api/category-budgets`
+- **Description**: Upsert a single budget for a specific category, year, and month.
+- **Body**: `{ "category": "🛒 Groceries", "year": 2026, "month": 8, "amount": 1200 }`
+
+### `PUT /api/category-budgets/batch`
+- **Description**: Batch upsert multiple category budgets simultaneously.
+- **Body**: `{ "budgets": [ { "category": "🛒 Groceries", "year": 2026, "month": 8, "amount": 1200 }, ... ] }`
+
+### `POST /api/category-budgets/copy-previous`
+- **Description**: Copies budget allocations from the previous financial month to the target month.
+- **Body**: `{ "targetYear": 2026, "targetMonth": 8 }`
+- **Returns**: Number of categories copied.
+
+### `DELETE /api/category-budgets/month/:year/:month`
+- **Description**: Clears all budgets for a specified year and month.
+- **Returns**: Number of categories deleted.
+
+### `DELETE /api/category-budgets/:id`
+- **Description**: Deletes a specific category budget entry by its UUID.
+
+## Debts
+
+### `GET /api/debts`
+- **Description**: Retrieves all debt records (payables and receivables) for the user.
+
+### `POST /api/debts`
+- **Description**: Processes a new debt (creation or repayment).
+- **Body**: 
+  ```json
+  {
+    "contactName": "John Doe",
+    "amount": 500,
+    "type": "Receivable",
+    "dueDate": "2026-09-01T00:00:00Z"
+  }
+  ```
+
+### `PUT /api/debts/:id`
+- **Description**: Updates an existing debt record.
+
+### `DELETE /api/debts/:id`
+- **Description**: Removes a debt record completely.
+
+## KPIs & Analytics
+
+### `GET /api/kpis`
+- **Description**: Computes and returns Key Performance Indicators (total spent, daily allowance, burn rate, remaining budget) for the current financial month based on the user's custom payday.
+
+## AI Chat & Actions
+
+### `POST /api/chat`
+- **Description**: Submits a prompt to the AI assistant. The AI can execute server-side function calls to analyze finances or propose database modifications.
+- **Body**: 
+  ```json
+  {
+    "messages": [ { "role": "user", "content": "How much did I spend on groceries?" } ]
+  }
+  ```
+- **Returns**: AI text response and an optional list of `pendingActions` (e.g., adding transactions).
+
+### `POST /api/chat/actions`
+- **Description**: Approves and executes pending database actions proposed by the AI assistant.
+- **Body**: 
+  ```json
+  {
+    "actions": [
+      { "type": "create_transaction", "payload": { /* tx data */ } }
+    ]
+  }
+  ```
+
+## User Settings & Data Management
+
+### `GET /api/settings`
+- **Description**: Retrieves the authenticated user's settings profile (payday, salary, emergency buffer).
+
+### `POST /api/settings`
+- **Description**: Updates user profile settings.
+- **Body**: `{ "payday": 1, "salary": 5000, "emergencyBuffer": 1000 }`
+
+### `GET /api/settings/export-sql`
+- **Description**: Triggers a full raw PostgreSQL database dump for the specific user's data (Transactions, Debts, Budgets).
+- **Returns**: `.sql` file attachment.
+
+### `POST /api/settings/import-sql`
+- **Description**: Parses a previously exported SQL dump and fully restores the user's records.
+
+## System
+
+### `POST /api/seed`
+- **Description**: Clears the user's current data and inserts mock historical data for demonstration purposes. Use with extreme caution.

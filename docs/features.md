@@ -1,55 +1,40 @@
-# Application Features Documentation
+# TrueSpend Features Guide
 
-## Core Purpose
-The application is a personal finance tracker focused on liquidity, daily budgeting, and splitting expenses with friends.
+TrueSpend is a comprehensive personal finance tracking and budgeting application tailored around unique pay periods and AI-assisted financial management.
 
-## Key Features
+## Core Features
 
-### 1. KPI Overview & Daily Budgeting
-- **Total Liquidity**: A unified view of available money across Bank and Cash.
-- **Adjusted True Spend**: Monthly expenses minus any reimbursements or debt repayments.
-- **Daily Allowance**: Dynamically calculated safe-to-spend amount per day. It divides the total liquidity by the number of days remaining until the next payday.
-- **Customizable Payday & Emergency Buffer**: Users can specify the exact day of the month they receive their salary and a safe liquidity buffer, ensuring that the daily allowance and monthly pacing calculations are always accurate.
-- **Daily Allowance Tracking**: Each day’s allowance is fixed from that day’s opening balance. Expense outflows reduce the amount left for today; an 80% warning and a critical over-budget alert help prevent overspending. The next day recalculates from the new balance.
+### Dashboard & Analytics
+- **Overview**: Displays a real-time snapshot of the current financial month, including Income vs. Expense KPI cards, daily allowance calculations (remaining vs. recommended burn rate), and recent transactions.
+- **Transactions Management**: Add, edit, and delete transactions. Supports categories, multiple transaction types (Income, Expense, Transfer, Debt Repayment), wallets (Bank, Cash), and rich list views with time-based grouping.
+- **Analytics & Digest**: Visual breakdowns of spending via pie charts (category vs. category) and bar graphs. The **Digest Tab** generates summaries and comparisons to previous financial months.
+- **Financial Calendar**: A visual view plotting payday boundaries and large expenses/due dates over a traditional calendar view.
+- **What If? Simulator**: A speculative purchase simulator allowing users to input hypothetical purchases to see precisely how it impacts their remaining daily allowance and overall budget health before actually spending the money.
 
-### 2. Transaction Management
-- **Income, Expense, and Transfers**: Users can log multiple types of transactions.
-- **Wallet Tracking**: Differentiates between Bank/Card money and physical Cash. Transfers allow moving money between these two wallets.
-- **Consistent Categories**: Expenses and incomes use one shared category list across entry, analytics, and reports. Existing spelling and naming variants are consolidated in reports without changing historical records.
-- **Transaction Dates**: Transactions can be backdated, so monthly analytics and spending trends reflect when the money was actually spent.
-- **Cascade Deletion**: When deleting a transaction, any associated split records are removed, and linked debts are automatically updated (reduced or deleted).
+### Advanced Budgeting Strategies
+Budgets are tracked on a rolling basis tied to the user's custom payday. The application offers three visual budget models:
+1. **Category View**: Micro-manage every single category manually.
+2. **Envelope View**: Classic cash-envelope style tracking emphasizing remaining balance over percentages.
+3. **50/30/20 Rule View**: A dynamic macro-budgeting view. Categorizes spending into Needs, Wants, and Savings & Debt. Users can fully customize the split percentage (e.g., 60/20/20) and use the **"Calculate from Budgets"** engine to automatically tally their micro-budgets into exact real-time percentages.
 
-### 3. Expense Splitting & Debt Tracking
-- **Integrated Splitting**: When logging an expense, users can mark it as "Reimbursable (Fronting Money)", specifying how much is owed and by whom.
-- **Standalone Debts**: Users can manually create standalone debts (Receivables or Payables) without an accompanying expense transaction.
-- **Debt Ledger**: A dedicated tab to track "Pending" and "Cleared" debts.
-- **Settlement & History**: Users can mark debts as settled (logging partial or full repayments). The application tracks and displays a detailed settlement history for each debt. Settling a debt automatically generates the corresponding cash flow transaction.
-- **Debt Management**: Users can edit debt amounts, names, and types, or forgive/delete them directly.
+**Budget Utilities**:
+- **Batch Editing**: Edit all categories simultaneously and save them in one API call.
+- **Copy Previous Month**: Carry over the exact category allocation from the last financial month.
+- **Clear Month**: Wipe the slate clean for the current month.
 
-### 4. Historical Analytics & Reporting
-- **Period Filtering**: Users can view analytics for "All Time" or filter by specific past months.
-- **Financial Calendar**: A daily view showing actual income/expenses overlaid with expected payday and debt due dates, providing a unified timeline of financial activity.
-- **Monthly Digest**: A retrospective summary of the previous month's performance, highlighting total money saved and breaking down the top 5 expense categories.
-- **Spending by Category**: A pie chart breaking down where money was spent.
-- **Category Drilldown**: Select a pie slice or one of the top three categories to view its total, transaction count, average purchase, and every matching transaction for the selected period.
-- **Income vs Expenses**: A bar chart comparing total inflows and outflows.
-- **Daily Spending Trend**: A time-series chart showing spending spikes over the selected period.
-- **Historical Averages Comparison**: When viewing a specific month, the application calculates the all-time monthly average for Income and Expenses, and displays the percentage variance (+/-) for the selected month against the global average.
+### Debt Tracking (Receivables & Payables)
+- Keep track of money lent (Receivables) and money owed (Payables).
+- Settle debts completely or log partial payments which automatically register as 'Debt Repayment' transactions.
+- Track due dates and view cleared vs. pending obligations.
 
-### 5. Category Budgets & Spending Pace
-- **Monthly Category Limits**: Users can set specific target amounts for various spending categories each month.
-- **Spending Pace**: The dashboard calculates the ideal spending pace based on the current day in the monthly cycle and compares it to actual spending, showing if the user is ahead or behind their budget pace.
-- **Rollover Budgets**: A single-click feature allows users to copy all their established budgets from the previous month into the current month.
+### Settings & User Preferences
+- **Custom Payday Tracking**: Financial months reset on a custom date (e.g., the 25th of the month) rather than the 1st of the calendar month. This drives all KPI and budget calculations.
+- **Salary & Emergency Buffer**: Set fixed incomes and emergency thresholds to drive the What-If and KPI engines.
+- **Full Data Sovereignty**: Users can export their entire database profile to raw SQL via the **Export to SQL** button, and similarly import raw `.sql` backups to instantly restore their profile across instances.
 
-### 6. AI Assistant
-- **Context-Aware Chat**: An integrated AI assistant (powered by Gemini) that knows the user's current liquidity, recent transactions, pending debts, and category budgets.
-- **Action Proposals**: Users can ask the AI to perform tasks (e.g., "I just paid Jane 50 MAD for dinner"). The AI parses this and proposes structured actions (creating transactions, debts, or updating settings).
-- **Explicit Approval Flow**: Proposed actions are rendered as distinct UI blocks. They are never executed without the user explicitly clicking "Approve", ensuring complete safety and control over financial data.
-- **Real-Time Data Sync**: Approving an AI action instantly executes it on the backend and seamlessly reloads the dashboard data without a page refresh.
-
-### 7. What-If Purchase Simulation
-- **Financial Forecasting**: A dedicated tool allows users to enter a hypothetical purchase amount to instantly see its impact on their Total Liquidity and Daily Allowance.
-- **Safe Spending Check**: Helps users make informed decisions about discretionary purchases by showing exactly how much their daily budget will drop for the remainder of the pay cycle before they actually spend the money.
-
-### 8. Testing & Demo Data
-- **Demo Data Seeding**: A utility available in the Settings tab that securely resets the current user's profile and populates the database with a robust set of realistic, randomized sample data (including past/future transactions, active debts, category budgets, and intelligent dates).
+## The AI Assistant (TrueSpend Copilot)
+An integrated Gemini-powered AI chat interface. The assistant possesses "Agentic" capabilities, utilizing server-side function calling (the `AiActionGateway`):
+- **Conversational Queries**: "How much did I spend on dining out this month?"
+- **Data Insertion**: "I just bought a coffee for 40 MAD from Starbucks in Cash." The AI parses the request, prepares the transaction payload, and requests the user's approval before committing it to the database.
+- **Budget Advice**: "Based on my current spending pace, do I need to cut back on wants this week?"
+- **Context Injection**: The application automatically injects the user's recent transactions and current budget health into the AI prompt to provide perfectly contextual answers without needing raw database reads.
