@@ -1,22 +1,23 @@
 import React, { useMemo } from 'react';
-import { Transaction, Debt } from '../../types';
+import { Transaction, Debt, Payroll } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { normalizeCategory } from '../../lib/categories';
-import { getCurrentFinancialMonth, getPreviousFinancialMonth, getFinancialMonthBounds, financialMonthLabel } from '../../lib/financialMonth';
+import { financialPeriodLabel, getCurrentFinancialMonth, getPreviousFinancialMonth } from '../../lib/financialMonth';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
 interface DigestTabProps {
   transactions: Transaction[];
   debts: Debt[];
-  payday: number;
+  payrolls: Payroll[];
 }
 
-export const DigestTab: React.FC<DigestTabProps> = ({ transactions, debts, payday }) => {
+export const DigestTab: React.FC<DigestTabProps> = ({ transactions, debts, payrolls }) => {
   const digestData = useMemo(() => {
-    const currentFm = getCurrentFinancialMonth(payday);
-    const lastFm = getPreviousFinancialMonth(payday, currentFm.year, currentFm.month);
-    const { start, end } = getFinancialMonthBounds(payday, lastFm.year, lastFm.month);
+    const currentFm = getCurrentFinancialMonth(payrolls);
+    const lastFm = currentFm ? getPreviousFinancialMonth(payrolls, currentFm) : null;
+    if (!lastFm) return null;
+    const { start, end } = lastFm;
 
     const lastMonthTxs = transactions.filter((t) => {
       const txDate = new Date(t.createdAt);
@@ -49,7 +50,7 @@ export const DigestTab: React.FC<DigestTabProps> = ({ transactions, debts, payda
     const newDebts = lastMonthDebts.length;
 
     return {
-      month: financialMonthLabel(lastFm.year, lastFm.month),
+      month: financialPeriodLabel(lastFm),
       moneySaved,
       topCategories: sortedCategories,
       debtStats: {
@@ -57,7 +58,9 @@ export const DigestTab: React.FC<DigestTabProps> = ({ transactions, debts, payda
         newDebts,
       },
     };
-  }, [transactions, debts, payday]);
+  }, [transactions, debts, payrolls]);
+
+  if (!digestData) return <Card><CardHeader><CardTitle>Monthly Digest</CardTitle></CardHeader><CardContent><p className="text-sm text-amber-700 dark:text-amber-300">Configure at least three consecutive payrolls in Financial Calendar to view a completed financial-period digest.</p></CardContent></Card>;
 
   return (
     <Card>

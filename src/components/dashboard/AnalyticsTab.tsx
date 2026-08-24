@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Transaction } from '../../types';
+import { Payroll, Transaction } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { normalizeCategory } from '../../lib/categories';
 import { getSpendingChange, monthLabel, transactionMonth } from '../../lib/finance';
-import { getFinancialMonthsFromTransactions, isInFinancialMonth, financialMonthLabel, getCurrentFinancialMonth, getFinancialMonthBounds, getFinancialMonthRef } from '../../lib/financialMonth';
+import { financialPeriodLabel, getFinancialMonthsFromTransactions, getCurrentFinancialMonth, getPreviousFinancialMonth } from '../../lib/financialMonth';
 import { Banknote, Landmark, X } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -14,31 +14,31 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
 
 interface AnalyticsTabProps {
   transactions: Transaction[];
-  payday: number;
+  payrolls: Payroll[];
   analyticsMonth: string;
   setAnalyticsMonth: (month: string) => void;
 }
 
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   transactions,
-  payday,
+  payrolls,
   analyticsMonth,
   setAnalyticsMonth,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  const availableMonthRefs = useMemo(() => getFinancialMonthsFromTransactions(transactions, payday), [transactions, payday]);
+  const availableMonthRefs = useMemo(() => getFinancialMonthsFromTransactions(transactions, payrolls), [transactions, payrolls]);
 
   const availableMonths = useMemo(() => {
-    return ['All Time', ...availableMonthRefs.map(m => financialMonthLabel(m.year, m.month))];
+    return ['All Time', ...availableMonthRefs.map(financialPeriodLabel)];
   }, [availableMonthRefs]);
 
   const filteredTransactions = useMemo(() => {
     if (analyticsMonth === 'All Time') return transactions;
-    const ref = availableMonthRefs.find(m => financialMonthLabel(m.year, m.month) === analyticsMonth);
+    const ref = availableMonthRefs.find(m => financialPeriodLabel(m) === analyticsMonth);
     if (!ref) return transactions;
-    return transactions.filter((t) => isInFinancialMonth(new Date(t.createdAt), payday, ref.year, ref.month));
-  }, [transactions, analyticsMonth, availableMonthRefs, payday]);
+    return transactions.filter((t) => new Date(t.createdAt) >= ref.start && new Date(t.createdAt) <= ref.end);
+  }, [transactions, analyticsMonth, availableMonthRefs]);
 
   const categoryData = useMemo(() => {
     const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
@@ -57,30 +57,31 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const comparisonMonth = useMemo(() => {
     if (analyticsMonth === 'All Time') {
-      return getCurrentFinancialMonth(payday);
+      return getCurrentFinancialMonth(payrolls);
     }
-    const ref = availableMonthRefs.find(m => financialMonthLabel(m.year, m.month) === analyticsMonth);
-    return ref || getCurrentFinancialMonth(payday);
-  }, [analyticsMonth, availableMonthRefs, payday]);
+    const ref = availableMonthRefs.find(m => financialPeriodLabel(m) === analyticsMonth);
+    return ref || getCurrentFinancialMonth(payrolls);
+  }, [analyticsMonth, availableMonthRefs, payrolls]);
 
   const spendingChange = useMemo(
-    () => getSpendingChange(transactions, comparisonMonth.year, comparisonMonth.month, undefined, payday),
-    [comparisonMonth, transactions, payday],
+    () => comparisonMonth ? getSpendingChange(transactions, comparisonMonth.year, comparisonMonth.month, undefined, payrolls) : { current: 0, previous: 0, difference: 0, percentage: null },
+    [comparisonMonth, transactions, payrolls],
   );
 
   const changeCategories = useMemo(() => {
     const categories = new Set<string>();
     transactions.filter((transaction) => transaction.type === 'Expense').forEach((transaction) => {
-      const ref = transactionMonth(transaction, payday);
-      const previous = comparisonMonth.month === 1 ? { year: comparisonMonth.year - 1, month: 12 } : { year: comparisonMonth.year, month: comparisonMonth.month - 1 };
-      if ((ref.year === comparisonMonth.year && ref.month === comparisonMonth.month) || (ref.year === previous.year && ref.month === previous.month)) {
+      if (!comparisonMonth) return;
+      const ref = transactionMonth(transaction, payrolls);
+      const previous = getPreviousFinancialMonth(payrolls, comparisonMonth);
+      if (ref && ((ref.year === comparisonMonth.year && ref.month === comparisonMonth.month) || (previous && ref.year === previous.year && ref.month === previous.month))) {
         categories.add(normalizeCategory(transaction.category) || 'Uncategorized');
       }
     });
     return Array.from(categories)
-      .map((category) => ({ category, ...getSpendingChange(transactions, comparisonMonth.year, comparisonMonth.month, category, payday) }))
+      .map((category) => ({ category, ...(comparisonMonth ? getSpendingChange(transactions, comparisonMonth.year, comparisonMonth.month, category, payrolls) : { current: 0, previous: 0, difference: 0, percentage: null }) }))
       .sort((a, b) => Math.abs(b.difference) - Math.abs(a.difference));
-  }, [comparisonMonth, transactions, payday]);
+  }, [comparisonMonth, transactions, payrolls]);
 
   const selectedCategoryTransactions = useMemo(() => {
     if (!activeCategory) return [];

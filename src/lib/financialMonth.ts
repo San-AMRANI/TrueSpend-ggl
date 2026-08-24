@@ -1,158 +1,114 @@
 /**
- * financialMonth.ts
- *
- * TrueSpend uses a "financial month" concept: a period that starts on the payday
- * (e.g. the 25th) and ends the day before the next payday. This is more meaningful
- * for budgeting and analytics than a calendar month because it aligns with cash flow.
- *
- * Example with payday = 25:
- *   Financial month "Aug 2026"  →  Jul 25 – Aug 24  (starts Jul 25, ends Aug 24)
- *   Financial month "Sep 2026"  →  Aug 25 – Sep 24
- *
- * The financial month is identified by the end month (the month the period *ends in*),
- * which coincides with when the next salary arrives, making it the natural "month label".
- *
- * API surface:
- *   getFinancialMonthBounds(payday, year, month)  →  { start, end }  (Date objects, inclusive)
- *   getCurrentFinancialMonth(payday)              →  { year, month }
- *   getPreviousFinancialMonth(payday, year, month)→  { year, month }
- *   isInFinancialMonth(date, payday, year, month) →  boolean
- *   financialMonthLabel(year, month)              →  "August 2026"
- *   getFinancialMonthsFromTransactions(txs, payday) → sorted array of { year, month }
+ * Financial periods are defined by consecutive calendar payrolls. A period starts
+ * on one configured payroll date and ends the day before the next configured
+ * payroll date. There is deliberately no implicit day-of-month fallback.
  */
 
+export interface PayrollLike {
+  id: string;
+  scheduledFor: string | Date;
+  amount: string | number;
+}
+
 export interface FinancialMonthRef {
+  /** The calendar year of the payroll which closes this period. */
   year: number;
-  /** 1-based month number (1 = January … 12 = December) */
+  /** The 1-based calendar month of the payroll which closes this period. */
   month: number;
 }
 
 export interface FinancialMonthBounds {
-  /** First day of the financial month (inclusive), at midnight local time */
   start: Date;
-  /** Last day of the financial month (inclusive), at end-of-day local time */
   end: Date;
 }
 
-/**
- * Returns the start/end dates for a financial month.
- *
- * The financial month identified by `(year, month)` runs from:
- *   • start: payday of the PREVIOUS calendar month
- *   • end:   (payday - 1) of the current calendar month
- *
- * With payday = 25 and target = Sep 2026:
- *   start = Aug 25, 2026
- *   end   = Sep 24, 2026
- */
-export function getFinancialMonthBounds(
-  payday: number,
-  year: number,
-  month: number, // 1-based
-): FinancialMonthBounds {
-  const safePayday = Math.max(1, Math.min(28, payday)); // cap at 28 to avoid month-end edge cases
+export interface FinancialPeriod extends FinancialMonthRef, FinancialMonthBounds {
+  startPayroll: PayrollLike;
+  endPayroll: PayrollLike;
+}
 
-  // Start = payday of previous calendar month
-  const startMonth = month === 1 ? 12 : month - 1;
-  const startYear = month === 1 ? year - 1 : year;
-  const start = new Date(startYear, startMonth - 1, safePayday, 0, 0, 0, 0);
+const asDate = (value: string | Date) => new Date(value);
+const startOfDay = (value: string | Date) => {
+  const date = asDate(value);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+};
+const endOfPreviousDay = (value: string | Date) => {
+  const date = startOfDay(value);
+  date.setMilliseconds(-1);
+  return date;
+};
+const sameRef = (left: FinancialMonthRef, right: FinancialMonthRef) => left.year === right.year && left.month === right.month;
 
-  // End = (payday - 1) of current calendar month  (day before next payday)
-  const endDay = safePayday - 1;
-  let end: Date;
-  if (endDay <= 0) {
-    // payday = 1 → financial month ends on last day of previous calendar month
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevYear = month === 1 ? year - 1 : year;
-    const lastDayOfPrev = new Date(prevYear, prevMonth, 0).getDate(); // day 0 of next month = last day of prev
-    end = new Date(prevYear, prevMonth - 1, lastDayOfPrev, 23, 59, 59, 999);
-  } else {
-    end = new Date(year, month - 1, endDay, 23, 59, 59, 999);
+export function getFinancialPeriods(payrolls: PayrollLike[]): FinancialPeriod[] {
+  const sorted = payrolls
+    .filter((payroll) => !Number.isNaN(asDate(payroll.scheduledFor).getTime()))
+    .slice()
+    .sort((left, right) => asDate(left.scheduledFor).getTime() - asDate(right.scheduledFor).getTime());
+
+  const periods: FinancialPeriod[] = [];
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const startPayroll = sorted[index];
+    const endPayroll = sorted[index + 1];
+    const endPayrollDate = asDate(endPayroll.scheduledFor);
+    periods.push({
+      startPayroll,
+      endPayroll,
+      start: startOfDay(startPayroll.scheduledFor),
+      end: endOfPreviousDay(endPayroll.scheduledFor),
+      year: endPayrollDate.getFullYear(),
+      month: endPayrollDate.getMonth() + 1,
+    });
   }
-
-  return { start, end };
+  return periods;
 }
 
-/**
- * Returns the { year, month } of the financial month the given date falls in.
- */
-export function getFinancialMonthRef(date: Date, payday: number): FinancialMonthRef {
-  const safePayday = Math.max(1, Math.min(28, payday));
-  const d = date.getDate();
-  const m = date.getMonth() + 1; // 1-based
-  const y = date.getFullYear();
-
-  if (d >= safePayday) {
-    // On or after payday → this is the START of the NEXT financial month
-    // The financial month label is the NEXT calendar month
-    const nextMonth = m === 12 ? 1 : m + 1;
-    const nextYear = m === 12 ? y + 1 : y;
-    return { year: nextYear, month: nextMonth };
-  } else {
-    // Before payday → we're in the financial month labelled by current calendar month
-    return { year: y, month: m };
-  }
+export function getFinancialMonthBounds(payrolls: PayrollLike[], year: number, month: number): FinancialMonthBounds | null {
+  const period = getFinancialPeriods(payrolls).find((item) => item.year === year && item.month === month);
+  return period ? { start: period.start, end: period.end } : null;
 }
 
-/**
- * Returns the financial month { year, month } that "now" falls in.
- */
-export function getCurrentFinancialMonth(payday: number): FinancialMonthRef {
-  return getFinancialMonthRef(new Date(), payday);
+export function getFinancialMonthRef(date: Date, payrolls: PayrollLike[]): FinancialMonthRef | null {
+  const period = getFinancialPeriods(payrolls).find((item) => date >= item.start && date <= item.end);
+  return period ? { year: period.year, month: period.month } : null;
 }
 
-/**
- * Returns the financial month immediately before the given one.
- */
-export function getPreviousFinancialMonth(
-  _payday: number,
-  year: number,
-  month: number,
-): FinancialMonthRef {
-  if (month === 1) return { year: year - 1, month: 12 };
-  return { year, month: month - 1 };
+export function getCurrentFinancialMonth(payrolls: PayrollLike[], now = new Date()): FinancialPeriod | null {
+  const day = startOfDay(now);
+  return getFinancialPeriods(payrolls).find((item) => day >= item.start && day <= item.end) || null;
 }
 
-/**
- * Returns true if `date` falls within the financial month (year, month) for the given payday.
- */
-export function isInFinancialMonth(
-  date: Date,
-  payday: number,
-  year: number,
-  month: number,
-): boolean {
-  const { start, end } = getFinancialMonthBounds(payday, year, month);
-  return date >= start && date <= end;
+export function getPreviousFinancialMonth(payrolls: PayrollLike[], current: FinancialMonthRef): FinancialPeriod | null {
+  const periods = getFinancialPeriods(payrolls);
+  const index = periods.findIndex((item) => sameRef(item, current));
+  return index > 0 ? periods[index - 1] : null;
 }
 
-/**
- * Human-readable label: "August 2026"
- */
+export function getNextPayroll(payrolls: PayrollLike[], now = new Date()): PayrollLike | null {
+  const today = startOfDay(now).getTime();
+  return payrolls
+    .filter((payroll) => startOfDay(payroll.scheduledFor).getTime() > today)
+    .sort((left, right) => asDate(left.scheduledFor).getTime() - asDate(right.scheduledFor).getTime())[0] || null;
+}
+
+export function isInFinancialMonth(date: Date, payrolls: PayrollLike[], year: number, month: number): boolean {
+  const bounds = getFinancialMonthBounds(payrolls, year, month);
+  return Boolean(bounds && date >= bounds.start && date <= bounds.end);
+}
+
 export function financialMonthLabel(year: number, month: number): string {
-  return new Date(year, month - 1, 1).toLocaleDateString('en-US', {
-    month: 'long',
-    year: 'numeric',
-  });
+  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
-/**
- * Collects the unique financial months represented by a list of transactions and
- * returns them sorted newest-first.
- */
-export function getFinancialMonthsFromTransactions(
-  transactions: { createdAt: string }[],
-  payday: number,
-): FinancialMonthRef[] {
-  const seen = new Map<string, FinancialMonthRef>();
-  for (const tx of transactions) {
-    const date = new Date(tx.createdAt);
-    if (Number.isNaN(date.getTime())) continue;
-    const ref = getFinancialMonthRef(date, payday);
-    const key = `${ref.year}-${ref.month}`;
-    if (!seen.has(key)) seen.set(key, ref);
-  }
-  return Array.from(seen.values()).sort((a, b) =>
-    a.year !== b.year ? b.year - a.year : b.month - a.month,
-  );
+export function financialPeriodLabel(period: FinancialPeriod): string {
+  const format = (date: Date, includeYear: boolean) => date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    ...(includeYear ? { year: 'numeric' } : {}),
+  });
+  return `${format(period.start, period.start.getFullYear() !== period.end.getFullYear())} – ${format(period.end, true)}`;
+}
+
+/** All complete configured financial periods, newest first. */
+export function getFinancialMonthsFromTransactions(_transactions: { createdAt: string }[], payrolls: PayrollLike[]): FinancialPeriod[] {
+  return getFinancialPeriods(payrolls).slice().reverse();
 }

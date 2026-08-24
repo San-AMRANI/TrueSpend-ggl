@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
-import { CategoryBudget, KPI, Transaction, Debt, DashboardTab } from '../types';
+import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll } from '../types';
 import { useNotifications } from './useNotifications';
 
 export function useDashboardData(token: string | null) {
   const [kpis, setKpis] = useState<KPI | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
+  const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
   const [payday, setPayday] = useState<number>(25);
   const [emergencyBuffer, setEmergencyBuffer] = useState<number>(0);
@@ -26,12 +27,13 @@ export function useDashboardData(token: string | null) {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData] = await Promise.all([
+      const [kpiData, txData, debtData, settingsData, budgetData, payrollData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
         dashboardService.getSettings(token),
         dashboardService.getCategoryBudgets(token),
+        dashboardService.getPayrolls(token),
       ]);
 
       setKpis(kpiData);
@@ -41,6 +43,7 @@ export function useDashboardData(token: string | null) {
       setEmergencyBuffer(settingsData.emergencyBuffer);
       setSalary(settingsData.salary);
       setBudgets(budgetData);
+      setPayrolls(payrollData);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -189,10 +192,10 @@ export function useDashboardData(token: string | null) {
     setActiveTab('transactions');
   };
 
-  const handleSaveSettings = async (newPayday: number, newBuffer: number, newSalary: number) => {
+  const handleSaveSettings = async (newBuffer: number) => {
     setIsSaving(true);
     try {
-      await dashboardService.updateSettings({ payday: newPayday, emergencyBuffer: newBuffer, salary: newSalary }, token);
+      await dashboardService.updateSettings({ emergencyBuffer: newBuffer }, token);
       await fetchData();
       alert('Settings saved successfully!');
     } catch (e) {
@@ -201,6 +204,16 @@ export function useDashboardData(token: string | null) {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleCreatePayroll = async (scheduledFor: string, amount: number) => {
+    await dashboardService.createPayroll({ scheduledFor, amount }, token);
+    await fetchData();
+  };
+
+  const handleDeletePayroll = async (payrollId: string) => {
+    await dashboardService.deletePayroll(payrollId, token);
+    await fetchData();
   };
 
   const handleSeedData = async () => {
@@ -243,6 +256,7 @@ export function useDashboardData(token: string | null) {
     kpis,
     transactions,
     debts,
+    payrolls,
     budgets,
     payday,
     setPayday,
@@ -274,6 +288,8 @@ export function useDashboardData(token: string | null) {
     handleDeleteCategoryBudget,
     openTransaction,
     handleSaveSettings,
+    handleCreatePayroll,
+    handleDeletePayroll,
     handleSeedData,
     handleExportSql,
     handleImportSql,

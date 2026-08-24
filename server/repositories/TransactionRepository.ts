@@ -10,6 +10,7 @@ export interface CreateTransactionParams {
   category?: string;
   notes?: string;
   createdAt?: Date;
+  payrollId?: string;
 }
 
 export interface CreateSplitParams {
@@ -37,6 +38,11 @@ export class TransactionRepository {
       .select()
       .from(transactions)
       .where(and(eq(transactions.id, id), eq(transactions.userId, userId)));
+    return result[0] || null;
+  }
+
+  async findByPayrollId(payrollId: string) {
+    const result = await db.select().from(transactions).where(eq(transactions.payrollId, payrollId));
     return result[0] || null;
   }
 

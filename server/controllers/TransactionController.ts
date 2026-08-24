@@ -1,10 +1,12 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../src/middleware/auth.js';
 import { transactionService } from '../services/TransactionService.js';
+import { payrollService } from '../services/PayrollService.js';
 
 export class TransactionController {
   async getTransactions(req: AuthRequest, res: Response) {
     try {
+      await payrollService.reconcileDuePayrolls(req.dbUser.id);
       const txs = await transactionService.getTransactionsForUser(req.dbUser.id);
       res.json(txs);
     } catch (e) {

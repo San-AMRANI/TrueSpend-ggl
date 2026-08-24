@@ -16,9 +16,15 @@ export interface KPI {
   dailyRemaining: number;
   dailyUsagePercent: number;
   dailyStatus: 'on_track' | 'warning' | 'critical';
-  payday: number;
+  payday: number | null;
   emergencyBuffer: number;
-  salary: number;
+  salary?: number;
+  currentFinancialAmount: number;
+  financialPeriodStart: string | null;
+  financialPeriodEnd: string | null;
+  nextPayrollDate: string | null;
+  financialMonthReady: boolean;
+  financialMonthMessage: string | null;
 }
 
 export interface Transaction {
@@ -30,6 +36,7 @@ export interface Transaction {
   sourceWallet: 'Bank' | 'Cash';
   category: string;
   notes?: string;
+  payrollId?: string | null;
   reimbursableAmount?: string;
   linkedContactId?: string | null;
   linkedContactName?: string | null;
@@ -45,6 +52,14 @@ export interface CategoryBudget {
   amount: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Payroll {
+  id: string;
+  userId: string;
+  scheduledFor: string;
+  amount: string;
+  createdAt: string;
 }
 
 export interface DebtSettlement {
@@ -67,9 +82,9 @@ export interface Debt {
 }
 
 export interface UserSettings {
-  payday: number;
   emergencyBuffer: number;
-  salary: number;
+  payday?: number;
+  salary?: number;
 }
 
 export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat';

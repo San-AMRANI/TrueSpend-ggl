@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Select } from '../ui/Select';
 import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import type { NotifSettings } from '../../hooks/useNotifications';
@@ -18,14 +17,10 @@ interface NotificationsApi {
 interface SettingsTabProps {
   emergencyBuffer: number;
   setEmergencyBuffer: (val: number) => void;
-  payday: number;
-  setPayday: (val: number) => void;
-  salary: number;
-  setSalary: (val: number) => void;
   isSaving: boolean;
   isExporting?: boolean;
   isImporting?: boolean;
-  handleSaveSettings: (payday: number, buffer: number, salary: number) => void;
+  handleSaveSettings: (buffer: number) => void;
   handleExportSql?: () => void;
   handleImportSql?: (sql: string) => Promise<{ message: string }>;
   notifications: NotificationsApi;
@@ -34,10 +29,6 @@ interface SettingsTabProps {
 export const SettingsTab: React.FC<SettingsTabProps> = ({
   emergencyBuffer,
   setEmergencyBuffer,
-  payday,
-  setPayday,
-  salary,
-  setSalary,
   isSaving,
   isExporting = false,
   isImporting = false,
@@ -208,38 +199,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
             </div>
 
-            {/* Payroll */}
-            <div className="rounded-lg border border-blue-100 dark:border-blue-900 bg-blue-50 dark:bg-blue-950 p-4">
-              <h3 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-2">Payroll Settings</h3>
-              <p className="text-sm text-blue-600 dark:text-blue-400 mb-4">
-                Set your payroll date and expected salary to automatically deposit your salary into your bank account on payday.
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-medium text-blue-900 dark:text-blue-200 mb-1">Payday (Date)</label>
-                  <Select value={payday.toString()} onChange={(e) => setPayday(parseInt(e.target.value))}>
-                    {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                      <option key={day} value={day}>
-                        {day}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-blue-900 dark:text-blue-200 mb-1">Monthly Salary Amount</label>
-                  <input
-                    type="number"
-                    value={salary}
-                    onChange={(e) => setSalary(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 text-sm border border-blue-200 dark:border-blue-800 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 dark:text-white"
-                    placeholder="Salary amount"
-                  />
-                </div>
-              </div>
-            </div>
-
             <div className="flex justify-end">
-              <Button disabled={isSaving} onClick={() => handleSaveSettings(payday, emergencyBuffer, salary)}>
+              <Button disabled={isSaving} onClick={() => handleSaveSettings(emergencyBuffer)}>
                 {isSaving ? 'Saving...' : 'Save Settings'}
               </Button>
             </div>

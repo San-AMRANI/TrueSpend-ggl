@@ -1,9 +1,13 @@
 import { apiClient } from './apiClient';
-import { CategoryBudget, KPI, Transaction, Debt, UserSettings } from '../../types';
+import { CategoryBudget, KPI, Transaction, Debt, Payroll, UserSettings } from '../../types';
 
 export const dashboardService = {
   getKpis: (token: string | null) => apiClient.get<KPI>('/api/kpis', token),
   getTransactions: (token: string | null) => apiClient.get<Transaction[]>('/api/transactions', token),
+  getPayrolls: (token: string | null) => apiClient.get<Payroll[]>('/api/payrolls', token),
+  createPayroll: (payload: { scheduledFor: string; amount: number }, token: string | null) =>
+    apiClient.post<Payroll>('/api/payrolls', payload, token),
+  deletePayroll: (id: string, token: string | null) => apiClient.delete<{ success: boolean }>(`/api/payrolls/${id}`, token),
   deleteTransaction: (id: string, token: string | null) =>
     apiClient.delete<{ message: string }>(`/api/transactions/${id}`, token),
   updateTransaction: (id: string, payload: Record<string, unknown>, token: string | null) =>
@@ -27,7 +31,7 @@ export const dashboardService = {
   deleteDebt: (debtId: string, token: string | null) =>
     apiClient.delete<{ message: string }>(`/api/debts/${debtId}`, token),
   getSettings: (token: string | null) => apiClient.get<UserSettings>('/api/settings', token),
-  updateSettings: (payload: { payday?: number; emergencyBuffer?: number; salary?: number }, token: string | null) =>
+  updateSettings: (payload: { emergencyBuffer?: number }, token: string | null) =>
     apiClient.post<{ success: boolean; payday?: number; emergencyBuffer?: number }>('/api/settings', payload, token),
   exportSql: async (token: string | null) => {
     const response = await fetch('/api/settings/export-sql', {

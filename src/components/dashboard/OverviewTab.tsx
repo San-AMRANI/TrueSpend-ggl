@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CategoryBudget, DashboardTab, Debt, KPI, Transaction } from '../../types';
+import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SettleDebtModal } from '../SettleDebtModal';
@@ -18,23 +18,23 @@ interface OverviewTabProps {
   setActiveTab: (tab: DashboardTab) => void;
   openTransaction: (transactionId: string) => void;
   handleSettle: (debtId: string, amount: number, category?: string, wallet?: 'Bank' | 'Cash') => Promise<void> | void;
-  payday: number;
+  payrolls: Payroll[];
 }
 
-export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, debts, budgets, setActiveTab, openTransaction, handleSettle, payday }) => {
+export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, debts, budgets, payrolls, setActiveTab, openTransaction, handleSettle }) => {
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
   
-  const currentFm = getCurrentFinancialMonth(payday);
-  const year = currentFm.year;
-  const month = currentFm.month;
+  const currentFm = getCurrentFinancialMonth(payrolls);
+  const year = currentFm?.year ?? -1;
+  const month = currentFm?.month ?? -1;
 
   const monthlyBudget = budgets
     .filter((budget) => budget.year === year && budget.month === month)
     .reduce((sum, budget) => sum + Number.parseFloat(budget.amount), 0);
   const monthlyActual = transactions
-    .filter((transaction) => transaction.type === 'Expense' && isInMonth(transaction, year, month, payday))
+    .filter((transaction) => currentFm && transaction.type === 'Expense' && isInMonth(transaction, year, month, payrolls))
     .reduce((sum, transaction) => sum + Number.parseFloat(transaction.amount), 0);
-  const pace = getSpendingPace(monthlyActual, monthlyBudget, year, month, payday);
+  const pace = getSpendingPace(monthlyActual, monthlyBudget, year, month, payrolls);
   const activeReceivables = debts
     .filter((debt) => debt.type === 'Receivable' && debt.status === 'Pending')
     .reduce((sum, debt) => sum + Number.parseFloat(debt.remainingBalance), 0);
@@ -49,6 +49,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
 
   return (
     <div className="min-w-0 overflow-x-hidden space-y-4 sm:space-y-6">
+      {!currentFm && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Your financial period is not set yet. Add the current and next payroll in Financial Calendar so balances, budgets, and reports use the right period.</div>}
       {/* Row 1 – KPI cards */}
       <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
         <Card className="col-span-2 min-w-0 border-transparent bg-gray-900 text-white xl:col-span-1">

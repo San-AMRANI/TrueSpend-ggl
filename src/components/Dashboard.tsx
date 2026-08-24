@@ -24,6 +24,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     kpis,
     transactions,
     debts,
+    payrolls,
     budgets,
     payday,
     setPayday,
@@ -55,6 +56,8 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     handleDeleteCategoryBudget,
     openTransaction,
     handleSaveSettings,
+    handleCreatePayroll,
+    handleDeletePayroll,
     handleExportSql,
     handleImportSql,
     notifications,
@@ -91,7 +94,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
           setActiveTab={setActiveTab}
           openTransaction={openTransaction}
           handleSettle={handleSettleDebt}
-          payday={payday}
+          payrolls={payrolls}
         />
       )}
 
@@ -105,14 +108,13 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
         />
       )}
 
-      {activeTab === 'calendar' && <FinancialCalendarTab transactions={transactions} debts={debts} payday={payday} openTransaction={openTransaction} setActiveTab={setActiveTab} />}
+      {activeTab === 'calendar' && <FinancialCalendarTab transactions={transactions} debts={debts} payrolls={payrolls} openTransaction={openTransaction} setActiveTab={setActiveTab} onCreatePayroll={handleCreatePayroll} onDeletePayroll={handleDeletePayroll} />}
 
       {activeTab === 'budgets' && (
       <BudgetsTab
           budgets={budgets}
           transactions={transactions}
-          salary={salary}
-          payday={payday}
+          payrolls={payrolls}
           onSaveBudget={handleSaveCategoryBudget}
           onSaveBudgetsBatch={handleSaveCategoryBudgetsBatch}
           onCopyPrevious={handleCopyPreviousMonthBudgets}
@@ -136,22 +138,18 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
       {activeTab === 'analytics' && (
         <AnalyticsTab
           transactions={transactions}
-          payday={payday}
+          payrolls={payrolls}
           analyticsMonth={analyticsMonth}
           setAnalyticsMonth={setAnalyticsMonth}
         />
       )}
 
-      {activeTab === 'digest' && <DigestTab transactions={transactions} debts={debts} payday={payday} />}
+      {activeTab === 'digest' && <DigestTab transactions={transactions} debts={debts} payrolls={payrolls} />}
 
       {activeTab === 'settings' && (
         <SettingsTab
           emergencyBuffer={emergencyBuffer}
           setEmergencyBuffer={setEmergencyBuffer}
-          salary={salary}
-          setSalary={setSalary}
-          payday={payday}
-          setPayday={setPayday}
           isSaving={isSaving}
           isExporting={isExporting}
           isImporting={isImporting}

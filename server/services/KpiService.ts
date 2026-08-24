@@ -1,40 +1,21 @@
 import { transactionRepository } from '../repositories/TransactionRepository.js';
-import { getCurrentFinancialMonth, isInFinancialMonth } from '../../src/lib/financialMonth.js';
+import { payrollRepository } from '../repositories/PayrollRepository.js';
+import { payrollService } from './PayrollService.js';
+import { getCurrentFinancialMonth, getNextPayroll, isInFinancialMonth } from '../../src/lib/financialMonth.js';
 
 export class KpiService {
   async getKpisForUser(dbUser: any) {
     const userId = dbUser.id;
-    let allTx = await transactionRepository.findAllByUserId(userId);
+    await payrollService.reconcileDuePayrolls(userId);
 
-    const salary = parseFloat(dbUser.salary as unknown as string) || 0;
-    const payday = dbUser.payday || 25;
-    
+    const [allTx, payrolls] = await Promise.all([
+      transactionRepository.findAllByUserId(userId),
+      payrollRepository.findAllByUserId(userId),
+    ]);
+
     const now = new Date();
-    const currentFm = getCurrentFinancialMonth(payday);
+    const currentFm = getCurrentFinancialMonth(payrolls, now);
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    if (salary > 0 && now.getDate() >= payday) {
-      const hasSalaryThisMonth = allTx.some(tx => {
-        const txDate = new Date(tx.createdAt!);
-        return isInFinancialMonth(txDate, payday, currentFm.year, currentFm.month) && 
-               tx.type === 'Income' && 
-               (tx.category === '📥 Income' || tx.category === 'Salary') && 
-               tx.notes === 'Auto-deposited salary';
-      });
-
-      if (!hasSalaryThisMonth) {
-        await transactionRepository.create({
-          userId,
-          amount: salary.toString(),
-          type: 'Income',
-          sourceWallet: 'Bank',
-          category: '📥 Income',
-          notes: 'Auto-deposited salary',
-          createdAt: new Date(now.getFullYear(), now.getMonth(), payday, 9, 0, 0), // 9 AM on payday
-        });
-        allTx = await transactionRepository.findAllByUserId(userId); // reload
-      }
-    }
 
     let bankBalance = 0;
     let cashOnHand = 0;
@@ -46,26 +27,16 @@ export class KpiService {
 
     const toCalendarDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const isExpenseOutflow = (type: string) => type === 'Expense' || type === 'Debt Repayment';
-    const applyTransaction = (
-      transaction: (typeof allTx)[number],
-      balances: { bank: number; cash: number },
-    ) => {
+    const applyTransaction = (transaction: (typeof allTx)[number], balances: { bank: number; cash: number }) => {
       const amount = parseFloat(transaction.amount as unknown as string);
-
       if (transaction.sourceWallet === 'Bank') {
         if (transaction.type === 'Income') balances.bank += amount;
         if (isExpenseOutflow(transaction.type)) balances.bank -= amount;
-        if (transaction.type === 'Transfer') {
-          balances.bank -= amount;
-          balances.cash += amount;
-        }
-      } else if (transaction.sourceWallet === 'Cash') {
+        if (transaction.type === 'Transfer') { balances.bank -= amount; balances.cash += amount; }
+      } else {
         if (transaction.type === 'Income') balances.cash += amount;
         if (isExpenseOutflow(transaction.type)) balances.cash -= amount;
-        if (transaction.type === 'Transfer') {
-          balances.cash -= amount;
-          balances.bank += amount;
-        }
+        if (transaction.type === 'Transfer') { balances.cash -= amount; balances.bank += amount; }
       }
     };
 
@@ -80,61 +51,42 @@ export class KpiService {
         openingBankBalance = openingBalances.bank;
         openingCashOnHand = openingBalances.cash;
       }
-
       if (transactionDay <= today) {
         const currentBalances = { bank: bankBalance, cash: cashOnHand };
         applyTransaction(tx, currentBalances);
         bankBalance = currentBalances.bank;
         cashOnHand = currentBalances.cash;
       }
-
-      if (transactionDay <= today && isInFinancialMonth(txDate, payday, currentFm.year, currentFm.month)) {
+      if (currentFm && transactionDay <= today && isInFinancialMonth(txDate, payrolls, currentFm.year, currentFm.month)) {
         if (tx.type === 'Expense') monthlyExpenses += txAmount;
         if (tx.type === 'Income') monthlyIncome += txAmount;
       }
-
-      if (transactionDay.getTime() === today.getTime() && isExpenseOutflow(tx.type)) {
-        dailySpent += txAmount;
-      }
+      if (transactionDay.getTime() === today.getTime() && isExpenseOutflow(tx.type)) dailySpent += txAmount;
     }
 
     let debtRepayments = 0;
     let reimbursements = 0;
-
-    for (const tx of allTx) {
-      const txDate = new Date(tx.createdAt!);
-      const transactionDay = toCalendarDay(txDate);
-      if (transactionDay <= today && isInFinancialMonth(txDate, payday, currentFm.year, currentFm.month)) {
-        const txAmount = parseFloat(tx.amount as unknown as string);
-        if (tx.type === 'Expense' && (tx.category === '💳 Debt & Obligations' || tx.category === 'Debt Repayment' || tx.category === 'Loan' || tx.category === '🔄 Transfer' || tx.category === 'Transfer')) {
-          debtRepayments += txAmount;
-        }
-        if (tx.type === 'Income' && (tx.category === '💳 Debt & Obligations' || tx.category === 'Reimbursement' || tx.category === 'Repayment' || tx.category === 'Refund' || tx.category === '🔄 Transfer' || tx.category === 'Transfer')) {
-          reimbursements += txAmount;
-        }
+    if (currentFm) {
+      for (const tx of allTx) {
+        const txDate = new Date(tx.createdAt!);
+        const transactionDay = toCalendarDay(txDate);
+        if (transactionDay > today || !isInFinancialMonth(txDate, payrolls, currentFm.year, currentFm.month)) continue;
+        const amount = parseFloat(tx.amount as unknown as string);
+        if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) debtRepayments += amount;
+        if (tx.type === 'Income' && ['💳 Debt & Obligations', 'Reimbursement', 'Repayment', 'Refund', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) reimbursements += amount;
       }
     }
 
     const emergencyBuffer = parseFloat(dbUser.emergencyBuffer as unknown as string) || 0;
     const totalLiquidity = bankBalance + cashOnHand;
     const openingLiquidity = openingBankBalance + openingCashOnHand;
-    const openingAvailableLiquidity = openingLiquidity - emergencyBuffer;
-
-    
-    let nextPayday = new Date(now.getFullYear(), now.getMonth(), payday);
-    if (now.getDate() >= payday) {
-      nextPayday = new Date(now.getFullYear(), now.getMonth() + 1, payday);
-    }
-    const diff = Math.ceil((nextPayday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const daysUntilPayday = diff > 0 ? diff : 1;
-    const dailyAllowance = openingAvailableLiquidity / daysUntilPayday;
+    const nextPayroll = getNextPayroll(payrolls, now);
+    const nextPayday = nextPayroll ? new Date(nextPayroll.scheduledFor) : null;
+    const daysUntilPayday = nextPayday ? Math.max(0, Math.ceil((nextPayday.getTime() - today.getTime()) / 86_400_000)) : 0;
+    const dailyAllowance = daysUntilPayday > 0 ? (openingLiquidity - emergencyBuffer) / daysUntilPayday : 0;
     const dailyRemaining = dailyAllowance - dailySpent;
     const dailyUsagePercent = dailyAllowance > 0 ? (dailySpent / dailyAllowance) * 100 : dailySpent > 0 ? 100 : 0;
-    const dailyStatus = dailyRemaining < 0 || dailyUsagePercent >= 100
-      ? 'critical'
-      : dailyUsagePercent >= 80
-        ? 'warning'
-        : 'on_track';
+    const dailyStatus = dailyRemaining < 0 || dailyUsagePercent >= 100 ? 'critical' : dailyUsagePercent >= 80 ? 'warning' : 'on_track';
 
     return {
       totalLiquidity,
@@ -149,8 +101,15 @@ export class KpiService {
       dailyRemaining,
       dailyUsagePercent,
       dailyStatus,
-      payday,
-      emergencyBuffer
+      /** Legacy field retained for API compatibility; it is no longer used. */
+      payday: null,
+      currentFinancialAmount: currentFm ? Number(currentFm.startPayroll.amount) : 0,
+      financialPeriodStart: currentFm ? currentFm.start.toISOString() : null,
+      financialPeriodEnd: currentFm ? currentFm.end.toISOString() : null,
+      nextPayrollDate: nextPayroll ? nextPayroll.scheduledFor.toISOString() : null,
+      financialMonthReady: Boolean(currentFm),
+      financialMonthMessage: currentFm ? null : 'Add a payroll for this month and the next month in Financial Calendar to define your financial period.',
+      emergencyBuffer,
     };
   }
 }
