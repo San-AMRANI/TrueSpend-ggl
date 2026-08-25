@@ -19,6 +19,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ onTabChange }: DashboardProps = {}) {
+
   const { token } = useAuth();
   const {
     kpis,
@@ -26,11 +27,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     debts,
     payrolls,
     budgets,
-    payday,
-    setPayday,
     emergencyBuffer,
-    salary,
-    setSalary,
     setEmergencyBuffer,
     loading,
     isSaving,

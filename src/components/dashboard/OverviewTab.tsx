@@ -42,15 +42,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
 
   // Generate financial facts for the carousel
   const facts = useMemo(
-    () => selectFacts(generateFacts(kpis, transactions, debts, budgets)),
+    () => selectFacts(generateFacts(kpis, transactions, debts, budgets, payrolls)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [kpis, transactions, debts, budgets],
+    [kpis, transactions, debts, budgets, payrolls],
   );
 
   return (
     <div className="min-w-0 overflow-x-hidden space-y-4 sm:space-y-6">
       {!currentFm && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Your financial period is not set yet. Add the current and next payroll in Financial Calendar so balances, budgets, and reports use the right period.</div>}
-      {/* Row 1 – KPI cards */}
       <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
         <Card className="col-span-2 min-w-0 border-transparent bg-gray-900 text-white xl:col-span-1">
           <CardHeader className="pb-2">

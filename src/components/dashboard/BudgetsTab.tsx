@@ -106,8 +106,7 @@ const BUDGET_PLANS: Record<PlanKey, { name: string; description: string; rules: 
 interface BudgetsTabProps {
   budgets: CategoryBudget[];
   transactions: Transaction[];
-  salary: number;
-  payday: number;
+  payrolls: Payroll[];
   onSaveBudget: (category: string, year: number, month: number, amount: number) => Promise<void>;
   onSaveBudgetsBatch: (budgets: { category: string; year: number; month: number; amount: number }[]) => Promise<void>;
   onCopyPrevious: (year: number, month: number) => Promise<number>;
@@ -230,18 +229,18 @@ interface BudgetCardProps {
   spent: number;
   year: number;
   month: number;
-  payday: number;
+  payrolls: Payroll[];
   onSave: (amount: number) => Promise<void>;
   onDelete: (() => Promise<void>) | undefined;
   isCurrentMonth: boolean;
 }
 
-function BudgetCard({ category, budget, spent, year, month, payday, onSave, onDelete, isCurrentMonth }: BudgetCardProps) {
+function BudgetCard({ category, budget, spent, year, month, payrolls, onSave, onDelete, isCurrentMonth }: BudgetCardProps) {
   const amount = budget ? parseFloat(budget.amount) : undefined;
   const status = getBudgetStatus(amount, spent);
   const statusCfg = statusConfig[status.status];
   const StatusIcon = statusCfg.icon;
-  const pace = amount !== undefined ? getSpendingPace(spent, amount, year, month, payday) : null;
+  const pace = amount !== undefined ? getSpendingPace(spent, amount, year, month, payrolls) : null;
   const daysWarning = amount !== undefined && isCurrentMonth ? predictDaysToOverspend(spent, amount, year, month) : null;
   const color = categoryColor(category);
 
@@ -378,7 +377,7 @@ const NEEDS_CATEGORIES = ['🏠 Housing & Utilities', '🛒 Groceries', '🚗 Tr
 const WANTS_CATEGORIES = ['🍔 Dining & Takeaway', '☕ Coffee & Quick Food', '🎬 Entertainment', '👥 Social', '👕 Personal & Clothing', '👨‍👩‍👦 Family & Gifts'];
 const SAVINGS_CATEGORIES = ['💰 Savings & Goals', '📚 Education & Development', '💳 Debt & Obligations'];
 
-function Rule503020View({ budgets, transactions, totalBudget, year, month, payday }: { budgets: CategoryBudget[]; transactions: Transaction[]; totalBudget: number; year: number; month: number; payday: number }) {
+function Rule503020View({ budgets, transactions, totalBudget, year, month, payrolls }: { budgets: CategoryBudget[]; transactions: Transaction[]; totalBudget: number; year: number; month: number; payrolls: Payroll[] }) {
   const [needsPct, setNeedsPct] = useState(50);
   const [wantsPct, setWantsPct] = useState(30);
   const [savingsPct, setSavingsPct] = useState(20);
@@ -396,11 +395,11 @@ function Rule503020View({ budgets, transactions, totalBudget, year, month, payda
   };
 
   const totalSpent = useMemo(() => {
-    return getExpensesForMonth(transactions, year, month, payday).reduce((s, tx) => s + amountOf(tx), 0);
-  }, [transactions, year, month, payday]);
+    return getExpensesForMonth(transactions, year, month, payrolls).reduce((s, tx) => s + amountOf(tx), 0);
+  }, [transactions, year, month, payrolls]);
 
   const getGroupSpent = (cats: string[]) =>
-    getExpensesForMonth(transactions, year, month, payday)
+    getExpensesForMonth(transactions, year, month, payrolls)
       .filter((tx) => cats.includes(tx.category ?? ''))
       .reduce((s, tx) => s + amountOf(tx), 0);
 
@@ -464,18 +463,18 @@ function Rule503020View({ budgets, transactions, totalBudget, year, month, payda
 }
 
 // ─── Envelope View ────────────────────────────────────────────────────────────
-function EnvelopeView({ budgets, transactions, year, month, payday, onSave, onDelete }: {
+function EnvelopeView({ budgets, transactions, year, month, payrolls, onSave, onDelete }: {
   budgets: CategoryBudget[];
   transactions: Transaction[];
   year: number;
   month: number;
-  payday: number;
+  payrolls: Payroll[];
   onSave: (cat: string, amount: number) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
   const monthBudgets = budgets.filter((b) => b.year === year && b.month === month);
   const totalEnvelope = monthBudgets.reduce((s, b) => s + parseFloat(b.amount), 0);
-  const totalSpent = monthBudgets.reduce((s, b) => s + getCategorySpending(transactions, b.category, year, month, payday), 0);
+  const totalSpent = monthBudgets.reduce((s, b) => s + getCategorySpending(transactions, b.category, year, month, payrolls), 0);
   const totalLeft = totalEnvelope - totalSpent;
 
   return (
@@ -499,7 +498,7 @@ function EnvelopeView({ budgets, transactions, year, month, payday, onSave, onDe
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">No envelopes for this month. Add category budgets above.</p>
         )}
         {monthBudgets.map((b) => {
-          const spent = getCategorySpending(transactions, b.category, year, month, payday);
+          const spent = getCategorySpending(transactions, b.category, year, month, payrolls);
           const amount = parseFloat(b.amount);
           const left = amount - spent;
           const pct = amount > 0 ? Math.min(100, (spent / amount) * 100) : 0;
@@ -537,10 +536,11 @@ function EnvelopeView({ budgets, transactions, year, month, payday, onSave, onDe
 }
 
 import { getCurrentFinancialMonth } from '../../lib/financialMonth';
+import type { Payroll } from '../../types';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, salary, payday, onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onClearMonth, onDeleteBudget }) => {
-  const [monthRef, setMonthRef] = useState(() => getCurrentFinancialMonth(payday));
+export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, payrolls, onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onClearMonth, onDeleteBudget }) => {
+  const [monthRef, setMonthRef] = useState(() => getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [budgetModel, setBudgetModel] = useState<BudgetModel>('category');
   const [newCategory, setNewCategory] = useState<string>(expenseCategories[0]);
   const [newAmount, setNewAmount] = useState('');
@@ -553,7 +553,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
   const [clearLoading, setClearLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<PlanKey>('balanced');
 
-  const currentFM = getCurrentFinancialMonth(payday);
+  const currentFM = getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
   const isCurrentMonth = monthRef.year === currentFM.year && monthRef.month === currentFM.month;
 
   const showToast = useCallback((msg: string, type: 'success' | 'error' = 'success') => {
@@ -587,16 +587,16 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
     [budgets, monthRef]);
 
   const totalSpent = useMemo(() =>
-    budgetRows.reduce((s, cat) => s + getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payday), 0),
-    [budgetRows, transactions, monthRef, payday]);
+    budgetRows.reduce((s, cat) => s + getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payrolls), 0),
+    [budgetRows, transactions, monthRef, payrolls]);
 
-  const pace = useMemo(() => getSpendingPace(totalSpent, totalBudget, monthRef.year, monthRef.month, payday), [totalSpent, totalBudget, monthRef, payday]);
+  const pace = useMemo(() => getSpendingPace(totalSpent, totalBudget, monthRef.year, monthRef.month, payrolls), [totalSpent, totalBudget, monthRef, payrolls]);
 
   const categoryData = useMemo(() => budgetRows.map((cat) => {
     const budget = budgetFor(budgets, cat, monthRef.year, monthRef.month);
-    const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payday);
+    const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payrolls);
     return { label: cat, spent, color: categoryColor(cat), amount: budget ? parseFloat(budget.amount) : undefined };
-  }), [budgets, transactions, budgetRows, monthRef, payday]);
+  }), [budgets, transactions, budgetRows, monthRef, payrolls]);
 
   const healthScore = useMemo(() => computeBudgetHealthScore(categoryData), [categoryData]);
   const { grade, color: gradeColor } = gradeFromScore(healthScore);
@@ -667,16 +667,17 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, s
       });
     });
 
-    // If no income transactions found for this month, use the configured salary
-    // as a planning estimate (payday hasn't arrived yet, or salary not auto-deposited)
-    const baseSalary = parseFloat(salary as any) || 0;
-    if (total === 0 && baseSalary > 0) {
-      items.push({ label: 'Estimated Salary (not yet deposited)', amount: baseSalary });
-      total = baseSalary;
+    // If no income transactions found for this month, use the first configured payroll
+    // as a planning estimate
+    const currentFm = getCurrentFinancialMonth(payrolls, new Date(Date.UTC(monthRef.year, monthRef.month - 1, 15)));
+    const baseIncome = currentFm ? parseFloat(currentFm.startPayroll.amount as string) : 0;
+    if (total === 0 && baseIncome > 0) {
+      items.push({ label: 'Estimated Payroll (not yet deposited)', amount: baseIncome });
+      total = baseIncome;
     }
 
     return { items, total };
-  }, [transactions, salary, monthRef]);
+  }, [transactions, payrolls, monthRef]);
 
   const totalIncome = incomeBreakdown.total;
 

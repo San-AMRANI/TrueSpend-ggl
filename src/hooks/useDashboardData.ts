@@ -9,9 +9,7 @@ export function useDashboardData(token: string | null) {
   const [debts, setDebts] = useState<Debt[]>([]);
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
-  const [payday, setPayday] = useState<number>(25);
   const [emergencyBuffer, setEmergencyBuffer] = useState<number>(0);
-  const [salary, setSalary] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
@@ -36,14 +34,12 @@ export function useDashboardData(token: string | null) {
         dashboardService.getPayrolls(token),
       ]);
 
-      setKpis(kpiData);
-      setTransactions(txData);
-      setDebts(debtData);
-      setPayday(settingsData.payday);
-      setEmergencyBuffer(settingsData.emergencyBuffer);
-      setSalary(settingsData.salary);
-      setBudgets(budgetData);
-      setPayrolls(payrollData);
+      setKpis(kpiData || null);
+      setTransactions(txData || []);
+      setDebts(debtData || []);
+      setEmergencyBuffer(settingsData?.emergencyBuffer ?? 0);
+      setBudgets(budgetData || []);
+      setPayrolls(payrollData || []);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -258,12 +254,8 @@ export function useDashboardData(token: string | null) {
     debts,
     payrolls,
     budgets,
-    payday,
-    setPayday,
     emergencyBuffer,
     setEmergencyBuffer,
-    salary,
-    setSalary,
     loading,
     isSaving,
     isExporting,

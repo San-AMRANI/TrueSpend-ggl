@@ -72,6 +72,7 @@ export function generateFacts(
   transactions: Transaction[],
   debts: Debt[],
   budgets: CategoryBudget[],
+  payrolls: PayrollLike[],
 ): FinancialFact[] {
   if (!kpis) return [];
 
@@ -79,11 +80,11 @@ export function generateFacts(
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth() + 1;
 
-  const thisMonthExpenses = realExpenses(getExpensesForMonth(transactions, year, month));
+  const thisMonthExpenses = realExpenses(getExpensesForMonth(transactions, year, month, payrolls));
   const allExpenses = realExpenses(transactions);
 
   const prevMonthRef = month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
-  const prevMonthExpenses = realExpenses(getExpensesForMonth(transactions, prevMonthRef.year, prevMonthRef.month));
+  const prevMonthExpenses = realExpenses(getExpensesForMonth(transactions, prevMonthRef.year, prevMonthRef.month, payrolls));
 
   const facts: FinancialFact[] = [];
 
@@ -478,7 +479,7 @@ export function generateFacts(
   const debtRepaymentTxs = transactions.filter(
     (t) =>
       (t.type === 'Debt Repayment' || normalizeCategory(t.category) === 'Debt Repayment') &&
-      isInMonth(t, year, month),
+      isInMonth(t, year, month, payrolls),
   );
   if (debtRepaymentTxs.length > 0) {
     const repaid = debtRepaymentTxs.reduce((s, t) => s + amountOf(t), 0);
@@ -531,7 +532,7 @@ export function generateFacts(
 
   // ── INCOME FACTS ─────────────────────────────────────────────────────────
 
-  const incomeThisMonth = transactions.filter((t) => t.type === 'Income' && isInMonth(t, year, month));
+  const incomeThisMonth = transactions.filter((t) => t.type === 'Income' && isInMonth(t, year, month, payrolls));
   if (incomeThisMonth.length > 0) {
     const totalIncome = incomeThisMonth.reduce((s, t) => s + amountOf(t), 0);
 
