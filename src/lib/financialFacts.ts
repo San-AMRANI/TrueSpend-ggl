@@ -1,6 +1,7 @@
 import { CategoryBudget, Debt, KPI, Transaction } from '../types';
 import { amountOf, getExpensesForMonth, isInMonth, transactionDate } from './finance';
 import { normalizeCategory } from './categories';
+import { getCurrentFinancialMonth, getPreviousFinancialMonth, type PayrollLike } from './financialMonth';
 
 // ─── Fact Shape ─────────────────────────────────────────────────────────────
 
@@ -72,19 +73,21 @@ export function generateFacts(
   transactions: Transaction[],
   debts: Debt[],
   budgets: CategoryBudget[],
-  payrolls: PayrollLike[],
+  payrolls: PayrollLike[] = [],
 ): FinancialFact[] {
   if (!kpis) return [];
 
+  const currentPeriod = getCurrentFinancialMonth(payrolls);
+  if (!currentPeriod) return [];
   const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth() + 1;
+  const year = currentPeriod.year;
+  const month = currentPeriod.month;
 
   const thisMonthExpenses = realExpenses(getExpensesForMonth(transactions, year, month, payrolls));
   const allExpenses = realExpenses(transactions);
 
-  const prevMonthRef = month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
-  const prevMonthExpenses = realExpenses(getExpensesForMonth(transactions, prevMonthRef.year, prevMonthRef.month, payrolls));
+  const prevMonthRef = getPreviousFinancialMonth(payrolls, currentPeriod);
+  const prevMonthExpenses = prevMonthRef ? realExpenses(getExpensesForMonth(transactions, prevMonthRef.year, prevMonthRef.month, payrolls)) : [];
 
   const facts: FinancialFact[] = [];
 

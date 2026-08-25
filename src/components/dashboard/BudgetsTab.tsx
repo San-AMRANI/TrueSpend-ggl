@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { CategoryBudget, Transaction } from '../../types';
+import { CategoryBudget, Payroll, Transaction } from '../../types';
 import { expenseCategories } from '../../lib/categories';
 import {
   budgetFor,
@@ -536,7 +536,6 @@ function EnvelopeView({ budgets, transactions, year, month, payrolls, onSave, on
 }
 
 import { getCurrentFinancialMonth } from '../../lib/financialMonth';
-import type { Payroll } from '../../types';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, payrolls, onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onClearMonth, onDeleteBudget }) => {
@@ -728,7 +727,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
           <Button type="button" variant="outline" size="icon" onClick={() => navigate(-1)} aria-label="Previous month">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="outline" onClick={() => setMonthRef(getCurrentFinancialMonth(payday))}>
+          <Button type="button" variant="outline" onClick={() => setMonthRef(getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 })}>
             {monthLabel(monthRef.year, monthRef.month)}
           </Button>
           <Button type="button" variant="outline" size="icon" onClick={() => navigate(1)} aria-label="Next month">
@@ -889,7 +888,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {budgetRows.map((cat) => {
                 const budget = budgetFor(budgets, cat, monthRef.year, monthRef.month);
-                const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payday);
+                const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payrolls);
                 return (
                   <BudgetCard
                     key={cat}
@@ -898,7 +897,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
                     spent={spent}
                     year={monthRef.year}
                     month={monthRef.month}
-                    payday={payday}
+                    payrolls={payrolls}
                     isCurrentMonth={isCurrentMonth}
                     onSave={(amount) => onSaveBudget(cat, monthRef.year, monthRef.month, amount)}
                     onDelete={budget ? () => onDeleteBudget(budget.id) : undefined}
@@ -926,7 +925,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
           totalBudget={totalBudget}
           year={monthRef.year}
           month={monthRef.month}
-          payday={payday}
+          payrolls={payrolls}
         />
       )}
 
@@ -936,7 +935,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
           transactions={transactions}
           year={monthRef.year}
           month={monthRef.month}
-          payday={payday}
+          payrolls={payrolls}
           onSave={(cat, amount) => onSaveBudget(cat, monthRef.year, monthRef.month, amount)}
           onDelete={onDeleteBudget}
         />

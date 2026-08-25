@@ -106,7 +106,7 @@ export class KpiService {
       currentFinancialAmount: currentFm ? Number(currentFm.startPayroll.amount) : 0,
       financialPeriodStart: currentFm ? currentFm.start.toISOString() : null,
       financialPeriodEnd: currentFm ? currentFm.end.toISOString() : null,
-      nextPayrollDate: nextPayroll ? nextPayroll.scheduledFor.toISOString() : null,
+      nextPayrollDate: nextPayroll ? new Date(nextPayroll.scheduledFor).toISOString() : null,
       financialMonthReady: Boolean(currentFm),
       financialMonthMessage: currentFm ? null : 'Add a payroll for this month and the next month in Financial Calendar to define your financial period.',
       emergencyBuffer,

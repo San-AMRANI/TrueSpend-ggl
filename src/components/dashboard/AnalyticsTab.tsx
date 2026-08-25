@@ -143,6 +143,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     };
   }, [transactions]);
 
+  const comparisonLabel = comparisonMonth ? financialPeriodLabel(comparisonMonth) : 'No configured financial period';
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center bg-white dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm">
@@ -166,7 +168,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         <CardContent>
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_2fr]">
             <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Overall · {monthLabel(comparisonMonth.year, comparisonMonth.month)}</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Overall · {comparisonLabel}</p>
               <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">{spendingChange.current.toFixed(2)} MAD</p>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">vs {spendingChange.previous.toFixed(2)} MAD last month</p>
               {spendingChange.percentage === null ? (

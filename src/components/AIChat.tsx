@@ -230,13 +230,13 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     debts,
     budgets,
     emergencyBuffer,
-    payday,
+    payrolls,
     fetchData,
   } = useDashboardData(token);
 
   const aiContext = useMemo(
-    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, emergencyBuffer, payday }),
-    [kpis, transactions, debts, budgets, emergencyBuffer, payday],
+    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, emergencyBuffer, payrolls }),
+    [kpis, transactions, debts, budgets, emergencyBuffer, payrolls],
   );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
