@@ -1,5 +1,6 @@
 import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
+import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { normalizeCategory } from '../../src/lib/categories.js';
 
 export interface CreateTransactionDTO {
@@ -11,6 +12,8 @@ export interface CreateTransactionDTO {
   transaction_date?: string;
   reimbursable_amount?: number;
   linked_contact_name?: string;
+  /** When present, this income is money borrowed and creates a payable debt. */
+  loan_contact_name?: string;
 }
 
 export interface UpdateTransactionDTO extends Omit<CreateTransactionDTO, 'type'> {
@@ -34,6 +37,7 @@ export class TransactionService {
         reimbursableAmount: split?.reimbursableAmount,
         linkedContactId: split?.linkedContactId,
         linkedContactName: split?.linkedContactId ? debtById.get(split.linkedContactId)?.contactName : null,
+        linkedDebtType: split?.linkedContactId ? debtById.get(split.linkedContactId)?.type : null,
       };
     });
   }
@@ -41,13 +45,16 @@ export class TransactionService {
   async createTransaction(userId: string, dto: CreateTransactionDTO) {
     this.validateAmount(dto.amount);
     this.validateReimbursement(dto.amount, dto.reimbursable_amount);
+    const loanContactName = dto.loan_contact_name?.trim();
+    if (loanContactName && dto.type !== 'Income') throw new Error('A loan received must be an income transaction');
+    if (loanContactName && dto.reimbursable_amount) throw new Error('A loan received cannot also be reimbursable');
     const createdAt = this.parseTransactionDate(dto.transaction_date);
     const newTx = await transactionRepository.create({
       userId,
       amount: String(dto.amount),
       type: dto.type,
       sourceWallet: dto.source_wallet,
-      category: normalizeCategory(dto.category),
+      category: normalizeCategory(loanContactName ? '🤝 Loan Received' : dto.category),
       notes: dto.notes,
       createdAt,
     });
@@ -69,6 +76,23 @@ export class TransactionService {
       });
     }
 
+    if (loanContactName) {
+      const newDebt = await debtRepository.create({
+        userId,
+        contactName: loanContactName,
+        type: 'Payable',
+        originalAmount: String(dto.amount),
+        remainingBalance: String(dto.amount),
+        status: 'Pending',
+        createdAt,
+      });
+      await transactionRepository.createSplit({
+        transactionId: newTx.id,
+        reimbursableAmount: String(dto.amount),
+        linkedContactId: newDebt.id,
+      });
+    }
+
     return newTx;
   }
 
@@ -82,6 +106,9 @@ export class TransactionService {
     this.validateReimbursement(dto.amount, dto.reimbursable_amount);
 
     const createdAt = this.parseTransactionDate(dto.transaction_date);
+    if (current.payrollId) {
+      await this.syncPostedPayroll(userId, current.payrollId, dto.amount, createdAt);
+    }
     const existingSplit = (await transactionRepository.findSplitsByTransactionId(transactionId))[0];
     const reimbursementWasUpdated = dto.reimbursable_amount !== undefined;
 
@@ -137,10 +164,32 @@ export class TransactionService {
       }
     }
 
+    const loanContactName = dto.loan_contact_name?.trim();
+    if (loanContactName) {
+      if (current.type !== 'Income' || !existingSplit?.linkedContactId) {
+        throw new Error('This transaction is not a loan received');
+      }
+      const debt = await debtRepository.findByIdAndUserId(existingSplit.linkedContactId, userId);
+      if (!debt || debt.type !== 'Payable') throw new Error('Linked loan debt not found');
+      const originalAmount = parseFloat(debt.originalAmount as unknown as string);
+      const remainingAmount = parseFloat(debt.remainingBalance as unknown as string);
+      const settledAmount = originalAmount - remainingAmount;
+      if (dto.amount < settledAmount) {
+        throw new Error('The loan amount cannot be lower than the amount already repaid.');
+      }
+      await debtRepository.update(debt.id, userId, {
+        contactName: loanContactName,
+        originalAmount: String(dto.amount),
+        remainingBalance: String(dto.amount - settledAmount),
+        status: dto.amount === settledAmount ? 'Cleared' : 'Pending',
+      });
+      await transactionRepository.updateSplit(existingSplit.id, { reimbursableAmount: String(dto.amount) });
+    }
+
     const updated = await transactionRepository.update(transactionId, userId, {
       amount: String(dto.amount),
       sourceWallet: dto.source_wallet,
-      category: normalizeCategory(dto.category),
+      category: normalizeCategory(loanContactName ? '🤝 Loan Received' : dto.category),
       notes: dto.notes,
       ...(createdAt ? { createdAt } : {}),
     });
@@ -172,9 +221,11 @@ export class TransactionService {
       if (split.linkedContactId) {
         const debt = await debtRepository.findByIdAndUserId(split.linkedContactId, userId);
         if (debt) {
-          const isOriginalExpense = debt.type === 'Receivable' && transaction.type === 'Expense';
-          if (isOriginalExpense) {
-            // Deleting original expense -> delete debt & all settlement transactions
+          const isOriginalTransaction =
+            (debt.type === 'Receivable' && transaction.type === 'Expense') ||
+            (debt.type === 'Payable' && transaction.type === 'Income');
+          if (isOriginalTransaction) {
+            // Deleting the original reimbursable expense or loan receipt deletes its debt and settlements.
             const linkedSplits = await transactionRepository.findSplitsByDebtId(debt.id);
             for (const linkedSplit of linkedSplits) {
               if (linkedSplit.transactionId !== transactionId) {
@@ -219,6 +270,22 @@ export class TransactionService {
     if (!Number.isFinite(reimbursableAmount) || reimbursableAmount < 0 || reimbursableAmount > amount) {
       throw new Error('Reimbursable amount must be between zero and the transaction amount');
     }
+  }
+
+  private async syncPostedPayroll(userId: string, payrollId: string, amount: number, scheduledFor?: Date) {
+    const payroll = await payrollRepository.findByIdAndUserId(payrollId, userId);
+    if (!payroll) throw new Error('Linked payroll not found');
+
+    const payrollDate = scheduledFor || new Date(payroll.scheduledFor);
+    const start = new Date(Date.UTC(payrollDate.getUTCFullYear(), payrollDate.getUTCMonth(), 1));
+    const end = new Date(Date.UTC(payrollDate.getUTCFullYear(), payrollDate.getUTCMonth() + 1, 1));
+    const existingForMonth = await payrollRepository.findForMonth(userId, start, end, payrollId);
+    if (existingForMonth) throw new Error('This calendar month already has a payroll. Choose another date.');
+
+    await payrollRepository.update(payrollId, userId, {
+      scheduledFor: payrollDate,
+      amount: String(amount),
+    });
   }
 }
 

@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lt } from 'drizzle-orm';
+import { and, asc, eq, gte, lt, ne } from 'drizzle-orm';
 import { createPool, db } from '../../src/db/index.js';
 import { payrolls } from '../../src/db/schema.js';
 
@@ -31,13 +31,15 @@ export class PayrollRepository {
     return db.select().from(payrolls).where(eq(payrolls.userId, userId)).orderBy(asc(payrolls.scheduledFor));
   }
 
-  async findForMonth(userId: string, start: Date, end: Date) {
+  async findForMonth(userId: string, start: Date, end: Date, excludeId?: string) {
     await this.ensureSchema();
-    const result = await db.select().from(payrolls).where(and(
+    const conditions = [
       eq(payrolls.userId, userId),
       gte(payrolls.scheduledFor, start),
       lt(payrolls.scheduledFor, end),
-    ));
+    ];
+    if (excludeId) conditions.push(ne(payrolls.id, excludeId));
+    const result = await db.select().from(payrolls).where(and(...conditions));
     return result[0] || null;
   }
 
@@ -50,6 +52,16 @@ export class PayrollRepository {
   async findByIdAndUserId(id: string, userId: string) {
     await this.ensureSchema();
     const result = await db.select().from(payrolls).where(and(eq(payrolls.id, id), eq(payrolls.userId, userId)));
+    return result[0] || null;
+  }
+
+  async update(id: string, userId: string, data: { scheduledFor: Date; amount: string }) {
+    await this.ensureSchema();
+    const result = await db
+      .update(payrolls)
+      .set(data)
+      .where(and(eq(payrolls.id, id), eq(payrolls.userId, userId)))
+      .returning();
     return result[0] || null;
   }
 

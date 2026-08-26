@@ -40,6 +40,7 @@ export interface Transaction {
   reimbursableAmount?: string;
   linkedContactId?: string | null;
   linkedContactName?: string | null;
+  linkedDebtType?: 'Receivable' | 'Payable' | null;
 }
 
 export interface CategoryBudget {
