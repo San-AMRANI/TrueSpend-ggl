@@ -1,102 +1,97 @@
 [
   {
-    "category": "Food & Dining",
-    "tx_count": "38",
-    "total_amount": "721.25"
+    "category": "☕ Coffee & Quick Food",
+    "tx_count": "77",
+    "total_amount": "1598.65"
   },
   {
-    "category": "Transfer",
-    "tx_count": "27",
-    "total_amount": "5738.97"
+    "category": "🍔 Dining & Takeaway",
+    "tx_count": "53",
+    "total_amount": "1905.00"
   },
   {
-    "category": "Social",
+    "category": "🚗 Transportation",
+    "tx_count": "50",
+    "total_amount": "1494.00"
+  },
+  {
+    "category": "🛒 Groceries",
+    "tx_count": "35",
+    "total_amount": "1928.53"
+  },
+  {
+    "category": "👕 Personal & Clothing",
+    "tx_count": "25",
+    "total_amount": "3786.00"
+  },
+  {
+    "category": "💳 Debt & Obligations",
     "tx_count": "24",
-    "total_amount": "1395.45"
+    "total_amount": "11097.00"
   },
   {
-    "category": "Coffee",
-    "tx_count": "24",
-    "total_amount": "491.70"
+    "category": "🔄 Transfer",
+    "tx_count": "23",
+    "total_amount": "5088.97"
   },
   {
-    "category": "Transport",
-    "tx_count": "21",
-    "total_amount": "567.00"
-  },
-  {
-    "category": "Groceries",
+    "category": "👨‍👩‍👦 Family & Gifts",
     "tx_count": "20",
-    "total_amount": "1213.00"
+    "total_amount": "1064.00"
   },
   {
-    "category": "Food",
-    "tx_count": "15",
-    "total_amount": "633.00"
+    "category": "🎬 Entertainment",
+    "tx_count": "8",
+    "total_amount": "625.52"
   },
   {
-    "category": "Family",
-    "tx_count": "13",
-    "total_amount": "704.00"
+    "category": "📱 Telecom & Subscriptions",
+    "tx_count": "8",
+    "total_amount": "330.00"
   },
   {
-    "category": "Transportation",
-    "tx_count": "12",
-    "total_amount": "352"
-  },
-  {
-    "category": "Wardrobe",
-    "tx_count": "9",
-    "total_amount": "2310.00"
-  },
-  {
-    "category": "Grooming",
-    "tx_count": "9",
-    "total_amount": "225.00"
-  },
-  {
-    "category": "Telecom",
+    "category": "🚨 Unexpected",
     "tx_count": "6",
-    "total_amount": "180.00"
+    "total_amount": "2201"
   },
   {
-    "category": "Entertainment",
+    "category": "🩺 Health & Medical",
     "tx_count": "6",
-    "total_amount": "459.00"
+    "total_amount": "1904.97"
   },
   {
-    "category": "Repayment",
+    "category": "📥 Income",
     "tx_count": "6",
-    "total_amount": "900.00"
+    "total_amount": "30283.50"
+  },
+  {
+    "category": "🏠 Housing & Utilities",
+    "tx_count": "5",
+    "total_amount": "734.92"
+  },
+  {
+    "category": "👥 Social",
+    "tx_count": "4",
+    "total_amount": "740"
   },
   {
     "category": "Debt Repayment",
-    "tx_count": "6",
-    "total_amount": "6330.00"
+    "tx_count": "2",
+    "total_amount": "1400"
+  },
+  {
+    "category": "Groceries",
+    "tx_count": "1",
+    "total_amount": "12"
   },
   {
     "category": "Reimbursement",
-    "tx_count": "6",
-    "total_amount": "360.00"
+    "tx_count": "1",
+    "total_amount": "340.69"
   },
   {
-    "category": "Medical",
-    "tx_count": "5",
-    "total_amount": "1868.97"
-  },
-  {
-    "category": "Utilities",
-    "tx_count": "4",
-    "total_amount": "584.11"
-  },
-  {
-    "category": "Salary",
-    "tx_count": "3",
-    "total_amount": "18110.10"
-  },
-  {
-    "category": "Gift",
-    "tx_count": "3",
-    "total_amount": "30.00"
+    "category": "🤝 Loan Received",
+    "tx_count": "1",
+    "total_amount": "100"
   }
 ]

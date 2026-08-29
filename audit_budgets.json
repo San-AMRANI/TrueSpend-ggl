@@ -1,66 +1,58 @@
 [
   {
-    "category": "Telecom",
-    "budget_count": "3"
+    "category": "💰 Savings & Goals",
+    "budget_count": "2"
   },
   {
-    "category": "Social",
+    "category": "👥 Social",
+    "budget_count": "2"
+  },
+  {
+    "category": "📱 Telecom & Subscriptions",
     "budget_count": "4"
   },
   {
-    "category": "Food & Dining",
+    "category": "🍔 Dining & Takeaway",
     "budget_count": "4"
   },
   {
-    "category": "Long-term Wealth",
+    "category": "🩺 Health & Medical",
+    "budget_count": "4"
+  },
+  {
+    "category": "🏠 Housing & Utilities",
+    "budget_count": "4"
+  },
+  {
+    "category": "🎬 Entertainment",
+    "budget_count": "4"
+  },
+  {
+    "category": "📚 Education & Development",
     "budget_count": "1"
   },
   {
-    "category": "Entertainment",
-    "budget_count": "3"
-  },
-  {
-    "category": "Utilities",
+    "category": "🚗 Transportation",
     "budget_count": "4"
   },
   {
-    "category": "Medical",
+    "category": "💳 Debt & Obligations",
+    "budget_count": "2"
+  },
+  {
+    "category": "👨‍👩‍👦 Family & Gifts",
     "budget_count": "4"
   },
   {
-    "category": "Grooming",
-    "budget_count": "3"
-  },
-  {
-    "category": "Debt Repayment",
-    "budget_count": "1"
-  },
-  {
-    "category": "Groceries",
+    "category": "👕 Personal & Clothing",
     "budget_count": "4"
   },
   {
-    "category": "Short-term Goals",
-    "budget_count": "1"
-  },
-  {
-    "category": "Transportation",
+    "category": "🛒 Groceries",
     "budget_count": "4"
   },
   {
-    "category": "Essentials",
-    "budget_count": "1"
-  },
-  {
-    "category": "Wardrobe",
-    "budget_count": "4"
-  },
-  {
-    "category": "Coffee",
-    "budget_count": "4"
-  },
-  {
-    "category": "Family",
+    "category": "☕ Coffee & Quick Food",
     "budget_count": "4"
   }
 ]

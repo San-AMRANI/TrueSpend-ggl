@@ -24,6 +24,7 @@ export class KpiService {
     let monthlyExpenses = 0;
     let monthlyIncome = 0;
     let dailySpent = 0;
+    let todaysIncome = 0;
 
     const toCalendarDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const isExpenseOutflow = (type: string) => type === 'Expense' || type === 'Debt Repayment';
@@ -61,7 +62,10 @@ export class KpiService {
         if (tx.type === 'Expense') monthlyExpenses += txAmount;
         if (tx.type === 'Income') monthlyIncome += txAmount;
       }
-      if (transactionDay.getTime() === today.getTime() && isExpenseOutflow(tx.type)) dailySpent += txAmount;
+      if (transactionDay.getTime() === today.getTime()) {
+        if (isExpenseOutflow(tx.type)) dailySpent += txAmount;
+        if (tx.type === 'Income') todaysIncome += txAmount;
+      }
     }
 
     let debtRepayments = 0;
@@ -73,7 +77,7 @@ export class KpiService {
         if (transactionDay > today || !isInFinancialMonth(txDate, payrolls, currentFm.year, currentFm.month)) continue;
         const amount = parseFloat(tx.amount as unknown as string);
         if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) debtRepayments += amount;
-        if (tx.type === 'Income' && ['💳 Debt & Obligations', 'Reimbursement', 'Repayment', 'Refund', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) reimbursements += amount;
+        if (tx.type === 'Income' && ['Reimbursement', '🔙 Reimbursement', 'Refund'].includes(tx.category || '')) reimbursements += amount;
       }
     }
 
@@ -83,7 +87,7 @@ export class KpiService {
     const nextPayroll = getNextPayroll(payrolls, now);
     const nextPayday = nextPayroll ? new Date(nextPayroll.scheduledFor) : null;
     const daysUntilPayday = nextPayday ? Math.max(0, Math.ceil((nextPayday.getTime() - today.getTime()) / 86_400_000)) : 0;
-    const dailyAllowance = daysUntilPayday > 0 ? (openingLiquidity - emergencyBuffer) / daysUntilPayday : 0;
+    const dailyAllowance = daysUntilPayday > 0 ? (openingLiquidity + todaysIncome - emergencyBuffer) / daysUntilPayday : 0;
     const dailyRemaining = dailyAllowance - dailySpent;
     const dailyUsagePercent = dailyAllowance > 0 ? (dailySpent / dailyAllowance) * 100 : dailySpent > 0 ? 100 : 0;
     const dailyStatus = dailyRemaining < 0 || dailyUsagePercent >= 100 ? 'critical' : dailyUsagePercent >= 80 ? 'warning' : 'on_track';

@@ -20,6 +20,7 @@ export const incomeAndTransferCategories = [
   '📥 Income',
   '🤝 Loan Received',
   '🔄 Transfer',
+  '🔙 Reimbursement',
 ] as const;
 
 const categoryKey = (category: string) =>
@@ -98,7 +99,6 @@ const aliases = new Map<string, string>([
   // Debt
   ['debt repayment', '💳 Debt & Obligations'],
   ['repayment', '💳 Debt & Obligations'],
-  ['reimbursement', '💳 Debt & Obligations'],
   ['loan', '💳 Debt & Obligations'],
   ['debt', '💳 Debt & Obligations'],
   // Savings
@@ -113,6 +113,8 @@ const aliases = new Map<string, string>([
   ['loan received', '🤝 Loan Received'],
   // Transfer
   ['transfer', '🔄 Transfer'],
+  // Reimbursement
+  ['reimbursement', '🔙 Reimbursement'],
 ]);
 
 /**

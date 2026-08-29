@@ -1,1142 +1,26 @@
 {
-  "Coffee": [
+  "💳 Debt & Obligations": [
     {
-      "id": "8762be17-23ab-4789-a04c-e1973e830ef3",
-      "type": "Expense",
-      "amount": "45",
-      "category": "Coffee",
-      "notes": null,
-      "created_at": "2026-08-16T11:00:00.000Z"
-    },
-    {
-      "id": "cb57fb4b-1c61-4588-870e-937d2d23f1ac",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Coffee",
-      "notes": "Coffee",
-      "created_at": "2026-08-15T11:00:00.000Z"
-    },
-    {
-      "id": "6f605d75-e304-4899-a906-d65d878b20da",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Coffee",
-      "notes": "Coffee",
-      "created_at": "2026-08-15T11:00:00.000Z"
-    },
-    {
-      "id": "8c080d7e-512e-46c0-9fdf-03ad5e900ffa",
-      "type": "Expense",
-      "amount": "34.9",
-      "category": "Coffee",
-      "notes": "Coffee capsules",
-      "created_at": "2026-08-13T08:22:56.169Z"
-    },
-    {
-      "id": "d5afa17d-cfa8-4680-8a3a-e92d2f15ea35",
-      "type": "Expense",
-      "amount": "34.9",
-      "category": "Coffee",
-      "notes": "Coffee capsules",
-      "created_at": "2026-08-13T08:22:56.169Z"
-    },
-    {
-      "id": "abfe78f6-970e-4869-973e-af8e65b1b05d",
-      "type": "Expense",
-      "amount": "34.9",
-      "category": "Coffee",
-      "notes": "Coffee capsules",
-      "created_at": "2026-08-13T08:22:56.169Z"
-    },
-    {
-      "id": "a89701e9-ad65-45eb-8ec1-73ebf758cdbf",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Coffee",
-      "notes": "Coffee (Personal)",
-      "created_at": "2026-08-03T14:00:00.000Z"
-    },
-    {
-      "id": "66db7a28-5eb1-48e7-9a03-9c31ce18d067",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Coffee",
-      "notes": "Coffee (Personal)",
-      "created_at": "2026-08-03T14:00:00.000Z"
-    },
-    {
-      "id": "3919b497-7e09-42b2-ac1f-1f76b2543b06",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Coffee",
-      "notes": "Coffee (Personal)",
-      "created_at": "2026-08-03T14:00:00.000Z"
-    },
-    {
-      "id": "6ba8beff-193b-42cf-94d5-7e6c3a45bde6",
-      "type": "Expense",
-      "amount": "7.00",
-      "category": "Coffee",
-      "notes": "Boca Oracle Coffee",
-      "created_at": "2026-08-03T11:00:00.000Z"
-    },
-    {
-      "id": "568f4935-481a-4a2a-a646-b1e210ce12b0",
-      "type": "Expense",
-      "amount": "7.00",
-      "category": "Coffee",
-      "notes": "Boca Oracle Coffee",
-      "created_at": "2026-08-03T11:00:00.000Z"
-    },
-    {
-      "id": "6bb867df-1c06-4935-a7c2-30acf6e3bf12",
-      "type": "Expense",
-      "amount": "7.00",
-      "category": "Coffee",
-      "notes": "Boca Oracle Coffee",
-      "created_at": "2026-08-03T11:00:00.000Z"
-    },
-    {
-      "id": "2462ea4f-6fbd-480e-91df-b3ecb8ef76ab",
-      "type": "Expense",
-      "amount": "14.00",
-      "category": "Coffee",
-      "notes": "Boca Oracle Coffee",
-      "created_at": "2026-08-03T10:00:00.000Z"
-    },
-    {
-      "id": "9d34093a-ea18-4ff4-969c-0e9d3bd9f380",
-      "type": "Expense",
-      "amount": "14.00",
-      "category": "Coffee",
-      "notes": "Boca Oracle Coffee",
-      "created_at": "2026-08-03T10:00:00.000Z"
-    },
-    {
-      "id": "01a85353-49a4-4788-8c0c-f7e92c25900d",
-      "type": "Expense",
-      "amount": "14.00",
-      "category": "Coffee",
-      "notes": "Boca Oracle Coffee",
-      "created_at": "2026-08-03T10:00:00.000Z"
-    },
-    {
-      "id": "dd54d5d9-5323-445b-ab9f-81880b30083f",
-      "type": "Expense",
-      "amount": "26.00",
-      "category": "Coffee",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-03T08:00:00.000Z"
-    },
-    {
-      "id": "3f7df799-1e82-401f-92dc-69ee52cf70e0",
-      "type": "Expense",
-      "amount": "26.00",
-      "category": "Coffee",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-03T08:00:00.000Z"
-    },
-    {
-      "id": "40e4788f-7758-42f5-8041-6e108b4d7d1a",
-      "type": "Expense",
-      "amount": "26.00",
-      "category": "Coffee",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-03T08:00:00.000Z"
-    },
-    {
-      "id": "4bb5dcde-bf50-4e54-8656-8fb12a3846fc",
-      "type": "Expense",
-      "amount": "14.00",
-      "category": "Coffee",
-      "notes": "McCafé",
-      "created_at": "2026-08-02T11:00:00.000Z"
-    },
-    {
-      "id": "2518c4cb-8abc-494f-95d9-9be1a680cc03",
-      "type": "Expense",
-      "amount": "14.00",
-      "category": "Coffee",
-      "notes": "McCafé",
-      "created_at": "2026-08-02T11:00:00.000Z"
-    },
-    {
-      "id": "3dc1e910-e017-478f-b8d2-d8534572870f",
-      "type": "Expense",
-      "amount": "14.00",
-      "category": "Coffee",
-      "notes": "McCafé",
-      "created_at": "2026-08-02T11:00:00.000Z"
-    },
-    {
-      "id": "11a4127a-b119-4acf-974d-5e69d94804f6",
-      "type": "Expense",
-      "amount": "15.00",
-      "category": "Coffee",
-      "notes": "Coffee",
-      "created_at": "2026-08-02T10:00:00.000Z"
-    },
-    {
-      "id": "bee3a497-f46e-463e-8eaf-ad8c2b6285bb",
-      "type": "Expense",
-      "amount": "15.00",
-      "category": "Coffee",
-      "notes": "Coffee",
-      "created_at": "2026-08-02T10:00:00.000Z"
-    },
-    {
-      "id": "4aab9630-1258-43a0-943d-9dbf5ea6b484",
-      "type": "Expense",
-      "amount": "15.00",
-      "category": "Coffee",
-      "notes": "Coffee",
-      "created_at": "2026-08-02T10:00:00.000Z"
-    }
-  ],
-  "Debt Repayment": [
-    {
-      "id": "c0ff3f59-7149-4664-94e1-faf03246162c",
-      "type": "Expense",
-      "amount": "10.00",
-      "category": "Debt Repayment",
-      "notes": "Clothes Repayment",
-      "created_at": "2026-08-05T08:00:00.000Z"
-    },
-    {
-      "id": "9be361ae-023c-49c9-a7fa-5302f9e94463",
-      "type": "Expense",
-      "amount": "10.00",
-      "category": "Debt Repayment",
-      "notes": "Clothes Repayment",
-      "created_at": "2026-08-05T08:00:00.000Z"
-    },
-    {
-      "id": "5e60e7c4-04f4-4403-b5a2-a1ccea232ab3",
-      "type": "Expense",
-      "amount": "10.00",
-      "category": "Debt Repayment",
-      "notes": "Clothes Repayment",
-      "created_at": "2026-08-05T08:00:00.000Z"
-    },
-    {
-      "id": "91325d7a-4a83-454e-8da9-39336a71c60f",
-      "type": "Expense",
-      "amount": "2100.00",
-      "category": "Debt Repayment",
-      "notes": "Yassmine Amrani (Loan Repayment)",
-      "created_at": "2026-08-02T09:00:00.000Z"
-    },
-    {
-      "id": "ee102d7e-465b-4461-8f7b-c26b38cba5d6",
-      "type": "Expense",
-      "amount": "2100.00",
-      "category": "Debt Repayment",
-      "notes": "Yassmine Amrani (Loan Repayment)",
-      "created_at": "2026-08-02T09:00:00.000Z"
-    },
-    {
-      "id": "2bf897e0-3572-453f-a409-02226d4420b7",
-      "type": "Expense",
-      "amount": "2100.00",
-      "category": "Debt Repayment",
-      "notes": "Yassmine Amrani (Loan Repayment)",
-      "created_at": "2026-08-02T09:00:00.000Z"
-    }
-  ],
-  "Entertainment": [
-    {
-      "id": "522e951b-914b-4efc-9ec8-9c424a9c40fa",
-      "type": "Expense",
-      "amount": "26.00",
-      "category": "Entertainment",
-      "notes": "Chips & Water (Cinema)",
-      "created_at": "2026-08-04T18:00:00.000Z"
-    },
-    {
-      "id": "60dc9f4f-1fbe-41df-a71d-e9012b0ccc7a",
-      "type": "Expense",
-      "amount": "26.00",
-      "category": "Entertainment",
-      "notes": "Chips & Water (Cinema)",
-      "created_at": "2026-08-04T18:00:00.000Z"
-    },
-    {
-      "id": "6d771191-0aa8-4975-8edc-ee7905081820",
-      "type": "Expense",
-      "amount": "26.00",
-      "category": "Entertainment",
-      "notes": "Chips & Water (Cinema)",
-      "created_at": "2026-08-04T18:00:00.000Z"
-    },
-    {
-      "id": "9ca6c6aa-2ff8-49d2-a784-9cf2e77364f9",
-      "type": "Expense",
-      "amount": "127.00",
-      "category": "Entertainment",
-      "notes": "Cinema (Spider-Man) (50 Personal + 77 Social)",
-      "created_at": "2026-08-03T15:00:00.000Z"
-    },
-    {
-      "id": "1aa1365b-c226-4184-9886-a2e408cd8aa1",
-      "type": "Expense",
-      "amount": "127.00",
-      "category": "Entertainment",
-      "notes": "Cinema (Spider-Man) (50 Personal + 77 Social)",
-      "created_at": "2026-08-03T15:00:00.000Z"
-    },
-    {
-      "id": "073d30a3-8e0e-4173-b809-5eb8ab6d01e2",
-      "type": "Expense",
-      "amount": "127.00",
-      "category": "Entertainment",
-      "notes": "Cinema (Spider-Man) (50 Personal + 77 Social)",
-      "created_at": "2026-08-03T15:00:00.000Z"
-    }
-  ],
-  "Family": [
-    {
-      "id": "7978478f-a64d-4a0e-b74d-2ab2d40e4b46",
+      "id": "bb105d80-36e0-4c07-9ce4-dce5be6ea4da",
       "type": "Income",
-      "amount": "5",
-      "category": "Family",
-      "notes": "Mom gave cash",
-      "created_at": "2026-08-16T11:00:00.000Z"
-    },
-    {
-      "id": "292ffa7e-8776-4351-a2e2-57f16e608261",
-      "type": "Expense",
-      "amount": "15",
-      "category": "Family",
-      "notes": "Ice-cream ",
-      "created_at": "2026-08-14T11:00:00.000Z"
-    },
-    {
-      "id": "2b6a08ab-01df-4857-8806-ca89969bfb25",
-      "type": "Expense",
-      "amount": "15",
-      "category": "Family",
-      "notes": "Ice-cream ",
-      "created_at": "2026-08-14T11:00:00.000Z"
-    },
-    {
-      "id": "6058f188-5a80-4e78-b30b-d6592163ff95",
-      "type": "Expense",
-      "amount": "15",
-      "category": "Family",
-      "notes": "Ice-cream ",
-      "created_at": "2026-08-14T11:00:00.000Z"
-    },
-    {
-      "id": "eae2dea1-f1a8-44b0-a6ef-c9f30323f29f",
-      "type": "Expense",
-      "amount": "30",
-      "category": "Family",
-      "notes": "Gift to mom",
-      "created_at": "2026-08-14T10:02:21.533Z"
-    },
-    {
-      "id": "c714408a-18da-433e-a985-8a232837b173",
-      "type": "Expense",
-      "amount": "30",
-      "category": "Family",
-      "notes": "Gift to mom",
-      "created_at": "2026-08-14T10:02:21.533Z"
-    },
-    {
-      "id": "1227b005-00dd-41cc-8d0c-75197b071315",
-      "type": "Expense",
-      "amount": "30",
-      "category": "Family",
-      "notes": "Gift to mom",
-      "created_at": "2026-08-14T10:02:21.533Z"
-    },
-    {
-      "id": "a7613cf0-1f8e-468b-ba6e-af79415fba55",
-      "type": "Expense",
-      "amount": "138",
-      "category": "Family",
-      "notes": "Shawarma (Dinner)",
-      "created_at": "2026-08-02T11:00:00.000Z"
-    },
-    {
-      "id": "5d8726be-2bf0-4c99-853e-eadf9bf5c05c",
-      "type": "Expense",
-      "amount": "138",
-      "category": "Family",
-      "notes": "Shawarma (Dinner)",
-      "created_at": "2026-08-02T11:00:00.000Z"
-    },
-    {
-      "id": "f168572f-3335-4b2a-9bc8-cae1f5924fd3",
-      "type": "Expense",
-      "amount": "138",
-      "category": "Family",
-      "notes": "Shawarma (Dinner)",
-      "created_at": "2026-08-02T11:00:00.000Z"
-    },
-    {
-      "id": "3eeb1b96-5c5c-4f55-aedb-13c010db9584",
-      "type": "Expense",
-      "amount": "50.00",
-      "category": "Family",
-      "notes": "Cash to Mom",
-      "created_at": "2026-08-01T16:00:00.000Z"
-    },
-    {
-      "id": "f4049950-0f39-44fc-a038-1170f1e3d633",
-      "type": "Expense",
-      "amount": "50.00",
-      "category": "Family",
-      "notes": "Cash to Mom",
-      "created_at": "2026-08-01T16:00:00.000Z"
-    },
-    {
-      "id": "b66e5ecd-e321-4b2f-8e2a-502c39951fc6",
-      "type": "Expense",
-      "amount": "50.00",
-      "category": "Family",
-      "notes": "Cash to Mom",
-      "created_at": "2026-08-01T16:00:00.000Z"
-    }
-  ],
-  "Food": [
-    {
-      "id": "b441e02e-1558-4772-bffc-e17169540261",
-      "type": "Expense",
-      "amount": "57.00",
-      "category": "Food",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-03T13:00:00.000Z"
-    },
-    {
-      "id": "ceaa4e04-ce93-4a84-ba92-6511eb7d6f0a",
-      "type": "Expense",
-      "amount": "57.00",
-      "category": "Food",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-03T13:00:00.000Z"
-    },
-    {
-      "id": "bd3d83ff-da8f-4766-a10c-1d34896487f8",
-      "type": "Expense",
-      "amount": "57.00",
-      "category": "Food",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-03T13:00:00.000Z"
-    },
-    {
-      "id": "f5c5b0ad-3b75-4b1a-832f-06a426b7c16f",
-      "type": "Expense",
-      "amount": "26.00",
-      "category": "Food",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-03T12:00:00.000Z"
-    },
-    {
-      "id": "c3319169-5823-4472-8b5a-fd8f4a869d39",
-      "type": "Expense",
-      "amount": "26.00",
-      "category": "Food",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-03T12:00:00.000Z"
-    },
-    {
-      "id": "1d1cfedf-2198-442a-802e-32bda5e804a5",
-      "type": "Expense",
-      "amount": "26.00",
-      "category": "Food",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-03T12:00:00.000Z"
-    },
-    {
-      "id": "2f681315-1f5e-477c-9e8d-5fa2c211f946",
-      "type": "Expense",
-      "amount": "21.00",
-      "category": "Food",
-      "notes": "McDo Mohammed V",
-      "created_at": "2026-08-03T09:00:00.000Z"
-    },
-    {
-      "id": "404cd309-2eac-42eb-94ce-a2d0d7d9f8c1",
-      "type": "Expense",
-      "amount": "21.00",
-      "category": "Food",
-      "notes": "McDo Mohammed V",
-      "created_at": "2026-08-03T09:00:00.000Z"
-    },
-    {
-      "id": "09c5d13f-fdde-4722-8c4f-e8821df8a195",
-      "type": "Expense",
-      "amount": "21.00",
-      "category": "Food",
-      "notes": "McDo Mohammed V",
-      "created_at": "2026-08-03T09:00:00.000Z"
-    },
-    {
-      "id": "75cfd317-3f42-4acf-a5f6-fc5851149bb4",
-      "type": "Expense",
-      "amount": "35.00",
-      "category": "Food",
-      "notes": "Ben Pause Gourm",
-      "created_at": "2026-08-02T15:00:00.000Z"
-    },
-    {
-      "id": "33be979f-223e-4392-be04-249c01537e1c",
-      "type": "Expense",
-      "amount": "35.00",
-      "category": "Food",
-      "notes": "Ben Pause Gourm",
-      "created_at": "2026-08-02T15:00:00.000Z"
-    },
-    {
-      "id": "891ac25f-0777-46fd-b533-8c1f71054f69",
-      "type": "Expense",
-      "amount": "35.00",
-      "category": "Food",
-      "notes": "Ben Pause Gourm",
-      "created_at": "2026-08-02T15:00:00.000Z"
-    },
-    {
-      "id": "b7cb9274-f954-4964-850f-4b23075a29b7",
-      "type": "Expense",
-      "amount": "72.00",
-      "category": "Food",
-      "notes": "McDonalds",
-      "created_at": "2026-08-01T15:00:00.000Z"
-    },
-    {
-      "id": "21337448-1daf-48c1-9033-3ec0d35f2fc6",
-      "type": "Expense",
-      "amount": "72.00",
-      "category": "Food",
-      "notes": "McDonalds",
-      "created_at": "2026-08-01T15:00:00.000Z"
-    },
-    {
-      "id": "30fb3fbf-ed3a-4773-8f33-8a3b7aa0a64e",
-      "type": "Expense",
-      "amount": "72.00",
-      "category": "Food",
-      "notes": "McDonalds",
-      "created_at": "2026-08-01T15:00:00.000Z"
-    }
-  ],
-  "Food & Dining": [
-    {
-      "id": "0add0f1d-1579-45cd-a00b-036fa974a9a5",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Juice purchase",
-      "created_at": "2026-08-19T11:00:00.000Z"
-    },
-    {
-      "id": "da92849b-d906-46d1-9b22-5106913bddae",
-      "type": "Expense",
-      "amount": "14",
-      "category": "Food & Dining",
-      "notes": "Juice from Boca Oracle",
-      "created_at": "2026-08-18T11:00:00.000Z"
-    },
-    {
-      "id": "8db4d6d1-d234-4415-8824-7f8e402b7dac",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Boca Oracle juice",
-      "created_at": "2026-08-17T11:00:00.000Z"
-    },
-    {
-      "id": "0a6aa13d-d024-4d19-be15-2804f145da49",
-      "type": "Expense",
-      "amount": "24.25",
-      "category": "Food & Dining",
-      "notes": "Snacks",
-      "created_at": "2026-08-17T11:00:00.000Z"
-    },
-    {
-      "id": "055eb24b-dab8-49cf-a7f4-471675ed094e",
-      "type": "Expense",
       "amount": "20",
-      "category": "Food & Dining",
-      "notes": "Snacks",
-      "created_at": "2026-08-15T11:00:00.000Z"
+      "category": "💳 Debt & Obligations",
+      "notes": "Settlement for Mom",
+      "created_at": "2026-08-21T11:00:00.000Z"
     },
     {
-      "id": "ade87f07-fbed-45de-9f47-76090c42a8de",
-      "type": "Expense",
-      "amount": "5",
-      "category": "Food & Dining",
-      "notes": null,
-      "created_at": "2026-08-14T11:00:00.000Z"
-    },
-    {
-      "id": "a0bea6a4-2e14-482d-8d5f-2886a7f6bae4",
-      "type": "Expense",
-      "amount": "5",
-      "category": "Food & Dining",
-      "notes": null,
-      "created_at": "2026-08-14T11:00:00.000Z"
-    },
-    {
-      "id": "178f2591-559b-4b15-b932-1dba19ae0972",
-      "type": "Expense",
-      "amount": "5",
-      "category": "Food & Dining",
-      "notes": null,
-      "created_at": "2026-08-14T11:00:00.000Z"
-    },
-    {
-      "id": "5289aa06-74be-4b4a-98fd-6233c89e898d",
-      "type": "Expense",
-      "amount": "21",
-      "category": "Food & Dining",
-      "notes": "Pringles snack",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "18f77d91-21a2-40af-a280-83f10d53f6ff",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Boca Oracle juice",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "21d53c4d-136c-4527-b958-5d6c4510181a",
-      "type": "Expense",
-      "amount": "21",
-      "category": "Food & Dining",
-      "notes": "Pringles snack",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "b486b607-1a51-4afb-bd36-001010b2baa0",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Boca Oracle juice",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "ec2d7b09-6831-4a97-8504-16cef1fa1233",
-      "type": "Expense",
-      "amount": "21",
-      "category": "Food & Dining",
-      "notes": "Pringles snack",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "c573b8f5-a8de-49b5-bd87-a85c44357b8d",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Boca Oracle juice",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "82893481-a9b3-4a91-8996-7828453c5b8a",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Juice in Boca Oracle",
-      "created_at": "2026-08-12T10:33:06.487Z"
-    },
-    {
-      "id": "8b4d363e-2dd7-406d-8423-9a80cb568a4a",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Juice in Boca Oracle",
-      "created_at": "2026-08-12T10:33:06.487Z"
-    },
-    {
-      "id": "643be412-1637-4e46-a001-b54e762e8228",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Juice in Boca Oracle",
-      "created_at": "2026-08-12T10:33:06.487Z"
-    },
-    {
-      "id": "e053fc7c-dd09-4faf-bfe7-e331279fba0e",
-      "type": "Expense",
-      "amount": "22",
-      "category": "Food & Dining",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-11T11:00:00.000Z"
-    },
-    {
-      "id": "d1be7b44-97d4-4636-b435-95bcaca249b1",
-      "type": "Expense",
-      "amount": "17",
-      "category": "Food & Dining",
-      "notes": "Biscuit ",
-      "created_at": "2026-08-11T11:00:00.000Z"
-    },
-    {
-      "id": "e08e72ee-3391-4346-9d55-811a77f43b42",
-      "type": "Expense",
-      "amount": "22",
-      "category": "Food & Dining",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-11T11:00:00.000Z"
-    },
-    {
-      "id": "c79bb6e3-1610-4e33-b3c1-d2f81fad2fb4",
-      "type": "Expense",
-      "amount": "17",
-      "category": "Food & Dining",
-      "notes": "Biscuit ",
-      "created_at": "2026-08-11T11:00:00.000Z"
-    },
-    {
-      "id": "5f2502c8-c305-4337-ba8a-6689f2484931",
-      "type": "Expense",
-      "amount": "17",
-      "category": "Food & Dining",
-      "notes": "Biscuit ",
-      "created_at": "2026-08-11T11:00:00.000Z"
-    },
-    {
-      "id": "56dd20a2-0646-4469-a7d9-2d523b886b86",
-      "type": "Expense",
-      "amount": "22",
-      "category": "Food & Dining",
-      "notes": "Boca Oracle",
-      "created_at": "2026-08-11T11:00:00.000Z"
-    },
-    {
-      "id": "f785f31b-811e-45c7-acb9-d7426fce0acd",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Boca Oracle ",
-      "created_at": "2026-08-10T11:00:00.000Z"
-    },
-    {
-      "id": "f21018e3-65e1-4307-b336-14c27f944f70",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Boca Oracle ",
-      "created_at": "2026-08-10T11:00:00.000Z"
-    },
-    {
-      "id": "6e67066f-0d39-481f-bb80-41b658d489c6",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Boca Oracle ",
-      "created_at": "2026-08-10T11:00:00.000Z"
-    },
-    {
-      "id": "2f20022e-889f-4e12-a6ad-e288092dd941",
-      "type": "Expense",
-      "amount": "35",
-      "category": "Food & Dining",
-      "notes": "Lunch ",
-      "created_at": "2026-08-09T11:00:00.000Z"
-    },
-    {
-      "id": "12b7d7e0-548f-49d6-bf8f-959e51719259",
-      "type": "Expense",
-      "amount": "35",
-      "category": "Food & Dining",
-      "notes": "Lunch ",
-      "created_at": "2026-08-09T11:00:00.000Z"
-    },
-    {
-      "id": "51c71b9b-bf0a-44a9-b62e-d793d8a5b9d9",
-      "type": "Expense",
-      "amount": "35",
-      "category": "Food & Dining",
-      "notes": "Lunch ",
-      "created_at": "2026-08-09T11:00:00.000Z"
-    },
-    {
-      "id": "285d9eee-b6cb-4449-9588-c19fc7508113",
-      "type": "Expense",
-      "amount": "45",
-      "category": "Food & Dining",
-      "notes": "Shawarma",
-      "created_at": "2026-08-08T11:00:00.000Z"
-    },
-    {
-      "id": "8e334a7d-99cf-4b98-90da-1ac78af62aaa",
-      "type": "Expense",
-      "amount": "20",
-      "category": "Food & Dining",
-      "notes": "Soda + ice-cream ",
-      "created_at": "2026-08-08T11:00:00.000Z"
-    },
-    {
-      "id": "c859b72f-fe40-4b22-bdf1-832edad4444c",
-      "type": "Expense",
-      "amount": "45",
-      "category": "Food & Dining",
-      "notes": "Shawarma",
-      "created_at": "2026-08-08T11:00:00.000Z"
-    },
-    {
-      "id": "1107dd5a-7f8b-45c9-965e-1a3860d56d2d",
-      "type": "Expense",
-      "amount": "20",
-      "category": "Food & Dining",
-      "notes": "Soda + ice-cream ",
-      "created_at": "2026-08-08T11:00:00.000Z"
-    },
-    {
-      "id": "e87a8b86-e1fd-414a-95aa-196f422cb35e",
-      "type": "Expense",
-      "amount": "45",
-      "category": "Food & Dining",
-      "notes": "Shawarma",
-      "created_at": "2026-08-08T11:00:00.000Z"
-    },
-    {
-      "id": "f68b1262-b7c8-4f96-bb88-0764817623d5",
-      "type": "Expense",
-      "amount": "20",
-      "category": "Food & Dining",
-      "notes": "Soda + ice-cream ",
-      "created_at": "2026-08-08T11:00:00.000Z"
-    },
-    {
-      "id": "8ebe2b9a-07cd-4ef5-aecc-4d498c171b00",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Macdonalds (sundae)",
-      "created_at": "2026-08-07T11:00:00.000Z"
-    },
-    {
-      "id": "ce81e7cc-7606-46a1-a05e-ba78fb4b40a1",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Macdonalds (sundae)",
-      "created_at": "2026-08-07T11:00:00.000Z"
-    },
-    {
-      "id": "fce337bd-b0f3-413c-8486-0269457bb4e4",
-      "type": "Expense",
-      "amount": "12",
-      "category": "Food & Dining",
-      "notes": "Macdonalds (sundae)",
-      "created_at": "2026-08-07T11:00:00.000Z"
-    }
-  ],
-  "Gift": [
-    {
-      "id": "fc260807-2a9a-405c-bd35-95818216935b",
+      "id": "e327b1e4-4312-4bd4-a044-3ea7a9c5b827",
       "type": "Income",
-      "amount": "10.00",
-      "category": "Gift",
-      "notes": "Sister - Cash gift / help",
-      "created_at": "2026-08-01T10:00:00.000Z"
-    },
-    {
-      "id": "da00a47a-4dd0-4445-b281-225fb3e40882",
-      "type": "Income",
-      "amount": "10.00",
-      "category": "Gift",
-      "notes": "Sister - Cash gift / help",
-      "created_at": "2026-08-01T10:00:00.000Z"
-    },
-    {
-      "id": "f02a04d5-3f46-48fc-a50e-71627acd5411",
-      "type": "Income",
-      "amount": "10.00",
-      "category": "Gift",
-      "notes": "Sister - Cash gift / help",
-      "created_at": "2026-08-01T10:00:00.000Z"
-    }
-  ],
-  "Groceries": [
-    {
-      "id": "5fa5ec28-4ece-49c7-9708-13e3da7c5972",
-      "type": "Expense",
-      "amount": "10.9",
-      "category": "Groceries",
-      "notes": "bottle of water",
-      "created_at": "2026-08-17T11:00:00.000Z"
-    },
-    {
-      "id": "ed885bba-73dd-40aa-a379-f6276a0080ba",
-      "type": "Expense",
-      "amount": "15",
-      "category": "Groceries",
-      "notes": null,
-      "created_at": "2026-08-16T11:00:00.000Z"
-    },
-    {
-      "id": "28558e22-c883-49c3-bc73-9724378a5d7c",
-      "type": "Expense",
-      "amount": "6",
-      "category": "Groceries",
-      "notes": "Bread",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "86d52590-ac55-4e4f-b829-ee65fac62506",
-      "type": "Expense",
-      "amount": "18",
-      "category": "Groceries",
-      "notes": "Kitchen trash plastic bags",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "e9c3ad77-541f-4025-bfc3-3e0c8af7280d",
-      "type": "Expense",
-      "amount": "6",
-      "category": "Groceries",
-      "notes": "Bread",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "ebfaa407-4951-4c1a-a13f-9a407eba9c52",
-      "type": "Expense",
-      "amount": "18",
-      "category": "Groceries",
-      "notes": "Kitchen trash plastic bags",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "7d84f6fc-3e38-4828-936f-c87d32866dc5",
-      "type": "Expense",
-      "amount": "18",
-      "category": "Groceries",
-      "notes": "Kitchen trash plastic bags",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "8bec8d6c-4da0-4918-ae7d-04f29a4867f4",
-      "type": "Expense",
-      "amount": "6",
-      "category": "Groceries",
-      "notes": "Bread",
-      "created_at": "2026-08-13T11:00:00.000Z"
-    },
-    {
-      "id": "e0b7068e-9b2a-47fa-b09f-01f4e19bb64c",
-      "type": "Expense",
-      "amount": "20.65",
-      "category": "Groceries",
-      "notes": "Marjane (Soap, water, drinks)",
-      "created_at": "2026-08-06T19:00:00.000Z"
-    },
-    {
-      "id": "e7208374-3eef-4eb9-b88f-51dfd653dffa",
-      "type": "Expense",
-      "amount": "20.65",
-      "category": "Groceries",
-      "notes": "Marjane (Soap, water, drinks)",
-      "created_at": "2026-08-06T19:00:00.000Z"
-    },
-    {
-      "id": "3d4d3800-553d-46cd-9533-bedffa6b798e",
-      "type": "Expense",
-      "amount": "20.65",
-      "category": "Groceries",
-      "notes": "Marjane (Soap, water, drinks)",
-      "created_at": "2026-08-06T19:00:00.000Z"
-    },
-    {
-      "id": "9e2c150d-d34c-4a52-8df7-1ba296a26a22",
-      "type": "Expense",
-      "amount": "105.00",
-      "category": "Groceries",
-      "notes": "Supermarket (14 Biscuits + 91 Cat supplies - Reimbursed)",
-      "created_at": "2026-08-03T16:00:00.000Z"
-    },
-    {
-      "id": "fed54e3d-b8c3-4f66-b82e-bb8c486325fd",
-      "type": "Expense",
-      "amount": "105.00",
-      "category": "Groceries",
-      "notes": "Supermarket (14 Biscuits + 91 Cat supplies - Reimbursed)",
-      "created_at": "2026-08-03T16:00:00.000Z"
-    },
-    {
-      "id": "aa2c773e-0fc1-4d72-a023-aed4700f6a17",
-      "type": "Expense",
-      "amount": "105.00",
-      "category": "Groceries",
-      "notes": "Supermarket (14 Biscuits + 91 Cat supplies - Reimbursed)",
-      "created_at": "2026-08-03T16:00:00.000Z"
-    },
-    {
-      "id": "9f327afe-0b84-4c60-a3a1-ef9deb231cf2",
-      "type": "Expense",
-      "amount": "196.05",
-      "category": "Groceries",
-      "notes": "Marjane Bouskoura",
-      "created_at": "2026-08-02T10:00:00.000Z"
-    },
-    {
-      "id": "460dbf0a-a5cc-4003-954f-7bb3d0b1ca66",
-      "type": "Expense",
-      "amount": "196.05",
-      "category": "Groceries",
-      "notes": "Marjane Bouskoura",
-      "created_at": "2026-08-02T10:00:00.000Z"
-    },
-    {
-      "id": "ee42976e-1cef-4bf5-bb31-86b19dd1f40a",
-      "type": "Expense",
-      "amount": "196.05",
-      "category": "Groceries",
-      "notes": "Marjane Bouskoura",
-      "created_at": "2026-08-02T10:00:00.000Z"
-    },
-    {
-      "id": "43fc3dff-6994-460e-9b88-1a13d2f9989f",
-      "type": "Expense",
-      "amount": "50.00",
-      "category": "Groceries",
-      "notes": "Chicken",
-      "created_at": "2026-08-01T17:00:00.000Z"
-    },
-    {
-      "id": "66694a30-e25f-4bcf-8fb4-f1922d8ae44d",
-      "type": "Expense",
-      "amount": "50.00",
-      "category": "Groceries",
-      "notes": "Chicken",
-      "created_at": "2026-08-01T17:00:00.000Z"
-    },
-    {
-      "id": "c6739482-6bcd-4983-b72f-c06b2573f1b4",
-      "type": "Expense",
-      "amount": "50.00",
-      "category": "Groceries",
-      "notes": "Chicken",
-      "created_at": "2026-08-01T17:00:00.000Z"
-    }
-  ],
-  "Grooming": [
-    {
-      "id": "ae3ff5d8-f7e5-4e5b-8f88-045cf073507b",
-      "type": "Expense",
-      "amount": "10.00",
-      "category": "Grooming",
-      "notes": "Barbershop (3)",
-      "created_at": "2026-08-06T11:00:00.000Z"
-    },
-    {
-      "id": "76b6b004-165f-40b0-8023-f41f0e8c4da6",
-      "type": "Expense",
-      "amount": "10.00",
-      "category": "Grooming",
-      "notes": "Barbershop (3)",
-      "created_at": "2026-08-06T11:00:00.000Z"
-    },
-    {
-      "id": "d9320f84-6740-4429-859e-68a060bc226b",
-      "type": "Expense",
-      "amount": "10.00",
-      "category": "Grooming",
-      "notes": "Barbershop (3)",
-      "created_at": "2026-08-06T11:00:00.000Z"
-    },
-    {
-      "id": "70ccdecd-79ff-45ef-94f7-5a7a2e1a156c",
-      "type": "Expense",
       "amount": "20.00",
-      "category": "Grooming",
-      "notes": "Barbershop (2)",
-      "created_at": "2026-08-02T13:00:00.000Z"
+      "category": "💳 Debt & Obligations",
+      "notes": "Friend - Partial reimbursement for Saturday beach lunch",
+      "created_at": "2026-08-05T09:00:00.000Z"
     },
-    {
-      "id": "15ca4b7f-8293-4185-afbd-78b73474632f",
-      "type": "Expense",
-      "amount": "20.00",
-      "category": "Grooming",
-      "notes": "Barbershop (2)",
-      "created_at": "2026-08-02T13:00:00.000Z"
-    },
-    {
-      "id": "e77cc901-967a-4aaa-8cfd-8a9d69e02fff",
-      "type": "Expense",
-      "amount": "20.00",
-      "category": "Grooming",
-      "notes": "Barbershop (2)",
-      "created_at": "2026-08-02T13:00:00.000Z"
-    },
-    {
-      "id": "5789c7e1-0383-441a-b59e-9b729090126c",
-      "type": "Expense",
-      "amount": "45.00",
-      "category": "Grooming",
-      "notes": "Barbershop (1)",
-      "created_at": "2026-08-01T18:00:00.000Z"
-    },
-    {
-      "id": "fd2cd31f-fe36-460c-b1eb-63cb073c8532",
-      "type": "Expense",
-      "amount": "45.00",
-      "category": "Grooming",
-      "notes": "Barbershop (1)",
-      "created_at": "2026-08-01T18:00:00.000Z"
-    },
-    {
-      "id": "ada5b975-87a3-426d-b415-19d513a6ede0",
-      "type": "Expense",
-      "amount": "45.00",
-      "category": "Grooming",
-      "notes": "Barbershop (1)",
-      "created_at": "2026-08-01T18:00:00.000Z"
-    }
-  ],
-  "Medical": [
-    {
-      "id": "51e8a22b-40f5-4cde-9400-76229f9f350d",
-      "type": "Expense",
-      "amount": "600",
-      "category": "Medical",
-      "notes": "Doctor, radiology, and medicines",
-      "created_at": "2026-08-06T11:00:00.000Z"
-    },
-    {
-      "id": "8ad3e9f4-50cf-456c-bef8-197df0016f5f",
-      "type": "Expense",
-      "amount": "600",
-      "category": "Medical",
-      "notes": "Doctor, radiology, and medicines",
-      "created_at": "2026-08-06T11:00:00.000Z"
-    },
-    {
-      "id": "817894b2-a28e-4fdc-b2d7-1d4ac8a5412a",
-      "type": "Expense",
-      "amount": "622.99",
-      "category": "Medical",
-      "notes": "Doctor, radiology, and medicines",
-      "created_at": "2026-08-06T11:00:00.000Z"
-    },
-    {
-      "id": "0ebc3510-e36e-486b-8150-fcbb2ce28cb2",
-      "type": "Expense",
-      "amount": "22.99",
-      "category": "Medical",
-      "notes": "",
-      "created_at": "2026-08-05T11:00:00.000Z"
-    },
-    {
-      "id": "889d2560-c2da-4e8a-a0f3-fbf2d33f8183",
-      "type": "Expense",
-      "amount": "22.99",
-      "category": "Medical",
-      "notes": "",
-      "created_at": "2026-08-05T11:00:00.000Z"
-    }
-  ],
-  "Reimbursement": [
     {
       "id": "43176fdc-4f6b-4676-b7e0-c2aa0435d3d3",
       "type": "Income",
       "amount": "20.00",
-      "category": "Reimbursement",
+      "category": "💳 Debt & Obligations",
       "notes": "Friend - Partial reimbursement for Saturday beach lunch",
       "created_at": "2026-08-05T09:00:00.000Z"
     },
@@ -1144,301 +28,79 @@
       "id": "8c07052e-074e-4f32-ab34-a435d98a1981",
       "type": "Income",
       "amount": "20.00",
-      "category": "Reimbursement",
+      "category": "💳 Debt & Obligations",
       "notes": "Friend - Partial reimbursement for Saturday beach lunch",
       "created_at": "2026-08-05T09:00:00.000Z"
     },
     {
-      "id": "e327b1e4-4312-4bd4-a044-3ea7a9c5b827",
-      "type": "Income",
-      "amount": "20.00",
-      "category": "Reimbursement",
-      "notes": "Friend - Partial reimbursement for Saturday beach lunch",
-      "created_at": "2026-08-05T09:00:00.000Z"
-    },
-    {
-      "id": "cbe7dfeb-c973-442f-a4f5-87dac0a279a0",
+      "id": "d486e60e-8b3c-439a-8fae-4c5430f8c3b6",
       "type": "Income",
       "amount": "100.00",
-      "category": "Reimbursement",
+      "category": "💳 Debt & Obligations",
       "notes": "Friend - Reimbursement for cat supplies",
+      "created_at": "2026-08-05T08:00:00.000Z"
+    },
+    {
+      "id": "c0ff3f59-7149-4664-94e1-faf03246162c",
+      "type": "Expense",
+      "amount": "10.00",
+      "category": "💳 Debt & Obligations",
+      "notes": "Clothes Repayment",
+      "created_at": "2026-08-05T08:00:00.000Z"
+    },
+    {
+      "id": "5e60e7c4-04f4-4403-b5a2-a1ccea232ab3",
+      "type": "Expense",
+      "amount": "10.00",
+      "category": "💳 Debt & Obligations",
+      "notes": "Clothes Repayment",
+      "created_at": "2026-08-05T08:00:00.000Z"
+    },
+    {
+      "id": "9be361ae-023c-49c9-a7fa-5302f9e94463",
+      "type": "Expense",
+      "amount": "10.00",
+      "category": "💳 Debt & Obligations",
+      "notes": "Clothes Repayment",
       "created_at": "2026-08-05T08:00:00.000Z"
     },
     {
       "id": "5ebf90b6-efc2-4ccc-8b11-5ddab24ec102",
       "type": "Income",
       "amount": "100.00",
-      "category": "Reimbursement",
+      "category": "💳 Debt & Obligations",
       "notes": "Friend - Reimbursement for cat supplies",
       "created_at": "2026-08-05T08:00:00.000Z"
     },
     {
-      "id": "d486e60e-8b3c-439a-8fae-4c5430f8c3b6",
+      "id": "cbe7dfeb-c973-442f-a4f5-87dac0a279a0",
       "type": "Income",
       "amount": "100.00",
-      "category": "Reimbursement",
+      "category": "💳 Debt & Obligations",
       "notes": "Friend - Reimbursement for cat supplies",
       "created_at": "2026-08-05T08:00:00.000Z"
-    }
-  ],
-  "Repayment": [
-    {
-      "id": "94ff77e1-f28a-42ce-8c9e-02bc126d5209",
-      "type": "Income",
-      "amount": "200.00",
-      "category": "Repayment",
-      "notes": "Friend - Loan repayment received in cash",
-      "created_at": "2026-08-01T11:00:00.000Z"
     },
     {
-      "id": "10bcb003-4b4b-4221-bba8-67449f7e640e",
-      "type": "Income",
-      "amount": "200.00",
-      "category": "Repayment",
-      "notes": "Friend - Loan repayment received in cash",
-      "created_at": "2026-08-01T11:00:00.000Z"
-    },
-    {
-      "id": "87f09d57-61f3-4b9c-abf0-d135095b4336",
-      "type": "Income",
-      "amount": "200.00",
-      "category": "Repayment",
-      "notes": "Friend - Loan repayment received in cash",
-      "created_at": "2026-08-01T11:00:00.000Z"
-    },
-    {
-      "id": "9a033da6-c6c7-4eb2-8007-9e285283f0db",
-      "type": "Income",
-      "amount": "100.00",
-      "category": "Repayment",
-      "notes": "Yassmine Amrani - Loan repayment received",
-      "created_at": "2026-08-01T09:00:00.000Z"
-    },
-    {
-      "id": "b2538251-02e2-4553-9365-8b4793b7a697",
-      "type": "Income",
-      "amount": "100.00",
-      "category": "Repayment",
-      "notes": "Yassmine Amrani - Loan repayment received",
-      "created_at": "2026-08-01T09:00:00.000Z"
-    },
-    {
-      "id": "2345c4a9-53e2-46f4-ae35-1c969033f5fc",
-      "type": "Income",
-      "amount": "100.00",
-      "category": "Repayment",
-      "notes": "Yassmine Amrani - Loan repayment received",
-      "created_at": "2026-08-01T09:00:00.000Z"
-    }
-  ],
-  "Salary": [
-    {
-      "id": "cab399c8-3299-4725-8e2a-75a4cb448189",
-      "type": "Income",
-      "amount": "6036.70",
-      "category": "Salary",
-      "notes": "Oracle R&D Center - Salary / Payroll",
-      "created_at": "2026-08-01T08:00:00.000Z"
-    },
-    {
-      "id": "49ebc507-119c-41ff-85cb-fc2657f032fe",
-      "type": "Income",
-      "amount": "6036.70",
-      "category": "Salary",
-      "notes": "Oracle R&D Center - Salary / Payroll",
-      "created_at": "2026-08-01T08:00:00.000Z"
-    },
-    {
-      "id": "608344e7-6fd9-442e-a8ff-4c957f1a2ddb",
-      "type": "Income",
-      "amount": "6036.70",
-      "category": "Salary",
-      "notes": "Oracle R&D Center - Salary / Payroll",
-      "created_at": "2026-08-01T08:00:00.000Z"
-    }
-  ],
-  "Social": [
-    {
-      "id": "a8559752-cf8b-4f9b-9acb-2fb8c014850c",
+      "id": "91325d7a-4a83-454e-8da9-39336a71c60f",
       "type": "Expense",
-      "amount": "6.00",
-      "category": "Social",
-      "notes": "Beach Seller",
-      "created_at": "2026-08-05T13:00:00.000Z"
+      "amount": "2100.00",
+      "category": "💳 Debt & Obligations",
+      "notes": "Yassmine Amrani (Loan Repayment)",
+      "created_at": "2026-08-02T09:00:00.000Z"
     },
     {
-      "id": "ef99af52-1613-403f-b3e2-2ad84282df01",
+      "id": "ee102d7e-465b-4461-8f7b-c26b38cba5d6",
       "type": "Expense",
-      "amount": "6.00",
-      "category": "Social",
-      "notes": "Beach Seller",
-      "created_at": "2026-08-05T13:00:00.000Z"
-    },
-    {
-      "id": "88f56388-cbfb-4ec0-913b-df7fe16b0945",
-      "type": "Expense",
-      "amount": "6.00",
-      "category": "Social",
-      "notes": "Beach Seller",
-      "created_at": "2026-08-05T13:00:00.000Z"
-    },
-    {
-      "id": "7871d1ba-9481-47eb-bd93-c85981de9989",
-      "type": "Expense",
-      "amount": "39.85",
-      "category": "Social",
-      "notes": "Marjane (Beach Snacks) (19.93 Personal + 19.92 Friend)",
-      "created_at": "2026-08-05T11:00:00.000Z"
-    },
-    {
-      "id": "381fc17e-7256-4002-a2dd-dc6a3aeef071",
-      "type": "Expense",
-      "amount": "39.85",
-      "category": "Social",
-      "notes": "Marjane (Beach Snacks) (19.93 Personal + 19.92 Friend)",
-      "created_at": "2026-08-05T11:00:00.000Z"
-    },
-    {
-      "id": "8251cac0-0d32-4e9d-9c28-1f3a2f65d214",
-      "type": "Expense",
-      "amount": "39.85",
-      "category": "Social",
-      "notes": "Marjane (Beach Snacks) (19.93 Personal + 19.92 Friend)",
-      "created_at": "2026-08-05T11:00:00.000Z"
-    },
-    {
-      "id": "22a282d1-7a11-4d84-bf1f-7508f0b5f1b7",
-      "type": "Expense",
-      "amount": "52.30",
-      "category": "Social",
-      "notes": "Marjane (Beach Lunch) (26.15 Personal + 6.15 treated friend + 20 reimbursed)",
-      "created_at": "2026-08-05T10:00:00.000Z"
-    },
-    {
-      "id": "1d81456f-c304-44b8-8a27-4e9547afd07c",
-      "type": "Expense",
-      "amount": "52.30",
-      "category": "Social",
-      "notes": "Marjane (Beach Lunch) (26.15 Personal + 6.15 treated friend + 20 reimbursed)",
-      "created_at": "2026-08-05T10:00:00.000Z"
-    },
-    {
-      "id": "bd4555af-0ed5-4c79-bdf5-ed1c14d1fb26",
-      "type": "Expense",
-      "amount": "52.30",
-      "category": "Social",
-      "notes": "Marjane (Beach Lunch) (26.15 Personal + 6.15 treated friend + 20 reimbursed)",
-      "created_at": "2026-08-05T10:00:00.000Z"
-    },
-    {
-      "id": "eb109fa9-e0d5-4b66-a280-77595667c237",
-      "type": "Expense",
-      "amount": "33.00",
-      "category": "Social",
-      "notes": "Uber (2) from Cinema (16.50 Personal + 16.50 Friend)",
-      "created_at": "2026-08-04T21:00:00.000Z"
-    },
-    {
-      "id": "54a07018-9353-46d7-8964-4469dee47eaa",
-      "type": "Expense",
-      "amount": "33.00",
-      "category": "Social",
-      "notes": "Uber (2) from Cinema (16.50 Personal + 16.50 Friend)",
-      "created_at": "2026-08-04T21:00:00.000Z"
-    },
-    {
-      "id": "b363ee13-41e0-40e9-8aeb-706498a78824",
-      "type": "Expense",
-      "amount": "33.00",
-      "category": "Social",
-      "notes": "Uber (2) from Cinema (16.50 Personal + 16.50 Friend)",
-      "created_at": "2026-08-04T21:00:00.000Z"
-    },
-    {
-      "id": "a71d191d-0f3f-4b32-9d4f-01a6044d48a0",
-      "type": "Expense",
-      "amount": "20.00",
-      "category": "Social",
-      "notes": "Uber (1) to Cinema (10 Personal + 10 Friend)",
-      "created_at": "2026-08-04T17:00:00.000Z"
-    },
-    {
-      "id": "cc37b55e-95ef-4cb3-9b5c-ab5d3a9c0a83",
-      "type": "Expense",
-      "amount": "20.00",
-      "category": "Social",
-      "notes": "Uber (1) to Cinema (10 Personal + 10 Friend)",
-      "created_at": "2026-08-04T17:00:00.000Z"
-    },
-    {
-      "id": "1af56d3a-5874-4b26-8b26-5d58adf5ecdd",
-      "type": "Expense",
-      "amount": "20.00",
-      "category": "Social",
-      "notes": "Uber (1) to Cinema (10 Personal + 10 Friend)",
-      "created_at": "2026-08-04T17:00:00.000Z"
-    },
-    {
-      "id": "785ddc1e-6a06-4637-a59f-ac0a17515826",
-      "type": "Expense",
-      "amount": "54.00",
-      "category": "Social",
-      "notes": "McDo Aeria G-64 (40 friends + 14 personal)",
-      "created_at": "2026-08-02T13:00:00.000Z"
-    },
-    {
-      "id": "08612503-f052-4033-9375-5461820ac19f",
-      "type": "Expense",
-      "amount": "54.00",
-      "category": "Social",
-      "notes": "McDo Aeria G-64 (40 friends + 14 personal)",
-      "created_at": "2026-08-02T13:00:00.000Z"
-    },
-    {
-      "id": "a67f1bdc-774d-453a-9f95-6a572dc3ed72",
-      "type": "Expense",
-      "amount": "54.00",
-      "category": "Social",
-      "notes": "McDo Aeria G-64 (40 friends + 14 personal)",
-      "created_at": "2026-08-02T13:00:00.000Z"
-    },
-    {
-      "id": "d8a7e27c-59d2-428d-9edc-edd8bb5db237",
-      "type": "Expense",
-      "amount": "60.00",
-      "category": "Social",
-      "notes": "McDo Mohammed V (Paid for friends)",
-      "created_at": "2026-08-02T12:00:00.000Z"
-    },
-    {
-      "id": "581f4a81-228a-4d66-9171-3d8e2e10f9e2",
-      "type": "Expense",
-      "amount": "60.00",
-      "category": "Social",
-      "notes": "McDo Mohammed V (Paid for friends)",
-      "created_at": "2026-08-02T12:00:00.000Z"
-    },
-    {
-      "id": "2e7d8bc1-ab2d-4b8c-a283-eb34a6ba2212",
-      "type": "Expense",
-      "amount": "60.00",
-      "category": "Social",
-      "notes": "McDo Mohammed V (Paid for friends)",
-      "created_at": "2026-08-02T12:00:00.000Z"
+      "amount": "2100.00",
+      "category": "💳 Debt & Obligations",
+      "notes": "Yassmine Amrani (Loan Repayment)",
+      "created_at": "2026-08-02T09:00:00.000Z"
     },
     {
       "id": "7e9e4c7b-705a-4b2a-b8ed-e1c30632205b",
       "type": "Expense",
       "amount": "200.00",
-      "category": "Social",
-      "notes": "Loan to friend",
-      "created_at": "2026-08-01T14:00:00.000Z"
-    },
-    {
-      "id": "9d299585-2cf0-41b4-b1e8-4f0f2c16c33b",
-      "type": "Expense",
-      "amount": "200.00",
-      "category": "Social",
+      "category": "💳 Debt & Obligations",
       "notes": "Loan to friend",
       "created_at": "2026-08-01T14:00:00.000Z"
     },
@@ -1446,561 +108,945 @@
       "id": "bc40c53c-3dca-46ec-87c2-a2bc2c542058",
       "type": "Expense",
       "amount": "200.00",
-      "category": "Social",
+      "category": "💳 Debt & Obligations",
       "notes": "Loan to friend",
       "created_at": "2026-08-01T14:00:00.000Z"
+    },
+    {
+      "id": "87f09d57-61f3-4b9c-abf0-d135095b4336",
+      "type": "Income",
+      "amount": "200.00",
+      "category": "💳 Debt & Obligations",
+      "notes": "Friend - Loan repayment received in cash",
+      "created_at": "2026-08-01T11:00:00.000Z"
+    },
+    {
+      "id": "10bcb003-4b4b-4221-bba8-67449f7e640e",
+      "type": "Income",
+      "amount": "200.00",
+      "category": "💳 Debt & Obligations",
+      "notes": "Friend - Loan repayment received in cash",
+      "created_at": "2026-08-01T11:00:00.000Z"
+    },
+    {
+      "id": "94ff77e1-f28a-42ce-8c9e-02bc126d5209",
+      "type": "Income",
+      "amount": "200.00",
+      "category": "💳 Debt & Obligations",
+      "notes": "Friend - Loan repayment received in cash",
+      "created_at": "2026-08-01T11:00:00.000Z"
+    },
+    {
+      "id": "2345c4a9-53e2-46f4-ae35-1c969033f5fc",
+      "type": "Income",
+      "amount": "100.00",
+      "category": "💳 Debt & Obligations",
+      "notes": "Yassmine Amrani - Loan repayment received",
+      "created_at": "2026-08-01T09:00:00.000Z"
+    },
+    {
+      "id": "9a033da6-c6c7-4eb2-8007-9e285283f0db",
+      "type": "Income",
+      "amount": "100.00",
+      "category": "💳 Debt & Obligations",
+      "notes": "Yassmine Amrani - Loan repayment received",
+      "created_at": "2026-08-01T09:00:00.000Z"
+    },
+    {
+      "id": "b2538251-02e2-4553-9365-8b4793b7a697",
+      "type": "Income",
+      "amount": "100.00",
+      "category": "💳 Debt & Obligations",
+      "notes": "Yassmine Amrani - Loan repayment received",
+      "created_at": "2026-08-01T09:00:00.000Z"
+    },
+    {
+      "id": "2bf897e0-3572-453f-a409-02226d4420b7",
+      "type": "Expense",
+      "amount": "2100",
+      "category": "💳 Debt & Obligations",
+      "notes": "Yassmine Amrani (Loan Repayment)",
+      "created_at": "2026-07-29T11:00:00.000Z"
+    },
+    {
+      "id": "45b70edc-f586-4a93-9f06-a428c62c1e01",
+      "type": "Income",
+      "amount": "62",
+      "category": "💳 Debt & Obligations",
+      "notes": "Reimbursement Wassim",
+      "created_at": "2026-07-07T11:00:00.000Z"
+    },
+    {
+      "id": "cdea7a18-0529-42c2-8d12-cde464e7fd00",
+      "type": "Income",
+      "amount": "25",
+      "category": "💳 Debt & Obligations",
+      "notes": "Reimbursement Wassim",
+      "created_at": "2026-07-01T11:00:00.000Z"
+    },
+    {
+      "id": "9f09ebe0-941b-449d-b5f8-c6572b9d755a",
+      "type": "Expense",
+      "amount": "3000",
+      "category": "💳 Debt & Obligations",
+      "notes": "Debt Repayment",
+      "created_at": "2026-06-25T11:00:00.000Z"
     }
   ],
-  "Telecom": [
+  "🍔 Dining & Takeaway": [
     {
-      "id": "e373d27c-0221-4a45-aa20-a730050e93da",
+      "id": "f60c9f0a-f63e-42f4-8280-9a821cbe9eda",
       "type": "Expense",
-      "amount": "10.00",
-      "category": "Telecom",
-      "notes": "Orange (App top-up)",
-      "created_at": "2026-08-04T09:00:00.000Z"
+      "amount": "3",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Lunch",
+      "created_at": "2026-08-27T11:00:00.000Z"
     },
     {
-      "id": "5f1c5b8c-2f8d-404a-9775-ca67d18e60f4",
+      "id": "77896352-d62b-497a-88e9-2ba7543cd6f3",
       "type": "Expense",
-      "amount": "10.00",
-      "category": "Telecom",
-      "notes": "Orange (App top-up)",
-      "created_at": "2026-08-04T09:00:00.000Z"
+      "amount": "47",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Lunch",
+      "created_at": "2026-08-27T11:00:00.000Z"
     },
     {
-      "id": "6a3aa0fc-e488-421a-a18d-482711473a75",
+      "id": "8a6880e7-da3c-4e92-93ef-d19680169248",
       "type": "Expense",
-      "amount": "10.00",
-      "category": "Telecom",
-      "notes": "Orange (App top-up)",
-      "created_at": "2026-08-04T09:00:00.000Z"
+      "amount": "43",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Shawarma",
+      "created_at": "2026-08-24T11:00:00.000Z"
     },
     {
-      "id": "d8f9e573-bae9-4be2-bcf2-aeb8c24e16b2",
+      "id": "dfab69be-b680-4655-aa42-7e2e96e425d7",
       "type": "Expense",
-      "amount": "50.00",
-      "category": "Telecom",
-      "notes": "Orange Maroc",
-      "created_at": "2026-08-02T14:00:00.000Z"
+      "amount": "5",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Cola ",
+      "created_at": "2026-08-23T11:00:00.000Z"
     },
     {
-      "id": "75bba2d2-490a-4c43-8632-55a1fbc6b631",
+      "id": "33d85159-3939-4cb5-a08e-1d7fc12898d2",
       "type": "Expense",
-      "amount": "50.00",
-      "category": "Telecom",
-      "notes": "Orange Maroc",
-      "created_at": "2026-08-02T14:00:00.000Z"
+      "amount": "46",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Macdonalds",
+      "created_at": "2026-08-20T21:02:35.382Z"
     },
     {
-      "id": "0efea303-9f89-4824-8ce8-091bfc722490",
+      "id": "178f2591-559b-4b15-b932-1dba19ae0972",
       "type": "Expense",
-      "amount": "50.00",
-      "category": "Telecom",
-      "notes": "Orange Maroc",
-      "created_at": "2026-08-02T14:00:00.000Z"
-    }
-  ],
-  "Transfer": [
-    {
-      "id": "b7a990ad-7ee6-4a61-aa52-452991ea5a39",
-      "type": "Transfer",
-      "amount": "100",
-      "category": "Transfer",
-      "notes": "",
-      "created_at": "2026-08-14T11:00:00.000Z"
-    },
-    {
-      "id": "3fc24f90-d199-443e-aa52-05a82e7c938c",
-      "type": "Transfer",
-      "amount": "100",
-      "category": "Transfer",
-      "notes": "",
-      "created_at": "2026-08-14T11:00:00.000Z"
-    },
-    {
-      "id": "965a6aa6-fbb3-4fb5-bd73-3e7746f4cb0a",
-      "type": "Transfer",
-      "amount": "100",
-      "category": "Transfer",
-      "notes": "",
-      "created_at": "2026-08-14T11:00:00.000Z"
-    },
-    {
-      "id": "33594c6a-d1d4-4a4e-88ac-9f62e309c97c",
-      "type": "Transfer",
-      "amount": "100",
-      "category": "Transfer",
-      "notes": "",
-      "created_at": "2026-08-10T11:00:00.000Z"
-    },
-    {
-      "id": "879126c4-3f28-447a-907d-6f3838f14a7b",
-      "type": "Transfer",
-      "amount": "100",
-      "category": "Transfer",
-      "notes": "",
-      "created_at": "2026-08-10T11:00:00.000Z"
-    },
-    {
-      "id": "e473b5eb-547b-4e92-bad6-0e55baefe405",
-      "type": "Transfer",
-      "amount": "100",
-      "category": "Transfer",
-      "notes": "",
-      "created_at": "2026-08-10T11:00:00.000Z"
-    },
-    {
-      "id": "884db872-199f-459f-9fcf-83d3cd3a627f",
-      "type": "Transfer",
-      "amount": "100",
-      "category": "Transfer",
-      "notes": "",
-      "created_at": "2026-08-08T11:00:00.000Z"
-    },
-    {
-      "id": "e4b9bef9-7e48-4ecd-877a-91b0104dd860",
-      "type": "Transfer",
-      "amount": "100",
-      "category": "Transfer",
-      "notes": "",
-      "created_at": "2026-08-08T11:00:00.000Z"
-    },
-    {
-      "id": "cbdb734f-514d-4d62-8c4d-9d120de42650",
-      "type": "Transfer",
-      "amount": "100",
-      "category": "Transfer",
-      "notes": "",
-      "created_at": "2026-08-08T11:00:00.000Z"
-    },
-    {
-      "id": "e7b80d92-efad-4a66-b0f4-20957acc04c6",
-      "type": "Transfer",
-      "amount": "662.99",
-      "category": "Transfer",
-      "notes": "ATM Cash Withdrawal",
-      "created_at": "2026-08-06T16:08:38.588Z"
-    },
-    {
-      "id": "b424288e-7856-4547-a7b5-a639f8e8fe56",
-      "type": "Transfer",
-      "amount": "662.99",
-      "category": "Transfer",
-      "notes": "ATM Cash Withdrawal",
-      "created_at": "2026-08-06T16:08:38.588Z"
-    },
-    {
-      "id": "e460e828-b9b3-4724-aa83-dafa2c8cc38f",
-      "type": "Transfer",
-      "amount": "662.99",
-      "category": "Transfer",
-      "notes": "ATM Cash Withdrawal",
-      "created_at": "2026-08-06T16:08:38.588Z"
-    },
-    {
-      "id": "b2a5f23f-0944-4353-9619-4e183e6b440b",
-      "type": "Transfer",
-      "amount": "100.00",
-      "category": "Transfer",
-      "notes": "Friday ATM Withdrawal",
-      "created_at": "2026-08-04T08:00:00.000Z"
-    },
-    {
-      "id": "ef6ccee2-3534-4428-b30e-7be00fc4eb1f",
-      "type": "Transfer",
-      "amount": "100.00",
-      "category": "Transfer",
-      "notes": "Friday ATM Withdrawal",
-      "created_at": "2026-08-04T08:00:00.000Z"
-    },
-    {
-      "id": "7b2acba6-3603-45b4-97f4-a9f2254379b4",
-      "type": "Transfer",
-      "amount": "100.00",
-      "category": "Transfer",
-      "notes": "Friday ATM Withdrawal",
-      "created_at": "2026-08-04T08:00:00.000Z"
-    },
-    {
-      "id": "c6813ac6-bd6d-4323-b306-1f71f031ddef",
-      "type": "Transfer",
-      "amount": "50.00",
-      "category": "Transfer",
-      "notes": "Barbershop withdrawal",
-      "created_at": "2026-08-01T15:00:00.000Z"
-    },
-    {
-      "id": "a2ccd568-916f-4370-9c38-162d277693e1",
-      "type": "Transfer",
-      "amount": "50.00",
-      "category": "Transfer",
-      "notes": "Barbershop withdrawal",
-      "created_at": "2026-08-01T15:00:00.000Z"
-    },
-    {
-      "id": "b9cbf761-d8e9-402a-8693-96d2503065c5",
-      "type": "Transfer",
-      "amount": "50.00",
-      "category": "Transfer",
-      "notes": "Barbershop withdrawal",
-      "created_at": "2026-08-01T15:00:00.000Z"
-    },
-    {
-      "id": "b06757f4-4225-4119-bc91-83917e1bb09f",
-      "type": "Transfer",
-      "amount": "100.00",
-      "category": "Transfer",
-      "notes": "Mom & chicken withdrawal",
-      "created_at": "2026-08-01T14:00:00.000Z"
-    },
-    {
-      "id": "a4ca920f-20af-44e4-a43b-fe8766a8659e",
-      "type": "Transfer",
-      "amount": "100.00",
-      "category": "Transfer",
-      "notes": "Mom & chicken withdrawal",
-      "created_at": "2026-08-01T14:00:00.000Z"
-    },
-    {
-      "id": "89f59eb9-e49c-4b3e-bba8-210d6f053b9b",
-      "type": "Transfer",
-      "amount": "100.00",
-      "category": "Transfer",
-      "notes": "Mom & chicken withdrawal",
-      "created_at": "2026-08-01T14:00:00.000Z"
-    },
-    {
-      "id": "97bbed0c-b3bc-4bad-8f36-105c7086e743",
-      "type": "Transfer",
-      "amount": "300.00",
-      "category": "Transfer",
-      "notes": "Suit rental withdrawal",
-      "created_at": "2026-08-01T13:00:00.000Z"
-    },
-    {
-      "id": "11351aac-2cf8-40d2-9ed9-e7047eaa7334",
-      "type": "Transfer",
-      "amount": "300.00",
-      "category": "Transfer",
-      "notes": "Suit rental withdrawal",
-      "created_at": "2026-08-01T13:00:00.000Z"
-    },
-    {
-      "id": "ef63bd88-0d82-4c24-88c3-220a9df24fc3",
-      "type": "Transfer",
-      "amount": "300.00",
-      "category": "Transfer",
-      "notes": "Suit rental withdrawal",
-      "created_at": "2026-08-01T13:00:00.000Z"
-    },
-    {
-      "id": "7b01f6a4-0fef-47be-a438-2d0e74ce3b9b",
-      "type": "Transfer",
-      "amount": "400.00",
-      "category": "Transfer",
-      "notes": "MehDi Card withdrawal",
-      "created_at": "2026-08-01T12:00:00.000Z"
-    },
-    {
-      "id": "52e0915e-16b7-469d-bfcf-194b330010aa",
-      "type": "Transfer",
-      "amount": "400.00",
-      "category": "Transfer",
-      "notes": "MehDi Card withdrawal",
-      "created_at": "2026-08-01T12:00:00.000Z"
-    },
-    {
-      "id": "febf37c8-bfff-4e9a-81cb-496e5c8341ac",
-      "type": "Transfer",
-      "amount": "400.00",
-      "category": "Transfer",
-      "notes": "MehDi Card withdrawal",
-      "created_at": "2026-08-01T12:00:00.000Z"
-    }
-  ],
-  "Transport": [
-    {
-      "id": "5e977f5f-8cb8-47d8-81d6-73d8552438b1",
-      "type": "Expense",
-      "amount": "40",
-      "category": "Transport",
-      "notes": "Fuel",
-      "created_at": "2026-08-06T16:08:42.205Z"
-    },
-    {
-      "id": "b918a704-c8ee-45b3-9eb6-04da612322e8",
-      "type": "Expense",
-      "amount": "40",
-      "category": "Transport",
-      "notes": "Fuel",
-      "created_at": "2026-08-06T16:08:42.205Z"
-    },
-    {
-      "id": "884e7300-c40c-49ef-b331-be630cce16ad",
-      "type": "Expense",
-      "amount": "40",
-      "category": "Transport",
-      "notes": "Fuel",
-      "created_at": "2026-08-06T16:08:42.205Z"
-    },
-    {
-      "id": "3251176b-6819-4c5b-ab97-02bbeb650f95",
-      "type": "Expense",
-      "amount": "4.00",
-      "category": "Transport",
-      "notes": "Parking",
-      "created_at": "2026-08-05T14:00:00.000Z"
-    },
-    {
-      "id": "dc0761b8-6001-4466-b536-7f21719d6752",
-      "type": "Expense",
-      "amount": "4.00",
-      "category": "Transport",
-      "notes": "Parking",
-      "created_at": "2026-08-05T14:00:00.000Z"
-    },
-    {
-      "id": "091c9e94-b3c0-4dd3-b3af-bc6f0f1bb332",
-      "type": "Expense",
-      "amount": "4.00",
-      "category": "Transport",
-      "notes": "Parking",
-      "created_at": "2026-08-05T14:00:00.000Z"
-    },
-    {
-      "id": "8de69cc4-22b2-46ca-b51a-5178e341ae24",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Transport",
-      "notes": "Fuel (Bike)",
-      "created_at": "2026-08-04T22:00:00.000Z"
-    },
-    {
-      "id": "089ace56-0def-44df-ad20-67d634f1eed6",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Transport",
-      "notes": "Fuel (Bike)",
-      "created_at": "2026-08-04T22:00:00.000Z"
-    },
-    {
-      "id": "bf71dd51-2f82-4429-a6be-4a038dc8e0ff",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Transport",
-      "notes": "Fuel (Bike)",
-      "created_at": "2026-08-04T22:00:00.000Z"
-    },
-    {
-      "id": "44ec0132-ec2e-4c17-a72a-9c7fa4eb4a9c",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Transport",
-      "notes": "Station Prestig (Fuel)",
-      "created_at": "2026-08-02T16:00:00.000Z"
-    },
-    {
-      "id": "7ac1decc-72fe-40b9-af8e-f0e23811cee6",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Transport",
-      "notes": "Station Prestig (Fuel)",
-      "created_at": "2026-08-02T16:00:00.000Z"
-    },
-    {
-      "id": "88d4c339-62fa-4f12-9e33-fc3c64670b8a",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Transport",
-      "notes": "Station Prestig (Fuel)",
-      "created_at": "2026-08-02T16:00:00.000Z"
-    },
-    {
-      "id": "e4eb2b70-b225-4657-91f0-5309fa0ee6ef",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Transport",
-      "notes": "Fuel",
-      "created_at": "2026-08-02T12:00:00.000Z"
-    },
-    {
-      "id": "6527a39c-fc7b-4cf7-ac30-d9401412de4b",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Transport",
-      "notes": "Fuel",
-      "created_at": "2026-08-02T12:00:00.000Z"
-    },
-    {
-      "id": "2a63a674-41a3-4b8e-9325-accd6727a653",
-      "type": "Expense",
-      "amount": "30.00",
-      "category": "Transport",
-      "notes": "Fuel",
-      "created_at": "2026-08-02T12:00:00.000Z"
-    },
-    {
-      "id": "e5d249cd-ded6-4cff-9c30-b673d58bbef6",
-      "type": "Expense",
-      "amount": "20.00",
-      "category": "Transport",
-      "notes": "Station fuel",
-      "created_at": "2026-08-02T09:00:00.000Z"
-    },
-    {
-      "id": "622d2cb9-25a4-4f73-bfc3-84b94a2057a0",
-      "type": "Expense",
-      "amount": "20.00",
-      "category": "Transport",
-      "notes": "Station fuel",
-      "created_at": "2026-08-02T09:00:00.000Z"
-    },
-    {
-      "id": "d81d76ad-fe1f-41d9-a7ef-be928311bd21",
-      "type": "Expense",
-      "amount": "20.00",
-      "category": "Transport",
-      "notes": "Station fuel",
-      "created_at": "2026-08-02T09:00:00.000Z"
-    },
-    {
-      "id": "4dd3a737-e7bf-4608-9fc0-3fad6785527c",
-      "type": "Expense",
-      "amount": "35.00",
-      "category": "Transport",
-      "notes": "Station fuel",
-      "created_at": "2026-08-02T08:00:00.000Z"
-    },
-    {
-      "id": "5eb28b94-924f-4319-b787-84f394a43c1a",
-      "type": "Expense",
-      "amount": "35.00",
-      "category": "Transport",
-      "notes": "Station fuel",
-      "created_at": "2026-08-02T08:00:00.000Z"
-    },
-    {
-      "id": "d9284459-f5f3-4723-8cd3-b8e957bf709f",
-      "type": "Expense",
-      "amount": "35.00",
-      "category": "Transport",
-      "notes": "Station fuel",
-      "created_at": "2026-08-02T08:00:00.000Z"
-    }
-  ],
-  "Transportation": [
-    {
-      "id": "f223b65a-af27-42c7-b85a-22db9e767f27",
-      "type": "Expense",
-      "amount": "40",
-      "category": "Transportation",
-      "notes": "Fuel purchase",
-      "created_at": "2026-08-19T17:29:49.191Z"
-    },
-    {
-      "id": "47846231-190f-490e-be10-3400aec79427",
-      "type": "Expense",
-      "amount": "2",
-      "category": "Transportation",
+      "amount": "5",
+      "category": "🍔 Dining & Takeaway",
       "notes": null,
-      "created_at": "2026-08-18T12:12:06.976Z"
+      "created_at": "2026-08-14T11:00:00.000Z"
     },
     {
-      "id": "6d6a56dd-59e5-45da-9a11-a2a0e4e630d6",
+      "id": "a0bea6a4-2e14-482d-8d5f-2886a7f6bae4",
       "type": "Expense",
-      "amount": "25",
-      "category": "Transportation",
-      "notes": "",
-      "created_at": "2026-08-18T11:00:00.000Z"
+      "amount": "5",
+      "category": "🍔 Dining & Takeaway",
+      "notes": null,
+      "created_at": "2026-08-14T11:00:00.000Z"
     },
     {
-      "id": "c27f7c88-967f-4faa-940b-182bdbe67a2b",
+      "id": "ade87f07-fbed-45de-9f47-76090c42a8de",
       "type": "Expense",
-      "amount": "40",
-      "category": "Transportation",
-      "notes": "Fuel expense",
-      "created_at": "2026-08-13T08:22:56.159Z"
+      "amount": "5",
+      "category": "🍔 Dining & Takeaway",
+      "notes": null,
+      "created_at": "2026-08-14T11:00:00.000Z"
     },
     {
-      "id": "1aed6083-0a67-4a75-8d73-1da72a777eeb",
+      "id": "56dd20a2-0646-4469-a7d9-2d523b886b86",
       "type": "Expense",
-      "amount": "40",
-      "category": "Transportation",
-      "notes": "Fuel expense",
-      "created_at": "2026-08-13T08:22:56.159Z"
+      "amount": "22",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-11T11:00:00.000Z"
     },
     {
-      "id": "820176d2-ea2a-4332-8f4a-1f4ff6f1b017",
+      "id": "e08e72ee-3391-4346-9d55-811a77f43b42",
       "type": "Expense",
-      "amount": "40",
-      "category": "Transportation",
-      "notes": "Fuel expense",
-      "created_at": "2026-08-13T08:22:56.159Z"
+      "amount": "22",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-11T11:00:00.000Z"
     },
     {
-      "id": "d9c59260-bd2b-40ef-a8c6-be0fbd899f4e",
+      "id": "e053fc7c-dd09-4faf-bfe7-e331279fba0e",
       "type": "Expense",
-      "amount": "25",
-      "category": "Transportation",
-      "notes": "Fuel ",
+      "amount": "22",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-11T11:00:00.000Z"
+    },
+    {
+      "id": "f785f31b-811e-45c7-acb9-d7426fce0acd",
+      "type": "Expense",
+      "amount": "12",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Boca Oracle ",
       "created_at": "2026-08-10T11:00:00.000Z"
     },
     {
-      "id": "c607cf0e-52bd-4843-9635-a83529de2a93",
+      "id": "6e67066f-0d39-481f-bb80-41b658d489c6",
       "type": "Expense",
-      "amount": "25",
-      "category": "Transportation",
-      "notes": "Fuel ",
+      "amount": "12",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Boca Oracle ",
       "created_at": "2026-08-10T11:00:00.000Z"
     },
     {
-      "id": "be0bb1d6-15b1-4378-b02b-5ca8533ce6f6",
+      "id": "f21018e3-65e1-4307-b336-14c27f944f70",
       "type": "Expense",
-      "amount": "25",
-      "category": "Transportation",
-      "notes": "Fuel ",
+      "amount": "12",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Boca Oracle ",
       "created_at": "2026-08-10T11:00:00.000Z"
     },
     {
-      "id": "f90491e2-058b-4fd9-9617-73b42e315eb8",
+      "id": "12b7d7e0-548f-49d6-bf8f-959e51719259",
       "type": "Expense",
-      "amount": "30",
-      "category": "Transportation",
-      "notes": "Train (Transport for self, mom, and sister)",
-      "created_at": "2026-08-02T11:00:00.000Z"
+      "amount": "35",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Lunch ",
+      "created_at": "2026-08-09T11:00:00.000Z"
     },
     {
-      "id": "7075b5dc-5051-4965-9efe-9581ad3ad231",
+      "id": "2f20022e-889f-4e12-a6ad-e288092dd941",
       "type": "Expense",
-      "amount": "30",
-      "category": "Transportation",
-      "notes": "Train (Transport for self, mom, and sister)",
-      "created_at": "2026-08-02T11:00:00.000Z"
+      "amount": "35",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Lunch ",
+      "created_at": "2026-08-09T11:00:00.000Z"
     },
     {
-      "id": "ca535db0-2fd7-47d2-9dc3-ad6592788471",
+      "id": "51c71b9b-bf0a-44a9-b62e-d793d8a5b9d9",
       "type": "Expense",
-      "amount": "30",
-      "category": "Transportation",
-      "notes": "Train (Transport for self, mom, and sister)",
-      "created_at": "2026-08-02T11:00:00.000Z"
+      "amount": "35",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Lunch ",
+      "created_at": "2026-08-09T11:00:00.000Z"
+    },
+    {
+      "id": "8e334a7d-99cf-4b98-90da-1ac78af62aaa",
+      "type": "Expense",
+      "amount": "20",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Soda + ice-cream ",
+      "created_at": "2026-08-08T11:00:00.000Z"
+    },
+    {
+      "id": "e87a8b86-e1fd-414a-95aa-196f422cb35e",
+      "type": "Expense",
+      "amount": "45",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Shawarma",
+      "created_at": "2026-08-08T11:00:00.000Z"
+    },
+    {
+      "id": "285d9eee-b6cb-4449-9588-c19fc7508113",
+      "type": "Expense",
+      "amount": "45",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Shawarma",
+      "created_at": "2026-08-08T11:00:00.000Z"
+    },
+    {
+      "id": "1107dd5a-7f8b-45c9-965e-1a3860d56d2d",
+      "type": "Expense",
+      "amount": "20",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Soda + ice-cream ",
+      "created_at": "2026-08-08T11:00:00.000Z"
+    },
+    {
+      "id": "c859b72f-fe40-4b22-bdf1-832edad4444c",
+      "type": "Expense",
+      "amount": "45",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Shawarma",
+      "created_at": "2026-08-08T11:00:00.000Z"
+    },
+    {
+      "id": "f68b1262-b7c8-4f96-bb88-0764817623d5",
+      "type": "Expense",
+      "amount": "20",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Soda + ice-cream ",
+      "created_at": "2026-08-08T11:00:00.000Z"
+    },
+    {
+      "id": "404cd309-2eac-42eb-94ce-a2d0d7d9f8c1",
+      "type": "Expense",
+      "amount": "21.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDo Mohammed V",
+      "created_at": "2026-08-03T09:00:00.000Z"
+    },
+    {
+      "id": "2f681315-1f5e-477c-9e8d-5fa2c211f946",
+      "type": "Expense",
+      "amount": "21.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDo Mohammed V",
+      "created_at": "2026-08-03T09:00:00.000Z"
+    },
+    {
+      "id": "09c5d13f-fdde-4722-8c4f-e8821df8a195",
+      "type": "Expense",
+      "amount": "21.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDo Mohammed V",
+      "created_at": "2026-08-03T09:00:00.000Z"
+    },
+    {
+      "id": "785ddc1e-6a06-4637-a59f-ac0a17515826",
+      "type": "Expense",
+      "amount": "54.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDo Aeria G-64 (40 friends + 14 personal)",
+      "created_at": "2026-08-02T13:00:00.000Z"
+    },
+    {
+      "id": "a67f1bdc-774d-453a-9f95-6a572dc3ed72",
+      "type": "Expense",
+      "amount": "54.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDo Aeria G-64 (40 friends + 14 personal)",
+      "created_at": "2026-08-02T13:00:00.000Z"
+    },
+    {
+      "id": "08612503-f052-4033-9375-5461820ac19f",
+      "type": "Expense",
+      "amount": "54.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDo Aeria G-64 (40 friends + 14 personal)",
+      "created_at": "2026-08-02T13:00:00.000Z"
+    },
+    {
+      "id": "2e7d8bc1-ab2d-4b8c-a283-eb34a6ba2212",
+      "type": "Expense",
+      "amount": "60.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDo Mohammed V (Paid for friends)",
+      "created_at": "2026-08-02T12:00:00.000Z"
+    },
+    {
+      "id": "581f4a81-228a-4d66-9171-3d8e2e10f9e2",
+      "type": "Expense",
+      "amount": "60.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDo Mohammed V (Paid for friends)",
+      "created_at": "2026-08-02T12:00:00.000Z"
+    },
+    {
+      "id": "d8a7e27c-59d2-428d-9edc-edd8bb5db237",
+      "type": "Expense",
+      "amount": "60.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDo Mohammed V (Paid for friends)",
+      "created_at": "2026-08-02T12:00:00.000Z"
+    },
+    {
+      "id": "21337448-1daf-48c1-9033-3ec0d35f2fc6",
+      "type": "Expense",
+      "amount": "72.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDonalds",
+      "created_at": "2026-08-01T15:00:00.000Z"
+    },
+    {
+      "id": "b7cb9274-f954-4964-850f-4b23075a29b7",
+      "type": "Expense",
+      "amount": "72.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDonalds",
+      "created_at": "2026-08-01T15:00:00.000Z"
+    },
+    {
+      "id": "30fb3fbf-ed3a-4773-8f33-8a3b7aa0a64e",
+      "type": "Expense",
+      "amount": "72.00",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDonalds",
+      "created_at": "2026-08-01T15:00:00.000Z"
+    },
+    {
+      "id": "78a30734-052c-4d7d-badd-d5e0b64b0011",
+      "type": "Expense",
+      "amount": "35",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Ben Pause Gourmande",
+      "created_at": "2026-07-23T11:00:00.000Z"
+    },
+    {
+      "id": "621f477d-6078-41b0-bf35-c8be2b4baa3f",
+      "type": "Expense",
+      "amount": "50",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Untracked Cash via Yassmine",
+      "created_at": "2026-07-20T11:00:00.000Z"
+    },
+    {
+      "id": "aa07f573-ad9e-48ce-ac6b-762ac7a77259",
+      "type": "Expense",
+      "amount": "11",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDo Bouskoura",
+      "created_at": "2026-07-13T11:00:00.000Z"
+    },
+    {
+      "id": "354f5cce-fc5c-427e-8d9c-18d103a9d275",
+      "type": "Expense",
+      "amount": "55",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "O Tacos Marina",
+      "created_at": "2026-07-12T11:00:00.000Z"
+    },
+    {
+      "id": "9c40c009-82f0-43a8-ba48-65f742b2c9b7",
+      "type": "Expense",
+      "amount": "48.5",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDonalds App",
+      "created_at": "2026-07-10T11:00:00.000Z"
+    },
+    {
+      "id": "808521f9-4e42-419d-b343-c093b6bebb80",
+      "type": "Expense",
+      "amount": "60",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "La Grignotiere Bousk",
+      "created_at": "2026-07-09T11:00:00.000Z"
+    },
+    {
+      "id": "ab2c8b09-513e-4d55-97ed-75284b8a70e1",
+      "type": "Expense",
+      "amount": "46",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDonalds App",
+      "created_at": "2026-07-07T11:00:00.000Z"
+    },
+    {
+      "id": "27cbacc0-a652-4c72-adcd-d8b4d0805943",
+      "type": "Expense",
+      "amount": "62",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Paid for Wassim Lunch",
+      "created_at": "2026-07-07T11:00:00.000Z"
+    },
+    {
+      "id": "3b1f6b58-92d1-4dda-ba63-432756532f4f",
+      "type": "Expense",
+      "amount": "48",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDonalds App",
+      "created_at": "2026-07-05T11:00:00.000Z"
+    },
+    {
+      "id": "c4a0b378-ac72-47d2-967c-aac11723da70",
+      "type": "Expense",
+      "amount": "14",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDonalds App",
+      "created_at": "2026-07-05T11:00:00.000Z"
+    },
+    {
+      "id": "0b1b65de-58b8-448c-a489-909415bcb922",
+      "type": "Expense",
+      "amount": "48",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDonalds App",
+      "created_at": "2026-07-04T11:00:00.000Z"
+    },
+    {
+      "id": "9d86a07d-a523-4b49-b362-125c412d1ed1",
+      "type": "Expense",
+      "amount": "50",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Family Kazzou",
+      "created_at": "2026-07-03T11:00:00.000Z"
+    },
+    {
+      "id": "e6a6b22b-aba7-45a3-8b09-bd93517d8226",
+      "type": "Expense",
+      "amount": "25",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Paid for Wassim Lunch",
+      "created_at": "2026-07-01T11:00:00.000Z"
+    },
+    {
+      "id": "ec1a2e54-b84e-4beb-92c1-a1c5a13c1be8",
+      "type": "Expense",
+      "amount": "10",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDonalds App",
+      "created_at": "2026-06-30T11:00:00.000Z"
+    },
+    {
+      "id": "77368362-ec15-441a-b274-e295aa60aaef",
+      "type": "Expense",
+      "amount": "48",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDonalds Petrom",
+      "created_at": "2026-06-29T11:00:00.000Z"
+    },
+    {
+      "id": "ab2bd39b-17f2-4177-b1e5-a2b5dc8a9bad",
+      "type": "Expense",
+      "amount": "12.5",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "McDonalds App",
+      "created_at": "2026-06-29T11:00:00.000Z"
+    },
+    {
+      "id": "847ef195-aad2-4c7e-878f-0bd70f30e415",
+      "type": "Expense",
+      "amount": "50",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "GFFS BK Marina",
+      "created_at": "2026-06-27T11:00:00.000Z"
+    },
+    {
+      "id": "b0d805a3-6594-46fd-8bd4-b8c2c0919986",
+      "type": "Expense",
+      "amount": "50",
+      "category": "🍔 Dining & Takeaway",
+      "notes": "Family Kazzou",
+      "created_at": "2026-06-26T11:00:00.000Z"
     }
   ],
-  "Utilities": [
+  "🎬 Entertainment": [
+    {
+      "id": "6d771191-0aa8-4975-8edc-ee7905081820",
+      "type": "Expense",
+      "amount": "26.00",
+      "category": "🎬 Entertainment",
+      "notes": "Chips & Water (Cinema)",
+      "created_at": "2026-08-04T18:00:00.000Z"
+    },
+    {
+      "id": "60dc9f4f-1fbe-41df-a71d-e9012b0ccc7a",
+      "type": "Expense",
+      "amount": "26.00",
+      "category": "🎬 Entertainment",
+      "notes": "Chips & Water (Cinema)",
+      "created_at": "2026-08-04T18:00:00.000Z"
+    },
+    {
+      "id": "522e951b-914b-4efc-9ec8-9c424a9c40fa",
+      "type": "Expense",
+      "amount": "26.00",
+      "category": "🎬 Entertainment",
+      "notes": "Chips & Water (Cinema)",
+      "created_at": "2026-08-04T18:00:00.000Z"
+    },
+    {
+      "id": "073d30a3-8e0e-4173-b809-5eb8ab6d01e2",
+      "type": "Expense",
+      "amount": "127.00",
+      "category": "🎬 Entertainment",
+      "notes": "Cinema (Spider-Man) (50 Personal + 77 Social)",
+      "created_at": "2026-08-03T15:00:00.000Z"
+    },
+    {
+      "id": "1aa1365b-c226-4184-9886-a2e408cd8aa1",
+      "type": "Expense",
+      "amount": "127.00",
+      "category": "🎬 Entertainment",
+      "notes": "Cinema (Spider-Man) (50 Personal + 77 Social)",
+      "created_at": "2026-08-03T15:00:00.000Z"
+    },
+    {
+      "id": "9ca6c6aa-2ff8-49d2-a784-9cf2e77364f9",
+      "type": "Expense",
+      "amount": "127.00",
+      "category": "🎬 Entertainment",
+      "notes": "Cinema (Spider-Man) (50 Personal + 77 Social)",
+      "created_at": "2026-08-03T15:00:00.000Z"
+    },
+    {
+      "id": "c5cf5759-bfbf-41b6-bb08-82ce67da1fda",
+      "type": "Expense",
+      "amount": "145.52",
+      "category": "🎬 Entertainment",
+      "notes": "Sindibad",
+      "created_at": "2026-07-12T11:00:00.000Z"
+    },
+    {
+      "id": "9312203c-7a19-414f-a370-f95324ef5de1",
+      "type": "Expense",
+      "amount": "21",
+      "category": "🎬 Entertainment",
+      "notes": "Sindipark Billettrie",
+      "created_at": "2026-07-12T11:00:00.000Z"
+    }
+  ],
+  "🛒 Groceries": [
+    {
+      "id": "6a3bf01f-531b-4328-b66b-eb2cbd8e1ebf",
+      "type": "Expense",
+      "amount": "100",
+      "category": "🛒 Groceries",
+      "notes": null,
+      "created_at": "2026-08-27T11:00:00.000Z"
+    },
+    {
+      "id": "16c41df0-a610-463d-856d-7220f78476c9",
+      "type": "Expense",
+      "amount": "13",
+      "category": "🛒 Groceries",
+      "notes": "Water",
+      "created_at": "2026-08-23T14:16:17.801Z"
+    },
+    {
+      "id": "661e5860-ccab-4ee7-b52e-5bf2dbdfb8c2",
+      "type": "Expense",
+      "amount": "70",
+      "category": "🛒 Groceries",
+      "notes": "",
+      "created_at": "2026-08-20T11:00:00.000Z"
+    },
+    {
+      "id": "e8a0a7a0-a974-46ee-9b22-9cdef02f8067",
+      "type": "Expense",
+      "amount": "33.9",
+      "category": "🛒 Groceries",
+      "notes": "Coffee cups and coffee",
+      "created_at": "2026-08-19T11:00:00.000Z"
+    },
+    {
+      "id": "5fa5ec28-4ece-49c7-9708-13e3da7c5972",
+      "type": "Expense",
+      "amount": "10.9",
+      "category": "🛒 Groceries",
+      "notes": "bottle of water",
+      "created_at": "2026-08-17T11:00:00.000Z"
+    },
+    {
+      "id": "ed885bba-73dd-40aa-a379-f6276a0080ba",
+      "type": "Expense",
+      "amount": "15",
+      "category": "🛒 Groceries",
+      "notes": null,
+      "created_at": "2026-08-16T11:00:00.000Z"
+    },
+    {
+      "id": "e9c3ad77-541f-4025-bfc3-3e0c8af7280d",
+      "type": "Expense",
+      "amount": "6",
+      "category": "🛒 Groceries",
+      "notes": "Bread",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "86d52590-ac55-4e4f-b829-ee65fac62506",
+      "type": "Expense",
+      "amount": "18",
+      "category": "🛒 Groceries",
+      "notes": "Kitchen trash plastic bags",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "8bec8d6c-4da0-4918-ae7d-04f29a4867f4",
+      "type": "Expense",
+      "amount": "6",
+      "category": "🛒 Groceries",
+      "notes": "Bread",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "7d84f6fc-3e38-4828-936f-c87d32866dc5",
+      "type": "Expense",
+      "amount": "18",
+      "category": "🛒 Groceries",
+      "notes": "Kitchen trash plastic bags",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "28558e22-c883-49c3-bc73-9724378a5d7c",
+      "type": "Expense",
+      "amount": "6",
+      "category": "🛒 Groceries",
+      "notes": "Bread",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "ebfaa407-4951-4c1a-a13f-9a407eba9c52",
+      "type": "Expense",
+      "amount": "18",
+      "category": "🛒 Groceries",
+      "notes": "Kitchen trash plastic bags",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "e7208374-3eef-4eb9-b88f-51dfd653dffa",
+      "type": "Expense",
+      "amount": "20.65",
+      "category": "🛒 Groceries",
+      "notes": "Marjane (Soap, water, drinks)",
+      "created_at": "2026-08-06T19:00:00.000Z"
+    },
+    {
+      "id": "e0b7068e-9b2a-47fa-b09f-01f4e19bb64c",
+      "type": "Expense",
+      "amount": "20.65",
+      "category": "🛒 Groceries",
+      "notes": "Marjane (Soap, water, drinks)",
+      "created_at": "2026-08-06T19:00:00.000Z"
+    },
+    {
+      "id": "3d4d3800-553d-46cd-9533-bedffa6b798e",
+      "type": "Expense",
+      "amount": "20.65",
+      "category": "🛒 Groceries",
+      "notes": "Marjane (Soap, water, drinks)",
+      "created_at": "2026-08-06T19:00:00.000Z"
+    },
+    {
+      "id": "7871d1ba-9481-47eb-bd93-c85981de9989",
+      "type": "Expense",
+      "amount": "39.85",
+      "category": "🛒 Groceries",
+      "notes": "Marjane (Beach Snacks) (19.93 Personal + 19.92 Friend)",
+      "created_at": "2026-08-05T11:00:00.000Z"
+    },
+    {
+      "id": "8251cac0-0d32-4e9d-9c28-1f3a2f65d214",
+      "type": "Expense",
+      "amount": "39.85",
+      "category": "🛒 Groceries",
+      "notes": "Marjane (Beach Snacks) (19.93 Personal + 19.92 Friend)",
+      "created_at": "2026-08-05T11:00:00.000Z"
+    },
+    {
+      "id": "381fc17e-7256-4002-a2dd-dc6a3aeef071",
+      "type": "Expense",
+      "amount": "39.85",
+      "category": "🛒 Groceries",
+      "notes": "Marjane (Beach Snacks) (19.93 Personal + 19.92 Friend)",
+      "created_at": "2026-08-05T11:00:00.000Z"
+    },
+    {
+      "id": "1d81456f-c304-44b8-8a27-4e9547afd07c",
+      "type": "Expense",
+      "amount": "52.30",
+      "category": "🛒 Groceries",
+      "notes": "Marjane (Beach Lunch) (26.15 Personal + 6.15 treated friend + 20 reimbursed)",
+      "created_at": "2026-08-05T10:00:00.000Z"
+    },
+    {
+      "id": "bd4555af-0ed5-4c79-bdf5-ed1c14d1fb26",
+      "type": "Expense",
+      "amount": "52.30",
+      "category": "🛒 Groceries",
+      "notes": "Marjane (Beach Lunch) (26.15 Personal + 6.15 treated friend + 20 reimbursed)",
+      "created_at": "2026-08-05T10:00:00.000Z"
+    },
+    {
+      "id": "22a282d1-7a11-4d84-bf1f-7508f0b5f1b7",
+      "type": "Expense",
+      "amount": "52.30",
+      "category": "🛒 Groceries",
+      "notes": "Marjane (Beach Lunch) (26.15 Personal + 6.15 treated friend + 20 reimbursed)",
+      "created_at": "2026-08-05T10:00:00.000Z"
+    },
+    {
+      "id": "aa2c773e-0fc1-4d72-a023-aed4700f6a17",
+      "type": "Expense",
+      "amount": "105.00",
+      "category": "🛒 Groceries",
+      "notes": "Supermarket (14 Biscuits + 91 Cat supplies - Reimbursed)",
+      "created_at": "2026-08-03T16:00:00.000Z"
+    },
+    {
+      "id": "fed54e3d-b8c3-4f66-b82e-bb8c486325fd",
+      "type": "Expense",
+      "amount": "105.00",
+      "category": "🛒 Groceries",
+      "notes": "Supermarket (14 Biscuits + 91 Cat supplies - Reimbursed)",
+      "created_at": "2026-08-03T16:00:00.000Z"
+    },
+    {
+      "id": "9e2c150d-d34c-4a52-8df7-1ba296a26a22",
+      "type": "Expense",
+      "amount": "105.00",
+      "category": "🛒 Groceries",
+      "notes": "Supermarket (14 Biscuits + 91 Cat supplies - Reimbursed)",
+      "created_at": "2026-08-03T16:00:00.000Z"
+    },
+    {
+      "id": "ee42976e-1cef-4bf5-bb31-86b19dd1f40a",
+      "type": "Expense",
+      "amount": "196.05",
+      "category": "🛒 Groceries",
+      "notes": "Marjane Bouskoura",
+      "created_at": "2026-08-02T10:00:00.000Z"
+    },
+    {
+      "id": "9f327afe-0b84-4c60-a3a1-ef9deb231cf2",
+      "type": "Expense",
+      "amount": "196.05",
+      "category": "🛒 Groceries",
+      "notes": "Marjane Bouskoura",
+      "created_at": "2026-08-02T10:00:00.000Z"
+    },
+    {
+      "id": "460dbf0a-a5cc-4003-954f-7bb3d0b1ca66",
+      "type": "Expense",
+      "amount": "196.05",
+      "category": "🛒 Groceries",
+      "notes": "Marjane Bouskoura",
+      "created_at": "2026-08-02T10:00:00.000Z"
+    },
+    {
+      "id": "43fc3dff-6994-460e-9b88-1a13d2f9989f",
+      "type": "Expense",
+      "amount": "50.00",
+      "category": "🛒 Groceries",
+      "notes": "Chicken",
+      "created_at": "2026-08-01T17:00:00.000Z"
+    },
+    {
+      "id": "c6739482-6bcd-4983-b72f-c06b2573f1b4",
+      "type": "Expense",
+      "amount": "50.00",
+      "category": "🛒 Groceries",
+      "notes": "Chicken",
+      "created_at": "2026-08-01T17:00:00.000Z"
+    },
+    {
+      "id": "66694a30-e25f-4bcf-8fb4-f1922d8ae44d",
+      "type": "Expense",
+      "amount": "50.00",
+      "category": "🛒 Groceries",
+      "notes": "Chicken",
+      "created_at": "2026-08-01T17:00:00.000Z"
+    },
+    {
+      "id": "b3865f11-ce10-48bb-910e-9c0370b0f9eb",
+      "type": "Expense",
+      "amount": "42",
+      "category": "🛒 Groceries",
+      "notes": "Tram Market",
+      "created_at": "2026-07-12T11:00:00.000Z"
+    },
+    {
+      "id": "c1c0407a-3c37-4f77-a46d-a8663cd4134d",
+      "type": "Expense",
+      "amount": "86.48",
+      "category": "🛒 Groceries",
+      "notes": "Kazyon",
+      "created_at": "2026-07-06T11:00:00.000Z"
+    },
+    {
+      "id": "119d3f9e-1e56-439e-9536-e12c1fc6a144",
+      "type": "Expense",
+      "amount": "35.85",
+      "category": "🛒 Groceries",
+      "notes": "BIM",
+      "created_at": "2026-07-06T11:00:00.000Z"
+    },
+    {
+      "id": "d8e18614-49f4-4089-b7e8-d25fc4630f23",
+      "type": "Expense",
+      "amount": "11.05",
+      "category": "🛒 Groceries",
+      "notes": "Marjane Market Beaus",
+      "created_at": "2026-07-04T11:00:00.000Z"
+    },
+    {
+      "id": "f8d04e13-b465-489b-8e58-72f2926c4fe5",
+      "type": "Expense",
+      "amount": "46.8",
+      "category": "🛒 Groceries",
+      "notes": "Marjane Marina",
+      "created_at": "2026-06-27T11:00:00.000Z"
+    }
+  ],
+  "🩺 Health & Medical": [
+    {
+      "id": "e6b97c66-7a2a-40e2-9cdd-4f9b084de074",
+      "type": "Expense",
+      "amount": "36",
+      "category": "🩺 Health & Medical",
+      "notes": "Medical tape",
+      "created_at": "2026-08-28T11:00:00.000Z"
+    },
+    {
+      "id": "817894b2-a28e-4fdc-b2d7-1d4ac8a5412a",
+      "type": "Expense",
+      "amount": "622.99",
+      "category": "🩺 Health & Medical",
+      "notes": "Doctor, radiology, and medicines",
+      "created_at": "2026-08-06T11:00:00.000Z"
+    },
+    {
+      "id": "51e8a22b-40f5-4cde-9400-76229f9f350d",
+      "type": "Expense",
+      "amount": "600",
+      "category": "🩺 Health & Medical",
+      "notes": "Doctor, radiology, and medicines",
+      "created_at": "2026-08-06T11:00:00.000Z"
+    },
+    {
+      "id": "8ad3e9f4-50cf-456c-bef8-197df0016f5f",
+      "type": "Expense",
+      "amount": "600",
+      "category": "🩺 Health & Medical",
+      "notes": "Doctor, radiology, and medicines",
+      "created_at": "2026-08-06T11:00:00.000Z"
+    },
+    {
+      "id": "889d2560-c2da-4e8a-a0f3-fbf2d33f8183",
+      "type": "Expense",
+      "amount": "22.99",
+      "category": "🩺 Health & Medical",
+      "notes": "",
+      "created_at": "2026-08-05T11:00:00.000Z"
+    },
+    {
+      "id": "0ebc3510-e36e-486b-8150-fcbb2ce28cb2",
+      "type": "Expense",
+      "amount": "22.99",
+      "category": "🩺 Health & Medical",
+      "notes": "",
+      "created_at": "2026-08-05T11:00:00.000Z"
+    }
+  ],
+  "🏠 Housing & Utilities": [
+    {
+      "id": "ca98bfe4-bebe-4f37-b144-73c6130d11c3",
+      "type": "Expense",
+      "amount": "150.81",
+      "category": "🏠 Housing & Utilities",
+      "notes": "Settlement for SRM Electricity",
+      "created_at": "2026-08-27T11:00:00.000Z"
+    },
     {
       "id": "ea8384e1-b80c-45d7-a4c7-a4be190a87f5",
       "type": "Expense",
       "amount": "10",
-      "category": "Utilities",
+      "category": "🏠 Housing & Utilities",
       "notes": "administrative document",
       "created_at": "2026-08-18T11:00:00.000Z"
+    },
+    {
+      "id": "79a86155-309f-4a59-8d54-258876809d45",
+      "type": "Expense",
+      "amount": "191.37",
+      "category": "🏠 Housing & Utilities",
+      "notes": "SRM Casablanca-Settat",
+      "created_at": "2026-08-02T11:00:00.000Z"
     },
     {
       "id": "0243dc0a-a78a-4193-aa2f-6f1f154be9d5",
       "type": "Expense",
       "amount": "191.37",
-      "category": "Utilities",
+      "category": "🏠 Housing & Utilities",
       "notes": "SRM Casablanca-Settat",
       "created_at": "2026-08-02T11:00:00.000Z"
     },
@@ -2008,25 +1054,85 @@
       "id": "cfdd0d90-a422-49cb-9184-94875af72fbd",
       "type": "Expense",
       "amount": "191.37",
-      "category": "Utilities",
-      "notes": "SRM Casablanca-Settat",
-      "created_at": "2026-08-02T11:00:00.000Z"
-    },
-    {
-      "id": "79a86155-309f-4a59-8d54-258876809d45",
-      "type": "Expense",
-      "amount": "191.37",
-      "category": "Utilities",
+      "category": "🏠 Housing & Utilities",
       "notes": "SRM Casablanca-Settat",
       "created_at": "2026-08-02T11:00:00.000Z"
     }
   ],
-  "Wardrobe": [
+  "📥 Income": [
+    {
+      "id": "526484d5-4737-421c-9c7b-04c3de364b22",
+      "type": "Income",
+      "amount": "100",
+      "category": "📥 Income",
+      "notes": "Helped sis",
+      "created_at": "2026-08-27T11:00:00.000Z"
+    },
+    {
+      "id": "cb24dc4c-5434-4a75-aa7d-9da21ae6c4f0",
+      "type": "Income",
+      "amount": "6036.7",
+      "category": "📥 Income",
+      "notes": "Payroll deposited automatically",
+      "created_at": "2026-08-27T11:00:00.000Z"
+    },
+    {
+      "id": "49ebc507-119c-41ff-85cb-fc2657f032fe",
+      "type": "Income",
+      "amount": "6036.70",
+      "category": "📥 Income",
+      "notes": "Oracle R&D Center - Salary / Payroll",
+      "created_at": "2026-08-01T08:00:00.000Z"
+    },
+    {
+      "id": "cab399c8-3299-4725-8e2a-75a4cb448189",
+      "type": "Income",
+      "amount": "6036.70",
+      "category": "📥 Income",
+      "notes": "Oracle R&D Center - Salary / Payroll",
+      "created_at": "2026-08-01T08:00:00.000Z"
+    },
+    {
+      "id": "2b1cdd3e-f60b-4c42-9f70-b8ada290d551",
+      "type": "Income",
+      "amount": "6036.7",
+      "category": "📥 Income",
+      "notes": "Payroll deposited automatically",
+      "created_at": "2026-07-24T11:00:00.000Z"
+    },
+    {
+      "id": "250497ad-fc9c-4e32-9b84-3dcf695c4a83",
+      "type": "Income",
+      "amount": "6036.7",
+      "category": "📥 Income",
+      "notes": "Payroll deposited automatically",
+      "created_at": "2026-06-25T11:00:00.000Z"
+    }
+  ],
+  "🤝 Loan Received": [
+    {
+      "id": "2195b068-8566-4908-b677-3113088f2bbf",
+      "type": "Income",
+      "amount": "100",
+      "category": "🤝 Loan Received",
+      "notes": "",
+      "created_at": "2026-08-26T11:00:00.000Z"
+    }
+  ],
+  "👕 Personal & Clothing": [
+    {
+      "id": "6c50c38a-4e1e-4eeb-8605-d97d01902288",
+      "type": "Expense",
+      "amount": "280",
+      "category": "👕 Personal & Clothing",
+      "notes": "USPA shose",
+      "created_at": "2026-08-14T11:00:00.000Z"
+    },
     {
       "id": "63a879d3-f489-471e-8e28-21c3ad379ed3",
       "type": "Expense",
       "amount": "280",
-      "category": "Wardrobe",
+      "category": "👕 Personal & Clothing",
       "notes": "USPA shose",
       "created_at": "2026-08-14T11:00:00.000Z"
     },
@@ -2034,23 +1140,47 @@
       "id": "f9c62b8f-ecf9-4e60-94ec-9b1eeeebc60d",
       "type": "Expense",
       "amount": "280",
-      "category": "Wardrobe",
+      "category": "👕 Personal & Clothing",
       "notes": "USPA shose",
       "created_at": "2026-08-14T11:00:00.000Z"
     },
     {
-      "id": "6c50c38a-4e1e-4eeb-8605-d97d01902288",
+      "id": "76b6b004-165f-40b0-8023-f41f0e8c4da6",
       "type": "Expense",
-      "amount": "280",
-      "category": "Wardrobe",
-      "notes": "USPA shose",
-      "created_at": "2026-08-14T11:00:00.000Z"
+      "amount": "10.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop (3)",
+      "created_at": "2026-08-06T11:00:00.000Z"
+    },
+    {
+      "id": "ae3ff5d8-f7e5-4e5b-8f88-045cf073507b",
+      "type": "Expense",
+      "amount": "10.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop (3)",
+      "created_at": "2026-08-06T11:00:00.000Z"
+    },
+    {
+      "id": "d9320f84-6740-4429-859e-68a060bc226b",
+      "type": "Expense",
+      "amount": "10.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop (3)",
+      "created_at": "2026-08-06T11:00:00.000Z"
+    },
+    {
+      "id": "031c735e-e503-416c-9fc7-5d387f87df3b",
+      "type": "Expense",
+      "amount": "190.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Clothes (Initial Payment)",
+      "created_at": "2026-08-02T14:00:00.000Z"
     },
     {
       "id": "d603f981-dc46-4104-916f-3f6ef273acf2",
       "type": "Expense",
       "amount": "190.00",
-      "category": "Wardrobe",
+      "category": "👕 Personal & Clothing",
       "notes": "Clothes (Initial Payment)",
       "created_at": "2026-08-02T14:00:00.000Z"
     },
@@ -2058,23 +1188,79 @@
       "id": "06850c6d-cc31-4aa3-8c50-a41f3e3a4b86",
       "type": "Expense",
       "amount": "190.00",
-      "category": "Wardrobe",
+      "category": "👕 Personal & Clothing",
       "notes": "Clothes (Initial Payment)",
       "created_at": "2026-08-02T14:00:00.000Z"
     },
     {
-      "id": "031c735e-e503-416c-9fc7-5d387f87df3b",
+      "id": "e77cc901-967a-4aaa-8cfd-8a9d69e02fff",
       "type": "Expense",
-      "amount": "190.00",
-      "category": "Wardrobe",
-      "notes": "Clothes (Initial Payment)",
-      "created_at": "2026-08-02T14:00:00.000Z"
+      "amount": "20.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop (2)",
+      "created_at": "2026-08-02T13:00:00.000Z"
     },
     {
-      "id": "947ed5ed-3bcc-49bd-bd08-36dd4d19b9a4",
+      "id": "15ca4b7f-8293-4185-afbd-78b73474632f",
+      "type": "Expense",
+      "amount": "20.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop (2)",
+      "created_at": "2026-08-02T13:00:00.000Z"
+    },
+    {
+      "id": "70ccdecd-79ff-45ef-94f7-5a7a2e1a156c",
+      "type": "Expense",
+      "amount": "20.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop (2)",
+      "created_at": "2026-08-02T13:00:00.000Z"
+    },
+    {
+      "id": "5789c7e1-0383-441a-b59e-9b729090126c",
+      "type": "Expense",
+      "amount": "45.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop (1)",
+      "created_at": "2026-08-01T18:00:00.000Z"
+    },
+    {
+      "id": "ada5b975-87a3-426d-b415-19d513a6ede0",
+      "type": "Expense",
+      "amount": "45.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop (1)",
+      "created_at": "2026-08-01T18:00:00.000Z"
+    },
+    {
+      "id": "b9cbf761-d8e9-402a-8693-96d2503065c5",
+      "type": "Transfer",
+      "amount": "50.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop withdrawal",
+      "created_at": "2026-08-01T15:00:00.000Z"
+    },
+    {
+      "id": "c6813ac6-bd6d-4323-b306-1f71f031ddef",
+      "type": "Transfer",
+      "amount": "50.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop withdrawal",
+      "created_at": "2026-08-01T15:00:00.000Z"
+    },
+    {
+      "id": "a2ccd568-916f-4370-9c38-162d277693e1",
+      "type": "Transfer",
+      "amount": "50.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop withdrawal",
+      "created_at": "2026-08-01T15:00:00.000Z"
+    },
+    {
+      "id": "1a750de2-de2a-44f5-91d2-ca59bf005a15",
       "type": "Expense",
       "amount": "300.00",
-      "category": "Wardrobe",
+      "category": "👕 Personal & Clothing",
       "notes": "Suit rental",
       "created_at": "2026-08-01T13:30:00.000Z"
     },
@@ -2082,17 +1268,1613 @@
       "id": "c7b6b03f-3f86-4b5a-9115-991fa41b70b7",
       "type": "Expense",
       "amount": "300.00",
-      "category": "Wardrobe",
+      "category": "👕 Personal & Clothing",
       "notes": "Suit rental",
       "created_at": "2026-08-01T13:30:00.000Z"
     },
     {
-      "id": "1a750de2-de2a-44f5-91d2-ca59bf005a15",
-      "type": "Expense",
+      "id": "11351aac-2cf8-40d2-9ed9-e7047eaa7334",
+      "type": "Transfer",
       "amount": "300.00",
-      "category": "Wardrobe",
+      "category": "👕 Personal & Clothing",
+      "notes": "Suit rental withdrawal",
+      "created_at": "2026-08-01T13:00:00.000Z"
+    },
+    {
+      "id": "ef63bd88-0d82-4c24-88c3-220a9df24fc3",
+      "type": "Transfer",
+      "amount": "300.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Suit rental withdrawal",
+      "created_at": "2026-08-01T13:00:00.000Z"
+    },
+    {
+      "id": "97bbed0c-b3bc-4bad-8f36-105c7086e743",
+      "type": "Transfer",
+      "amount": "300.00",
+      "category": "👕 Personal & Clothing",
+      "notes": "Suit rental withdrawal",
+      "created_at": "2026-08-01T13:00:00.000Z"
+    },
+    {
+      "id": "fd2cd31f-fe36-460c-b1eb-63cb073c8532",
+      "type": "Expense",
+      "amount": "45",
+      "category": "👕 Personal & Clothing",
+      "notes": "Barbershop (1)",
+      "created_at": "2026-07-27T11:00:00.000Z"
+    },
+    {
+      "id": "947ed5ed-3bcc-49bd-bd08-36dd4d19b9a4",
+      "type": "Expense",
+      "amount": "300",
+      "category": "👕 Personal & Clothing",
       "notes": "Suit rental",
-      "created_at": "2026-08-01T13:30:00.000Z"
+      "created_at": "2026-07-27T11:00:00.000Z"
+    },
+    {
+      "id": "046c0442-bf6e-421d-a727-ab960d93f3f7",
+      "type": "Expense",
+      "amount": "201",
+      "category": "👕 Personal & Clothing",
+      "notes": "Decathlon Almaz",
+      "created_at": "2026-07-08T11:00:00.000Z"
+    }
+  ],
+  "👥 Social": [
+    {
+      "id": "9d299585-2cf0-41b4-b1e8-4f0f2c16c33b",
+      "type": "Expense",
+      "amount": "200",
+      "category": "👥 Social",
+      "notes": "Loan to friend",
+      "created_at": "2026-08-01T11:00:00.000Z"
+    },
+    {
+      "id": "1f3613dc-f46f-4282-9bfe-2f962d3aa804",
+      "type": "Expense",
+      "amount": "170",
+      "category": "👥 Social",
+      "notes": "Untracked Cash via Mehdi",
+      "created_at": "2026-06-28T11:00:00.000Z"
+    },
+    {
+      "id": "7f435df6-2305-4c5a-b88b-c7c1c8d3c7fc",
+      "type": "Expense",
+      "amount": "345",
+      "category": "👥 Social",
+      "notes": "Graduation Party ",
+      "created_at": "2026-06-25T11:00:00.000Z"
+    },
+    {
+      "id": "fc67cc7b-8955-4434-8e67-6a0f5c2f3f22",
+      "type": "Expense",
+      "amount": "25",
+      "category": "👥 Social",
+      "notes": "ONCF e-com",
+      "created_at": "2026-06-25T11:00:00.000Z"
+    }
+  ],
+  "📱 Telecom & Subscriptions": [
+    {
+      "id": "3cf3cf4a-53f4-48f4-bc6a-5ac7c791c683",
+      "type": "Expense",
+      "amount": "90",
+      "category": "📱 Telecom & Subscriptions",
+      "notes": "Settlement for Orange",
+      "created_at": "2026-08-27T11:00:00.000Z"
+    },
+    {
+      "id": "5f1c5b8c-2f8d-404a-9775-ca67d18e60f4",
+      "type": "Expense",
+      "amount": "10.00",
+      "category": "📱 Telecom & Subscriptions",
+      "notes": "Orange (App top-up)",
+      "created_at": "2026-08-04T09:00:00.000Z"
+    },
+    {
+      "id": "6a3aa0fc-e488-421a-a18d-482711473a75",
+      "type": "Expense",
+      "amount": "10.00",
+      "category": "📱 Telecom & Subscriptions",
+      "notes": "Orange (App top-up)",
+      "created_at": "2026-08-04T09:00:00.000Z"
+    },
+    {
+      "id": "e373d27c-0221-4a45-aa20-a730050e93da",
+      "type": "Expense",
+      "amount": "10.00",
+      "category": "📱 Telecom & Subscriptions",
+      "notes": "Orange (App top-up)",
+      "created_at": "2026-08-04T09:00:00.000Z"
+    },
+    {
+      "id": "0efea303-9f89-4824-8ce8-091bfc722490",
+      "type": "Expense",
+      "amount": "50.00",
+      "category": "📱 Telecom & Subscriptions",
+      "notes": "Orange Maroc",
+      "created_at": "2026-08-02T14:00:00.000Z"
+    },
+    {
+      "id": "d8f9e573-bae9-4be2-bcf2-aeb8c24e16b2",
+      "type": "Expense",
+      "amount": "50.00",
+      "category": "📱 Telecom & Subscriptions",
+      "notes": "Orange Maroc",
+      "created_at": "2026-08-02T14:00:00.000Z"
+    },
+    {
+      "id": "75bba2d2-490a-4c43-8632-55a1fbc6b631",
+      "type": "Expense",
+      "amount": "50",
+      "category": "📱 Telecom & Subscriptions",
+      "notes": "Orange Maroc",
+      "created_at": "2026-07-26T11:00:00.000Z"
+    },
+    {
+      "id": "9864cfe8-f717-4c5b-81a4-ff71a6e8fcb4",
+      "type": "Expense",
+      "amount": "60",
+      "category": "📱 Telecom & Subscriptions",
+      "notes": "Orange Mobile Bill",
+      "created_at": "2026-06-26T11:00:00.000Z"
+    }
+  ],
+  "🔄 Transfer": [
+    {
+      "id": "4caf6064-baca-4951-be87-d37197454a39",
+      "type": "Transfer",
+      "amount": "200",
+      "category": "🔄 Transfer",
+      "notes": "",
+      "created_at": "2026-08-27T11:00:00.000Z"
+    },
+    {
+      "id": "aa20b19e-bbe6-4fd7-b549-d6583b1354f1",
+      "type": "Transfer",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "",
+      "created_at": "2026-08-26T11:00:00.000Z"
+    },
+    {
+      "id": "fe54eb7d-7deb-459b-9f10-836dc44c94b5",
+      "type": "Transfer",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "Transfer from bank to cash",
+      "created_at": "2026-08-20T11:34:20.582Z"
+    },
+    {
+      "id": "3fc24f90-d199-443e-aa52-05a82e7c938c",
+      "type": "Transfer",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "",
+      "created_at": "2026-08-14T11:00:00.000Z"
+    },
+    {
+      "id": "b7a990ad-7ee6-4a61-aa52-452991ea5a39",
+      "type": "Transfer",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "",
+      "created_at": "2026-08-14T11:00:00.000Z"
+    },
+    {
+      "id": "965a6aa6-fbb3-4fb5-bd73-3e7746f4cb0a",
+      "type": "Transfer",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "",
+      "created_at": "2026-08-14T11:00:00.000Z"
+    },
+    {
+      "id": "33594c6a-d1d4-4a4e-88ac-9f62e309c97c",
+      "type": "Transfer",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "",
+      "created_at": "2026-08-10T11:00:00.000Z"
+    },
+    {
+      "id": "879126c4-3f28-447a-907d-6f3838f14a7b",
+      "type": "Transfer",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "",
+      "created_at": "2026-08-10T11:00:00.000Z"
+    },
+    {
+      "id": "e473b5eb-547b-4e92-bad6-0e55baefe405",
+      "type": "Transfer",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "",
+      "created_at": "2026-08-10T11:00:00.000Z"
+    },
+    {
+      "id": "e4b9bef9-7e48-4ecd-877a-91b0104dd860",
+      "type": "Transfer",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "",
+      "created_at": "2026-08-08T11:00:00.000Z"
+    },
+    {
+      "id": "884db872-199f-459f-9fcf-83d3cd3a627f",
+      "type": "Transfer",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "",
+      "created_at": "2026-08-08T11:00:00.000Z"
+    },
+    {
+      "id": "cbdb734f-514d-4d62-8c4d-9d120de42650",
+      "type": "Transfer",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "",
+      "created_at": "2026-08-08T11:00:00.000Z"
+    },
+    {
+      "id": "e7b80d92-efad-4a66-b0f4-20957acc04c6",
+      "type": "Transfer",
+      "amount": "662.99",
+      "category": "🔄 Transfer",
+      "notes": "ATM Cash Withdrawal",
+      "created_at": "2026-08-06T16:08:38.588Z"
+    },
+    {
+      "id": "b424288e-7856-4547-a7b5-a639f8e8fe56",
+      "type": "Transfer",
+      "amount": "662.99",
+      "category": "🔄 Transfer",
+      "notes": "ATM Cash Withdrawal",
+      "created_at": "2026-08-06T16:08:38.588Z"
+    },
+    {
+      "id": "e460e828-b9b3-4724-aa83-dafa2c8cc38f",
+      "type": "Transfer",
+      "amount": "662.99",
+      "category": "🔄 Transfer",
+      "notes": "ATM Cash Withdrawal",
+      "created_at": "2026-08-06T16:08:38.588Z"
+    },
+    {
+      "id": "7b2acba6-3603-45b4-97f4-a9f2254379b4",
+      "type": "Transfer",
+      "amount": "100.00",
+      "category": "🔄 Transfer",
+      "notes": "Friday ATM Withdrawal",
+      "created_at": "2026-08-04T08:00:00.000Z"
+    },
+    {
+      "id": "ef6ccee2-3534-4428-b30e-7be00fc4eb1f",
+      "type": "Transfer",
+      "amount": "100.00",
+      "category": "🔄 Transfer",
+      "notes": "Friday ATM Withdrawal",
+      "created_at": "2026-08-04T08:00:00.000Z"
+    },
+    {
+      "id": "b2a5f23f-0944-4353-9619-4e183e6b440b",
+      "type": "Transfer",
+      "amount": "100.00",
+      "category": "🔄 Transfer",
+      "notes": "Friday ATM Withdrawal",
+      "created_at": "2026-08-04T08:00:00.000Z"
+    },
+    {
+      "id": "febf37c8-bfff-4e9a-81cb-496e5c8341ac",
+      "type": "Transfer",
+      "amount": "400.00",
+      "category": "🔄 Transfer",
+      "notes": "MehDi Card withdrawal",
+      "created_at": "2026-08-01T12:00:00.000Z"
+    },
+    {
+      "id": "7b01f6a4-0fef-47be-a438-2d0e74ce3b9b",
+      "type": "Transfer",
+      "amount": "400.00",
+      "category": "🔄 Transfer",
+      "notes": "MehDi Card withdrawal",
+      "created_at": "2026-08-01T12:00:00.000Z"
+    },
+    {
+      "id": "52e0915e-16b7-469d-bfcf-194b330010aa",
+      "type": "Transfer",
+      "amount": "400.00",
+      "category": "🔄 Transfer",
+      "notes": "MehDi Card withdrawal",
+      "created_at": "2026-08-01T12:00:00.000Z"
+    },
+    {
+      "id": "b54f531b-ba2b-4f6c-ac3a-2e8fbf36b9f3",
+      "type": "Income",
+      "amount": "100",
+      "category": "🔄 Transfer",
+      "notes": "Virement from Yassmine",
+      "created_at": "2026-07-23T11:00:00.000Z"
+    },
+    {
+      "id": "5c685d1b-4ce7-4363-9b68-154645091563",
+      "type": "Income",
+      "amount": "200",
+      "category": "🔄 Transfer",
+      "notes": "Virement from Yassmine",
+      "created_at": "2026-07-12T11:00:00.000Z"
+    }
+  ],
+  "🚗 Transportation": [
+    {
+      "id": "0022fcbb-44e8-4c0f-99c0-ffa5e139cf33",
+      "type": "Expense",
+      "amount": "90",
+      "category": "🚗 Transportation",
+      "notes": "Vidange for bike",
+      "created_at": "2026-08-27T16:21:56.537Z"
+    },
+    {
+      "id": "0037d2a8-7cec-4653-bb9f-f4d2546bdf3c",
+      "type": "Expense",
+      "amount": "20",
+      "category": "🚗 Transportation",
+      "notes": "Bike wash",
+      "created_at": "2026-08-26T13:58:41.890Z"
+    },
+    {
+      "id": "418cd392-8db7-475a-a072-7cca25eac34e",
+      "type": "Expense",
+      "amount": "44",
+      "category": "🚗 Transportation",
+      "notes": "Fuel purchase",
+      "created_at": "2026-08-26T13:58:41.858Z"
+    },
+    {
+      "id": "a6965e8f-d97f-4f6a-942e-ec07ea1a5adb",
+      "type": "Expense",
+      "amount": "2",
+      "category": "🚗 Transportation",
+      "notes": null,
+      "created_at": "2026-08-24T11:00:00.000Z"
+    },
+    {
+      "id": "f223b65a-af27-42c7-b85a-22db9e767f27",
+      "type": "Expense",
+      "amount": "40",
+      "category": "🚗 Transportation",
+      "notes": "Fuel purchase",
+      "created_at": "2026-08-19T17:29:49.191Z"
+    },
+    {
+      "id": "6d6a56dd-59e5-45da-9a11-a2a0e4e630d6",
+      "type": "Expense",
+      "amount": "25",
+      "category": "🚗 Transportation",
+      "notes": "Fuel ",
+      "created_at": "2026-08-18T11:00:00.000Z"
+    },
+    {
+      "id": "47846231-190f-490e-be10-3400aec79427",
+      "type": "Expense",
+      "amount": "2",
+      "category": "🚗 Transportation",
+      "notes": "Parking",
+      "created_at": "2026-08-18T11:00:00.000Z"
+    },
+    {
+      "id": "c27f7c88-967f-4faa-940b-182bdbe67a2b",
+      "type": "Expense",
+      "amount": "40",
+      "category": "🚗 Transportation",
+      "notes": "Fuel expense",
+      "created_at": "2026-08-13T08:22:56.159Z"
+    },
+    {
+      "id": "820176d2-ea2a-4332-8f4a-1f4ff6f1b017",
+      "type": "Expense",
+      "amount": "40",
+      "category": "🚗 Transportation",
+      "notes": "Fuel expense",
+      "created_at": "2026-08-13T08:22:56.159Z"
+    },
+    {
+      "id": "1aed6083-0a67-4a75-8d73-1da72a777eeb",
+      "type": "Expense",
+      "amount": "40",
+      "category": "🚗 Transportation",
+      "notes": "Fuel expense",
+      "created_at": "2026-08-13T08:22:56.159Z"
+    },
+    {
+      "id": "c607cf0e-52bd-4843-9635-a83529de2a93",
+      "type": "Expense",
+      "amount": "25",
+      "category": "🚗 Transportation",
+      "notes": "Fuel ",
+      "created_at": "2026-08-10T11:00:00.000Z"
+    },
+    {
+      "id": "d9c59260-bd2b-40ef-a8c6-be0fbd899f4e",
+      "type": "Expense",
+      "amount": "25",
+      "category": "🚗 Transportation",
+      "notes": "Fuel ",
+      "created_at": "2026-08-10T11:00:00.000Z"
+    },
+    {
+      "id": "be0bb1d6-15b1-4378-b02b-5ca8533ce6f6",
+      "type": "Expense",
+      "amount": "25",
+      "category": "🚗 Transportation",
+      "notes": "Fuel ",
+      "created_at": "2026-08-10T11:00:00.000Z"
+    },
+    {
+      "id": "884e7300-c40c-49ef-b331-be630cce16ad",
+      "type": "Expense",
+      "amount": "40",
+      "category": "🚗 Transportation",
+      "notes": "Fuel",
+      "created_at": "2026-08-06T16:08:42.205Z"
+    },
+    {
+      "id": "5e977f5f-8cb8-47d8-81d6-73d8552438b1",
+      "type": "Expense",
+      "amount": "40",
+      "category": "🚗 Transportation",
+      "notes": "Fuel",
+      "created_at": "2026-08-06T16:08:42.205Z"
+    },
+    {
+      "id": "b918a704-c8ee-45b3-9eb6-04da612322e8",
+      "type": "Expense",
+      "amount": "40",
+      "category": "🚗 Transportation",
+      "notes": "Fuel",
+      "created_at": "2026-08-06T16:08:42.205Z"
+    },
+    {
+      "id": "dc0761b8-6001-4466-b536-7f21719d6752",
+      "type": "Expense",
+      "amount": "4.00",
+      "category": "🚗 Transportation",
+      "notes": "Parking",
+      "created_at": "2026-08-05T14:00:00.000Z"
+    },
+    {
+      "id": "091c9e94-b3c0-4dd3-b3af-bc6f0f1bb332",
+      "type": "Expense",
+      "amount": "4.00",
+      "category": "🚗 Transportation",
+      "notes": "Parking",
+      "created_at": "2026-08-05T14:00:00.000Z"
+    },
+    {
+      "id": "3251176b-6819-4c5b-ab97-02bbeb650f95",
+      "type": "Expense",
+      "amount": "4.00",
+      "category": "🚗 Transportation",
+      "notes": "Parking",
+      "created_at": "2026-08-05T14:00:00.000Z"
+    },
+    {
+      "id": "089ace56-0def-44df-ad20-67d634f1eed6",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "🚗 Transportation",
+      "notes": "Fuel (Bike)",
+      "created_at": "2026-08-04T22:00:00.000Z"
+    },
+    {
+      "id": "bf71dd51-2f82-4429-a6be-4a038dc8e0ff",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "🚗 Transportation",
+      "notes": "Fuel (Bike)",
+      "created_at": "2026-08-04T22:00:00.000Z"
+    },
+    {
+      "id": "8de69cc4-22b2-46ca-b51a-5178e341ae24",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "🚗 Transportation",
+      "notes": "Fuel (Bike)",
+      "created_at": "2026-08-04T22:00:00.000Z"
+    },
+    {
+      "id": "54a07018-9353-46d7-8964-4469dee47eaa",
+      "type": "Expense",
+      "amount": "33.00",
+      "category": "🚗 Transportation",
+      "notes": "Uber (2) from Cinema (16.50 Personal + 16.50 Friend)",
+      "created_at": "2026-08-04T21:00:00.000Z"
+    },
+    {
+      "id": "b363ee13-41e0-40e9-8aeb-706498a78824",
+      "type": "Expense",
+      "amount": "33.00",
+      "category": "🚗 Transportation",
+      "notes": "Uber (2) from Cinema (16.50 Personal + 16.50 Friend)",
+      "created_at": "2026-08-04T21:00:00.000Z"
+    },
+    {
+      "id": "eb109fa9-e0d5-4b66-a280-77595667c237",
+      "type": "Expense",
+      "amount": "33.00",
+      "category": "🚗 Transportation",
+      "notes": "Uber (2) from Cinema (16.50 Personal + 16.50 Friend)",
+      "created_at": "2026-08-04T21:00:00.000Z"
+    },
+    {
+      "id": "a71d191d-0f3f-4b32-9d4f-01a6044d48a0",
+      "type": "Expense",
+      "amount": "20.00",
+      "category": "🚗 Transportation",
+      "notes": "Uber (1) to Cinema (10 Personal + 10 Friend)",
+      "created_at": "2026-08-04T17:00:00.000Z"
+    },
+    {
+      "id": "cc37b55e-95ef-4cb3-9b5c-ab5d3a9c0a83",
+      "type": "Expense",
+      "amount": "20.00",
+      "category": "🚗 Transportation",
+      "notes": "Uber (1) to Cinema (10 Personal + 10 Friend)",
+      "created_at": "2026-08-04T17:00:00.000Z"
+    },
+    {
+      "id": "1af56d3a-5874-4b26-8b26-5d58adf5ecdd",
+      "type": "Expense",
+      "amount": "20.00",
+      "category": "🚗 Transportation",
+      "notes": "Uber (1) to Cinema (10 Personal + 10 Friend)",
+      "created_at": "2026-08-04T17:00:00.000Z"
+    },
+    {
+      "id": "7ac1decc-72fe-40b9-af8e-f0e23811cee6",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "🚗 Transportation",
+      "notes": "Station Prestig (Fuel)",
+      "created_at": "2026-08-02T16:00:00.000Z"
+    },
+    {
+      "id": "44ec0132-ec2e-4c17-a72a-9c7fa4eb4a9c",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "🚗 Transportation",
+      "notes": "Station Prestig (Fuel)",
+      "created_at": "2026-08-02T16:00:00.000Z"
+    },
+    {
+      "id": "88d4c339-62fa-4f12-9e33-fc3c64670b8a",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "🚗 Transportation",
+      "notes": "Station Prestig (Fuel)",
+      "created_at": "2026-08-02T16:00:00.000Z"
+    },
+    {
+      "id": "e4eb2b70-b225-4657-91f0-5309fa0ee6ef",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "🚗 Transportation",
+      "notes": "Fuel",
+      "created_at": "2026-08-02T12:00:00.000Z"
+    },
+    {
+      "id": "2a63a674-41a3-4b8e-9325-accd6727a653",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "🚗 Transportation",
+      "notes": "Fuel",
+      "created_at": "2026-08-02T12:00:00.000Z"
+    },
+    {
+      "id": "6527a39c-fc7b-4cf7-ac30-d9401412de4b",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "🚗 Transportation",
+      "notes": "Fuel",
+      "created_at": "2026-08-02T12:00:00.000Z"
+    },
+    {
+      "id": "f90491e2-058b-4fd9-9617-73b42e315eb8",
+      "type": "Expense",
+      "amount": "30",
+      "category": "🚗 Transportation",
+      "notes": "Train (Transport for self, mom, and sister)",
+      "created_at": "2026-08-02T11:00:00.000Z"
+    },
+    {
+      "id": "ca535db0-2fd7-47d2-9dc3-ad6592788471",
+      "type": "Expense",
+      "amount": "30",
+      "category": "🚗 Transportation",
+      "notes": "Train (Transport for self, mom, and sister)",
+      "created_at": "2026-08-02T11:00:00.000Z"
+    },
+    {
+      "id": "7075b5dc-5051-4965-9efe-9581ad3ad231",
+      "type": "Expense",
+      "amount": "30",
+      "category": "🚗 Transportation",
+      "notes": "Train (Transport for self, mom, and sister)",
+      "created_at": "2026-08-02T11:00:00.000Z"
+    },
+    {
+      "id": "e5d249cd-ded6-4cff-9c30-b673d58bbef6",
+      "type": "Expense",
+      "amount": "20.00",
+      "category": "🚗 Transportation",
+      "notes": "Station fuel",
+      "created_at": "2026-08-02T09:00:00.000Z"
+    },
+    {
+      "id": "622d2cb9-25a4-4f73-bfc3-84b94a2057a0",
+      "type": "Expense",
+      "amount": "20.00",
+      "category": "🚗 Transportation",
+      "notes": "Station fuel",
+      "created_at": "2026-08-02T09:00:00.000Z"
+    },
+    {
+      "id": "d81d76ad-fe1f-41d9-a7ef-be928311bd21",
+      "type": "Expense",
+      "amount": "20.00",
+      "category": "🚗 Transportation",
+      "notes": "Station fuel",
+      "created_at": "2026-08-02T09:00:00.000Z"
+    },
+    {
+      "id": "d9284459-f5f3-4723-8cd3-b8e957bf709f",
+      "type": "Expense",
+      "amount": "35.00",
+      "category": "🚗 Transportation",
+      "notes": "Station fuel",
+      "created_at": "2026-08-02T08:00:00.000Z"
+    },
+    {
+      "id": "4dd3a737-e7bf-4608-9fc0-3fad6785527c",
+      "type": "Expense",
+      "amount": "35.00",
+      "category": "🚗 Transportation",
+      "notes": "Station fuel",
+      "created_at": "2026-08-02T08:00:00.000Z"
+    },
+    {
+      "id": "5eb28b94-924f-4319-b787-84f394a43c1a",
+      "type": "Expense",
+      "amount": "35.00",
+      "category": "🚗 Transportation",
+      "notes": "Station fuel",
+      "created_at": "2026-08-02T08:00:00.000Z"
+    },
+    {
+      "id": "16c24ceb-474a-44bc-94e6-bc8acb5dc325",
+      "type": "Expense",
+      "amount": "30",
+      "category": "🚗 Transportation",
+      "notes": "Station Prestige Nas (Fuel)",
+      "created_at": "2026-07-23T11:00:00.000Z"
+    },
+    {
+      "id": "d49ad354-df27-41ae-b390-a975e8629620",
+      "type": "Expense",
+      "amount": "35",
+      "category": "🚗 Transportation",
+      "notes": "ONCF e-com",
+      "created_at": "2026-07-12T11:00:00.000Z"
+    },
+    {
+      "id": "8abc6b68-383a-4801-892f-131fcd79e1c1",
+      "type": "Expense",
+      "amount": "35",
+      "category": "🚗 Transportation",
+      "notes": "ONCF e-com",
+      "created_at": "2026-07-12T11:00:00.000Z"
+    },
+    {
+      "id": "63c89ce8-2153-4ff8-8c33-7aa3cbb6dc24",
+      "type": "Expense",
+      "amount": "40",
+      "category": "🚗 Transportation",
+      "notes": "ONCF e-com",
+      "created_at": "2026-07-12T11:00:00.000Z"
+    },
+    {
+      "id": "9a762b9b-bec4-442e-b979-000d897e8981",
+      "type": "Expense",
+      "amount": "70",
+      "category": "🚗 Transportation",
+      "notes": "ONCF e-com",
+      "created_at": "2026-07-12T11:00:00.000Z"
+    },
+    {
+      "id": "82b867c4-b402-43fe-9352-3d913a45e0d0",
+      "type": "Expense",
+      "amount": "25",
+      "category": "🚗 Transportation",
+      "notes": "ONCF Transport",
+      "created_at": "2026-06-25T11:00:00.000Z"
+    },
+    {
+      "id": "cb272ae8-da22-41da-8ecb-b75f2dbd45d8",
+      "type": "Expense",
+      "amount": "25",
+      "category": "🚗 Transportation",
+      "notes": "ONCF Transport",
+      "created_at": "2026-06-25T11:00:00.000Z"
+    }
+  ],
+  "🚨 Unexpected": [
+    {
+      "id": "7ea5918f-3bd4-49b0-bcb9-16edbba98742",
+      "type": "Income",
+      "amount": "1200",
+      "category": "🚨 Unexpected",
+      "notes": "Settlement for RMA assurance ",
+      "created_at": "2026-08-28T11:00:00.000Z"
+    },
+    {
+      "id": "1816ce69-bef3-4c39-881a-9ae0b4cdb18e",
+      "type": "Expense",
+      "amount": "1",
+      "category": "🚨 Unexpected",
+      "notes": "Droit de Timbre (Bank Fee)",
+      "created_at": "2026-07-07T11:00:00.000Z"
+    },
+    {
+      "id": "13eb78c5-4caf-4857-b445-aca82d4f4147",
+      "type": "Expense",
+      "amount": "100",
+      "category": "🚨 Unexpected",
+      "notes": "Untracked Cash via Yassmine",
+      "created_at": "2026-07-06T11:00:00.000Z"
+    },
+    {
+      "id": "0079bfd5-cbcb-494d-9536-40f5fb859e58",
+      "type": "Expense",
+      "amount": "700",
+      "category": "🚨 Unexpected",
+      "notes": "Untracked Cash via Yassmine",
+      "created_at": "2026-07-01T11:00:00.000Z"
+    },
+    {
+      "id": "5c325b09-d044-4aa0-a98d-5de17d742656",
+      "type": "Expense",
+      "amount": "100",
+      "category": "🚨 Unexpected",
+      "notes": "Untracked Cash via Yassmine",
+      "created_at": "2026-06-28T11:00:00.000Z"
+    },
+    {
+      "id": "4106aa04-0b24-46ae-8390-878e50521924",
+      "type": "Expense",
+      "amount": "100",
+      "category": "🚨 Unexpected",
+      "notes": "Untracked Cash Withdrawal (GAB)",
+      "created_at": "2026-06-25T11:00:00.000Z"
+    }
+  ],
+  "👨‍👩‍👦 Family & Gifts": [
+    {
+      "id": "2992ac45-a53b-4fbe-a45f-d4a914f60bb2",
+      "type": "Expense",
+      "amount": "30",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "McFlurry",
+      "created_at": "2026-08-21T11:00:00.000Z"
+    },
+    {
+      "id": "7978478f-a64d-4a0e-b74d-2ab2d40e4b46",
+      "type": "Income",
+      "amount": "5",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Mom gave cash",
+      "created_at": "2026-08-16T11:00:00.000Z"
+    },
+    {
+      "id": "6058f188-5a80-4e78-b30b-d6592163ff95",
+      "type": "Expense",
+      "amount": "15",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Ice-cream ",
+      "created_at": "2026-08-14T11:00:00.000Z"
+    },
+    {
+      "id": "2b6a08ab-01df-4857-8806-ca89969bfb25",
+      "type": "Expense",
+      "amount": "15",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Ice-cream ",
+      "created_at": "2026-08-14T11:00:00.000Z"
+    },
+    {
+      "id": "292ffa7e-8776-4351-a2e2-57f16e608261",
+      "type": "Expense",
+      "amount": "15",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Ice-cream ",
+      "created_at": "2026-08-14T11:00:00.000Z"
+    },
+    {
+      "id": "eae2dea1-f1a8-44b0-a6ef-c9f30323f29f",
+      "type": "Expense",
+      "amount": "30",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Gift to mom",
+      "created_at": "2026-08-14T10:02:21.533Z"
+    },
+    {
+      "id": "c714408a-18da-433e-a985-8a232837b173",
+      "type": "Expense",
+      "amount": "30",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Gift to mom",
+      "created_at": "2026-08-14T10:02:21.533Z"
+    },
+    {
+      "id": "1227b005-00dd-41cc-8d0c-75197b071315",
+      "type": "Expense",
+      "amount": "30",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Gift to mom",
+      "created_at": "2026-08-14T10:02:21.533Z"
+    },
+    {
+      "id": "f168572f-3335-4b2a-9bc8-cae1f5924fd3",
+      "type": "Expense",
+      "amount": "138",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Shawarma (Dinner)",
+      "created_at": "2026-08-02T11:00:00.000Z"
+    },
+    {
+      "id": "5d8726be-2bf0-4c99-853e-eadf9bf5c05c",
+      "type": "Expense",
+      "amount": "138",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Shawarma (Dinner)",
+      "created_at": "2026-08-02T11:00:00.000Z"
+    },
+    {
+      "id": "a7613cf0-1f8e-468b-ba6e-af79415fba55",
+      "type": "Expense",
+      "amount": "138",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Shawarma (Dinner)",
+      "created_at": "2026-08-02T11:00:00.000Z"
+    },
+    {
+      "id": "f4049950-0f39-44fc-a038-1170f1e3d633",
+      "type": "Expense",
+      "amount": "50.00",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Cash to Mom",
+      "created_at": "2026-08-01T16:00:00.000Z"
+    },
+    {
+      "id": "3eeb1b96-5c5c-4f55-aedb-13c010db9584",
+      "type": "Expense",
+      "amount": "50.00",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Cash to Mom",
+      "created_at": "2026-08-01T16:00:00.000Z"
+    },
+    {
+      "id": "b66e5ecd-e321-4b2f-8e2a-502c39951fc6",
+      "type": "Expense",
+      "amount": "50.00",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Cash to Mom",
+      "created_at": "2026-08-01T16:00:00.000Z"
+    },
+    {
+      "id": "b06757f4-4225-4119-bc91-83917e1bb09f",
+      "type": "Transfer",
+      "amount": "100.00",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Mom & chicken withdrawal",
+      "created_at": "2026-08-01T14:00:00.000Z"
+    },
+    {
+      "id": "89f59eb9-e49c-4b3e-bba8-210d6f053b9b",
+      "type": "Transfer",
+      "amount": "100.00",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Mom & chicken withdrawal",
+      "created_at": "2026-08-01T14:00:00.000Z"
+    },
+    {
+      "id": "a4ca920f-20af-44e4-a43b-fe8766a8659e",
+      "type": "Transfer",
+      "amount": "100.00",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Mom & chicken withdrawal",
+      "created_at": "2026-08-01T14:00:00.000Z"
+    },
+    {
+      "id": "fc260807-2a9a-405c-bd35-95818216935b",
+      "type": "Income",
+      "amount": "10.00",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Sister - Cash gift / help",
+      "created_at": "2026-08-01T10:00:00.000Z"
+    },
+    {
+      "id": "f02a04d5-3f46-48fc-a50e-71627acd5411",
+      "type": "Income",
+      "amount": "10.00",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Sister - Cash gift / help",
+      "created_at": "2026-08-01T10:00:00.000Z"
+    },
+    {
+      "id": "da00a47a-4dd0-4445-b281-225fb3e40882",
+      "type": "Income",
+      "amount": "10.00",
+      "category": "👨‍👩‍👦 Family & Gifts",
+      "notes": "Sister - Cash gift / help",
+      "created_at": "2026-08-01T10:00:00.000Z"
+    }
+  ],
+  "Debt Repayment": [
+    {
+      "id": "4d8ff423-80b0-4c2e-9611-b4f56490c3e7",
+      "type": "Expense",
+      "amount": "1300",
+      "category": "Debt Repayment",
+      "notes": "Settlement for Yassmine",
+      "created_at": "2026-08-27T06:33:16.674Z"
+    },
+    {
+      "id": "e9fe289d-f0ba-440e-a153-57ff893587d3",
+      "type": "Expense",
+      "amount": "100",
+      "category": "Debt Repayment",
+      "notes": "Settlement for Yassmine",
+      "created_at": "2026-08-27T06:32:59.036Z"
+    }
+  ],
+  "Groceries": [
+    {
+      "id": "f41aaef2-c1ec-455e-9d50-54010b406cd2",
+      "type": "Expense",
+      "amount": "12",
+      "category": "Groceries",
+      "notes": "Napkins ",
+      "created_at": "2026-08-24T11:00:00.000Z"
+    }
+  ],
+  "Reimbursement": [
+    {
+      "id": "92962a18-f0bd-409e-b2ee-e67f1e46ee71",
+      "type": "Income",
+      "amount": "340.69",
+      "category": "Reimbursement",
+      "notes": "Settlement for CNSS",
+      "created_at": "2026-08-29T09:04:40.666Z"
+    }
+  ],
+  "☕ Coffee & Quick Food": [
+    {
+      "id": "6bf51ae7-1c2b-4c3a-9159-2b4b9fedcfd1",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Juice at Boca Oracle",
+      "created_at": "2026-08-28T11:00:00.000Z"
+    },
+    {
+      "id": "fec471a4-60d0-434a-8fbf-3d47b349f699",
+      "type": "Expense",
+      "amount": "26",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "snacks on cash",
+      "created_at": "2026-08-28T11:00:00.000Z"
+    },
+    {
+      "id": "dd3f8914-4da8-4d3f-83ed-533ced45d4c7",
+      "type": "Expense",
+      "amount": "45",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Juice at California Mall",
+      "created_at": "2026-08-28T11:00:00.000Z"
+    },
+    {
+      "id": "e85c4dd6-8d75-46c8-a573-7f3b4bab7d74",
+      "type": "Expense",
+      "amount": "17",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee",
+      "created_at": "2026-08-26T13:58:41.876Z"
+    },
+    {
+      "id": "03600688-0407-4778-8b03-813a4e6de779",
+      "type": "Expense",
+      "amount": "3",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Chocolate",
+      "created_at": "2026-08-23T14:16:17.816Z"
+    },
+    {
+      "id": "bb45f294-0c2e-4cd0-bc2f-9b821ce9f035",
+      "type": "Expense",
+      "amount": "19.7",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Snacks",
+      "created_at": "2026-08-22T11:00:00.000Z"
+    },
+    {
+      "id": "eba45e5a-808f-4cd5-94f0-2c680e56a120",
+      "type": "Expense",
+      "amount": "18",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee ",
+      "created_at": "2026-08-22T11:00:00.000Z"
+    },
+    {
+      "id": "7edc6823-713e-4ce6-aa81-a937868f511c",
+      "type": "Expense",
+      "amount": "40",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Milkshake",
+      "created_at": "2026-08-20T11:00:00.000Z"
+    },
+    {
+      "id": "0add0f1d-1579-45cd-a00b-036fa974a9a5",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Juice purchase",
+      "created_at": "2026-08-19T11:00:00.000Z"
+    },
+    {
+      "id": "da92849b-d906-46d1-9b22-5106913bddae",
+      "type": "Expense",
+      "amount": "14",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Juice from Boca Oracle",
+      "created_at": "2026-08-18T11:00:00.000Z"
+    },
+    {
+      "id": "0a6aa13d-d024-4d19-be15-2804f145da49",
+      "type": "Expense",
+      "amount": "24.25",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Snacks",
+      "created_at": "2026-08-17T11:00:00.000Z"
+    },
+    {
+      "id": "8db4d6d1-d234-4415-8824-7f8e402b7dac",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle juice",
+      "created_at": "2026-08-17T11:00:00.000Z"
+    },
+    {
+      "id": "8762be17-23ab-4789-a04c-e1973e830ef3",
+      "type": "Expense",
+      "amount": "45",
+      "category": "☕ Coffee & Quick Food",
+      "notes": null,
+      "created_at": "2026-08-16T11:00:00.000Z"
+    },
+    {
+      "id": "cb57fb4b-1c61-4588-870e-937d2d23f1ac",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee",
+      "created_at": "2026-08-15T11:00:00.000Z"
+    },
+    {
+      "id": "055eb24b-dab8-49cf-a7f4-471675ed094e",
+      "type": "Expense",
+      "amount": "20",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Snacks",
+      "created_at": "2026-08-15T11:00:00.000Z"
+    },
+    {
+      "id": "6f605d75-e304-4899-a906-d65d878b20da",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee",
+      "created_at": "2026-08-15T11:00:00.000Z"
+    },
+    {
+      "id": "b486b607-1a51-4afb-bd36-001010b2baa0",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle juice",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "21d53c4d-136c-4527-b958-5d6c4510181a",
+      "type": "Expense",
+      "amount": "21",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Pringles snack",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "c573b8f5-a8de-49b5-bd87-a85c44357b8d",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle juice",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "5289aa06-74be-4b4a-98fd-6233c89e898d",
+      "type": "Expense",
+      "amount": "21",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Pringles snack",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "ec2d7b09-6831-4a97-8504-16cef1fa1233",
+      "type": "Expense",
+      "amount": "21",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Pringles snack",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "18f77d91-21a2-40af-a280-83f10d53f6ff",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle juice",
+      "created_at": "2026-08-13T11:00:00.000Z"
+    },
+    {
+      "id": "abfe78f6-970e-4869-973e-af8e65b1b05d",
+      "type": "Expense",
+      "amount": "34.9",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee capsules",
+      "created_at": "2026-08-13T08:22:56.169Z"
+    },
+    {
+      "id": "d5afa17d-cfa8-4680-8a3a-e92d2f15ea35",
+      "type": "Expense",
+      "amount": "34.9",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee capsules",
+      "created_at": "2026-08-13T08:22:56.169Z"
+    },
+    {
+      "id": "8c080d7e-512e-46c0-9fdf-03ad5e900ffa",
+      "type": "Expense",
+      "amount": "34.9",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee capsules",
+      "created_at": "2026-08-13T08:22:56.169Z"
+    },
+    {
+      "id": "82893481-a9b3-4a91-8996-7828453c5b8a",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Juice in Boca Oracle",
+      "created_at": "2026-08-12T10:33:06.487Z"
+    },
+    {
+      "id": "643be412-1637-4e46-a001-b54e762e8228",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Juice in Boca Oracle",
+      "created_at": "2026-08-12T10:33:06.487Z"
+    },
+    {
+      "id": "8b4d363e-2dd7-406d-8423-9a80cb568a4a",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Juice in Boca Oracle",
+      "created_at": "2026-08-12T10:33:06.487Z"
+    },
+    {
+      "id": "5f2502c8-c305-4337-ba8a-6689f2484931",
+      "type": "Expense",
+      "amount": "17",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Biscuit ",
+      "created_at": "2026-08-11T11:00:00.000Z"
+    },
+    {
+      "id": "c79bb6e3-1610-4e33-b3c1-d2f81fad2fb4",
+      "type": "Expense",
+      "amount": "17",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Biscuit ",
+      "created_at": "2026-08-11T11:00:00.000Z"
+    },
+    {
+      "id": "d1be7b44-97d4-4636-b435-95bcaca249b1",
+      "type": "Expense",
+      "amount": "17",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Biscuit ",
+      "created_at": "2026-08-11T11:00:00.000Z"
+    },
+    {
+      "id": "fce337bd-b0f3-413c-8486-0269457bb4e4",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Macdonalds (sundae)",
+      "created_at": "2026-08-07T11:00:00.000Z"
+    },
+    {
+      "id": "ce81e7cc-7606-46a1-a05e-ba78fb4b40a1",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Macdonalds (sundae)",
+      "created_at": "2026-08-07T11:00:00.000Z"
+    },
+    {
+      "id": "8ebe2b9a-07cd-4ef5-aecc-4d498c171b00",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Macdonalds (sundae)",
+      "created_at": "2026-08-07T11:00:00.000Z"
+    },
+    {
+      "id": "ef99af52-1613-403f-b3e2-2ad84282df01",
+      "type": "Expense",
+      "amount": "6.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Beach Seller",
+      "created_at": "2026-08-05T13:00:00.000Z"
+    },
+    {
+      "id": "a8559752-cf8b-4f9b-9acb-2fb8c014850c",
+      "type": "Expense",
+      "amount": "6.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Beach Seller",
+      "created_at": "2026-08-05T13:00:00.000Z"
+    },
+    {
+      "id": "88f56388-cbfb-4ec0-913b-df7fe16b0945",
+      "type": "Expense",
+      "amount": "6.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Beach Seller",
+      "created_at": "2026-08-05T13:00:00.000Z"
+    },
+    {
+      "id": "3919b497-7e09-42b2-ac1f-1f76b2543b06",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee (Personal)",
+      "created_at": "2026-08-03T14:00:00.000Z"
+    },
+    {
+      "id": "a89701e9-ad65-45eb-8ec1-73ebf758cdbf",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee (Personal)",
+      "created_at": "2026-08-03T14:00:00.000Z"
+    },
+    {
+      "id": "66db7a28-5eb1-48e7-9a03-9c31ce18d067",
+      "type": "Expense",
+      "amount": "30.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee (Personal)",
+      "created_at": "2026-08-03T14:00:00.000Z"
+    },
+    {
+      "id": "bd3d83ff-da8f-4766-a10c-1d34896487f8",
+      "type": "Expense",
+      "amount": "57.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-03T13:00:00.000Z"
+    },
+    {
+      "id": "b441e02e-1558-4772-bffc-e17169540261",
+      "type": "Expense",
+      "amount": "57.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-03T13:00:00.000Z"
+    },
+    {
+      "id": "ceaa4e04-ce93-4a84-ba92-6511eb7d6f0a",
+      "type": "Expense",
+      "amount": "57.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-03T13:00:00.000Z"
+    },
+    {
+      "id": "f5c5b0ad-3b75-4b1a-832f-06a426b7c16f",
+      "type": "Expense",
+      "amount": "26.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-03T12:00:00.000Z"
+    },
+    {
+      "id": "1d1cfedf-2198-442a-802e-32bda5e804a5",
+      "type": "Expense",
+      "amount": "26.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-03T12:00:00.000Z"
+    },
+    {
+      "id": "c3319169-5823-4472-8b5a-fd8f4a869d39",
+      "type": "Expense",
+      "amount": "26.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-03T12:00:00.000Z"
+    },
+    {
+      "id": "568f4935-481a-4a2a-a646-b1e210ce12b0",
+      "type": "Expense",
+      "amount": "7.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle Coffee",
+      "created_at": "2026-08-03T11:00:00.000Z"
+    },
+    {
+      "id": "6bb867df-1c06-4935-a7c2-30acf6e3bf12",
+      "type": "Expense",
+      "amount": "7.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle Coffee",
+      "created_at": "2026-08-03T11:00:00.000Z"
+    },
+    {
+      "id": "6ba8beff-193b-42cf-94d5-7e6c3a45bde6",
+      "type": "Expense",
+      "amount": "7.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle Coffee",
+      "created_at": "2026-08-03T11:00:00.000Z"
+    },
+    {
+      "id": "9d34093a-ea18-4ff4-969c-0e9d3bd9f380",
+      "type": "Expense",
+      "amount": "14.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle Coffee",
+      "created_at": "2026-08-03T10:00:00.000Z"
+    },
+    {
+      "id": "01a85353-49a4-4788-8c0c-f7e92c25900d",
+      "type": "Expense",
+      "amount": "14.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle Coffee",
+      "created_at": "2026-08-03T10:00:00.000Z"
+    },
+    {
+      "id": "2462ea4f-6fbd-480e-91df-b3ecb8ef76ab",
+      "type": "Expense",
+      "amount": "14.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle Coffee",
+      "created_at": "2026-08-03T10:00:00.000Z"
+    },
+    {
+      "id": "40e4788f-7758-42f5-8041-6e108b4d7d1a",
+      "type": "Expense",
+      "amount": "26.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-03T08:00:00.000Z"
+    },
+    {
+      "id": "3f7df799-1e82-401f-92dc-69ee52cf70e0",
+      "type": "Expense",
+      "amount": "26.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-03T08:00:00.000Z"
+    },
+    {
+      "id": "dd54d5d9-5323-445b-ab9f-81880b30083f",
+      "type": "Expense",
+      "amount": "26.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-08-03T08:00:00.000Z"
+    },
+    {
+      "id": "891ac25f-0777-46fd-b533-8c1f71054f69",
+      "type": "Expense",
+      "amount": "35.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Ben Pause Gourm",
+      "created_at": "2026-08-02T15:00:00.000Z"
+    },
+    {
+      "id": "33be979f-223e-4392-be04-249c01537e1c",
+      "type": "Expense",
+      "amount": "35.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Ben Pause Gourm",
+      "created_at": "2026-08-02T15:00:00.000Z"
+    },
+    {
+      "id": "75cfd317-3f42-4acf-a5f6-fc5851149bb4",
+      "type": "Expense",
+      "amount": "35.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Ben Pause Gourm",
+      "created_at": "2026-08-02T15:00:00.000Z"
+    },
+    {
+      "id": "3dc1e910-e017-478f-b8d2-d8534572870f",
+      "type": "Expense",
+      "amount": "14.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "McCafé",
+      "created_at": "2026-08-02T11:00:00.000Z"
+    },
+    {
+      "id": "2518c4cb-8abc-494f-95d9-9be1a680cc03",
+      "type": "Expense",
+      "amount": "14.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "McCafé",
+      "created_at": "2026-08-02T11:00:00.000Z"
+    },
+    {
+      "id": "4bb5dcde-bf50-4e54-8656-8fb12a3846fc",
+      "type": "Expense",
+      "amount": "14.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "McCafé",
+      "created_at": "2026-08-02T11:00:00.000Z"
+    },
+    {
+      "id": "bee3a497-f46e-463e-8eaf-ad8c2b6285bb",
+      "type": "Expense",
+      "amount": "15.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee",
+      "created_at": "2026-08-02T10:00:00.000Z"
+    },
+    {
+      "id": "11a4127a-b119-4acf-974d-5e69d94804f6",
+      "type": "Expense",
+      "amount": "15.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee",
+      "created_at": "2026-08-02T10:00:00.000Z"
+    },
+    {
+      "id": "4aab9630-1258-43a0-943d-9dbf5ea6b484",
+      "type": "Expense",
+      "amount": "15.00",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Coffee",
+      "created_at": "2026-08-02T10:00:00.000Z"
+    },
+    {
+      "id": "51325397-200e-492d-a8b3-33b81788b1c2",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-07-20T11:00:00.000Z"
+    },
+    {
+      "id": "fc95aec3-145b-42f1-88af-4f4b12e9b626",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-07-17T11:00:00.000Z"
+    },
+    {
+      "id": "f5c71831-8f74-4094-9c88-8ec9719849f7",
+      "type": "Expense",
+      "amount": "14",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-07-16T11:00:00.000Z"
+    },
+    {
+      "id": "fcb62814-c293-4a28-a0c8-7779dbb385a5",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-07-13T11:00:00.000Z"
+    },
+    {
+      "id": "45e77dbf-1e52-4986-9be4-48e6aaa4155a",
+      "type": "Expense",
+      "amount": "14",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-07-09T11:00:00.000Z"
+    },
+    {
+      "id": "601bb3a1-a82d-4587-95a2-053c1ee0c24c",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-07-07T11:00:00.000Z"
+    },
+    {
+      "id": "70d3c658-8853-4c57-903b-d30648f19feb",
+      "type": "Expense",
+      "amount": "10",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-07-06T11:00:00.000Z"
+    },
+    {
+      "id": "43d4ac09-cc70-4933-8f66-53eb19bd903a",
+      "type": "Expense",
+      "amount": "12",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-07-06T11:00:00.000Z"
+    },
+    {
+      "id": "c1147c44-06c5-4399-9d14-d8640e78e7dc",
+      "type": "Expense",
+      "amount": "62",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-07-06T11:00:00.000Z"
+    },
+    {
+      "id": "73873ae0-c395-469a-8a1f-65479e988c59",
+      "type": "Expense",
+      "amount": "38",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Dupond affogato ",
+      "created_at": "2026-07-05T11:00:00.000Z"
+    },
+    {
+      "id": "a82ebcd5-d852-46b8-99a2-3dd8f5c6cc54",
+      "type": "Expense",
+      "amount": "14",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-07-02T11:00:00.000Z"
+    },
+    {
+      "id": "11fd3236-fd8c-4513-8981-6e807d733037",
+      "type": "Expense",
+      "amount": "24",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-07-01T11:00:00.000Z"
+    },
+    {
+      "id": "2aa8dd9f-e5f9-47b3-a41b-ba3515b0909c",
+      "type": "Expense",
+      "amount": "14",
+      "category": "☕ Coffee & Quick Food",
+      "notes": "Boca Oracle",
+      "created_at": "2026-06-30T11:00:00.000Z"
     }
   ]
 }

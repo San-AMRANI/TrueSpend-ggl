@@ -10,7 +10,7 @@ import { financialPeriodLabel, getFinancialMonthsFromTransactions, getCurrentFin
 import { Banknote, Landmark, X } from 'lucide-react';
 import { format } from 'date-fns';
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6'];
 
 interface AnalyticsTabProps {
   transactions: Transaction[];
@@ -53,7 +53,35 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       .sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
 
-  const activeCategory = categoryData.some((category) => category.name === selectedCategory) ? selectedCategory : null;
+  const incomeCategoryData = useMemo(() => {
+    const incomes = filteredTransactions.filter((t) => t.type !== 'Expense');
+    const grouped = incomes.reduce((acc, curr) => {
+      const category = normalizeCategory(curr.category) || 'Uncategorized';
+      acc[category] = (acc[category] || 0) + parseFloat(curr.amount);
+      return acc;
+    }, {} as Record<string, number>);
+
+    return Object.entries(grouped)
+      .map(([name, value]) => ({ name, value: Number(value) }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredTransactions]);
+
+  const activeCategory = [...categoryData, ...incomeCategoryData].some((category) => category.name === selectedCategory) ? selectedCategory : null;
+  const isIncomeCategory = incomeCategoryData.some(c => c.name === activeCategory);
+
+  const walletData = useMemo(() => {
+    const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
+    let bank = 0;
+    let cash = 0;
+    expenses.forEach((t) => {
+      if (t.sourceWallet === 'Bank') bank += parseFloat(t.amount);
+      if (t.sourceWallet === 'Cash') cash += parseFloat(t.amount);
+    });
+    return [
+      { name: 'Bank', value: bank },
+      { name: 'Cash', value: cash }
+    ].filter(w => w.value > 0);
+  }, [filteredTransactions]);
 
   const comparisonMonth = useMemo(() => {
     if (analyticsMonth === 'All Time') {
@@ -87,7 +115,6 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     if (!activeCategory) return [];
 
     return filteredTransactions
-      .filter((transaction) => transaction.type === 'Expense')
       .filter((transaction) => (normalizeCategory(transaction.category) || 'Uncategorized') === activeCategory)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [activeCategory, filteredTransactions]);
@@ -112,7 +139,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const incomeVsExpenseData = useMemo(() => {
     const income = filteredTransactions
-      .filter((t) => t.type === 'Income')
+      .filter((t) => t.type !== 'Expense')
       .reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const expense = filteredTransactions
       .filter((t) => t.type === 'Expense')
@@ -132,7 +159,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       const date = new Date(t.createdAt);
       allMonths.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
 
-      if (t.type === 'Income') totalIncome += parseFloat(t.amount);
+      if (t.type !== 'Expense') totalIncome += parseFloat(t.amount);
       if (t.type === 'Expense') totalExpense += parseFloat(t.amount);
     });
 
@@ -142,6 +169,19 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       avgExpense: totalExpense / monthCount,
     };
   }, [transactions]);
+
+  const savingsRate = useMemo(() => {
+    const income = incomeVsExpenseData[0].amount;
+    const expense = incomeVsExpenseData[1].amount;
+    if (income === 0) return 0;
+    return ((income - expense) / income) * 100;
+  }, [incomeVsExpenseData]);
+
+  const topExpense = useMemo(() => {
+    const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
+    if (expenses.length === 0) return null;
+    return expenses.reduce((max, current) => (parseFloat(current.amount) > parseFloat(max.amount) ? current : max));
+  }, [filteredTransactions]);
 
   const comparisonLabel = comparisonMonth ? financialPeriodLabel(comparisonMonth) : 'No configured financial period';
 
@@ -185,55 +225,62 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         </CardContent>
       </Card>
 
-      {analyticsMonth !== 'All Time' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="bg-white dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Monthly Expense</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{incomeVsExpenseData[1].amount.toFixed(2)} MAD</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {analyticsMonth !== 'All Time' && (
+          <>
+            <div className="bg-white dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Monthly Expense</p>
+                <p className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-1">{incomeVsExpenseData[1].amount.toFixed(2)} MAD</p>
+              </div>
+              <div className="text-left mt-2">
+                <p className="text-xs text-gray-400 dark:text-gray-500">vs All-Time Avg</p>
+                <p className={`text-sm font-semibold ${incomeVsExpenseData[1].amount > historicalAverages.avgExpense ? 'text-red-500 dark:text-red-400' : 'text-green-500 dark:text-green-400'}`}>
+                  {(((incomeVsExpenseData[1].amount - historicalAverages.avgExpense) / (historicalAverages.avgExpense || 1)) * 100).toFixed(1)}%
+                </p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">vs All-Time Avg</p>
-              <p
-                className={`text-sm font-semibold ${
-                  incomeVsExpenseData[1].amount > historicalAverages.avgExpense ? 'text-red-500 dark:text-red-400' : 'text-green-500 dark:text-green-400'
-                }`}
-              >
-                {(
-                  ((incomeVsExpenseData[1].amount - historicalAverages.avgExpense) /
-                    (historicalAverages.avgExpense || 1)) *
-                  100
-                ).toFixed(1)}
-                %
-              </p>
+            
+            <div className="bg-white dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Monthly Income</p>
+                <p className="text-xl font-bold text-gray-900 dark:text-gray-100 mt-1">{incomeVsExpenseData[0].amount.toFixed(2)} MAD</p>
+              </div>
+              <div className="text-left mt-2">
+                <p className="text-xs text-gray-400 dark:text-gray-500">vs All-Time Avg</p>
+                <p className={`text-sm font-semibold ${incomeVsExpenseData[0].amount < historicalAverages.avgIncome ? 'text-red-500 dark:text-red-400' : 'text-green-500 dark:text-green-400'}`}>
+                  {(((incomeVsExpenseData[0].amount - historicalAverages.avgIncome) / (historicalAverages.avgIncome || 1)) * 100).toFixed(1)}%
+                </p>
+              </div>
             </div>
+          </>
+        )}
+        
+        <div className="bg-white dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Savings Rate</p>
+            <p className={`text-xl font-bold mt-1 ${savingsRate >= 20 ? 'text-green-600 dark:text-green-400' : savingsRate >= 0 ? 'text-gray-900 dark:text-gray-100' : 'text-red-600 dark:text-red-400'}`}>
+              {savingsRate.toFixed(1)}%
+            </p>
           </div>
-
-          <div className="bg-white dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Monthly Income</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{incomeVsExpenseData[0].amount.toFixed(2)} MAD</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-400 dark:text-gray-500 dark:text-gray-400">vs All-Time Avg</p>
-              <p
-                className={`text-sm font-semibold ${
-                  incomeVsExpenseData[0].amount < historicalAverages.avgIncome ? 'text-red-500 dark:text-red-400' : 'text-green-500 dark:text-green-400'
-                }`}
-              >
-                {(
-                  ((incomeVsExpenseData[0].amount - historicalAverages.avgIncome) /
-                    (historicalAverages.avgIncome || 1)) *
-                  100
-                ).toFixed(1)}
-                %
-              </p>
-            </div>
-          </div>
+          <p className="text-xs text-gray-500 mt-2">Portion of income saved</p>
         </div>
-      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {topExpense && (
+          <div className="bg-white dark:bg-gray-900 p-4 rounded-lg border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Top Single Expense</p>
+              <p className="text-lg font-bold text-gray-900 dark:text-gray-100 truncate mt-1">{topExpense.notes || normalizeCategory(topExpense.category) || 'Unknown'}</p>
+            </div>
+            <div className="mt-2">
+              <p className="text-sm text-red-600 dark:text-red-400 font-semibold">{parseFloat(topExpense.amount).toFixed(2)} MAD</p>
+              <p className="text-xs text-gray-500 mt-0.5">{format(new Date(topExpense.createdAt), 'MMM d, yyyy')}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Spending by Category</CardTitle>
@@ -268,6 +315,38 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               </div>
             ) : (
               <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">No expense data available for charts.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Bank vs Cash</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {walletData.length > 0 ? (
+              <div className="h-[300px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={walletData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      outerRadius={100}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    >
+                      {walletData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.name === 'Bank' ? '#3b82f6' : '#10b981'} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} MAD`, 'Amount']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <p className="py-4 text-center text-sm text-gray-500 dark:text-gray-400">No wallet data available.</p>
             )}
           </CardContent>
         </Card>
@@ -319,33 +398,63 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>All Categories</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {categoryData.map((item, index) => (
-              <button
-                key={item.name}
-                type="button"
-                aria-pressed={activeCategory === item.name}
-                onClick={() => setSelectedCategory(item.name)}
-                className={`flex w-full items-center justify-between rounded-md p-2 text-left transition-colors ${
-                  activeCategory === item.name ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50 dark:bg-gray-800/50 dark:hover:bg-gray-800/50 dark:bg-gray-800/50 dark:hover:bg-gray-800/50'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{item.name}</span>
-                </div>
-                <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{item.value.toFixed(2)} MAD</span>
-              </button>
-            ))}
-            {categoryData.length === 0 && <p className="py-2 text-center text-sm text-gray-500 dark:text-gray-400">No expense categories yet.</p>}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Expense Categories</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {categoryData.map((item, index) => (
+                <button
+                  key={item.name}
+                  type="button"
+                  aria-pressed={activeCategory === item.name}
+                  onClick={() => setSelectedCategory(item.name)}
+                  className={`flex w-full items-center justify-between rounded-md p-2 text-left transition-colors ${
+                    activeCategory === item.name ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{item.name}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{item.value.toFixed(2)} MAD</span>
+                </button>
+              ))}
+              {categoryData.length === 0 && <p className="py-2 text-center text-sm text-gray-500 dark:text-gray-400">No expense categories yet.</p>}
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader>
+            <CardTitle>Income & Other Categories</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {incomeCategoryData.map((item, index) => (
+                <button
+                  key={item.name}
+                  type="button"
+                  aria-pressed={activeCategory === item.name}
+                  onClick={() => setSelectedCategory(item.name)}
+                  className={`flex w-full items-center justify-between rounded-md p-2 text-left transition-colors ${
+                    activeCategory === item.name ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: '#10b981' }}></div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{item.name}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-green-600 dark:text-green-400">+{item.value.toFixed(2)} MAD</span>
+                </button>
+              ))}
+              {incomeCategoryData.length === 0 && <p className="py-2 text-center text-sm text-gray-500 dark:text-gray-400">No income categories yet.</p>}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {activeCategory && (
         <Card>
@@ -361,17 +470,19 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           <CardContent>
             <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-3">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Total spent</p>
-                <p className="mt-1 text-lg font-bold text-gray-900 dark:text-gray-100">{selectedCategoryTotal.toFixed(2)} MAD</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{isIncomeCategory ? 'Total received' : 'Total spent'}</p>
+                <p className={`mt-1 text-lg font-bold ${isIncomeCategory ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                  {isIncomeCategory ? '+' : ''}{selectedCategoryTotal.toFixed(2)} MAD
+                </p>
               </div>
               <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-3">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Transactions</p>
                 <p className="mt-1 text-lg font-bold text-gray-900 dark:text-gray-100">{selectedCategoryTransactions.length}</p>
               </div>
               <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-3">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Average purchase</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Average {isIncomeCategory ? 'amount' : 'purchase'}</p>
                 <p className="mt-1 text-lg font-bold text-gray-900 dark:text-gray-100">
-                  {(selectedCategoryTotal / selectedCategoryTransactions.length).toFixed(2)} MAD
+                  {(selectedCategoryTotal / (selectedCategoryTransactions.length || 1)).toFixed(2)} MAD
                 </p>
               </div>
             </div>
@@ -389,7 +500,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       </span>
                     </div>
                   </div>
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">-{parseFloat(transaction.amount).toFixed(2)} MAD</span>
+                  <span className={`font-semibold ${transaction.type === 'Expense' ? 'text-gray-900 dark:text-gray-100' : 'text-green-600 dark:text-green-400'}`}>
+                    {transaction.type === 'Expense' ? '-' : '+'}{parseFloat(transaction.amount).toFixed(2)} MAD
+                  </span>
                 </div>
               ))}
             </div>
