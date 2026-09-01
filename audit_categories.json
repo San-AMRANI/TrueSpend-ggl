@@ -1,0 +1,97 @@
+[
+  {
+    "category": "☕ Coffee & Quick Food",
+    "tx_count": "77",
+    "total_amount": "1598.65"
+  },
+  {
+    "category": "🍔 Dining & Takeaway",
+    "tx_count": "53",
+    "total_amount": "1905.00"
+  },
+  {
+    "category": "🚗 Transportation",
+    "tx_count": "50",
+    "total_amount": "1494.00"
+  },
+  {
+    "category": "🛒 Groceries",
+    "tx_count": "35",
+    "total_amount": "1928.53"
+  },
+  {
+    "category": "👕 Personal & Clothing",
+    "tx_count": "25",
+    "total_amount": "3786.00"
+  },
+  {
+    "category": "💳 Debt & Obligations",
+    "tx_count": "24",
+    "total_amount": "11097.00"
+  },
+  {
+    "category": "🔄 Transfer",
+    "tx_count": "23",
+    "total_amount": "5088.97"
+  },
+  {
+    "category": "👨‍👩‍👦 Family & Gifts",
+    "tx_count": "20",
+    "total_amount": "1064.00"
+  },
+  {
+    "category": "🎬 Entertainment",
+    "tx_count": "8",
+    "total_amount": "625.52"
+  },
+  {
+    "category": "📱 Telecom & Subscriptions",
+    "tx_count": "8",
+    "total_amount": "330.00"
+  },
+  {
+    "category": "🚨 Unexpected",
+    "tx_count": "6",
+    "total_amount": "2201"
+  },
+  {
+    "category": "🩺 Health & Medical",
+    "tx_count": "6",
+    "total_amount": "1904.97"
+  },
+  {
+    "category": "📥 Income",
+    "tx_count": "6",
+    "total_amount": "30283.50"
+  },
+  {
+    "category": "🏠 Housing & Utilities",
+    "tx_count": "5",
+    "total_amount": "734.92"
+  },
+  {
+    "category": "👥 Social",
+    "tx_count": "4",
+    "total_amount": "740"
+  },
+  {
+    "category": "Debt Repayment",
+    "tx_count": "2",
+    "total_amount": "1400"
+  },
+  {
+    "category": "Groceries",
+    "tx_count": "1",
+    "total_amount": "12"
+  },
+  {
+    "category": "Reimbursement",
+    "tx_count": "1",
+    "total_amount": "340.69"
+  },
+  {
+    "category": "🤝 Loan Received",
+    "tx_count": "1",
+    "total_amount": "100"
+  }
+]
