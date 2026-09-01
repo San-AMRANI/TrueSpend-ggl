@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Loader2, Trash2, Mic, MicOff, Copy, Check, ChevronDown, Sparkles, Bot, Menu } from 'lucide-react';
+import { Send, Loader2, Trash2, Mic, MicOff, Copy, Check, ChevronDown, Sparkles, Bot, Menu, Camera, Image as ImageIcon } from 'lucide-react';
 import Markdown from 'react-markdown';
 
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
 import { useAuth } from '../context/AuthContext';
+import Tesseract from 'tesseract.js';
 import { cn } from '../lib/utils';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { buildAiContextSnapshot } from '../lib/aiContext';
@@ -221,6 +222,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const [chatSessionId] = useState(getChatSessionId);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isOcrLoading, setIsOcrLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [voiceSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const { token } = useAuth();
 
@@ -389,6 +392,35 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   };
 
   // Voice input
+  
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setIsOcrLoading(true);
+    try {
+      const result = await Tesseract.recognize(file, 'eng+fra', {
+        logger: m => console.log(m)
+      });
+      const text = result.data.text.trim();
+      
+      const ocrPrompt = `I am uploading a receipt/ticket. Please parse it and propose a transaction. Here is the extracted text:\n\n${text}`;
+      
+      if (input.trim()) {
+        setInput(prev => prev + '\n\n' + ocrPrompt);
+      } else {
+        handleSend(ocrPrompt);
+      }
+    } catch (err: any) {
+      console.error('OCR Error:', err);
+      alert('Failed to extract text from image.');
+    } finally {
+      setIsOcrLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+
   const handleVoice = useCallback(() => {
     if (!voiceSupported) return;
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -579,7 +611,28 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               </span>
             )}
             <div className="flex items-center gap-1 pr-2 pb-2">
+              
+              <input 
+                type="file" 
+                accept="image/*" 
+                ref={fileInputRef} 
+                className="hidden" 
+                onChange={handleFileUpload} 
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isOcrLoading || isLoading}
+                title="Scan receipt (OCR)"
+                className={cn(
+                  'p-2 rounded-full transition-all text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700',
+                  isOcrLoading && 'opacity-50 animate-pulse'
+                )}
+              >
+                {isOcrLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+              </button>
+              
               {/* Voice button */}
+
               {voiceSupported && (
                 <button
                   onClick={handleVoice}

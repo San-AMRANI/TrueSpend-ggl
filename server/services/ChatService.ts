@@ -191,6 +191,21 @@ Parameters: {payday?:number(1-31), emergencyBuffer?:number, salary?:number}
 ### upsert_budget
 Parameters: {category:string, amount:number, year:number, month:number}
 
+### create_goal
+Parameters: {name:string, targetAmount:number, category?:string, deadline?:"YYYY-MM-DD"}
+
+### contribute_goal
+Parameters: {goalId:string, amount:number}
+*Note: Look up the goalId from the provided live context data under goals.*
+
+### settle_debt
+Parameters: {debtId:string, amount:number, sourceWallet:"Bank"|"Cash"}
+*Note: Look up the debtId from the provided live context data under debts.*
+
+### What-If Reasoning
+If the user asks "What if I buy X" or "What happens if I spend Y", do not emit a create_transaction action. Instead, mathematically calculate the impact using the current context (e.g. subtract from safeToSpend, runwayDays) and explain the outcome clearly.
+
+
 ## LIVE FINANCIAL DATA (financial-month scoped)
 ${context}`;
 }

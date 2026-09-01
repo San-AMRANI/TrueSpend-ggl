@@ -171,4 +171,4 @@ export interface Goal {
   updatedAt: string;
 }
 
-export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'goals' | 'insights';
+export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'goals' | 'insights' | 'reconciliation' | 'reports';

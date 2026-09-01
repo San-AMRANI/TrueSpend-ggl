@@ -2,10 +2,11 @@ import { transactionService } from './TransactionService.js';
 import { debtService } from './DebtService.js';
 import { settingsService } from './SettingsService.js';
 import { categoryBudgetService } from './CategoryBudgetService.js';
+import { goalService } from './GoalService.js';
 
-export type AiAction = { type: 'create_transaction' | 'create_debt' | 'update_settings' | 'upsert_budget'; parameters: Record<string, unknown>; summary: string };
+export type AiAction = { type: 'create_transaction' | 'create_debt' | 'update_settings' | 'upsert_budget' | 'create_goal' | 'contribute_goal' | 'settle_debt'; parameters: Record<string, unknown>; summary: string };
 
-const permitted = new Set<AiAction['type']>(['create_transaction', 'create_debt', 'update_settings', 'upsert_budget']);
+const permitted = new Set<AiAction['type']>(['create_transaction', 'create_debt', 'update_settings', 'upsert_budget', 'create_goal', 'contribute_goal', 'settle_debt']);
 
 export const sanitizeAiActions = (value: unknown): AiAction[] => {
   if (!Array.isArray(value)) return [];
@@ -75,6 +76,35 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
       }
       results.push(await categoryBudgetService.upsertBudget(userId, p));
     }
+
+    if (action.type === 'create_goal') {
+      if (p.targetAmount !== undefined) p.targetAmount = Number(p.targetAmount);
+      if (!p.name || !Number.isFinite(p.targetAmount)) {
+        throw new Error('Goal proposal is missing required fields (name, targetAmount).');
+      }
+      results.push(await goalService.createGoal(userId, p));
+    }
+    
+    if (action.type === 'contribute_goal') {
+      if (p.amount !== undefined) p.amount = Number(p.amount);
+      if (!p.goalId || !Number.isFinite(p.amount)) {
+        throw new Error('Contribute to goal proposal is missing required fields (goalId, amount).');
+      }
+      results.push(await goalService.contributeToGoal(userId, String(p.goalId), p.amount));
+    }
+    
+    if (action.type === 'settle_debt') {
+      if (p.amount !== undefined) p.amount = Number(p.amount);
+      if (!p.debtId || !Number.isFinite(p.amount) || !['Bank', 'Cash'].includes(p.sourceWallet)) {
+        throw new Error('Settle debt proposal is missing required fields (debtId, amount, sourceWallet).');
+      }
+      results.push(await debtService.processDebt(userId, {
+        debt_id: String(p.debtId),
+        amount: p.amount,
+        wallet: p.sourceWallet as 'Bank' | 'Cash',
+      }));
+    }
+
   }
   
   return results;
