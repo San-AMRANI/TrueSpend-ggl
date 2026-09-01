@@ -1,6 +1,6 @@
-import { CategoryBudget, KPI, Transaction } from '../types';
-import { normalizeCategory } from './categories';
-import { FinancialMonthRef, PayrollLike, getFinancialMonthBounds, getFinancialMonthRef, getPreviousFinancialMonth, isInFinancialMonth } from './financialMonth';
+import { CategoryBudget, KPI, Transaction } from '../types/index.js';
+import { normalizeCategory } from './categories.js';
+import { FinancialMonthRef, PayrollLike, getFinancialMonthBounds, getFinancialMonthRef, getPreviousFinancialMonth, isInFinancialMonth } from './financialMonth.js';
 
 export const BUDGET_STATUS_THRESHOLDS = { warning: 80, overBudget: 100, critical: 120 } as const;
 export type BudgetStatus = 'normal' | 'warning' | 'over_budget' | 'critical' | 'not_set';

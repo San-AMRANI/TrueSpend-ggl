@@ -1,5 +1,5 @@
-import { Transaction, Payroll, Debt, CategoryBudget, Goal } from '../types';
-import { getCurrentFinancialMonth, getNextPayroll, isInFinancialMonth,  FinancialMonthBounds } from './financialMonth';
+import { Transaction, Payroll, Debt, CategoryBudget, Goal } from '../types/index.js';
+import { getCurrentFinancialMonth, getNextPayroll, isInFinancialMonth,  FinancialMonthBounds } from './financialMonth.js';
 
 export interface FinancialEngineInput {
   transactions: Transaction[];

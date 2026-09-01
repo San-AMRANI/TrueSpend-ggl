@@ -1,6 +1,6 @@
 import webpush from 'web-push';
-import { db } from '../../src/db';
-import { pushSubscriptions, notificationDeliveries, notificationPreferences } from '../../src/db/schema';
+import { db } from '../../src/db/index.js';
+import { pushSubscriptions, notificationDeliveries, notificationPreferences } from '../../src/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import dotenv from 'dotenv';
 

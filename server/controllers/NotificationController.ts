@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { PushService } from '../services/PushService';
+import { PushService } from '../services/PushService.js';
 import dotenv from 'dotenv';
 
 dotenv.config();

@@ -1,11 +1,11 @@
 import { payrollRepository } from "../repositories/PayrollRepository.js";
 import cron from 'node-cron';
-import { db } from '../../src/db';
-import { notificationPreferences, users } from '../../src/db/schema';
+import { db } from '../../src/db/index.js';
+import { notificationPreferences, users } from '../../src/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { PushService } from './PushService';
-import { KpiService } from './KpiService';
-import { InsightsService } from './InsightsService';
+import { PushService } from './PushService.js';
+import { KpiService } from './KpiService.js';
+import { InsightsService } from './InsightsService.js';
 
 const pushService = new PushService();
 const kpiService = new KpiService();

@@ -1,5 +1,5 @@
-import type { CategoryBudget, Debt, KPI, Payroll, Transaction } from '../types';
-import { financialPeriodLabel, getCurrentFinancialMonth, getPreviousFinancialMonth, isInFinancialMonth } from './financialMonth';
+import type { CategoryBudget, Debt, KPI, Payroll, Transaction } from '../types/index.js';
+import { financialPeriodLabel, getCurrentFinancialMonth, getPreviousFinancialMonth, isInFinancialMonth } from './financialMonth.js';
 
 const amountOf = (value: string | number | null | undefined) => Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : 0;
 const dateKey = (value: string | Date | null | undefined) => {

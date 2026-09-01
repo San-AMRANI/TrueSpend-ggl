@@ -1,7 +1,7 @@
-import { CategoryBudget, Debt, KPI, Transaction } from '../types';
-import { amountOf, getExpensesForMonth, isInMonth, transactionDate } from './finance';
-import { normalizeCategory } from './categories';
-import { getCurrentFinancialMonth, getPreviousFinancialMonth, type PayrollLike } from './financialMonth';
+import { CategoryBudget, Debt, KPI, Transaction } from '../types/index.js';
+import { amountOf, getExpensesForMonth, isInMonth, transactionDate } from './finance.js';
+import { normalizeCategory } from './categories.js';
+import { getCurrentFinancialMonth, getPreviousFinancialMonth, type PayrollLike } from './financialMonth.js';
 
 // ─── Fact Shape ─────────────────────────────────────────────────────────────
 
