@@ -1,5 +1,3 @@
-import { Response } from 'express';
-import { AuthRequest } from '../../src/middleware/auth.js';
 import { parseReceiptText, receiptProposalAction } from '../services/ReceiptExtractionService.js';
 
 export const parseReceipt = (req: AuthRequest, res: Response) => {
