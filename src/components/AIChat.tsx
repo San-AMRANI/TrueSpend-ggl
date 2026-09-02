@@ -55,6 +55,13 @@ interface Message {
   imageUrl?: string;
 }
 
+interface PendingReceipt {
+  imageUrl?: string;
+  ocrText: string;
+  previewSnippet: string;
+  suggestedAmount?: string | null;
+  merchant?: string;
+}
 interface AIChatProps {
   onDataChange?: () => void;
 }
@@ -119,7 +126,10 @@ function MessageBubble({
           </div>
           <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">Spex</span>
         </div>
-      )}
+
+        )}
+
+        {/* Pending receipt confirmation UI (appears when OCR parse had low confidence) */}
 
       <div className={cn('flex gap-2 max-w-[88%]', isUser ? 'flex-row-reverse' : 'flex-row')}>
         <div
@@ -234,6 +244,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const [isListening, setIsListening] = useState(false);
   const [isOcrLoading, setIsOcrLoading] = useState(false);
   const [ocrStatus, setOcrStatus] = useState<string>('');
+  const [pendingReceipt, setPendingReceipt] = useState<PendingReceipt | null>(null);
   const [voiceSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { token } = useAuth();
@@ -521,6 +532,10 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             timestamp: Date.now(),
           },
         ]);
+        // Try to prefill an amount from OCR text (simple heuristic: last money-like token)
+        const moneyMatches = (ocrText.match(/\d+[.,]\d{2}/g) || []).map(m => m.replace(',', '.'));
+        const suggestedAmount = moneyMatches.length ? moneyMatches[moneyMatches.length - 1] : null;
+        setPendingReceipt({ imageUrl, ocrText, previewSnippet, suggestedAmount, merchant: undefined });
         return;
       }
 
@@ -591,6 +606,31 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     recognition.start();
     setIsListening(true);
   }, [isListening, voiceSupported]);
+
+  // Pending low-confidence receipt UI state
+  const [pendingAmount, setPendingAmount] = useState('');
+  const [pendingMerchant, setPendingMerchant] = useState('');
+  useEffect(() => {
+    if (pendingReceipt) {
+      setPendingAmount(pendingReceipt.suggestedAmount ?? '');
+      setPendingMerchant(pendingReceipt.merchant ?? '');
+    } else {
+      setPendingAmount('');
+      setPendingMerchant('');
+    }
+  }, [pendingReceipt]);
+
+  const confirmPendingReceipt = async () => {
+    if (!pendingReceipt) return;
+    const receipt = pendingReceipt;
+    setPendingReceipt(null);
+    const amount = pendingAmount?.trim();
+    const merchant = pendingMerchant?.trim();
+    const content = `Create a transaction from this receipt (confirmed by user):\nAmount: ${amount || 'UNKNOWN'}\nMerchant: ${merchant || 'UNKNOWN'}\nOCR preview:\n${receipt.previewSnippet}`;
+    await handleSend(content, { imageUrl: receipt.imageUrl });
+  };
+
+  const cancelPendingReceipt = () => setPendingReceipt(null);
 
   // Get the last assistant message for suggestions
   const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
