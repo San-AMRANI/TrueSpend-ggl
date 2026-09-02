@@ -234,7 +234,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const [isListening, setIsListening] = useState(false);
   const [isOcrLoading, setIsOcrLoading] = useState(false);
   const [ocrStatus, setOcrStatus] = useState<string>('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [voiceSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { token } = useAuth();
@@ -413,159 +412,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
   };
 
-  /**
-   * Handles a receipt image upload.
-   * Flow: read file -> show in conversation as user message -> run OCR (Tesseract)
-   *       -> ask server to parse structured fields -> if confident, ask Spex to propose
-   *       a transaction; if not, show the OCR text so the user can confirm / correct.
-   */
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: '⚠️ Please upload an image file (JPG, PNG, or HEIC).',
-          timestamp: Date.now(),
-        },
-      ]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
-    // Read the image into a data URL so we can preview it in the conversation.
-    const imageUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error('Failed to read image file.'));
-      reader.readAsDataURL(file);
-    }).catch((err) => {
-      console.error('FileReader error:', err);
-      return '';
-    });
-
-    if (!imageUrl) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: '⚠️ I could not read that image file. Please try a different one.',
-          timestamp: Date.now(),
-        },
-      ]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
-    setIsOcrLoading(true);
-    setOcrStatus('Preparing OCR…');
-
-    try {
-      // Run Tesseract in the browser. eng+fra covers most receipts in MA.
-      const result = await Tesseract.recognize(file, 'eng+fra', {
-        logger: (m: any) => {
-          if (m.status) setOcrStatus(`${m.status}${m.progress != null ? ` ${Math.round(m.progress * 100)}%` : ''}`);
-        },
-      });
-
-      const ocrText = (result?.data?.text || '').trim();
-      const signalChars = [...ocrText].filter((c) => /[\p{L}\p{N}]/u.test(c)).length;
-
-      // If OCR produced basically nothing, surface that to the user clearly.
-      if (!ocrText || ocrText.length < 12 || signalChars < 5) {
-        setMessages((prev) => [
-          ...prev,
-          { role: 'user', content: '📷 Receipt image', timestamp: Date.now(), imageUrl },
-          {
-            role: 'assistant',
-            content:
-              "I couldn't read any text from that image. The photo may be too dark, blurry, or at an awkward angle. Please try again with a sharper, well-lit photo, or type the transaction manually.",
-            timestamp: Date.now(),
-          },
-        ]);
-        return;
-      }
-
-      // Ask the backend to parse the OCR text into structured fields.
-      const parseResponse = await fetch('/api/receipts/parse', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ text: ocrText }),
-      });
-
-      if (!parseResponse.ok) {
-        const errData = await parseResponse.json().catch(() => ({} as any));
-        throw new Error(errData.error || `Receipt parsing failed (${parseResponse.status}).`);
-      }
-
-      const parsedData = await parseResponse.json().catch(() => ({} as any));
-      const proposal = parsedData?.proposal;
-
-      // Always show the user image so they have feedback something happened.
-      const userCaption = `📷 Receipt image${proposal?.merchant ? ` — ${proposal.merchant}` : ''}`;
-
-      if (!proposal || proposal.amount === null || proposal.confidence < 60) {
-        // Low confidence — show the OCR text so the user can correct/edit instead.
-        const previewSnippet = ocrText.length > 600 ? `${ocrText.slice(0, 600)}…` : ocrText;
-        setMessages((prev) => [
-          ...prev,
-          { role: 'user', content: userCaption, timestamp: Date.now(), imageUrl },
-          {
-            role: 'assistant',
-            content:
-              `I read the receipt but couldn't reliably extract the totals. Here is what I got — feel free to confirm the amounts or type them manually.\n\n` +
-              `\`\`\`\n${previewSnippet}\n\`\`\``,
-            timestamp: Date.now(),
-          },
-        ]);
-        return;
-      }
-
-      // High-confidence parse: send a structured prompt to Spex.
-      const proposalSummary = JSON.stringify({
-        amount: proposal.amount,
-        currency: proposal.currency,
-        merchant: proposal.merchant,
-        date: proposal.date,
-        category: proposal.category,
-        wallet: proposal.wallet,
-        confidence: proposal.confidence,
-        notes: proposal.notes,
-      });
-      const ocrPrompt =
-        `I uploaded a receipt. Review the parsed proposal below against the OCR text and propose a transaction ` +
-        `only if it matches. Use the OCR text as the source of truth when in doubt.\n\n` +
-        `Parsed proposal: ${proposalSummary}\n\n` +
-        `OCR text:\n${ocrText.slice(0, 1500)}`;
-
-      // Show the user the image we received, then let Spex respond to the structured prompt.
-      // We've already pushed the user-facing image message, so skip the duplicate user bubble.
-      setMessages((prev) => [...prev, { role: 'user', content: userCaption, timestamp: Date.now(), imageUrl }]);
-      await handleSend(ocrPrompt, { skipUserMessage: true });
-    } catch (err: any) {
-      console.error('OCR / parse error:', err);
-      const reason = err?.message || 'Unknown error';
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content:
-            `⚠️ I had trouble reading that receipt (${reason}). Please try a clearer image or enter the transaction manually.`,
-          timestamp: Date.now(),
-        },
-      ]);
-    } finally {
-      setIsOcrLoading(false);
-      setOcrStatus('');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
+  
 
   // Voice input
   
@@ -908,15 +755,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               </span>
             )}
             <div className="flex items-center gap-1 pr-2 pb-2">
-<<<<<<< HEAD
-              
-              <input 
-                type="file" 
-                accept="image/*" 
-                ref={fileInputRef} 
-                className="hidden" 
-                onChange={handleFileUpload} 
-=======
               {/* Receipt scanner (OCR) */}
               <input
                 type="file"
@@ -924,32 +762,19 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 ref={fileInputRef}
                 className="hidden"
                 onChange={handleFileUpload}
->>>>>>> 559b367 (fix(ocr): wire up missing /api/receipts/parse endpoint and add tesseract.js)
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isOcrLoading || isLoading}
-<<<<<<< HEAD
-                title="Scan receipt (OCR)"
-                className={cn(
-                  'p-2 rounded-full transition-all text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700',
-                  isOcrLoading && 'opacity-50 animate-pulse'
-=======
                 title={isOcrLoading ? ocrStatus || 'Scanning receipt…' : 'Scan receipt (OCR)'}
                 className={cn(
                   'p-2 rounded-full transition-all',
                   'text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700',
                   isOcrLoading && 'text-indigo-500 dark:text-indigo-400 animate-pulse',
->>>>>>> 559b367 (fix(ocr): wire up missing /api/receipts/parse endpoint and add tesseract.js)
                 )}
               >
                 {isOcrLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
               </button>
-<<<<<<< HEAD
-              
-=======
-
->>>>>>> 559b367 (fix(ocr): wire up missing /api/receipts/parse endpoint and add tesseract.js)
               {/* Voice button */}
 
               {voiceSupported && (
