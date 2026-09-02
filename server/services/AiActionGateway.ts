@@ -112,20 +112,6 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
         wallet: p.sourceWallet as 'Bank' | 'Cash',
       }));
     }
-
-=======
-      if (!p.name || !Number.isFinite(Number(p.targetAmount)) || Number(p.targetAmount) <= 0) {
-        throw new Error('Goal proposal is missing a valid name or target amount.');
-      }
-      results.push(await goalService.createGoal(userId, {
-        name: String(p.name),
-        targetAmount: Number(p.targetAmount),
-        currentAmount: p.currentAmount === undefined ? 0 : Number(p.currentAmount),
-        deadline: p.deadline,
-        category: p.category,
-        notes: p.notes,
-      }));
-    }
   }
   
   return results;
