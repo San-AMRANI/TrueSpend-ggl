@@ -10,6 +10,20 @@ export interface HealthFactor {
   label: string;
 }
 
+export interface GoalMetric {
+  goalId: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  remainingAmount: number;
+  progressPercent: number;
+  deadline: string | null;
+  daysRemaining: number | null;
+  requiredMonthlyContribution: number | null;
+  requiredWeeklyContribution: number | null;
+  completed: boolean;
+}
+
 export interface Forecast {
   expected: number;
   best: number;
@@ -51,6 +65,7 @@ export interface KPI {
   forecast: Forecast;
   healthScore: number;
   healthFactors: HealthFactor[];
+  goalMetrics: GoalMetric[];
 }
 
 export interface Transaction {

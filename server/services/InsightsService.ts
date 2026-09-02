@@ -14,10 +14,11 @@ function toAmt(v: unknown) { return parseFloat(v as any) || 0; }
 function normalizeMerchantName(raw: string): string {
   if (!raw) return 'Unknown';
   let name = raw.toLowerCase().trim();
-  name = name.replace(/^coffee at /i, '');
-  name = name.replace(/^meal at /i, '');
-  name = name.replace(/ (maarif|casablanca|rabat|marrakech|store|shop|online|inc|ltd|llc|ma|co)$/gi, '');
-  return name.replace(/w/g, c => c.toUpperCase()); // title case
+  name = name.replace(/^(coffee|meal|purchase|payment)\s+at\s+/i, '');
+  name = name.replace(/[.,/#()[\]{}]/g, ' ');
+  name = name.replace(/\b(maarif|casablanca|rabat|marrakech|store|shop|online|inc|ltd|llc|ma|co)\b/gi, ' ');
+  name = name.replace(/\s+/g, ' ').trim();
+    return name ? name.replace(/\b\w/g, (character) => character.toUpperCase()) : 'Unknown';
 }
 
 
@@ -125,13 +126,14 @@ export class InsightsService {
     // ── Anomaly Detection ──────────────────────────────────────────────
     // Flag transactions where amount is 2x+ above category average
     const categoryAvgs = new Map<string, number>();
-    const catTotals = new Map<string, { sum: number; count: number }>();
+    const catTotals = new Map<string, { sum: number; count: number; amounts: number[] }>();
     for (const t of expenses) {
       const cat = t.category || 'Uncategorized';
-      if (!catTotals.has(cat)) catTotals.set(cat, { sum: 0, count: 0 });
+      if (!catTotals.has(cat)) catTotals.set(cat, { sum: 0, count: 0, amounts: [] });
       const entry = catTotals.get(cat)!;
       entry.sum += toAmt(t.amount);
       entry.count += 1;
+      entry.amounts.push(toAmt(t.amount));
     }
     for (const [cat, { sum, count }] of catTotals) categoryAvgs.set(cat, sum / count);
 
@@ -141,14 +143,16 @@ export class InsightsService {
       const txDate = new Date(t.createdAt!);
       if (txDate < recentDate) continue;
       const cat = t.category || 'Uncategorized';
-      const avg = categoryAvgs.get(cat) ?? 0;
       const amt = toAmt(t.amount);
-      if (avg > 0 && amt >= avg * 2.5) {
-        const severity = amt >= avg * 5 ? 'high' : amt >= avg * 3 ? 'medium' : 'low';
-        // Basic confidence heuristic: frequency of transactions and magnitude of deviation
-        const count = catTotals.get(cat)!.count;
+      const categoryData = catTotals.get(cat);
+      const peerCount = (categoryData?.count ?? 0) - 1;
+      const peerSum = (categoryData?.sum ?? 0) - amt;
+      const avg = peerCount > 0 ? peerSum / peerCount : categoryAvgs.get(cat) ?? 0;
+      if (avg > 0 && amt >= Math.max(100, avg * 2.5)) {
         const deviationRatio = amt / avg;
-        let confidence = Math.min(100, Math.round(50 + (deviationRatio * 10) + (Math.min(count, 10) * 2)));
+        const severity = deviationRatio >= 5 ? 'high' : deviationRatio >= 3 ? 'medium' : 'low';
+        const count = categoryData?.count ?? 0;
+        let confidence = Math.min(100, Math.round(45 + (deviationRatio * 10) + (Math.min(count, 10) * 2)));
         confidence = Math.max(0, Math.min(100, confidence));
         anomalies.push({
           transactionId: t.id,

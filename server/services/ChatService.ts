@@ -192,7 +192,7 @@ Parameters: {payday?:number(1-31), emergencyBuffer?:number, salary?:number}
 Parameters: {category:string, amount:number, year:number, month:number}
 
 ### create_goal
-Parameters: {name:string, targetAmount:number, category?:string, deadline?:"YYYY-MM-DD"}
+Parameters: {name:string, targetAmount:number, currentAmount?:number, category?:string, deadline?:"YYYY-MM-DD", notes?:string}
 
 ### contribute_goal
 Parameters: {goalId:string, amount:number}

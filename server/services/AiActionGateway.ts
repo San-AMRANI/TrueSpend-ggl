@@ -79,18 +79,26 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
 
     if (action.type === 'create_goal') {
       if (p.targetAmount !== undefined) p.targetAmount = Number(p.targetAmount);
-      if (!p.name || !Number.isFinite(p.targetAmount)) {
+      if (!p.name || !Number.isFinite(p.targetAmount) || p.targetAmount <= 0) {
         throw new Error('Goal proposal is missing required fields (name, targetAmount).');
       }
-      results.push(await goalService.createGoal(userId, p));
+      results.push(await goalService.createGoal(userId, {
+        name: String(p.name),
+        targetAmount: p.targetAmount,
+        currentAmount: p.currentAmount === undefined ? 0 : Number(p.currentAmount),
+        deadline: p.deadline,
+        category: p.category,
+        notes: p.notes,
+      }));
     }
     
     if (action.type === 'contribute_goal') {
       if (p.amount !== undefined) p.amount = Number(p.amount);
-      if (!p.goalId || !Number.isFinite(p.amount)) {
+      const goalId = p.goalId || p.goal_id;
+      if (!goalId || !Number.isFinite(p.amount) || p.amount <= 0) {
         throw new Error('Contribute to goal proposal is missing required fields (goalId, amount).');
       }
-      results.push(await goalService.contributeToGoal(userId, String(p.goalId), p.amount));
+      results.push(await goalService.contributeToGoal(userId, String(goalId), p.amount));
     }
     
     if (action.type === 'settle_debt') {
@@ -105,6 +113,19 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
       }));
     }
 
+=======
+      if (!p.name || !Number.isFinite(Number(p.targetAmount)) || Number(p.targetAmount) <= 0) {
+        throw new Error('Goal proposal is missing a valid name or target amount.');
+      }
+      results.push(await goalService.createGoal(userId, {
+        name: String(p.name),
+        targetAmount: Number(p.targetAmount),
+        currentAmount: p.currentAmount === undefined ? 0 : Number(p.currentAmount),
+        deadline: p.deadline,
+        category: p.category,
+        notes: p.notes,
+      }));
+    }
   }
   
   return results;

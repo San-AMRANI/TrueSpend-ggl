@@ -10,6 +10,7 @@ import chatRoutes from './chatRoutes.js';
 import payrollRoutes from './payrollRoutes.js';
 import goalRoutes from './goalRoutes.js';
 import insightsRoutes from './insightsRoutes.js';
+import receiptRoutes from './receiptRoutes.js';
 import { NotificationController } from '../controllers/NotificationController.js';
 import { requireAuth } from '../../src/middleware/auth.js';
 
@@ -31,6 +32,7 @@ apiRouter.use('/chat', chatRoutes);
 apiRouter.use('/', payrollRoutes);
 apiRouter.use('/', goalRoutes);
 apiRouter.use('/', insightsRoutes);
+apiRouter.use('/', receiptRoutes);
 
 // Push Notifications v2
 apiRouter.get('/notifications/vapid-public-key', notificationController.getPublicKey);

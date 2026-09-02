@@ -11,6 +11,7 @@
 **Calculation**:
 `Total Liquidity - Emergency Buffer - Pending Payables`
 *Future Additions*: `- Upcoming Recurring Expenses - Required Goal Contributions + Expected Near-Term Income`
+The value may be negative when obligations exceed liquidity; consumers should display that deficit rather than silently converting it to zero.
 
 ## 3. Runway
 **Definition**: The number of days the user can sustain their current spending habits using their Safe to Spend amount.
@@ -34,3 +35,12 @@ where `Average Daily Spend = Monthly Expenses / Elapsed Days in current financia
 - **Budget Control (15 pts)**: Adherence to total budget. `Spending Pace Percent` vs ideal pace.
 - **Runway (15 pts)**: `Runway Days / Days Until Payday`.
 - **Daily Discipline (15 pts)**: `Daily Usage Percent`. Below 100% is good.
+
+## 6. Goal Planning Metrics
+For each active goal:
+- **Remaining**: `max(0, Target - Current)`.
+- **Days remaining**: calendar days from today to the deadline, floored at zero.
+- **Required monthly contribution**: `Remaining / max(1, Days remaining / 30.44)`.
+- **Required weekly contribution**: `Remaining / max(1, Days remaining / 7)`.
+
+These metrics are informational in v1 and do not reserve money from Safe to Spend until a future goal-aware budgeting decision is explicitly enabled.

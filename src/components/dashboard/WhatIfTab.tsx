@@ -37,6 +37,11 @@ export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, goals, amount, setAm
     };
 
     const simTransactions = [...transactions, dummyTransaction];
+    const simGoals = goals.map((goal) =>
+      scenario === 'save' && goal.id === targetGoalId
+        ? { ...goal, currentAmount: Math.min(goal.targetAmount, goal.currentAmount + amount) }
+        : goal,
+    );
     
     // We compute the new state
     const newState = computeFinancialState({
@@ -44,7 +49,7 @@ export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, goals, amount, setAm
       payrolls,
       debts,
       budgets,
-      goals,
+      goals: simGoals,
       userSettings: {
         emergencyBuffer: kpis.emergencyBuffer,
         salary: kpis.salary || 0,
@@ -52,7 +57,7 @@ export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, goals, amount, setAm
     });
     
     return newState;
-  }, [kpis, amount, scenario, transactions, payrolls, debts, budgets, goals]);
+  }, [kpis, amount, scenario, targetGoalId, transactions, payrolls, debts, budgets, goals]);
 
   if (!kpis) return null;
 
@@ -151,7 +156,20 @@ export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, goals, amount, setAm
                 
                 {scenario === 'save' && targetGoalId && (
                   <div className="mt-4 text-sm text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
-                    <p>You are moving {amount} MAD into {goals.find(g => g.id === targetGoalId)?.name}. This accelerates your progress!</p>
+                    {(() => {
+                      const goal = goals.find(g => g.id === targetGoalId);
+                      const baseline = kpis.goalMetrics.find(metric => metric.goalId === targetGoalId);
+                      const simulated = simResult.goalMetrics.find(metric => metric.goalId === targetGoalId);
+                      if (!goal || !baseline || !simulated) return null;
+                      return (
+                        <p>
+                          {goal.name}: {baseline.remainingAmount.toFixed(2)} MAD remaining → {simulated.remainingAmount.toFixed(2)} MAD.
+                          {simulated.daysRemaining !== null
+                            ? ` Required monthly contribution falls to ${simulated.requiredMonthlyContribution?.toFixed(2)} MAD.`
+                            : ' This contribution is reflected in the simulated goal progress.'}
+                        </p>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
