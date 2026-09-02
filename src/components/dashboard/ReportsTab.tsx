@@ -13,21 +13,25 @@ interface ReportsTabProps {
 export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budgets }) => {
   const handleExportCSV = () => {
     if (!transactions.length) return alert('No transactions to export.');
-    
+
+    const csvCell = (value: unknown) => {
+      const text = String(value ?? '');
+      return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
     const headers = ['Date', 'Type', 'Wallet', 'Category', 'Amount', 'Notes'];
     const csvContent = [
-      headers.join(','),
+      headers.map(csvCell).join(','),
       ...transactions.map(t => [
         t.createdAt.split('T')[0],
         t.type,
         t.sourceWallet,
         t.category || '',
         t.amount,
-        `"${t.notes || ''}"`
-      ].join(','))
-    ].join('\\n');
+        t.notes || ''
+      ].map(csvCell).join(','))
+    ].join('\r\n');
     
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([`\uFEFF${csvContent}\r\n`], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -35,6 +39,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleExportJSON = () => {

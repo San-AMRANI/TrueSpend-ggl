@@ -7,7 +7,7 @@ interface DashboardNavProps {
   setActiveTab: (tab: DashboardTab) => void;
 }
 
-import { ClipboardCheck, FileBarChart } from 'lucide-react';
+import { FileBarChart } from 'lucide-react';
 const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.FC<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
   { id: 'calendar', label: 'Calendar', shortLabel: 'Calendar', icon: CalendarDays },
@@ -20,7 +20,6 @@ const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.F
   { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
 
   { id: 'insights', label: 'Insights', shortLabel: 'Insights', icon: Lightbulb },
-  { id: 'reconciliation', label: 'Reconcile', shortLabel: 'Reconcile', icon: ClipboardCheck },
   { id: 'reports', label: 'Reports', shortLabel: 'Reports', icon: FileBarChart },
 
   { id: 'goals', label: 'Goals', shortLabel: 'Goals', icon: Target },

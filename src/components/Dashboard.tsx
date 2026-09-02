@@ -14,7 +14,6 @@ import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { GoalsTab } from './dashboard/GoalsTab';
 import { InsightsTab } from './dashboard/InsightsTab';
-import { ReconciliationTab } from './dashboard/ReconciliationTab';
 import { ReportsTab } from './dashboard/ReportsTab';
 import { AIChat } from './AIChat';
 import type { DashboardTab } from '../types';
@@ -196,9 +195,6 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
       )}
 
 
-      {activeTab === 'reconciliation' && (
-        <ReconciliationTab transactions={transactions} />
-      )}
       {activeTab === 'reports' && (
         <ReportsTab transactions={transactions} kpis={kpis} budgets={budgets} />
       )}

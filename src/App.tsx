@@ -10,7 +10,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 import type { DashboardTab } from './types';
-import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart } from 'lucide-react';
+import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, FileBarChart } from 'lucide-react';
 
 const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}logo-1.png`;
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
@@ -41,7 +41,6 @@ function AppContent() {
     { id: 'what-if', label: 'What-If', icon: Calculator },
     { id: 'digest', label: 'Digest', icon: FileText },
 
-    { id: 'reconciliation', label: 'Reconcile', icon: ClipboardCheck },
     { id: 'reports', label: 'Reports', icon: FileBarChart },
     { id: 'settings', label: 'Settings', icon: Settings },
 

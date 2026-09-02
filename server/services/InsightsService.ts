@@ -6,7 +6,6 @@
  * the existing transaction data. No new DB tables required.
  */
 import { transactionRepository } from '../repositories/TransactionRepository.js';
-import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
 import { getCurrentFinancialMonth, getPreviousFinancialMonth, getFinancialPeriods, isInFinancialMonth } from '../../src/lib/financialMonth.js';
 
 function toAmt(v: unknown) { return parseFloat(v as any) || 0; }
@@ -42,49 +41,41 @@ export class InsightsService {
         isInFinancialMonth(new Date(t.createdAt!), payrolls, currentFm.year, currentFm.month)
       );
 
-      // Collect categories from current period
-      const categorySet = new Set(currentPeriodExpenses.map((t) => t.category || 'Uncategorized'));
+      const historicalPeriods = periods
+        .filter((p) => !(p.year === currentFm.year && p.month === currentFm.month))
+        .slice(-3);
+      const categorySet = new Set([
+        ...currentPeriodExpenses.map((t) => t.category || 'Uncategorized'),
+        ...expenses
+          .filter((t) => historicalPeriods.some((p) => isInFinancialMonth(new Date(t.createdAt!), payrolls, p.year, p.month)))
+          .map((t) => t.category || 'Uncategorized'),
+      ]);
+      const currentElapsedDays = Math.max(1, Math.min(
+        Math.round((today.getTime() - currentFm.start.getTime()) / 86_400_000) + 1,
+        Math.round((currentFm.end.getTime() - currentFm.start.getTime()) / 86_400_000) + 1,
+      ));
 
       for (const cat of categorySet) {
         const currentTotal = currentPeriodExpenses
           .filter((t) => (t.category || 'Uncategorized') === cat)
           .reduce((s, t) => s + toAmt(t.amount), 0);
 
-        // Average across previous periods (up to 3)
-        const historicalPeriods = periods.filter(
-          (p) => !(p.year === currentFm.year && p.month === currentFm.month)
-        ).slice(-3);
-
-        
-        const historicalTotals = historicalPeriods.map((p) => {
+        const historicalDailyRates = historicalPeriods.map((p) => {
           const pExpenses = expenses.filter((t) =>
             (t.category || 'Uncategorized') === cat &&
             isInFinancialMonth(new Date(t.createdAt!), payrolls, p.year, p.month)
           );
-          const sum = pExpenses.reduce((s, t) => s + toAmt(t.amount), 0);
-          return { sum, year: p.year, month: p.month };
+           const sum = pExpenses.reduce((s, t) => s + toAmt(t.amount), 0);
+           const days = Math.max(1, Math.round((p.end.getTime() - p.start.getTime()) / 86_400_000) + 1);
+           return sum / days;
         });
-
-        // Normalize based on elapsed days in current month
-        let elapsedDays = 30;
-        let totalMonthDays = 30;
-        if (currentFm) {
-           elapsedDays = Math.max(1, Math.round((today.getTime() - currentFm.start.getTime()) / 86_400_000) + 1);
-           totalMonthDays = Math.max(1, Math.round((currentFm.end.getTime() - currentFm.start.getTime()) / 86_400_000) + 1);
-        }
-        
-        let avg = 0;
-        if (historicalTotals.length > 0) {
-           // We scale historical totals to the elapsed days portion for a fairer comparison, or scale current up.
-           // Usually it's better to project current to end of month.
-           const currentProjected = (currentTotal / elapsedDays) * totalMonthDays;
-           const histAvg = historicalTotals.reduce((s, v) => s + v.sum, 0) / historicalTotals.length;
-           
-           // We compare current projected to historical average
-           const changePercent = histAvg > 0 ? ((currentProjected - histAvg) / histAvg) * 100 : 0;
+          if (historicalDailyRates.length > 0) {
+            const historicalDailyAverage = historicalDailyRates.reduce((s, value) => s + value, 0) / historicalDailyRates.length;
+            const historicalComparableTotal = historicalDailyAverage * currentElapsedDays;
+            const changePercent = historicalComparableTotal > 0 ? ((currentTotal - historicalComparableTotal) / historicalComparableTotal) * 100 : 0;
            const trend = Math.abs(changePercent) < 10 ? 'stable' : changePercent > 0 ? 'up' : 'down';
            
-           patterns.push({ category: cat, currentMonthTotal: currentTotal, threeMonthAvg: Math.round(histAvg), changePercent: Math.round(changePercent * 10) / 10, trend });
+            patterns.push({ category: cat, currentMonthTotal: currentTotal, threeMonthAvg: Math.round(historicalComparableTotal), changePercent: Math.round(changePercent * 10) / 10, trend });
         } else {
            patterns.push({ category: cat, currentMonthTotal: currentTotal, threeMonthAvg: 0, changePercent: 0, trend: 'stable' });
         }

@@ -403,8 +403,30 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         logger: m => console.log(m)
       });
       const text = result.data.text.trim();
-      
-      const ocrPrompt = `I am uploading a receipt/ticket. Please parse it and propose a transaction. Here is the extracted text:\n\n${text}`;
+
+      const signalChars = [...text].filter((character) => /[\p{L}\p{N}]/u.test(character)).length;
+      if (text.length < 12 || signalChars < 5) {
+        throw new Error('The receipt text is too unclear to read. Please upload a sharper image or enter the purchase manually.');
+      }
+
+      const parseResponse = await fetch('/api/receipts/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ text }),
+      });
+      const parsedData = await parseResponse.json().catch(() => ({}));
+      if (!parseResponse.ok) throw new Error(parsedData.error || 'Receipt parsing failed.');
+      const proposal = parsedData.proposal;
+      if (!proposal || proposal.amount === null || proposal.confidence < 70) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'I could not read this receipt reliably enough to create a transaction. Please upload a sharper, well-lit image or enter the amount manually.',
+          timestamp: Date.now(),
+        }]);
+        return;
+      }
+      const proposalSummary = JSON.stringify(proposal);
+      const ocrPrompt = `I uploaded a receipt. Review this extracted proposal and propose a transaction only after checking it against the OCR text. Parsed proposal: ${proposalSummary}\nOCR text:\n${text.slice(0, 6000)}`;
       
       if (input.trim()) {
         setInput(prev => prev + '\n\n' + ocrPrompt);
