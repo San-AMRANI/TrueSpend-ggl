@@ -1,3 +1,4 @@
+import { initGoogleAuth } from './lib/googleAuth';
 import React from 'react';
 /**
  * @license
@@ -26,9 +27,13 @@ function AppContent() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
+    const cleanup = initGoogleAuth();
     const handleOpen = () => setIsSidebarOpen(true);
     window.addEventListener('truespend:openSidebar', handleOpen);
-    return () => window.removeEventListener('truespend:openSidebar', handleOpen);
+    return () => {
+      cleanup && cleanup();
+      window.removeEventListener('truespend:openSidebar', handleOpen);
+    };
   }, []);
 
   const tabs: { id: DashboardTab; label: string; icon: any }[] = [

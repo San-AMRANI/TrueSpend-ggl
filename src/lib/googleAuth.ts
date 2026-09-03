@@ -1,53 +1,71 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
 
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-const auth = getAuth(app);
-
-const provider = new GoogleAuthProvider();
-// Required scopes for Google Drive backup
-provider.addScope('https://www.googleapis.com/auth/drive.file');
-
-let isSigningIn = false;
+let tokenClient: any = null;
 let cachedAccessToken: string | null = null;
 
 export const initGoogleAuth = (
-  onAuthSuccess?: (user: User, token: string) => void,
+  onAuthSuccess?: (user: any, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else if (!isSigningIn) {
-        cachedAccessToken = null;
-        if (onAuthFailure) onAuthFailure();
+  const checkInterval = setInterval(() => {
+    if ((window as any).google && (window as any).google.accounts && (window as any).google.accounts.oauth2) {
+      clearInterval(checkInterval);
+      const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
+      if (!clientId) {
+        console.error('VITE_GOOGLE_CLIENT_ID is not defined');
+        return;
       }
-    } else {
-      cachedAccessToken = null;
-      if (onAuthFailure) onAuthFailure();
+      tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/drive.file',
+        callback: (tokenResponse: any) => {
+          if (tokenResponse && tokenResponse.access_token) {
+            cachedAccessToken = tokenResponse.access_token;
+            if (onAuthSuccess) onAuthSuccess({ name: 'Google User' }, cachedAccessToken);
+          } else {
+            if (onAuthFailure) onAuthFailure();
+          }
+        },
+      });
     }
-  });
+  }, 100);
+  
+  return () => {
+    clearInterval(checkInterval);
+  };
 };
 
-export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
-  try {
-    isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('Failed to get access token from Firebase Auth');
+export const googleSignIn = (): Promise<{ user: any; accessToken: string }> => {
+  return new Promise((resolve, reject) => {
+    if (!tokenClient) {
+      reject(new Error('Google Identity Services not loaded yet or VITE_GOOGLE_CLIENT_ID is missing.'));
+      return;
     }
-
-    cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error: any) {
-    console.error('Sign in error:', error);
-    throw error;
-  } finally {
-    isSigningIn = false;
-  }
+    
+    // Check if we are running in an iframe
+    if (window.self !== window.top) {
+      // In an iframe, the popup might be blocked by Cross-Origin-Opener-Policy.
+      alert('Google Sign-in cannot be completed inside this preview iframe due to browser security restrictions.\n\nPlease open the application in a new tab (using the button in the top right corner of the preview) to connect your Google Drive.');
+      reject(new Error('Popup blocked in iframe. Please open in a new tab.'));
+      return;
+    }
+    
+    try {
+      tokenClient.callback = (tokenResponse: any) => {
+        if (tokenResponse && tokenResponse.access_token) {
+          cachedAccessToken = tokenResponse.access_token;
+          resolve({ user: { name: 'Google User' }, accessToken: cachedAccessToken });
+        } else {
+          reject(new Error('Failed to get access token from Google'));
+        }
+      };
+      
+      tokenClient.requestAccessToken();
+    } catch (error) {
+      console.error('Error opening Google popup:', error);
+      alert('Failed to open Google login popup. Please try again.');
+      reject(new Error('Failed to open Google login popup.'));
+    }
+  });
 };
 
 export const getGoogleAccessToken = async (): Promise<string | null> => {
@@ -55,6 +73,5 @@ export const getGoogleAccessToken = async (): Promise<string | null> => {
 };
 
 export const googleLogout = async () => {
-  await signOut(auth);
   cachedAccessToken = null;
 };
