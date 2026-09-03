@@ -53,43 +53,47 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const { token } = useAuth();
 
   
-  const handleConnectDrive = async () => {
-    try {
-      setIsDriveConnecting(true);
-      const res = await googleSignIn();
+  const handleConnectDrive = () => {
+    setIsDriveConnecting(true);
+    googleSignIn().then(async (res) => {
       if (res) {
         await handleSaveSettings({ automatedDriveBackups: true });
         alert('Google Drive connected successfully!');
       }
-    } catch (e) {
+    }).catch(e => {
       console.error(e);
       alert('Failed to connect Google Drive.');
-    } finally {
+    }).finally(() => {
       setIsDriveConnecting(false);
-    }
+    });
   };
 
-  const handleBackupToDrive = async () => {
-    try {
-      setIsDriveBackingUp(true);
-      let accessToken = await getGoogleAccessToken();
-      if (!accessToken) {
-        const res = await googleSignIn();
-        if (res) accessToken = res.accessToken;
+  const handleBackupToDrive = () => {
+    const performBackup = async (accessToken: string) => {
+      try {
+        setIsDriveBackingUp(true);
+        const blob = await dashboardService.getSqlBlob(token);
+        const filename = `truespend_backup_${new Date().toISOString().slice(0, 10)}.sql`;
+        await uploadToGoogleDrive(accessToken, blob, filename);
+        await handleSaveSettings({ lastDriveBackupDate: new Date().toISOString() });
+        alert('Backup saved to Google Drive successfully!');
+      } catch (e) {
+        console.error(e);
+        alert('Failed to backup to Google Drive.');
+      } finally {
+        setIsDriveBackingUp(false);
       }
-      if (!accessToken) throw new Error('No access token');
-      
-      const blob = await dashboardService.getSqlBlob(token);
-      const filename = `truespend_backup_${new Date().toISOString().slice(0, 10)}.sql`;
-      await uploadToGoogleDrive(accessToken, blob, filename);
-      
-      await handleSaveSettings({ lastDriveBackupDate: new Date().toISOString() });
-      alert('Backup saved to Google Drive successfully!');
-    } catch (e) {
-      console.error(e);
-      alert('Failed to backup to Google Drive.');
-    } finally {
-      setIsDriveBackingUp(false);
+    };
+
+    let accessToken = getGoogleAccessToken();
+    if (!accessToken) {
+      googleSignIn().then(res => {
+        if (res && res.accessToken) performBackup(res.accessToken);
+      }).catch(e => {
+        console.error(e);
+      });
+    } else {
+      performBackup(accessToken);
     }
   };
   
