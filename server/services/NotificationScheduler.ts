@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { PushService } from './PushService.js';
 import { KpiService } from './KpiService.js';
 import { InsightsService } from './InsightsService.js';
+import { settingsService } from './SettingsService.js';
 
 const pushService = new PushService();
 const kpiService = new KpiService();
@@ -13,7 +14,7 @@ const insightsService = new InsightsService();
 
 export class NotificationScheduler {
   start() {
-    // Run every minute
+    // Notification delivery run every minute
     cron.schedule('* * * * *', async () => {
       console.log(`[NotificationScheduler] Running at ${new Date().toISOString()}`);
       try {
@@ -22,6 +23,57 @@ export class NotificationScheduler {
         console.error('[NotificationScheduler] Error processing notifications:', error);
       }
     });
+
+    // Automated Drive Backup check run every 15 minutes
+    cron.schedule('*/15 * * * *', async () => {
+      try {
+        await this.processAutomatedBackups();
+      } catch (error) {
+        console.error('[NotificationScheduler] Error checking automated backups:', error);
+      }
+    });
+  }
+
+  async processAutomatedBackups() {
+    try {
+      const backupUsers = await db
+        .select()
+        .from(users)
+        .where(eq(users.automatedDriveBackups, 1));
+
+      for (const user of backupUsers) {
+        if (!user.googleDriveToken) continue;
+
+        // Check if token has expired
+        if (user.googleDriveTokenExpiry && new Date(user.googleDriveTokenExpiry).getTime() < Date.now()) {
+          continue;
+        }
+
+        const lastBackup = user.lastDriveBackupDate ? new Date(user.lastDriveBackupDate).getTime() : 0;
+        const frequency = user.driveBackupFrequency || 'weekly';
+        const intervalMs =
+          frequency === 'daily'
+            ? 24 * 60 * 60 * 1000
+            : frequency === '3days'
+            ? 3 * 24 * 60 * 60 * 1000
+            : 7 * 24 * 60 * 60 * 1000;
+
+        if (Date.now() - lastBackup >= intervalMs) {
+          console.log(`[BackupScheduler] Triggering server backup for ${user.email} (frequency: ${frequency})`);
+          try {
+            const result = await settingsService.backupToGoogleDrive(user.googleDriveToken);
+            await settingsService.updateSettings(user.id, {
+              lastDriveBackupDate: result.lastDriveBackupDate,
+            });
+            console.log(`[BackupScheduler] Backup succeeded for ${user.email}`);
+          } catch (err) {
+            console.error(`[BackupScheduler] Error backing up user ${user.email}:`, err);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[BackupScheduler] Failed to query automated backup users:', err);
+    }
   }
 
   async processNotifications() {

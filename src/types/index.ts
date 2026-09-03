@@ -52,6 +52,7 @@ export interface KPI {
   salary?: number;
   automatedDriveBackups?: boolean;
   lastDriveBackupDate?: string;
+  driveBackupFrequency?: 'daily' | '3days' | 'weekly';
   currentFinancialAmount: number;
   financialPeriodStart: string | null;
   financialPeriodEnd: string | null;
@@ -131,6 +132,8 @@ export interface UserSettings {
   salary?: number;
   automatedDriveBackups?: boolean;
   lastDriveBackupDate?: string;
+  driveBackupFrequency?: 'daily' | '3days' | 'weekly';
+  googleDriveToken?: string;
 }
 
 // ── Phase 2 — Personal Intelligence ──────────────────────────────────────────

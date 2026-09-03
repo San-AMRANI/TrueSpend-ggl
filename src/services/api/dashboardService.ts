@@ -31,8 +31,29 @@ export const dashboardService = {
   deleteDebt: (debtId: string, token: string | null) =>
     apiClient.delete<{ message: string }>(`/api/debts/${debtId}`, token),
   getSettings: (token: string | null) => apiClient.get<UserSettings>('/api/settings', token),
-  updateSettings: (payload: { emergencyBuffer?: number; automatedDriveBackups?: boolean; lastDriveBackupDate?: string }, token: string | null) =>
-    apiClient.post<{ success: boolean; payday?: number; emergencyBuffer?: number }>('/api/settings', payload, token),
+  updateSettings: (
+    payload: {
+      emergencyBuffer?: number;
+      payday?: number;
+      salary?: number;
+      automatedDriveBackups?: boolean;
+      lastDriveBackupDate?: string;
+      driveBackupFrequency?: 'daily' | '3days' | 'weekly';
+      googleDriveToken?: string;
+    },
+    token: string | null
+  ) =>
+    apiClient.post<{ success: boolean; payday?: number; emergencyBuffer?: number; automatedDriveBackups?: number; driveBackupFrequency?: string }>(
+      '/api/settings',
+      payload,
+      token
+    ),
+  backupToDrive: (accessToken: string | null, token: string | null) =>
+    apiClient.post<{ success: boolean; fileId: string; lastDriveBackupDate: string }>(
+      '/api/settings/backup-drive',
+      { accessToken },
+      token
+    ),
   getSqlBlob: async (token: string | null) => {
     const response = await fetch('/api/settings/export-sql', {
       headers: token ? { Authorization: `Bearer ${token}` } : {},

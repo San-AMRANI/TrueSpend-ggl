@@ -16,6 +16,9 @@ export const users = pgTable('users', {
   salary: decimal('salary').default('0').notNull(),
   automatedDriveBackups: integer('automated_drive_backups').default(0),
   lastDriveBackupDate: timestamp('last_drive_backup_date'),
+  driveBackupFrequency: text('drive_backup_frequency').default('weekly'),
+  googleDriveToken: text('google_drive_token'),
+  googleDriveTokenExpiry: timestamp('google_drive_token_expiry'),
   notificationEnabled: integer('notification_enabled').default(0),
   notificationTime: text('notification_time').default('09:00'),
 });

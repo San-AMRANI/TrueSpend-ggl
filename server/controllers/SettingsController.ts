@@ -27,6 +27,27 @@ export class SettingsController {
     }
   }
 
+  async backupToGoogleDrive(req: AuthRequest, res: Response) {
+    try {
+      const accessToken = req.body?.accessToken || req.dbUser?.googleDriveToken;
+      if (!accessToken) {
+        return res.status(400).json({ error: 'No Google Drive access token provided' });
+      }
+
+      const backupResult = await settingsService.backupToGoogleDrive(accessToken);
+
+      // Persist backup date in database
+      await settingsService.updateSettings(req.dbUser.id, {
+        lastDriveBackupDate: backupResult.lastDriveBackupDate,
+      });
+
+      res.json({ success: true, ...backupResult });
+    } catch (e: any) {
+      console.error('Error in server backup to Google Drive:', e);
+      res.status(500).json({ error: e?.message || 'Failed to backup to Google Drive' });
+    }
+  }
+
   async exportSql(req: AuthRequest, res: Response) {
     try {
       const sqlContent = await settingsService.exportSqlDatabase();

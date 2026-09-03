@@ -30,6 +30,19 @@ export const createPool = () => {
     global._postgresPool.on('error', (err) => {
       console.error('Unexpected error on idle SQL pool client:', err);
     });
+
+    // Auto-migrate new backup settings columns if not present
+    global._postgresPool
+      .query(`
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "automated_drive_backups" integer DEFAULT 0;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "last_drive_backup_date" timestamp;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "drive_backup_frequency" text DEFAULT 'weekly';
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "google_drive_token" text;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "google_drive_token_expiry" timestamp;
+      `)
+      .catch((err) => {
+        console.warn('[DB Init] Backup columns ensure notice:', err?.message || err);
+      });
   }
   return global._postgresPool;
 };

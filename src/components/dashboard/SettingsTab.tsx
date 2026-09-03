@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send, Cloud } from 'lucide-react';
+import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send, Cloud, Clock, Check } from 'lucide-react';
 import { googleSignIn, getGoogleAccessToken } from '../../lib/googleAuth';
 import { uploadToGoogleDrive } from '../../lib/driveUpload';
 import { dashboardService } from '../../services/api/dashboardService';
@@ -27,7 +27,7 @@ interface SettingsTabProps {
   isSaving: boolean;
   isExporting?: boolean;
   isImporting?: boolean;
-  handleSaveSettings: (payload: any) => Promise<void>;
+  handleSaveSettings: (payload: any, notifyUser?: boolean) => Promise<void>;
   handleExportSql?: () => void;
   handleImportSql?: (sql: string) => Promise<{ message: string }>;
   notifications: NotificationsApi;
@@ -53,33 +53,71 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const { token } = useAuth();
 
   
-  const handleConnectDrive = () => {
-    setIsDriveConnecting(true);
-    googleSignIn().then(async (res) => {
-      if (res) {
-        await handleSaveSettings({ automatedDriveBackups: true });
-        alert('Google Drive connected successfully!');
+  const handleToggleAutoBackup = async () => {
+    if (userSettings?.automatedDriveBackups) {
+      await handleSaveSettings({ automatedDriveBackups: false }, false);
+      showNotifToast('Automated backups disabled.');
+    } else {
+      const accessToken = getGoogleAccessToken();
+      if (!accessToken) {
+        setIsDriveConnecting(true);
+        try {
+          const res = await googleSignIn();
+          if (res && res.accessToken) {
+            await handleSaveSettings({
+              automatedDriveBackups: true,
+              driveBackupFrequency: userSettings?.driveBackupFrequency || 'weekly',
+              googleDriveToken: res.accessToken,
+            }, false);
+            showNotifToast('Google Drive connected and automated backups enabled!');
+          }
+        } catch (e) {
+          console.error(e);
+          alert('Failed to connect Google Drive.');
+        } finally {
+          setIsDriveConnecting(false);
+        }
+      } else {
+        await handleSaveSettings({
+          automatedDriveBackups: true,
+          driveBackupFrequency: userSettings?.driveBackupFrequency || 'weekly',
+          googleDriveToken: accessToken,
+        }, false);
+        showNotifToast('Automated backups enabled!');
       }
-    }).catch(e => {
-      console.error(e);
-      alert('Failed to connect Google Drive.');
-    }).finally(() => {
-      setIsDriveConnecting(false);
-    });
+    }
   };
 
-  const handleBackupToDrive = () => {
+  const handleFrequencyChange = async (freq: 'daily' | '3days' | 'weekly') => {
+    await handleSaveSettings({ driveBackupFrequency: freq }, false);
+    showNotifToast(`Backup schedule updated to ${freq === 'daily' ? 'Daily' : freq === '3days' ? 'Every 3 Days' : 'Weekly'}.`);
+  };
+
+  const handleBackupToDrive = async () => {
     const performBackup = async (accessToken: string) => {
       try {
         setIsDriveBackingUp(true);
+        // Try server-side backup first
+        try {
+          const res = await dashboardService.backupToDrive(accessToken, token);
+          if (res && res.success) {
+            await handleSaveSettings({ lastDriveBackupDate: res.lastDriveBackupDate }, false);
+            showNotifToast('Backup saved to Google Drive successfully!');
+            return;
+          }
+        } catch (serverErr) {
+          console.warn('Server-side backup endpoint returned error, falling back to direct upload:', serverErr);
+        }
+
+        // Direct client-side fallback
         const blob = await dashboardService.getSqlBlob(token);
         const filename = `truespend_backup_${new Date().toISOString().slice(0, 10)}.sql`;
         await uploadToGoogleDrive(accessToken, blob, filename);
-        await handleSaveSettings({ lastDriveBackupDate: new Date().toISOString() });
-        alert('Backup saved to Google Drive successfully!');
-      } catch (e) {
+        await handleSaveSettings({ lastDriveBackupDate: new Date().toISOString() }, false);
+        showNotifToast('Backup saved to Google Drive successfully!');
+      } catch (e: any) {
         console.error(e);
-        alert('Failed to backup to Google Drive.');
+        alert('Failed to backup to Google Drive: ' + (e?.message || 'Unknown error'));
       } finally {
         setIsDriveBackingUp(false);
       }
@@ -87,13 +125,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
     let accessToken = getGoogleAccessToken();
     if (!accessToken) {
-      googleSignIn().then(res => {
-        if (res && res.accessToken) performBackup(res.accessToken);
-      }).catch(e => {
+      setIsDriveConnecting(true);
+      try {
+        const res = await googleSignIn();
+        if (res && res.accessToken) {
+          await performBackup(res.accessToken);
+        }
+      } catch (e) {
         console.error(e);
-      });
+        alert('Google Sign-In was cancelled or failed.');
+      } finally {
+        setIsDriveConnecting(false);
+      }
     } else {
-      performBackup(accessToken);
+      await performBackup(accessToken);
     }
   };
   
@@ -371,10 +416,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <CardContent>
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-4 space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Weekly Cloud Backups</h3>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Cloud Database Backups</h3>
               <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
-                Automatically backup your PostgreSQL database to your Google Drive every week. 
-                Requires signing in with your Google account.
+                Automatically backup your full PostgreSQL database to your personal Google Drive on your chosen schedule.
+                Backups are processed via server-side scheduler and cloud synchronization.
               </p>
             </div>
             
@@ -382,22 +427,18 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Automated Backups</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {userSettings?.lastDriveBackupDate ? `Last backup: ${new Date(userSettings.lastDriveBackupDate).toLocaleDateString()}` : 'No backups yet.'}
+                  {userSettings?.lastDriveBackupDate ? `Last backup: ${new Date(userSettings.lastDriveBackupDate).toLocaleString()}` : 'No backups yet.'}
                 </p>
               </div>
               <button
-                onClick={() => {
-                  if (!userSettings?.automatedDriveBackups) {
-                    handleConnectDrive();
-                  } else {
-                    handleSaveSettings({ automatedDriveBackups: false });
-                  }
-                }}
+                type="button"
+                disabled={isDriveConnecting}
+                onClick={handleToggleAutoBackup}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
                   userSettings?.automatedDriveBackups ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
                 }`}
                 role="switch"
-                aria-checked={userSettings?.automatedDriveBackups || false}
+                aria-checked={Boolean(userSettings?.automatedDriveBackups)}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
@@ -407,15 +448,52 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </button>
             </div>
 
-            <div className="pt-2">
+            {/* Configurable Interval when enabled */}
+            {userSettings?.automatedDriveBackups && (
+              <div className="border-t border-gray-200 dark:border-gray-800 pt-4 space-y-2">
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-indigo-500" />
+                  Backup Interval
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'daily', label: 'Daily', desc: 'Every 24h' },
+                    { id: '3days', label: 'Every 3 Days', desc: 'Every 72h' },
+                    { id: 'weekly', label: 'Weekly', desc: 'Every 7 days' },
+                  ].map((option) => {
+                    const isSelected = (userSettings?.driveBackupFrequency || 'weekly') === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => handleFrequencyChange(option.id as 'daily' | '3days' | 'weekly')}
+                        className={`flex flex-col items-center justify-center p-2.5 rounded-lg border text-xs font-medium transition-all ${
+                          isSelected
+                            ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500 dark:text-indigo-300 shadow-sm'
+                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                      >
+                        <span className="font-semibold">{option.label}</span>
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{option.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 pt-1">
+                  Server-side scheduler checks pending backups on schedule and syncs securely to your Google Drive.
+                </p>
+              </div>
+            )}
+
+            <div className="pt-2 flex items-center gap-3">
               <Button
                 variant="outline"
-                disabled={isDriveBackingUp}
+                disabled={isDriveBackingUp || isDriveConnecting}
                 onClick={handleBackupToDrive}
                 className="flex items-center gap-2"
               >
                 <Cloud className="h-4 w-4 text-blue-600" />
-                {isDriveBackingUp ? 'Uploading to Drive...' : 'Backup to Drive Now'}
+                {isDriveBackingUp ? 'Uploading to Drive...' : isDriveConnecting ? 'Connecting Drive...' : 'Backup to Drive Now'}
               </Button>
             </div>
           </div>

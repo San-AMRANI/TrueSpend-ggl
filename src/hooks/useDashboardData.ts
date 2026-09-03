@@ -112,15 +112,19 @@ export function useDashboardData(token: string | null) {
   }, [fetchData]);
 
   useEffect(() => {
-    if (!kpis) return;
-    const settings = userSettings;
-    if (settings && settings.automatedDriveBackups) {
-      const lastBackup = settings.lastDriveBackupDate ? new Date(settings.lastDriveBackupDate).getTime() : 0;
-      const now = Date.now();
-      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-      if (now - lastBackup > SEVEN_DAYS_MS) {
-        handleBackupToDrive();
-      }
+    if (!userSettings || !userSettings.automatedDriveBackups) return;
+    const lastBackup = userSettings.lastDriveBackupDate ? new Date(userSettings.lastDriveBackupDate).getTime() : 0;
+    const now = Date.now();
+    const freq = userSettings.driveBackupFrequency || 'weekly';
+    const intervalMs =
+      freq === 'daily'
+        ? 24 * 60 * 60 * 1000
+        : freq === '3days'
+        ? 3 * 24 * 60 * 60 * 1000
+        : 7 * 24 * 60 * 60 * 1000;
+
+    if (now - lastBackup >= intervalMs) {
+      handleBackupToDrive(false);
     }
   }, [userSettings]);
 
@@ -212,15 +216,35 @@ export function useDashboardData(token: string | null) {
     setActiveTab('transactions');
   };
 
-  const handleSaveSettings = async (payload: { emergencyBuffer?: number; automatedDriveBackups?: boolean; lastDriveBackupDate?: string }) => {
+  const handleSaveSettings = async (
+    payload: {
+      emergencyBuffer?: number;
+      payday?: number;
+      salary?: number;
+      automatedDriveBackups?: boolean;
+      lastDriveBackupDate?: string;
+      driveBackupFrequency?: 'daily' | '3days' | 'weekly';
+      googleDriveToken?: string;
+    },
+    notifyUser: boolean = true
+  ) => {
     setIsSaving(true);
+    // Optimistic update so UI toggles and switches respond instantly without reverting
+    setUserSettings((prev: any) => ({
+      ...(prev || {}),
+      ...payload,
+    }));
     try {
       await dashboardService.updateSettings(payload, token);
       await fetchData();
-      alert('Settings saved successfully!');
+      if (notifyUser) {
+        alert('Settings saved successfully!');
+      }
     } catch (e) {
       console.error('Error saving settings:', e);
-      alert('Failed to save settings.');
+      if (notifyUser) {
+        alert('Failed to save settings.');
+      }
     } finally {
       setIsSaving(false);
     }
@@ -271,21 +295,49 @@ export function useDashboardData(token: string | null) {
   };
 
   
-  const handleBackupToDrive = async () => {
+  const handleBackupToDrive = async (interactive: boolean = false) => {
     try {
       let accessToken = await getGoogleAccessToken();
       if (!accessToken) {
-        return; // Don't prompt login automatically
+        if (interactive) {
+          const authRes = await googleSignIn();
+          accessToken = authRes?.accessToken || null;
+        }
+        if (!accessToken) return;
       }
-      
+
+      // 1. Try server-side backup first (backend dumps database and uploads directly to Google Drive)
+      try {
+        const res = await dashboardService.backupToDrive(accessToken, token);
+        if (res && res.success) {
+          setUserSettings((prev: any) => ({
+            ...(prev || {}),
+            lastDriveBackupDate: res.lastDriveBackupDate,
+          }));
+          if (interactive) {
+            alert('Database backup successfully uploaded to Google Drive!');
+          }
+          return;
+        }
+      } catch (serverErr) {
+        console.warn('Server-side backup endpoint returned error, falling back to direct upload:', serverErr);
+      }
+
+      // 2. Client-side fallback if server-side route is unavailable
       const blob = await dashboardService.getSqlBlob(token);
       const filename = `truespend_backup_${new Date().toISOString().slice(0, 10)}.sql`;
       await uploadToGoogleDrive(accessToken, blob, filename);
       
-      await handleSaveSettings({ lastDriveBackupDate: new Date().toISOString() });
-      console.log('Automated weekly backup to Google Drive completed.');
-    } catch (e) {
-      console.error('Automated backup failed:', e);
+      const newDate = new Date().toISOString();
+      await handleSaveSettings({ lastDriveBackupDate: newDate }, false);
+      if (interactive) {
+        alert('Database backup successfully uploaded to Google Drive!');
+      }
+    } catch (e: any) {
+      console.error('Backup to Google Drive failed:', e);
+      if (interactive) {
+        alert('Failed to upload backup to Google Drive: ' + (e?.message || 'Unknown error'));
+      }
     }
   };
 

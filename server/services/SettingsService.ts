@@ -125,6 +125,8 @@ function parseBackupRows(sqlContent: unknown): BackupRow[] {
 export interface UpdateSettingsDTO {
   automatedDriveBackups?: boolean;
   lastDriveBackupDate?: string;
+  driveBackupFrequency?: 'daily' | '3days' | 'weekly';
+  googleDriveToken?: string;
   payday?: number;
   emergencyBuffer?: number;
   salary?: number;
@@ -136,17 +138,36 @@ export class SettingsService {
       payday: dbUser.payday || 25,
       emergencyBuffer: dbUser.emergencyBuffer || 0,
       salary: dbUser.salary || 0,
+      automatedDriveBackups: Boolean(dbUser.automatedDriveBackups),
+      lastDriveBackupDate: dbUser.lastDriveBackupDate ? new Date(dbUser.lastDriveBackupDate).toISOString() : null,
+      driveBackupFrequency: dbUser.driveBackupFrequency || 'weekly',
     };
   }
 
   async updateSettings(userId: string, dto: UpdateSettingsDTO) {
-    const updateData: { payday?: number; emergencyBuffer?: string; salary?: string; automatedDriveBackups?: number; lastDriveBackupDate?: Date } = {};
+    const updateData: {
+      payday?: number;
+      emergencyBuffer?: string;
+      salary?: string;
+      automatedDriveBackups?: number;
+      lastDriveBackupDate?: Date;
+      driveBackupFrequency?: string;
+      googleDriveToken?: string;
+      googleDriveTokenExpiry?: Date;
+    } = {};
 
     if (dto.automatedDriveBackups !== undefined) {
       updateData.automatedDriveBackups = dto.automatedDriveBackups ? 1 : 0;
     }
     if (dto.lastDriveBackupDate !== undefined) {
       updateData.lastDriveBackupDate = new Date(dto.lastDriveBackupDate);
+    }
+    if (dto.driveBackupFrequency !== undefined) {
+      updateData.driveBackupFrequency = dto.driveBackupFrequency;
+    }
+    if (dto.googleDriveToken !== undefined) {
+      updateData.googleDriveToken = dto.googleDriveToken;
+      updateData.googleDriveTokenExpiry = new Date(Date.now() + 3600 * 1000);
     }
     if (dto.payday !== undefined) {
       if (dto.payday >= 1 && dto.payday <= 31) {
@@ -177,6 +198,48 @@ export class SettingsService {
     }
 
     return { success: true, ...updateData };
+  }
+
+  async backupToGoogleDrive(accessToken: string): Promise<{ fileId: string; lastDriveBackupDate: string }> {
+    const sqlContent = await this.exportSqlDatabase();
+    const filename = `truespend_backup_${new Date().toISOString().slice(0, 10)}.sql`;
+
+    const metadata = {
+      name: filename,
+      mimeType: 'application/sql',
+    };
+
+    const boundary = '-------TrueSpendBoundary' + Math.random().toString(36).substring(2);
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const closeDelimiter = `\r\n--${boundary}--`;
+
+    const multipartRequestBody =
+      delimiter +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(metadata) +
+      delimiter +
+      'Content-Type: application/sql\r\n\r\n' +
+      sqlContent +
+      closeDelimiter;
+
+    const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body: multipartRequestBody,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('[SettingsService] Failed to upload file to Google Drive:', response.status, errText);
+      throw new Error(`Failed to upload file to Google Drive: ${response.statusText}`);
+    }
+
+    const result = (await response.json()) as any;
+    const lastDriveBackupDate = new Date().toISOString();
+    return { fileId: result.id, lastDriveBackupDate };
   }
 
   async exportSqlDatabase(): Promise<string> {
