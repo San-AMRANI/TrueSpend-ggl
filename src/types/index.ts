@@ -50,6 +50,8 @@ export interface KPI {
   payday: number | null;
   emergencyBuffer: number;
   salary?: number;
+  automatedDriveBackups?: boolean;
+  lastDriveBackupDate?: string;
   currentFinancialAmount: number;
   financialPeriodStart: string | null;
   financialPeriodEnd: string | null;
@@ -127,6 +129,8 @@ export interface UserSettings {
   emergencyBuffer: number;
   payday?: number;
   salary?: number;
+  automatedDriveBackups?: boolean;
+  lastDriveBackupDate?: string;
 }
 
 // ── Phase 2 — Personal Intelligence ──────────────────────────────────────────
@@ -186,4 +190,4 @@ export interface Goal {
   updatedAt: string;
 }
 
-export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'goals' | 'insights' | 'reports';
+export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'goals' | 'insights' | 'reconciliation' | 'reports';

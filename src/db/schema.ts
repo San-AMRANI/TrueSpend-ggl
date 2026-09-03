@@ -14,6 +14,8 @@ export const users = pgTable('users', {
   payday: integer('payday').default(25),
   emergencyBuffer: decimal('emergency_buffer').default('0').notNull(),
   salary: decimal('salary').default('0').notNull(),
+  automatedDriveBackups: integer('automated_drive_backups').default(0),
+  lastDriveBackupDate: timestamp('last_drive_backup_date'),
   notificationEnabled: integer('notification_enabled').default(0),
   notificationTime: text('notification_time').default('09:00'),
 });

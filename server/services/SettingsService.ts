@@ -123,6 +123,8 @@ function parseBackupRows(sqlContent: unknown): BackupRow[] {
 }
 
 export interface UpdateSettingsDTO {
+  automatedDriveBackups?: boolean;
+  lastDriveBackupDate?: string;
   payday?: number;
   emergencyBuffer?: number;
   salary?: number;
@@ -138,8 +140,14 @@ export class SettingsService {
   }
 
   async updateSettings(userId: string, dto: UpdateSettingsDTO) {
-    const updateData: { payday?: number; emergencyBuffer?: string; salary?: string } = {};
+    const updateData: { payday?: number; emergencyBuffer?: string; salary?: string; automatedDriveBackups?: number; lastDriveBackupDate?: Date } = {};
 
+    if (dto.automatedDriveBackups !== undefined) {
+      updateData.automatedDriveBackups = dto.automatedDriveBackups ? 1 : 0;
+    }
+    if (dto.lastDriveBackupDate !== undefined) {
+      updateData.lastDriveBackupDate = new Date(dto.lastDriveBackupDate);
+    }
     if (dto.payday !== undefined) {
       if (dto.payday >= 1 && dto.payday <= 31) {
         updateData.payday = dto.payday;

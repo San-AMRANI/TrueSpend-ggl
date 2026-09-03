@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Loader2, Trash2, Mic, MicOff, Copy, Check, ChevronDown, Sparkles, Bot, Menu, Camera, ImageIcon } from 'lucide-react';
+import { Send, Loader2, Trash2, Mic, MicOff, Copy, Check, ChevronDown, Sparkles, Bot, Menu, Camera, Image as ImageIcon } from 'lucide-react';
 import Markdown from 'react-markdown';
 
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
@@ -52,16 +52,8 @@ interface Message {
   actionStatus?: 'approved' | 'rejected';
   suggestions?: string[];
   timestamp: number;
-  imageUrl?: string;
 }
 
-interface PendingReceipt {
-  imageUrl?: string;
-  ocrText: string;
-  previewSnippet: string;
-  suggestedAmount?: string | null;
-  merchant?: string;
-}
 interface AIChatProps {
   onDataChange?: () => void;
 }
@@ -126,10 +118,7 @@ function MessageBubble({
           </div>
           <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">Spex</span>
         </div>
-
-        )}
-
-        {/* Pending receipt confirmation UI (appears when OCR parse had low confidence) */}
+      )}
 
       <div className={cn('flex gap-2 max-w-[88%]', isUser ? 'flex-row-reverse' : 'flex-row')}>
         <div
@@ -141,16 +130,7 @@ function MessageBubble({
           )}
         >
           {isUser ? (
-            <div className="flex flex-col gap-2">
-              {msg.imageUrl && (
-                <img
-                  src={msg.imageUrl}
-                  alt="Receipt preview"
-                  className="rounded-lg max-h-40 w-auto object-contain border border-white/30"
-                />
-              )}
-              {msg.content && <span className="whitespace-pre-wrap">{msg.content}</span>}
-            </div>
+            <span className="whitespace-pre-wrap">{msg.content}</span>
           ) : (
             <div className="prose prose-sm max-w-none text-gray-800 dark:text-gray-200 prose-p:leading-relaxed prose-p:my-1 prose-pre:text-gray-800 dark:prose-pre:text-gray-200 prose-pre:bg-gray-50 dark:prose-pre:bg-gray-900 prose-strong:text-indigo-800 dark:prose-strong:text-indigo-300 prose-headings:text-indigo-900 dark:prose-headings:text-indigo-300 prose-headings:font-semibold prose-a:text-indigo-600 dark:prose-a:text-indigo-400 prose-ul:my-1 prose-li:my-0">
               <Markdown>{msg.content}</Markdown>
@@ -243,10 +223,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isOcrLoading, setIsOcrLoading] = useState(false);
-  const [ocrStatus, setOcrStatus] = useState<string>('');
-  const [pendingReceipt, setPendingReceipt] = useState<PendingReceipt | null>(null);
-  const [voiceSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [voiceSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const { token } = useAuth();
 
   const {
@@ -304,22 +282,12 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     }
   };
 
-  const handleSend = async (
-  draft = input,
-  options: { imageUrl?: string; content?: string; skipUserMessage?: boolean } = {},
-) => {
-    const content = (options.content ?? draft).trim();
+  const handleSend = async (draft = input) => {
+    const content = draft.trim();
     if (!content || isLoading) return;
 
-    const userMsg: Message = {
-      role: 'user',
-      content,
-      timestamp: Date.now(),
-      imageUrl: options.imageUrl,
-    };
-    if (!options.skipUserMessage) {
-      setMessages((prev) => [...prev, userMsg]);
-    }
+    const userMsg: Message = { role: 'user', content, timestamp: Date.now() };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
 
@@ -423,158 +391,31 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
   };
 
-  
-
   // Voice input
   
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: '⚠️ Please upload an image file (JPG, PNG, or HEIC).',
-          timestamp: Date.now(),
-        },
-      ]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
-    // Read the image into a data URL so we can preview it in the conversation.
-    const imageUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error('Failed to read image file.'));
-      reader.readAsDataURL(file);
-    }).catch((err) => {
-      console.error('FileReader error:', err);
-      return '';
-    });
-
-    if (!imageUrl) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: '⚠️ I could not read that image file. Please try a different one.',
-          timestamp: Date.now(),
-        },
-      ]);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
+    
     setIsOcrLoading(true);
-    setOcrStatus('Preparing OCR…');
-
     try {
-      // Run Tesseract in the browser. eng+fra covers most receipts in MA.
       const result = await Tesseract.recognize(file, 'eng+fra', {
-        logger: (m: any) => {
-          if (m.status) setOcrStatus(`${m.status}${m.progress != null ? ` ${Math.round(m.progress * 100)}%` : ''}`);
-        },
+        logger: m => console.log(m)
       });
-
-      const ocrText = (result?.data?.text || '').trim();
-      const signalChars = [...ocrText].filter((c) => /[\p{L}\p{N}]/u.test(c)).length;
-
-      // If OCR produced basically nothing, surface that to the user clearly.
-      if (!ocrText || ocrText.length < 12 || signalChars < 5) {
-        setMessages((prev) => [
-          ...prev,
-          { role: 'user', content: '📷 Receipt image', timestamp: Date.now(), imageUrl },
-          {
-            role: 'assistant',
-            content:
-              "I couldn't read any text from that image. The photo may be too dark, blurry, or at an awkward angle. Please try again with a sharper, well-lit photo, or type the transaction manually.",
-            timestamp: Date.now(),
-          },
-        ]);
-        return;
+      const text = result.data.text.trim();
+      
+      const ocrPrompt = `I am uploading a receipt/ticket. Please parse it and propose a transaction. Here is the extracted text:\n\n${text}`;
+      
+      if (input.trim()) {
+        setInput(prev => prev + '\n\n' + ocrPrompt);
+      } else {
+        handleSend(ocrPrompt);
       }
-
-      // Ask the backend to parse the OCR text into structured fields.
-      const parseResponse = await fetch('/api/receipts/parse', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ text: ocrText }),
-      });
-
-      if (!parseResponse.ok) {
-        const errData = await parseResponse.json().catch(() => ({} as any));
-        throw new Error(errData.error || `Receipt parsing failed (${parseResponse.status}).`);
-      }
-
-      const parsedData = await parseResponse.json().catch(() => ({} as any));
-      const proposal = parsedData?.proposal;
-
-      // Always show the user image so they have feedback something happened.
-      const userCaption = `📷 Receipt image${proposal?.merchant ? ` — ${proposal.merchant}` : ''}`;
-
-      if (!proposal || proposal.amount === null || proposal.confidence < 60) {
-        // Low confidence — show the OCR text so the user can correct/edit instead.
-        const previewSnippet = ocrText.length > 600 ? `${ocrText.slice(0, 600)}…` : ocrText;
-        setMessages((prev) => [
-          ...prev,
-          { role: 'user', content: userCaption, timestamp: Date.now(), imageUrl },
-          {
-            role: 'assistant',
-            content:
-              `I read the receipt but couldn't reliably extract the totals. Here is what I got — feel free to confirm the amounts or type them manually.\n\n` +
-              `\`\`\`\n${previewSnippet}\n\`\`\``,
-            timestamp: Date.now(),
-          },
-        ]);
-        // Try to prefill an amount from OCR text (simple heuristic: last money-like token)
-        const moneyMatches = (ocrText.match(/\d+[.,]\d{2}/g) || []).map(m => m.replace(',', '.'));
-        const suggestedAmount = moneyMatches.length ? moneyMatches[moneyMatches.length - 1] : null;
-        setPendingReceipt({ imageUrl, ocrText, previewSnippet, suggestedAmount, merchant: undefined });
-        return;
-      }
-
-      // High-confidence parse: send a structured prompt to Spex.
-      const proposalSummary = JSON.stringify({
-        amount: proposal.amount,
-        currency: proposal.currency,
-        merchant: proposal.merchant,
-        date: proposal.date,
-        category: proposal.category,
-        wallet: proposal.wallet,
-        confidence: proposal.confidence,
-        notes: proposal.notes,
-      });
-      const ocrPrompt =
-        `I uploaded a receipt. Review the parsed proposal below against the OCR text and propose a transaction ` +
-        `only if it matches. Use the OCR text as the source of truth when in doubt.\n\n` +
-        `Parsed proposal: ${proposalSummary}\n\n` +
-        `OCR text:\n${ocrText.slice(0, 1500)}`;
-
-      // Show the user the image we received, then let Spex respond to the structured prompt.
-      // We've already pushed the user-facing image message, so skip the duplicate user bubble.
-      setMessages((prev) => [...prev, { role: 'user', content: userCaption, timestamp: Date.now(), imageUrl }]);
-      await handleSend(ocrPrompt, { skipUserMessage: true });
     } catch (err: any) {
-      console.error('OCR / parse error:', err);
-      const reason = err?.message || 'Unknown error';
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content:
-            `⚠️ I had trouble reading that receipt (${reason}). Please try a clearer image or enter the transaction manually.`,
-          timestamp: Date.now(),
-        },
-      ]);
+      console.error('OCR Error:', err);
+      alert('Failed to extract text from image.');
     } finally {
       setIsOcrLoading(false);
-      setOcrStatus('');
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -606,31 +447,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     recognition.start();
     setIsListening(true);
   }, [isListening, voiceSupported]);
-
-  // Pending low-confidence receipt UI state
-  const [pendingAmount, setPendingAmount] = useState('');
-  const [pendingMerchant, setPendingMerchant] = useState('');
-  useEffect(() => {
-    if (pendingReceipt) {
-      setPendingAmount(pendingReceipt.suggestedAmount ?? '');
-      setPendingMerchant(pendingReceipt.merchant ?? '');
-    } else {
-      setPendingAmount('');
-      setPendingMerchant('');
-    }
-  }, [pendingReceipt]);
-
-  const confirmPendingReceipt = async () => {
-    if (!pendingReceipt) return;
-    const receipt = pendingReceipt;
-    setPendingReceipt(null);
-    const amount = pendingAmount?.trim();
-    const merchant = pendingMerchant?.trim();
-    const content = `Create a transaction from this receipt (confirmed by user):\nAmount: ${amount || 'UNKNOWN'}\nMerchant: ${merchant || 'UNKNOWN'}\nOCR preview:\n${receipt.previewSnippet}`;
-    await handleSend(content, { imageUrl: receipt.imageUrl });
-  };
-
-  const cancelPendingReceipt = () => setPendingReceipt(null);
 
   // Get the last assistant message for suggestions
   const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
@@ -795,26 +611,26 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               </span>
             )}
             <div className="flex items-center gap-1 pr-2 pb-2">
-              {/* Receipt scanner (OCR) */}
-              <input
-                type="file"
-                accept="image/*"
-                ref={fileInputRef}
-                className="hidden"
-                onChange={handleFileUpload}
+              
+              <input 
+                type="file" 
+                accept="image/*" 
+                ref={fileInputRef} 
+                className="hidden" 
+                onChange={handleFileUpload} 
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isOcrLoading || isLoading}
-                title={isOcrLoading ? ocrStatus || 'Scanning receipt…' : 'Scan receipt (OCR)'}
+                title="Scan receipt (OCR)"
                 className={cn(
-                  'p-2 rounded-full transition-all',
-                  'text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700',
-                  isOcrLoading && 'text-indigo-500 dark:text-indigo-400 animate-pulse',
+                  'p-2 rounded-full transition-all text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700',
+                  isOcrLoading && 'opacity-50 animate-pulse'
                 )}
               >
                 {isOcrLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
               </button>
+              
               {/* Voice button */}
 
               {voiceSupported && (
@@ -846,9 +662,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             </div>
           </div>
           <p className="text-center text-[10px] text-gray-300 dark:text-gray-600 mt-1.5 select-none">
-            {isOcrLoading
-              ? `📷 ${ocrStatus || 'Scanning receipt…'}`
-              : 'Spex can make mistakes — always verify important figures.'}
+            Spex can make mistakes — always verify important figures.
           </p>
         </div>
       </div>

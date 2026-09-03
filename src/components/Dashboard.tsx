@@ -14,6 +14,7 @@ import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { GoalsTab } from './dashboard/GoalsTab';
 import { InsightsTab } from './dashboard/InsightsTab';
+import { ReconciliationTab } from './dashboard/ReconciliationTab';
 import { ReportsTab } from './dashboard/ReportsTab';
 import { AIChat } from './AIChat';
 import type { DashboardTab } from '../types';
@@ -63,6 +64,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     handleImportSql,
     goals,
     insights,
+    userSettings,
     handleCreateGoal,
     handleUpdateGoal,
     handleDeleteGoal,
@@ -168,6 +170,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
 
       {activeTab === 'settings' && (
         <SettingsTab
+          userSettings={userSettings}
           emergencyBuffer={emergencyBuffer}
           setEmergencyBuffer={setEmergencyBuffer}
           isSaving={isSaving}
@@ -195,6 +198,9 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
       )}
 
 
+      {activeTab === 'reconciliation' && (
+        <ReconciliationTab transactions={transactions} />
+      )}
       {activeTab === 'reports' && (
         <ReportsTab transactions={transactions} kpis={kpis} budgets={budgets} />
       )}

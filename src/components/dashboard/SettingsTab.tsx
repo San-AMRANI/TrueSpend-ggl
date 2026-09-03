@@ -1,7 +1,11 @@
 import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send } from 'lucide-react';
+import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send, Cloud } from 'lucide-react';
+import { googleSignIn, getGoogleAccessToken } from '../../lib/googleAuth';
+import { uploadToGoogleDrive } from '../../lib/driveUpload';
+import { dashboardService } from '../../services/api/dashboardService';
+import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import type { NotifSettings, ServerNotifSettings } from '../../hooks/useNotifications';
 
@@ -17,18 +21,20 @@ interface NotificationsApi {
 }
 
 interface SettingsTabProps {
+  userSettings: any;
   emergencyBuffer: number;
   setEmergencyBuffer: (val: number) => void;
   isSaving: boolean;
   isExporting?: boolean;
   isImporting?: boolean;
-  handleSaveSettings: (buffer: number) => void;
+  handleSaveSettings: (payload: any) => Promise<void>;
   handleExportSql?: () => void;
   handleImportSql?: (sql: string) => Promise<{ message: string }>;
   notifications: NotificationsApi;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
+  userSettings,
   emergencyBuffer,
   setEmergencyBuffer,
   isSaving,
@@ -42,7 +48,51 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const { theme, setTheme } = useTheme();
   const importFileRef = useRef<HTMLInputElement>(null);
   const [notifToast, setNotifToast] = useState<string | null>(null);
+  const [isDriveConnecting, setIsDriveConnecting] = useState(false);
+  const [isDriveBackingUp, setIsDriveBackingUp] = useState(false);
+  const { token } = useAuth();
 
+  
+  const handleConnectDrive = async () => {
+    try {
+      setIsDriveConnecting(true);
+      const res = await googleSignIn();
+      if (res) {
+        await handleSaveSettings({ automatedDriveBackups: true });
+        alert('Google Drive connected successfully!');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to connect Google Drive.');
+    } finally {
+      setIsDriveConnecting(false);
+    }
+  };
+
+  const handleBackupToDrive = async () => {
+    try {
+      setIsDriveBackingUp(true);
+      let accessToken = await getGoogleAccessToken();
+      if (!accessToken) {
+        const res = await googleSignIn();
+        if (res) accessToken = res.accessToken;
+      }
+      if (!accessToken) throw new Error('No access token');
+      
+      const blob = await dashboardService.getSqlBlob(token);
+      const filename = `truespend_backup_${new Date().toISOString().slice(0, 10)}.sql`;
+      await uploadToGoogleDrive(accessToken, blob, filename);
+      
+      await handleSaveSettings({ lastDriveBackupDate: new Date().toISOString() });
+      alert('Backup saved to Google Drive successfully!');
+    } catch (e) {
+      console.error(e);
+      alert('Failed to backup to Google Drive.');
+    } finally {
+      setIsDriveBackingUp(false);
+    }
+  };
+  
   const showNotifToast = (msg: string) => {
     setNotifToast(msg);
     setTimeout(() => setNotifToast(null), 3000);
@@ -202,7 +252,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
 
             <div className="flex justify-end">
-              <Button disabled={isSaving} onClick={() => handleSaveSettings(emergencyBuffer)}>
+              <Button disabled={isSaving} onClick={() => handleSaveSettings({ emergencyBuffer })}>
                 {isSaving ? 'Saving...' : 'Save Settings'}
               </Button>
             </div>
@@ -306,6 +356,70 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </CardContent>
       </Card>
 
+            {/* ── Google Drive Backups ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Cloud className="h-5 w-5 text-blue-500" />
+            Google Drive Automated Backups
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Weekly Cloud Backups</h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
+                Automatically backup your PostgreSQL database to your Google Drive every week. 
+                Requires signing in with your Google account.
+              </p>
+            </div>
+            
+            <div className="flex items-center justify-between gap-4 border-t border-gray-200 dark:border-gray-800 pt-4">
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Automated Backups</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {userSettings?.lastDriveBackupDate ? `Last backup: ${new Date(userSettings.lastDriveBackupDate).toLocaleDateString()}` : 'No backups yet.'}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  if (!userSettings?.automatedDriveBackups) {
+                    handleConnectDrive();
+                  } else {
+                    handleSaveSettings({ automatedDriveBackups: false });
+                  }
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                  userSettings?.automatedDriveBackups ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+                role="switch"
+                aria-checked={userSettings?.automatedDriveBackups || false}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                    userSettings?.automatedDriveBackups ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {userSettings?.automatedDriveBackups && (
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  disabled={isDriveBackingUp}
+                  onClick={handleBackupToDrive}
+                  className="flex items-center gap-2"
+                >
+                  <Cloud className="h-4 w-4 text-blue-600" />
+                  {isDriveBackingUp ? 'Uploading to Drive...' : 'Backup to Drive Now'}
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      
       {/* ── Data Backup ── */}
       <Card>
         <CardHeader>

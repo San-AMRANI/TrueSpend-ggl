@@ -1,3 +1,5 @@
+import { googleSignIn, getGoogleAccessToken } from '../lib/googleAuth';
+import { uploadToGoogleDrive } from '../lib/driveUpload';
 import { useState, useEffect, useCallback } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
 import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll, Goal } from '../types';
@@ -12,6 +14,7 @@ export function useDashboardData(token: string | null) {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [insights, setInsights] = useState<any>(null);
   const [emergencyBuffer, setEmergencyBuffer] = useState<number>(0);
+  const [userSettings, setUserSettings] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
@@ -42,6 +45,7 @@ export function useDashboardData(token: string | null) {
       setTransactions(txData || []);
       setDebts(debtData || []);
       setEmergencyBuffer(settingsData?.emergencyBuffer ?? 0);
+      setUserSettings(settingsData);
       setBudgets(budgetData || []);
       setPayrolls(payrollData || []);
       setGoals(goalsData || []);
@@ -106,6 +110,20 @@ export function useDashboardData(token: string | null) {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!kpis) return;
+    const settings = userSettings;
+    if (settings && settings.automatedDriveBackups) {
+      const lastBackup = settings.lastDriveBackupDate ? new Date(settings.lastDriveBackupDate).getTime() : 0;
+      const now = Date.now();
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      if (now - lastBackup > SEVEN_DAYS_MS) {
+        handleBackupToDrive();
+      }
+    }
+  }, [userSettings]);
+
 
   const handleSettleDebt = async (debtId: string, amount: number, category?: string, wallet?: 'Bank' | 'Cash') => {
     try {
@@ -194,10 +212,10 @@ export function useDashboardData(token: string | null) {
     setActiveTab('transactions');
   };
 
-  const handleSaveSettings = async (newBuffer: number) => {
+  const handleSaveSettings = async (payload: { emergencyBuffer?: number; automatedDriveBackups?: boolean; lastDriveBackupDate?: string }) => {
     setIsSaving(true);
     try {
-      await dashboardService.updateSettings({ emergencyBuffer: newBuffer }, token);
+      await dashboardService.updateSettings(payload, token);
       await fetchData();
       alert('Settings saved successfully!');
     } catch (e) {
@@ -252,6 +270,25 @@ export function useDashboardData(token: string | null) {
     await fetchData();
   };
 
+  
+  const handleBackupToDrive = async () => {
+    try {
+      let accessToken = await getGoogleAccessToken();
+      if (!accessToken) {
+        return; // Don't prompt login automatically
+      }
+      
+      const blob = await dashboardService.getSqlBlob(token);
+      const filename = `truespend_backup_${new Date().toISOString().slice(0, 10)}.sql`;
+      await uploadToGoogleDrive(accessToken, blob, filename);
+      
+      await handleSaveSettings({ lastDriveBackupDate: new Date().toISOString() });
+      console.log('Automated weekly backup to Google Drive completed.');
+    } catch (e) {
+      console.error('Automated backup failed:', e);
+    }
+  };
+
   const handleExportSql = async () => {
     setIsExporting(true);
     try {
@@ -283,6 +320,7 @@ export function useDashboardData(token: string | null) {
     budgets,
     goals,
     insights,
+    userSettings,
     emergencyBuffer,
     setEmergencyBuffer,
     loading,
