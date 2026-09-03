@@ -403,19 +403,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </button>
             </div>
 
-            {userSettings?.automatedDriveBackups && (
-              <div className="pt-2">
-                <Button
-                  variant="outline"
-                  disabled={isDriveBackingUp}
-                  onClick={handleBackupToDrive}
-                  className="flex items-center gap-2"
-                >
-                  <Cloud className="h-4 w-4 text-blue-600" />
-                  {isDriveBackingUp ? 'Uploading to Drive...' : 'Backup to Drive Now'}
-                </Button>
-              </div>
-            )}
+            <div className="pt-2">
+              <Button
+                variant="outline"
+                disabled={isDriveBackingUp}
+                onClick={handleBackupToDrive}
+                className="flex items-center gap-2"
+              >
+                <Cloud className="h-4 w-4 text-blue-600" />
+                {isDriveBackingUp ? 'Uploading to Drive...' : 'Backup to Drive Now'}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
