@@ -24,6 +24,36 @@ const FALLBACK_SUGGESTIONS = [
   'Show me my daily allowance',
 ];
 
+function prepareReceiptImage(file: File): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const scale = Math.min(2, Math.max(1, 1800 / image.naturalWidth));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(image.naturalWidth * scale);
+      canvas.height = Math.round(image.naturalHeight * scale);
+      const context = canvas.getContext('2d');
+      if (!context) {
+        reject(new Error('Could not prepare the receipt image.'));
+        return;
+      }
+
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.filter = 'grayscale(1) contrast(1.35) brightness(1.08)';
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Could not read the receipt image.'));
+    };
+    image.src = objectUrl;
+  });
+}
+
 function getChatSessionId() {
   const existing = localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
   if (existing && /^[A-Za-z0-9_-]{1,128}$/.test(existing)) return existing;
@@ -399,10 +429,12 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     
     setIsOcrLoading(true);
     try {
-      const result = await Tesseract.recognize(file, 'eng+fra', {
-        logger: m => console.log(m)
-      });
-      const text = result.data.text.trim();
+      const preparedImage = await prepareReceiptImage(file);
+      const [originalResult, preparedResult] = await Promise.all([
+        Tesseract.recognize(file, 'eng+fra'),
+        Tesseract.recognize(preparedImage, 'eng+fra'),
+      ]);
+      const text = `${preparedResult.data.text}\n${originalResult.data.text}`.trim();
 
       if (!text) {
         throw new Error('No text could be extracted from the receipt.');

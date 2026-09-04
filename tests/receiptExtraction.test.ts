@@ -10,4 +10,8 @@ assert.equal(proposal.category, 'Dining');
 assert.equal(receiptProposalAction(proposal).parameters.type, 'Expense');
 assert.equal(proposal.missing.length, 0);
 
+const frenchProposal = parseReceiptText('Boulangerie Atlas\nTOTAL TTC 1 245,50 MAD\nDate 04/09/2026');
+assert.equal(frenchProposal.amount, 1245.5);
+assert.equal(frenchProposal.transactionDate, '2026-09-04');
+
 console.log('receiptExtraction tests passed');
