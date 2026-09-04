@@ -403,17 +403,50 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         logger: m => console.log(m)
       });
       const text = result.data.text.trim();
-      
-      const ocrPrompt = `I am uploading a receipt/ticket. Please parse it and propose a transaction. Here is the extracted text:\n\n${text}`;
-      
-      if (input.trim()) {
-        setInput(prev => prev + '\n\n' + ocrPrompt);
-      } else {
-        handleSend(ocrPrompt);
+
+      if (!text) {
+        throw new Error('No text could be extracted from the receipt.');
       }
+
+      const response = await fetch('/api/receipts/parse', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to parse receipt.');
+      }
+
+      const data = await response.json();
+      const proposal = data.proposal;
+      const details = [
+        `- Merchant: ${proposal.merchant || 'Not detected'}`,
+        `- Amount: ${proposal.amount === null ? 'Not detected' : proposal.amount.toFixed(2)}`,
+        `- Date: ${proposal.transactionDate || 'Not detected'}`,
+        `- Category: ${proposal.category}`,
+      ].join('\n');
+      const missing = proposal.missing?.length
+        ? `\n\nPlease verify the missing field${proposal.missing.length > 1 ? 's' : ''}: ${proposal.missing.join(', ')}.`
+        : '\n\nPlease review the proposed transaction before approving it.';
+
+      setMessages(prev => [
+        ...prev,
+        { role: 'user', content: 'Receipt uploaded for review.', timestamp: Date.now() },
+        {
+          role: 'assistant',
+          content: `I scanned the receipt and found:\n\n${details}${missing}`,
+          actions: data.action ? [data.action] : [],
+          timestamp: Date.now(),
+        },
+      ]);
     } catch (err: any) {
       console.error('OCR Error:', err);
-      alert('Failed to extract text from image.');
+      alert(err.message || 'Failed to extract text from image.');
     } finally {
       setIsOcrLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
