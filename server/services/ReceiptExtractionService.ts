@@ -8,44 +8,14 @@ export interface ReceiptProposal {
   missing: string[];
 }
 
+const amountPattern = /(?:total|grand total|amount due|net total|a payer|montant)\D{0,20}(\d{1,6}(?:[.,]\d{1,2})?)/i;
 const datePattern = /(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4})/;
 const merchantPattern = /^(?!total\b|tax\b|vat\b|date\b|invoice\b)([A-Za-z][A-Za-z0-9 &'._-]{2,50})$/i;
-const amountTokenPattern = /(?:\d{1,3}(?:[ .]\d{3})+|\d{1,6})(?:[.,]\d{1,2}|\s\d{2})?(?:\s*(?:MAD|DH|EUR|USD|€|\$))?/gi;
-
-function simplifyText(value: string): string {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
 
 function normalizeAmount(value: string): number | null {
-  const normalized = value
-    .replace(/\s(?=\d{3}(?:[.,]|\s|$))/g, '')
-    .replace(/\s+(?=\d{2}(?:\s*(?:mad|dh|eur|usd|€|\$))?$)/i, '.')
-    .replace(',', '.')
-    .replace(/[^\d.]/g, '');
+  const normalized = value.replace(',', '.');
   const amount = Number(normalized);
   return Number.isFinite(amount) && amount > 0 ? amount : null;
-}
-
-function extractAmount(text: string): number | null {
-  const lines = text.split(/\r?\n/);
-  const candidates: { amount: number; score: number }[] = [];
-  const labelPattern = /\b(?:total|totale|tota1|grand total|amount due|net total|net a payer|a payer|montant|ttc)\b/i;
-
-  lines.forEach((line) => {
-    const simplifiedLine = simplifyText(line);
-    const labeled = labelPattern.test(simplifiedLine);
-    for (const match of line.matchAll(amountTokenPattern)) {
-      const raw = match[0];
-      const amount = normalizeAmount(raw);
-      if (amount === null || (amount >= 1900 && amount <= 2100 && !/[.,]/.test(raw))) continue;
-      candidates.push({
-        amount,
-        score: (labeled ? 100 : 0) + (/[.,]\d{2}|\s\d{2}/.test(raw) ? 20 : 0) + (/[A-Z€$]/i.test(raw) ? 10 : 0) + Math.min(amount / 100_000, 1),
-      });
-    }
-  });
-
-  return candidates.sort((left, right) => right.score - left.score || right.amount - left.amount)[0]?.amount || null;
 }
 
 function normalizeDate(value: string): string | null {
@@ -73,7 +43,8 @@ function inferCategory(text: string): string {
 
 export function parseReceiptText(rawText: string): ReceiptProposal {
   const text = rawText.trim().slice(0, 20_000);
-  const amount = extractAmount(text);
+  const amountMatch = text.match(amountPattern) || text.match(/(?:^|\s)(\d{1,6}[.,]\d{2})(?:\s*(?:MAD|DH|EUR|USD))?\s*$/im);
+  const amount = amountMatch ? normalizeAmount(amountMatch[1]) : null;
   const dateMatch = text.match(datePattern);
   const transactionDate = dateMatch ? normalizeDate(dateMatch[1]) : null;
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);

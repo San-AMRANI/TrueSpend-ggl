@@ -24,36 +24,6 @@ const FALLBACK_SUGGESTIONS = [
   'Show me my daily allowance',
 ];
 
-function prepareReceiptImage(file: File): Promise<HTMLCanvasElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    const objectUrl = URL.createObjectURL(file);
-    image.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      const scale = Math.min(2, Math.max(1, 1800 / image.naturalWidth));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(image.naturalWidth * scale);
-      canvas.height = Math.round(image.naturalHeight * scale);
-      const context = canvas.getContext('2d');
-      if (!context) {
-        reject(new Error('Could not prepare the receipt image.'));
-        return;
-      }
-
-      context.fillStyle = '#fff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.filter = 'grayscale(1) contrast(1.35) brightness(1.08)';
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      resolve(canvas);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Could not read the receipt image.'));
-    };
-    image.src = objectUrl;
-  });
-}
-
 function getChatSessionId() {
   const existing = localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
   if (existing && /^[A-Za-z0-9_-]{1,128}$/.test(existing)) return existing;
@@ -429,56 +399,21 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     
     setIsOcrLoading(true);
     try {
-      const preparedImage = await prepareReceiptImage(file);
-      const [originalResult, preparedResult] = await Promise.all([
-        Tesseract.recognize(file, 'eng+fra'),
-        Tesseract.recognize(preparedImage, 'eng+fra'),
-      ]);
-      const text = `${preparedResult.data.text}\n${originalResult.data.text}`.trim();
-
-      if (!text) {
-        throw new Error('No text could be extracted from the receipt.');
-      }
-
-      const response = await fetch('/api/receipts/parse', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ text }),
+      const result = await Tesseract.recognize(file, 'eng+fra', {
+        logger: m => console.log(m)
       });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to parse receipt.');
+      const text = result.data.text.trim();
+      
+      const ocrPrompt = `I am uploading a receipt/ticket. Please parse it and propose a transaction. Here is the extracted text:\n\n${text}`;
+      
+      if (input.trim()) {
+        setInput(prev => prev + '\n\n' + ocrPrompt);
+      } else {
+        handleSend(ocrPrompt);
       }
-
-      const data = await response.json();
-      const proposal = data.proposal;
-      const details = [
-        `- Merchant: ${proposal.merchant || 'Not detected'}`,
-        `- Amount: ${proposal.amount === null ? 'Not detected' : proposal.amount.toFixed(2)}`,
-        `- Date: ${proposal.transactionDate || 'Not detected'}`,
-        `- Category: ${proposal.category}`,
-      ].join('\n');
-      const missing = proposal.missing?.length
-        ? `\n\nPlease verify the missing field${proposal.missing.length > 1 ? 's' : ''}: ${proposal.missing.join(', ')}.`
-        : '\n\nPlease review the proposed transaction before approving it.';
-
-      setMessages(prev => [
-        ...prev,
-        { role: 'user', content: 'Receipt uploaded for review.', timestamp: Date.now() },
-        {
-          role: 'assistant',
-          content: `I scanned the receipt and found:\n\n${details}${missing}`,
-          actions: data.action ? [data.action] : [],
-          timestamp: Date.now(),
-        },
-      ]);
     } catch (err: any) {
       console.error('OCR Error:', err);
-      alert(err.message || 'Failed to extract text from image.');
+      alert('Failed to extract text from image.');
     } finally {
       setIsOcrLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
