@@ -54,7 +54,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   }, [filteredTransactions]);
 
   const incomeCategoryData = useMemo(() => {
-    const incomes = filteredTransactions.filter((t) => t.type !== 'Expense');
+    const incomes = filteredTransactions.filter((t) => t.type === 'Income');
     const grouped = incomes.reduce((acc, curr) => {
       const category = normalizeCategory(curr.category) || 'Uncategorized';
       acc[category] = (acc[category] || 0) + parseFloat(curr.amount);
@@ -139,7 +139,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const incomeVsExpenseData = useMemo(() => {
     const income = filteredTransactions
-      .filter((t) => t.type !== 'Expense')
+      .filter((t) => t.type === 'Income')
       .reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const expense = filteredTransactions
       .filter((t) => t.type === 'Expense')
@@ -159,7 +159,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       const date = new Date(t.createdAt);
       allMonths.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
 
-      if (t.type !== 'Expense') totalIncome += parseFloat(t.amount);
+      if (t.type === 'Income') totalIncome += parseFloat(t.amount);
       if (t.type === 'Expense') totalExpense += parseFloat(t.amount);
     });
 

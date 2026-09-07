@@ -5,12 +5,10 @@ import { notificationPreferences, users } from '../../src/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { PushService } from './PushService.js';
 import { KpiService } from './KpiService.js';
-import { InsightsService } from './InsightsService.js';
 import { settingsService } from './SettingsService.js';
 
 const pushService = new PushService();
 const kpiService = new KpiService();
-const insightsService = new InsightsService();
 
 export class NotificationScheduler {
   start() {
@@ -125,15 +123,13 @@ export class NotificationScheduler {
         }
       }
 
-      // Try budget warning
+      // Try budget warning (simplified since Insights is removed)
       if (prefs.budgetWarningEnabled) {
-        const payrolls = await payrollRepository.findAllByUserId(user.id);
-        const insights = await insightsService.getInsights(user.id, payrolls);
-        const warningInsight = insights.patterns?.find(t => t.trend === 'up' && t.threeMonthAvg > 0);
-        if (warningInsight) {
+        const kpis = await kpiService.getKpisForUser(user);
+        if (kpis.dailyStatus === 'critical') {
           const sent = await pushService.sendNotification(user.id, 'BUDGET_WARNING', todayString, {
             title: 'Spending Warning',
-            body: `⚠️ You are spending more on ${warningInsight.category} than usual.`,
+            body: `⚠️ Your daily budget is in a critical state.`,
             url: '/dashboard'
           });
           if (sent) continue;

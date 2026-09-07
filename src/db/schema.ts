@@ -145,20 +145,6 @@ export const categoryBudgets = pgTable(
   ],
 );
 
-/** Phase 3 — Financial goals */
-export const goals = pgTable('goals', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').references(() => users.id).notNull(),
-  name: text('name').notNull(),
-  targetAmount: decimal('target_amount').notNull(),
-  currentAmount: decimal('current_amount').default('0').notNull(),
-  deadline: timestamp('deadline'),
-  category: text('category').default('').notNull(),
-  notes: text('notes').default('').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const usersRelations = relations(users, ({ many, one }) => ({
@@ -170,7 +156,6 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   pushSubscriptions: many(pushSubscriptions),
   notificationPreferences: one(notificationPreferences),
   notificationDeliveries: many(notificationDeliveries),
-  goals: many(goals),
 }));
 
 export const transactionsRelations = relations(transactions, ({ one }) => ({
@@ -245,13 +230,6 @@ export const splitsRelations = relations(splits, ({ one }) => ({
 export const categoryBudgetsRelations = relations(categoryBudgets, ({ one }) => ({
   user: one(users, {
     fields: [categoryBudgets.userId],
-    references: [users.id],
-  }),
-}));
-
-export const goalsRelations = relations(goals, ({ one }) => ({
-  user: one(users, {
-    fields: [goals.userId],
     references: [users.id],
   }),
 }));

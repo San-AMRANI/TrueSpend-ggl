@@ -10,20 +10,6 @@ export interface HealthFactor {
   label: string;
 }
 
-export interface GoalMetric {
-  goalId: string;
-  name: string;
-  targetAmount: number;
-  currentAmount: number;
-  remainingAmount: number;
-  progressPercent: number;
-  deadline: string | null;
-  daysRemaining: number | null;
-  requiredMonthlyContribution: number | null;
-  requiredWeeklyContribution: number | null;
-  completed: boolean;
-}
-
 export interface Forecast {
   expected: number;
   best: number;
@@ -68,7 +54,6 @@ export interface KPI {
   forecast: Forecast;
   healthScore: number;
   healthFactors: HealthFactor[];
-  goalMetrics: GoalMetric[];
 }
 
 export interface Transaction {
@@ -136,61 +121,4 @@ export interface UserSettings {
   googleDriveToken?: string;
 }
 
-// ── Phase 2 — Personal Intelligence ──────────────────────────────────────────
-export interface MerchantStat {
-  name: string;
-  total: number;
-  count: number;
-  avgAmount: number;
-  confidence: number;
-  thisMonth: number;
-  lastMonth: number;
-  changePercent: number;
-}
-
-export interface Anomaly {
-  transactionId: string;
-  date: string;
-  amount: number;
-  category: string;
-  notes: string;
-  reason: string;
-  severity: 'low' | 'medium' | 'high';
-  avgAmount: number;
-  confidence: number;
-}
-
-export interface Subscription {
-  name: string;
-  amount: number;
-  category: string;
-  frequency: 'monthly' | 'weekly';
-  occurrences: number;
-  annualCost: number;
-  lastSeen: string;
-  confidence: number;
-}
-
-export interface SpendingPattern {
-  category: string;
-  currentMonthTotal: number;
-  threeMonthAvg: number;
-  changePercent: number;
-  trend: 'up' | 'down' | 'stable';
-}
-
-// ── Phase 3 — Planning ────────────────────────────────────────────────────────
-export interface Goal {
-  id: string;
-  userId: string;
-  name: string;
-  targetAmount: number;
-  currentAmount: number;
-  deadline: string | null;
-  category: string;
-  notes: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'goals' | 'insights' | 'reconciliation' | 'reports';
+export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'reports';

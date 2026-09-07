@@ -46,7 +46,6 @@ function AppContent() {
     { id: 'what-if', label: 'What-If', icon: Calculator },
     { id: 'digest', label: 'Digest', icon: FileText },
 
-    { id: 'reconciliation', label: 'Reconcile', icon: ClipboardCheck },
     { id: 'reports', label: 'Reports', icon: FileBarChart },
     { id: 'settings', label: 'Settings', icon: Settings },
 

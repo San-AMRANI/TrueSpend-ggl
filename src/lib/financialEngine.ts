@@ -1,4 +1,4 @@
-import { Transaction, Payroll, Debt, CategoryBudget, Goal } from '../types/index.js';
+import { Transaction, Payroll, Debt, CategoryBudget } from '../types/index.js';
 import { getCurrentFinancialMonth, getNextPayroll, isInFinancialMonth,  FinancialMonthBounds } from './financialMonth.js';
 
 export interface FinancialEngineInput {
@@ -6,7 +6,6 @@ export interface FinancialEngineInput {
   payrolls: Payroll[];
   debts: Debt[];
   budgets: CategoryBudget[];
-  goals: Goal[];
   userSettings: {
     emergencyBuffer: number;
     salary: number;

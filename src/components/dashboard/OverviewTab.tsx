@@ -18,14 +18,13 @@ interface OverviewTabProps {
   transactions: Transaction[];
   debts: Debt[];
   budgets: CategoryBudget[];
-  goals: Goal[];
   setActiveTab: (tab: DashboardTab) => void;
   openTransaction: (transactionId: string) => void;
   handleSettle: (debtId: string, amount: number, category?: string, wallet?: 'Bank' | 'Cash') => Promise<void> | void;
   payrolls: Payroll[];
 }
 
-export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, debts, budgets, goals, payrolls, setActiveTab, openTransaction, handleSettle }) => {
+export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, debts, budgets, payrolls, setActiveTab, openTransaction, handleSettle }) => {
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
   
   const currentFm = getCurrentFinancialMonth(payrolls);
@@ -369,40 +368,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
                   </div>
                 ))}
               {activeReceivables === 0 && <p className="py-4 text-center text-sm text-blue-700">No pending receivables.</p>}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Phase 3: Goals Overview */}
-        <Card className="min-w-0 overflow-hidden border-indigo-100 bg-indigo-50/50 dark:border-indigo-900/30 dark:bg-indigo-900/10">
-          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-2">
-            <CardTitle className="text-base sm:text-lg text-indigo-900 dark:text-indigo-400 flex items-center gap-2">
-              <Zap className="h-5 w-5" /> Active Goals
-            </CardTitle>
-            <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={() => setActiveTab('goals')}>Manage</Button>
-          </CardHeader>
-          <CardContent className="min-w-0 overflow-hidden">
-            <div className="space-y-4">
-              {goals.slice(0, 3).map((goal) => {
-                const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
-                return (
-                  <div key={goal.id} className="min-w-0">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="font-medium text-gray-900 dark:text-gray-100 truncate pr-2">{goal.name}</span>
-                      <span className="text-gray-500 dark:text-gray-400 whitespace-nowrap">{Math.round(progress)}%</span>
-                    </div>
-                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
-                      <div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-              {goals.length === 0 && (
-                <div className="text-center py-4">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">No active goals.</p>
-                  <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setActiveTab('goals')}>Create one</Button>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>

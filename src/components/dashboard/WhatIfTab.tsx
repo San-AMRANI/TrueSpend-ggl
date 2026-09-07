@@ -7,7 +7,6 @@ import { Calculator, BarChart3, AlertTriangle } from 'lucide-react';
 
 interface WhatIfTabProps {
   kpis: KPI | null;
-  goals: Goal[];
   amount: number;
   setAmount: (amount: number) => void;
   transactions: Transaction[];
@@ -16,9 +15,8 @@ interface WhatIfTabProps {
   budgets: CategoryBudget[];
 }
 
-export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, goals, amount, setAmount, transactions, payrolls, debts, budgets }) => {
+export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, amount, setAmount, transactions, payrolls, debts, budgets }) => {
   const [scenario, setScenario] = React.useState<'purchase' | 'save' | 'salary'>('purchase');
-  const [targetGoalId, setTargetGoalId] = React.useState<string>('');
 
   const simResult = useMemo(() => {
     if (!kpis) return null;
@@ -37,11 +35,6 @@ export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, goals, amount, setAm
     };
 
     const simTransactions = [...transactions, dummyTransaction];
-    const simGoals = goals.map((goal) =>
-      scenario === 'save' && goal.id === targetGoalId
-        ? { ...goal, currentAmount: Math.min(goal.targetAmount, goal.currentAmount + amount) }
-        : goal,
-    );
     
     // We compute the new state
     const newState = computeFinancialState({
@@ -49,7 +42,6 @@ export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, goals, amount, setAm
       payrolls,
       debts,
       budgets,
-      goals: simGoals,
       userSettings: {
         emergencyBuffer: kpis.emergencyBuffer,
         salary: kpis.salary || 0,
@@ -57,7 +49,7 @@ export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, goals, amount, setAm
     });
     
     return newState;
-  }, [kpis, amount, scenario, targetGoalId, transactions, payrolls, debts, budgets, goals]);
+  }, [kpis, amount, scenario, transactions, payrolls, debts, budgets]);
 
   if (!kpis) return null;
 
@@ -97,19 +89,6 @@ export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, goals, amount, setAm
               className="w-full rounded-md border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-600" 
               placeholder="Amount in MAD" 
             />
-            
-            {scenario === 'save' && goals.length > 0 && (
-              <select
-                value={targetGoalId}
-                onChange={(e) => setTargetGoalId(e.target.value)}
-                className="w-full sm:w-auto rounded-md border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900 px-3 py-2 text-sm focus:outline-none"
-              >
-                <option value="">Select a Goal (Optional)</option>
-                {goals.map(g => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
-              </select>
-            )}
 
             <Button type="button" variant="outline" className="border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-900/40" onClick={() => setAmount(0)}>Reset</Button>
           </div>
@@ -151,25 +130,6 @@ export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, goals, amount, setAm
                   <div className="mt-4 flex items-start gap-2 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/50">
                     <AlertTriangle className="h-5 w-5 shrink-0" />
                     <p>This action puts your daily budget in a critical state. You would have {simResult.dailyRemaining.toFixed(2)} MAD remaining today.</p>
-                  </div>
-                )}
-                
-                {scenario === 'save' && targetGoalId && (
-                  <div className="mt-4 text-sm text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
-                    {(() => {
-                      const goal = goals.find(g => g.id === targetGoalId);
-                      const baseline = kpis.goalMetrics.find(metric => metric.goalId === targetGoalId);
-                      const simulated = simResult.goalMetrics.find(metric => metric.goalId === targetGoalId);
-                      if (!goal || !baseline || !simulated) return null;
-                      return (
-                        <p>
-                          {goal.name}: {baseline.remainingAmount.toFixed(2)} MAD remaining → {simulated.remainingAmount.toFixed(2)} MAD.
-                          {simulated.daysRemaining !== null
-                            ? ` Required monthly contribution falls to ${simulated.requiredMonthlyContribution?.toFixed(2)} MAD.`
-                            : ' This contribution is reflected in the simulated goal progress.'}
-                        </p>
-                      );
-                    })()}
                   </div>
                 )}
               </div>

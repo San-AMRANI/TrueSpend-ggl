@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DashboardTab } from '../../types';
-import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, ChevronDown, ChevronUp, Bot, Target, Lightbulb } from 'lucide-react';
+import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, ChevronDown, ChevronUp, Bot } from 'lucide-react';
 
 interface DashboardNavProps {
   activeTab: DashboardTab;
   setActiveTab: (tab: DashboardTab) => void;
 }
 
-import { ClipboardCheck, FileBarChart } from 'lucide-react';
+import { FileBarChart } from 'lucide-react';
 const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.FC<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
   { id: 'calendar', label: 'Calendar', shortLabel: 'Calendar', icon: CalendarDays },
@@ -18,12 +18,7 @@ const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.F
   { id: 'what-if', label: 'What-If', shortLabel: 'What-If', icon: Calculator },
   { id: 'digest', label: 'Digest', shortLabel: 'Digest', icon: FileText },
   { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
-
-  { id: 'insights', label: 'Insights', shortLabel: 'Insights', icon: Lightbulb },
-  { id: 'reconciliation', label: 'Reconcile', shortLabel: 'Reconcile', icon: ClipboardCheck },
   { id: 'reports', label: 'Reports', shortLabel: 'Reports', icon: FileBarChart },
-
-  { id: 'goals', label: 'Goals', shortLabel: 'Goals', icon: Target },
   { id: 'chat', label: 'AI Chat', shortLabel: 'AI Chat', icon: Bot },
 ];
 

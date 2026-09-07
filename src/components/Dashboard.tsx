@@ -12,9 +12,6 @@ import { SettingsTab } from './dashboard/SettingsTab';
 import { BudgetsTab } from './dashboard/BudgetsTab';
 import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
-import { GoalsTab } from './dashboard/GoalsTab';
-import { InsightsTab } from './dashboard/InsightsTab';
-import { ReconciliationTab } from './dashboard/ReconciliationTab';
 import { ReportsTab } from './dashboard/ReportsTab';
 import { AIChat } from './AIChat';
 import type { DashboardTab } from '../types';
@@ -62,13 +59,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     handleDeletePayroll,
     handleExportSql,
     handleImportSql,
-    goals,
-    insights,
     userSettings,
-    handleCreateGoal,
-    handleUpdateGoal,
-    handleDeleteGoal,
-    handleContributeToGoal,
     notifications,
   } = useDashboardData(token);
 
@@ -100,7 +91,6 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
           transactions={transactions}
           debts={debts}
           budgets={budgets}
-          goals={goals}
           setActiveTab={setActiveTab}
           openTransaction={openTransaction}
           handleSettle={handleSettleDebt}
@@ -123,8 +113,6 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
           transactions={transactions}
           debts={debts}
           payrolls={payrolls}
-          goals={goals}
-          insights={insights}
           openTransaction={openTransaction}
           setActiveTab={setActiveTab}
           onCreatePayroll={handleCreatePayroll}
@@ -145,7 +133,7 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
         />
       )}
 
-      {activeTab === 'what-if' && <WhatIfTab kpis={kpis} goals={goals} amount={whatIfAmount} setAmount={setWhatIfAmount} transactions={transactions} payrolls={payrolls} debts={debts} budgets={budgets} />}
+      {activeTab === 'what-if' && <WhatIfTab kpis={kpis} amount={whatIfAmount} setAmount={setWhatIfAmount} transactions={transactions} payrolls={payrolls} debts={debts} budgets={budgets} />}
 
       {activeTab === 'debts' && (
         <DebtsTab
@@ -183,26 +171,8 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
         />
       )}
 
-      {activeTab === 'goals' && (
-        <GoalsTab
-          goals={goals}
-          onCreateGoal={handleCreateGoal}
-          onUpdateGoal={handleUpdateGoal}
-          onDeleteGoal={handleDeleteGoal}
-          onContribute={handleContributeToGoal}
-        />
-      )}
-
-      {activeTab === 'insights' && (
-        <InsightsTab insights={insights} />
-      )}
-
-
-      {activeTab === 'reconciliation' && (
-        <ReconciliationTab transactions={transactions} />
-      )}
       {activeTab === 'reports' && (
-        <ReportsTab transactions={transactions} kpis={kpis} budgets={budgets} />
+        <ReportsTab transactions={transactions} kpis={kpis} budgets={budgets} onDataChange={fetchData} />
       )}
       {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}
 

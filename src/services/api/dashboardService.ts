@@ -4,6 +4,8 @@ import { CategoryBudget, KPI, Transaction, Debt, Payroll, UserSettings } from '.
 export const dashboardService = {
   getKpis: (token: string | null) => apiClient.get<KPI>('/api/kpis', token),
   getTransactions: (token: string | null) => apiClient.get<Transaction[]>('/api/transactions', token),
+  createTransaction: (payload: Record<string, unknown>, token: string | null) =>
+    apiClient.post<{ message: string; transaction: Transaction }>('/api/transactions', payload, token),
   getPayrolls: (token: string | null) => apiClient.get<Payroll[]>('/api/payrolls', token),
   createPayroll: (payload: { scheduledFor: string; amount: number }, token: string | null) =>
     apiClient.post<Payroll>('/api/payrolls', payload, token),
@@ -83,14 +85,4 @@ export const dashboardService = {
   importSql: (sql: string, token: string | null) =>
     apiClient.post<{ success: boolean; message: string; restored: Record<string, number> }>('/api/settings/import-sql', { sql }, token),
   seedData: (token: string | null) => apiClient.post<{ success: boolean }>('/api/seed', {}, token),
-  
-  // Phase 2: Insights
-  getInsights: (token: string | null) => apiClient.get<any>('/api/insights', token),
-  
-  // Phase 3: Goals
-  getGoals: (token: string | null) => apiClient.get<any[]>('/api/goals', token),
-  createGoal: (payload: any, token: string | null) => apiClient.post<any>('/api/goals', payload, token),
-  updateGoal: (id: string, payload: any, token: string | null) => apiClient.put<any>(`/api/goals/${id}`, payload, token),
-  deleteGoal: (id: string, token: string | null) => apiClient.delete<{ deleted: boolean }>(`/api/goals/${id}`, token),
-  contributeToGoal: (id: string, amount: number, token: string | null) => apiClient.post<any>(`/api/goals/${id}/contribute`, { amount }, token),
 };

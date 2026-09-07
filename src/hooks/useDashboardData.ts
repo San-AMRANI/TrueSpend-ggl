@@ -2,7 +2,7 @@ import { googleSignIn, getGoogleAccessToken } from '../lib/googleAuth';
 import { uploadToGoogleDrive } from '../lib/driveUpload';
 import { useState, useEffect, useCallback } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
-import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll, Goal } from '../types';
+import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll } from '../types';
 import { useNotifications } from './useNotifications';
 
 export function useDashboardData(token: string | null) {
@@ -11,8 +11,6 @@ export function useDashboardData(token: string | null) {
   const [debts, setDebts] = useState<Debt[]>([]);
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [insights, setInsights] = useState<any>(null);
   const [emergencyBuffer, setEmergencyBuffer] = useState<number>(0);
   const [userSettings, setUserSettings] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -30,15 +28,13 @@ export function useDashboardData(token: string | null) {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, goalsData, insightsData] = await Promise.all([
+      const [kpiData, txData, debtData, settingsData, budgetData, payrollData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
         dashboardService.getSettings(token),
         dashboardService.getCategoryBudgets(token),
         dashboardService.getPayrolls(token),
-        dashboardService.getGoals(token),
-        dashboardService.getInsights(token),
       ]);
 
       setKpis(kpiData || null);
@@ -48,8 +44,6 @@ export function useDashboardData(token: string | null) {
       setUserSettings(settingsData);
       setBudgets(budgetData || []);
       setPayrolls(payrollData || []);
-      setGoals(goalsData || []);
-      setInsights(insightsData || null);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -273,28 +267,6 @@ export function useDashboardData(token: string | null) {
     }
   };
 
-  const handleCreateGoal = async (payload: any) => {
-    await dashboardService.createGoal(payload, token);
-    await fetchData();
-  };
-
-  const handleUpdateGoal = async (id: string, payload: any) => {
-    await dashboardService.updateGoal(id, payload, token);
-    await fetchData();
-  };
-
-  const handleDeleteGoal = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this goal?')) return;
-    await dashboardService.deleteGoal(id, token);
-    await fetchData();
-  };
-
-  const handleContributeToGoal = async (id: string, amount: number) => {
-    await dashboardService.contributeToGoal(id, amount, token);
-    await fetchData();
-  };
-
-  
   const handleBackupToDrive = async (interactive: boolean = false) => {
     try {
       let accessToken = await getGoogleAccessToken();
@@ -370,8 +342,6 @@ export function useDashboardData(token: string | null) {
     debts,
     payrolls,
     budgets,
-    goals,
-    insights,
     userSettings,
     emergencyBuffer,
     setEmergencyBuffer,
@@ -404,10 +374,6 @@ export function useDashboardData(token: string | null) {
     handleSeedData,
     handleExportSql,
     handleImportSql,
-    handleCreateGoal,
-    handleUpdateGoal,
-    handleDeleteGoal,
-    handleContributeToGoal,
     notifications,
   };
 }
