@@ -100,36 +100,6 @@ export function computeFinancialState(input: FinancialEngineInput) {
 
   const safeToSpend = totalLiquidity - emergencyBuffer - pendingPayables;
 
-  const goalMetrics = input.goals.map((goal) => {
-    const targetAmount = Math.max(0, Number(goal.targetAmount) || 0);
-    const currentAmount = Math.max(0, Number(goal.currentAmount) || 0);
-    const remainingAmount = Math.max(0, targetAmount - currentAmount);
-    const deadline = goal.deadline ? new Date(goal.deadline) : null;
-    const daysRemaining = deadline
-      ? Math.max(0, Math.ceil((toCalendarDay(deadline).getTime() - today.getTime()) / 86_400_000))
-      : null;
-    const requiredMonthlyContribution = daysRemaining === null
-      ? null
-      : remainingAmount / Math.max(1, daysRemaining / 30.44);
-    const requiredWeeklyContribution = daysRemaining === null
-      ? null
-      : remainingAmount / Math.max(1, daysRemaining / 7);
-
-    return {
-      goalId: goal.id,
-      name: goal.name,
-      targetAmount,
-      currentAmount,
-      remainingAmount,
-      progressPercent: targetAmount > 0 ? Math.min(100, (currentAmount / targetAmount) * 100) : 0,
-      deadline: deadline?.toISOString() ?? null,
-      daysRemaining,
-      requiredMonthlyContribution,
-      requiredWeeklyContribution,
-      completed: remainingAmount === 0,
-    };
-  });
-
   let avgDailySpend = 0;
   let elapsedDays = 1;
   let totalDaysInMonth = 30; // fallback
@@ -222,7 +192,6 @@ export function computeFinancialState(input: FinancialEngineInput) {
     },
     healthScore: health.total,
     healthFactors: health.factors,
-    goalMetrics,
   };
 }
 

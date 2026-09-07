@@ -14,15 +14,19 @@ export class NotificationController {
 
   async subscribe(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const userId = (req as any).dbUser?.id || (req as any).user?.id;
       const subscription = req.body;
       const userAgent = req.headers['user-agent'];
+
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
 
       if (!subscription || !subscription.endpoint || !subscription.keys) {
         return res.status(400).json({ error: 'Invalid subscription object' });
       }
 
-      await pushService.saveSubscription(user.id, subscription, userAgent);
+      await pushService.saveSubscription(userId, subscription, userAgent);
       res.status(201).json({ message: 'Subscription saved successfully' });
     } catch (error) {
       console.error('Error saving subscription:', error);
@@ -46,8 +50,11 @@ export class NotificationController {
 
   async getPreferences(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
-      const prefs = await pushService.getPreferences(user.id);
+      const userId = (req as any).dbUser?.id || (req as any).user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const prefs = await pushService.getPreferences(userId);
       res.json(prefs);
     } catch (error) {
       console.error('Error getting preferences:', error);
@@ -57,9 +64,12 @@ export class NotificationController {
 
   async updatePreferences(req: Request, res: Response) {
     try {
-      const user = (req as any).user;
+      const userId = (req as any).dbUser?.id || (req as any).user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
       const payload = req.body;
-      const prefs = await pushService.updatePreferences(user.id, payload);
+      const prefs = await pushService.updatePreferences(userId, payload);
       res.json(prefs);
     } catch (error) {
       console.error('Error updating preferences:', error);

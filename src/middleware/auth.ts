@@ -31,6 +31,7 @@ export const requireAuth = async (
     
     if (existingUsers.length > 0) {
       req.dbUser = existingUsers[0];
+      req.user = { ...decodedToken, id: req.dbUser.id };
     } else {
       // Fallback if DB is completely empty for some reason
       const userResult = await db.insert(users)
@@ -44,6 +45,7 @@ export const requireAuth = async (
         })
         .returning();
       req.dbUser = userResult[0];
+      req.user = { ...decodedToken, id: req.dbUser.id };
     }
     
     next();

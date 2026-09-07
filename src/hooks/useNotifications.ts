@@ -229,13 +229,17 @@ export function useNotifications() {
   }, []);
 
   const subscribeToServer = async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
     try {
       if (!('serviceWorker' in navigator)) return;
       const reg = await navigator.serviceWorker.ready;
       let subscription = await reg.pushManager.getSubscription();
       if (!subscription) {
         const response = await fetch('/api/notifications/vapid-public-key');
+        if (!response.ok) return;
         const { publicKey } = await response.json();
+        if (!publicKey) return;
         const applicationServerKey = urlBase64ToUint8Array(publicKey);
         subscription = await reg.pushManager.subscribe({
           userVisibleOnly: true,
@@ -244,7 +248,10 @@ export function useNotifications() {
       }
       await fetch('/api/notifications/subscribe', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(subscription),
       });
     } catch (err) {
@@ -253,8 +260,14 @@ export function useNotifications() {
   };
 
   const fetchServerPreferences = useCallback(async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
     try {
-      const res = await fetch('/api/notifications/preferences');
+      const res = await fetch('/api/notifications/preferences', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         setServerSettings({
@@ -264,7 +277,7 @@ export function useNotifications() {
           forecastWarningEnabled: data.forecastWarningEnabled,
           debtReminderEnabled: data.debtReminderEnabled,
           anomalyEnabled: data.anomalyEnabled,
-          goalEnabled: data.goalEnabled,
+          goalEnabled: data.goalEnabled ?? false,
           deliveryTime: data.deliveryTime,
           timezone: data.timezone,
           quietHoursStart: data.quietHoursStart,
@@ -277,10 +290,15 @@ export function useNotifications() {
   }, []);
 
   const updateServerPreferences = useCallback(async (patch: Partial<ServerNotifSettings>) => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
     try {
       const res = await fetch('/api/notifications/preferences', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(patch),
       });
       if (res.ok) {
