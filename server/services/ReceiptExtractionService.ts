@@ -3,7 +3,7 @@ export interface ReceiptProposal {
   transactionDate: string | null;
   merchant: string | null;
   category: string;
-  sourceWallet: 'Bank' | 'Cash';
+  walletId: string | null;
   confidence: number;
   missing: string[];
 }
@@ -61,7 +61,7 @@ export function parseReceiptText(rawText: string): ReceiptProposal {
     transactionDate,
     merchant,
     category,
-    sourceWallet: 'Bank',
+    walletId: 'Bank',
     confidence,
     missing,
   };
@@ -74,7 +74,7 @@ export function receiptProposalAction(proposal: ReceiptProposal) {
     parameters: {
       amount: proposal.amount,
       type: 'Expense' as const,
-      source_wallet: proposal.sourceWallet,
+      walletId: proposal.walletId,
       category: proposal.category,
       notes: proposal.merchant || undefined,
       transaction_date: proposal.transactionDate || undefined,

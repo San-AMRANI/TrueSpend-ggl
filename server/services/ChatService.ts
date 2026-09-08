@@ -199,7 +199,7 @@ Parameters: {goalId:string, amount:number}
 *Note: Look up the goalId from the provided live context data under goals.*
 
 ### settle_debt
-Parameters: {debtId:string, amount:number, sourceWallet:"Bank"|"Cash"}
+Parameters: {debtId:string, amount:number, walletId:string}
 *Note: Look up the debtId from the provided live context data under debts.*
 
 ### What-If Reasoning

@@ -17,7 +17,7 @@ interface ReportsTabProps {
 interface ParsedTransactionRow {
   date?: string;
   type: 'Income' | 'Expense' | 'Transfer' | 'Debt Repayment';
-  sourceWallet: 'Bank' | 'Cash';
+  walletId: 'Bank' | 'Cash';
   category: string;
   amount: number;
   notes: string;
@@ -62,7 +62,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
     const rows = transactions.map(t => [
       escapeCsv(formatDate(t.createdAt)),
       escapeCsv(t.type),
-      escapeCsv(t.sourceWallet),
+      escapeCsv(t.walletId),
       escapeCsv(t.category || ''),
       escapeCsv(typeof t.amount === 'number' ? t.amount.toFixed(2) : t.amount),
       escapeCsv(t.notes || '')
@@ -221,7 +221,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
         }
 
         const rawWallet = (walletIdx !== -1 ? row[walletIdx] : '').trim().toLowerCase();
-        const sourceWallet: ParsedTransactionRow['sourceWallet'] = rawWallet.includes('cash') ? 'Cash' : 'Bank';
+        const walletId: ParsedTransactionRow['walletId'] = rawWallet.includes('cash') ? 'Cash' : 'Bank';
 
         const rawCat = categoryIdx !== -1 ? row[categoryIdx]?.trim() : '';
         const category = normalizeCategory(rawCat || (type === 'Income' ? '📥 Income' : '🚨 Unexpected'));
@@ -240,7 +240,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
         parsedRecords.push({
           date,
           type,
-          sourceWallet,
+          walletId,
           category,
           amount,
           notes
@@ -266,7 +266,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
           await dashboardService.createTransaction({
             amount: rec.amount,
             type: rec.type,
-            source_wallet: rec.sourceWallet,
+            source_wallet: rec.walletId,
             category: rec.category,
             notes: rec.notes,
             ...(rec.date ? { transaction_date: rec.date } : {})

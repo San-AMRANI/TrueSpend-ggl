@@ -10,7 +10,7 @@ import { expenseCategories, incomeAndTransferCategories } from '../lib/categorie
 type FormData = {
   amount: string;
   type: 'Income' | 'Expense' | 'Transfer' | 'Loan Received';
-  source_wallet: 'Bank' | 'Cash';
+  walletId: 'Bank' | 'Cash' | 'Savings';
   category: string;
   notes: string;
   transaction_date: string;
@@ -19,7 +19,7 @@ type FormData = {
 const emptyForm = (): FormData => ({
   amount: '',
   type: 'Expense',
-  source_wallet: 'Bank',
+  walletId: 'Bank',
   category: '',
   notes: '',
   transaction_date: new Date().toISOString().slice(0, 10),
@@ -58,7 +58,7 @@ export default function TransactionForm({ onSuccess, transaction, onCancel }: Tr
     setFormData({
       amount: transaction.amount,
       type: transaction.category === '🤝 Loan Received' && transaction.linkedDebtType === 'Payable' ? 'Loan Received' : transaction.type,
-      source_wallet: transaction.sourceWallet,
+      source_wallet: transaction.walletId,
       category: transaction.category || '',
       notes: transaction.notes || '',
       transaction_date: new Date(transaction.createdAt).toISOString().slice(0, 10),
@@ -153,7 +153,7 @@ export default function TransactionForm({ onSuccess, transaction, onCancel }: Tr
               </div>
               <div className="space-y-2"><label className="text-sm font-medium">Transaction Date</label><Input required disabled={!isEditable} type="date" value={formData.transaction_date} onChange={(event) => setFormData({ ...formData, transaction_date: event.target.value })} /><p className="text-xs text-gray-500 dark:text-gray-400">This date controls your reports, budgets, and trends.</p></div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2"><label className="text-sm font-medium">Wallet</label><Select disabled={!isEditable || isPayroll} value={formData.source_wallet} onChange={(event) => setFormData({ ...formData, source_wallet: event.target.value as FormData['source_wallet'] })}><option value="Bank">Bank / Card</option><option value="Cash">Physical Cash</option></Select></div>
+                <div className="space-y-2"><label className="text-sm font-medium">Wallet</label><Select disabled={!isEditable || isPayroll} value={formData.walletId} onChange={(event) => { const wallet = event.target.value as FormData['walletId']; setFormData({ ...formData, walletId }); }}><option value="" disabled>Select wallet</option><option value="Bank">Bank / Card</option><option value="Cash">Physical Cash</option><option value="Savings">Savings</option></Select></div>
                 <div className="space-y-2"><label className="text-sm font-medium">Category</label><Select required disabled={!isEditable || isPayroll || isLoanReceived} value={formData.category} onChange={(event) => setFormData({ ...formData, category: event.target.value })}><option value="" disabled>Select category</option>{hasLegacyCategory && <option value={formData.category}>Legacy category: {formData.category}</option>}<optgroup label="Expenses">{expenseCategories.map((category) => <option key={category} value={category}>{category}</option>)}</optgroup><optgroup label="Income & Transfers">{incomeAndTransferCategories.map((category) => <option key={category} value={category}>{category}</option>)}</optgroup></Select>{hasLegacyCategory && <p className="text-xs text-amber-600 dark:text-amber-400">This is a legacy category. Choose one of the fixed categories when you are ready to recategorize it.</p>}</div>
               </div>
               {isLoanReceived && <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/70 dark:bg-amber-950/20"><label className="text-sm font-medium">Who did you borrow from?</label><Input required disabled={!isEditable} value={loanContactName} onChange={(event) => setLoanContactName(event.target.value)} placeholder="Person or lender name" /><p className="text-xs text-amber-800 dark:text-amber-200">This records the money in your balance and creates a payable debt to settle later.</p></div>}

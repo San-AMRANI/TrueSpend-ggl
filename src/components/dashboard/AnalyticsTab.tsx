@@ -74,8 +74,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     let bank = 0;
     let cash = 0;
     expenses.forEach((t) => {
-      if (t.sourceWallet === 'Bank') bank += parseFloat(t.amount);
-      if (t.sourceWallet === 'Cash') cash += parseFloat(t.amount);
+      if (t.walletId === 'Bank') bank += parseFloat(t.amount);
+      if (t.walletId === 'Cash') cash += parseFloat(t.amount);
     });
     return [
       { name: 'Bank', value: bank },
@@ -495,8 +495,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                       <span>{format(new Date(transaction.createdAt), 'MMM d, yyyy')}</span>
                       <span className="flex items-center gap-1">
-                        {transaction.sourceWallet === 'Bank' ? <Landmark className="h-3 w-3" /> : <Banknote className="h-3 w-3" />}
-                        {transaction.sourceWallet}
+                        {transaction.walletId === 'Bank' ? <Landmark className="h-3 w-3" /> : <Banknote className="h-3 w-3" />}
+                        {transaction.walletId}
                       </span>
                     </div>
                   </div>

@@ -19,10 +19,17 @@ export function computeFinancialState(input: FinancialEngineInput) {
   const today = toCalendarDay(now);
   const currentFm = getCurrentFinancialMonth(input.payrolls, now);
 
-  let bankBalance = 0;
-  let cashOnHand = 0;
-  let openingBankBalance = 0;
-  let openingCashOnHand = 0;
+  // Track balances per wallet type
+  const walletBalances: { [key: string]: number } = {
+    Bank: 0,
+    Cash: 0,
+    Savings: 0,
+  };
+  const openingWalletBalances: { [key: string]: number } = {
+    Bank: 0,
+    Cash: 0,
+    Savings: 0,
+  };
   let monthlyExpenses = 0;
   let monthlyIncome = 0;
   let dailySpent = 0;
@@ -32,16 +39,32 @@ export function computeFinancialState(input: FinancialEngineInput) {
 
   const isExpenseOutflow = (type: string) => type === 'Expense' || type === 'Debt Repayment';
 
-  const applyTransaction = (tx: Transaction, balances: { bank: number; cash: number }) => {
+  const applyTransaction = (tx: Transaction, balances: { [key: string]: number }) => {
     const amount = parseFloat(tx.amount as unknown as string);
-    if (tx.sourceWallet === 'Bank') {
-      if (tx.type === 'Income') balances.bank += amount;
-      if (isExpenseOutflow(tx.type)) balances.bank -= amount;
-      if (tx.type === 'Transfer') { balances.bank -= amount; balances.cash += amount; }
-    } else {
-      if (tx.type === 'Income') balances.cash += amount;
-      if (isExpenseOutflow(tx.type)) balances.cash -= amount;
-      if (tx.type === 'Transfer') { balances.cash -= amount; balances.bank += amount; }
+    const walletId = tx.walletId ?? 'cash';
+    
+    // Ensure wallet exists in balances
+    if (!balances[walletId]) {
+      balances[walletId] = 0;
+    }
+    
+    if (tx.type === 'Income') balances[walletId] += amount;
+    if (isExpenseOutflow(tx.type)) balances[walletId] -= amount;
+    if (tx.type === 'Transfer') {
+      // Transfer from one wallet to another - determine the other wallet
+      const fromWallet = walletId;
+      let toWallet: string;
+      if (tx.walletId) {
+        // If transferring from a specific wallet, transfer to the other type
+        if (fromWallet === 'Bank') toWallet = 'Cash';
+        else if (fromWallet === 'Cash') toWallet = 'Bank';
+        else toWallet = 'Bank'; // For Savings, default to Bank
+      } else {
+        // If no wallet specified, assume Bank to Cash transfer
+        toWallet = 'Cash';
+      }
+      balances[fromWallet] -= amount;
+      balances[toWallet] = (balances[toWallet] || 0) + amount;
     }
   };
 
@@ -55,16 +78,12 @@ export function computeFinancialState(input: FinancialEngineInput) {
     const transactionDay = toCalendarDay(txDate);
 
     if (transactionDay < today) {
-      const openingBalances = { bank: openingBankBalance, cash: openingCashOnHand };
+      const openingBalances = walletBalances;
       applyTransaction(tx, openingBalances);
-      openingBankBalance = openingBalances.bank;
-      openingCashOnHand = openingBalances.cash;
     }
     if (transactionDay <= today) {
-      const currentBalances = { bank: bankBalance, cash: cashOnHand };
+      const currentBalances = walletBalances;
       applyTransaction(tx, currentBalances);
-      bankBalance = currentBalances.bank;
-      cashOnHand = currentBalances.cash;
     }
 
     if (currentFm && transactionDay <= today && isInFinancialMonth(txDate, input.payrolls, currentFm.year, currentFm.month)) {
@@ -83,8 +102,8 @@ export function computeFinancialState(input: FinancialEngineInput) {
   }
 
   const emergencyBuffer = input.userSettings.emergencyBuffer || 0;
-  const totalLiquidity = bankBalance + cashOnHand;
-  const openingLiquidity = openingBankBalance + openingCashOnHand;
+  const totalLiquidity = Object.values(walletBalances).reduce((sum, bal) => sum + bal, 0);
+  const openingLiquidity = Object.values(openingWalletBalances).reduce((sum, bal) => sum + bal, 0);
   const nextPayroll = getNextPayroll(input.payrolls, now);
   const nextPayday = nextPayroll ? new Date(nextPayroll.scheduledFor) : null;
   const daysUntilPayday = nextPayday ? Math.max(0, Math.ceil((nextPayday.getTime() - today.getTime()) / 86_400_000)) : 0;

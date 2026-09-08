@@ -289,7 +289,7 @@ export class SettingsService {
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
 
     lines.push(`DO $$ BEGIN
-    CREATE TYPE wallet_type AS ENUM ('Bank', 'Cash');
+    CREATE TYPE wallet_type AS ENUM ('Bank', 'Cash', 'Savings');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
 
     lines.push(`DO $$ BEGIN
@@ -382,8 +382,8 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
       lines.push('-- Transactions Data');
       for (const t of allTransactions) {
         lines.push(
-          `INSERT INTO transactions (id, user_id, created_at, amount, type, source_wallet, category, notes) ` +
-            `VALUES (${escapeStr(t.id)}, ${escapeStr(t.userId)}, ${escapeDate(t.createdAt)}, ${escapeNum(t.amount)}, ${escapeStr(t.type)}::transaction_type, ${escapeStr(t.sourceWallet)}::wallet_type, ${escapeStr(t.category)}, ${escapeStr(t.notes)}) ` +
+          `INSERT INTO transactions (id, user_id, created_at, amount, type, wallet_id, category, notes) ` +
+            `VALUES (${escapeStr(t.id)}, ${escapeStr(t.userId)}, ${escapeDate(t.createdAt)}, ${escapeNum(t.amount)}, ${escapeStr(t.type)}::transaction_type, ${escapeStr(t.walletId)}, ${escapeStr(t.category)}, ${escapeStr(t.notes)}) ` +
             `;`
         );
       }

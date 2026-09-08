@@ -2,7 +2,23 @@ import { relations } from 'drizzle-orm';
 import { pgTable, uuid, text, timestamp, decimal, pgEnum, integer, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const transactionTypeEnum = pgEnum('transaction_type', ['Income', 'Expense', 'Transfer', 'Debt Repayment']);
-export const walletEnum = pgEnum('wallet_type', ['Bank', 'Cash']);
+export const walletTypeEnum = pgEnum('wallet_type', ['Bank', 'Cash', 'Savings']);
+
+export const wallets = pgTable('wallets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id).notNull(),
+  name: text('name').notNull(), // e.g., 'Main Bank', 'Savings', 'Cash'
+  type: walletTypeEnum('type').notNull(),
+  isMain: boolean('is_main').default(false).notNull(),
+  initialBalance: decimal('initial_balance').default('0').notNull(),
+  currentBalance: decimal('current_balance').default('0').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('wallets_user_name_unique').on(table.userId, table.name),
+]);
+
+export const walletEnum = pgEnum('wallet_type', ['Bank', 'Cash', 'Savings']);
 export const debtTypeEnum = pgEnum('debt_type', ['Receivable', 'Payable']);
 export const debtStatusEnum = pgEnum('debt_status', ['Pending', 'Cleared']);
 
@@ -47,10 +63,10 @@ export const payrolls = pgTable('payrolls', {
 export const transactions = pgTable('transactions', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id).notNull(),
+  walletId: uuid('wallet_id').references(() => wallets.id),
   createdAt: timestamp('created_at').defaultNow(),
   amount: decimal('amount').notNull(),
   type: transactionTypeEnum('type').notNull(),
-  sourceWallet: walletEnum('source_wallet').notNull(),
   category: text('category'),
   notes: text('notes'),
   /** Present only for income generated from a calendar payroll. */
@@ -162,6 +178,10 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
   user: one(users, {
     fields: [transactions.userId],
     references: [users.id],
+  }),
+  wallet: one(wallets, {
+    fields: [transactions.walletId],
+    references: [wallets.id],
   }),
   split: one(splits, {
     fields: [transactions.id],

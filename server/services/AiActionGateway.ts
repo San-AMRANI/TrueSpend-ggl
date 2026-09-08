@@ -39,8 +39,8 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
       if (p.amount !== undefined) p.amount = Number(p.amount);
       if (p.reimbursable_amount !== undefined) p.reimbursable_amount = Number(p.reimbursable_amount);
       
-      if (!Number.isFinite(p.amount) || !['Income', 'Expense', 'Transfer', 'Debt Repayment'].includes(p.type) || !['Bank', 'Cash'].includes(p.source_wallet) || !p.category) {
-        throw new Error(`Transaction proposal is missing required fields. Amount: ${p.amount}, Type: ${p.type}, Wallet: ${p.source_wallet}, Category: ${p.category}`);
+      if (!Number.isFinite(p.amount) || !['Income', 'Expense', 'Transfer', 'Debt Repayment'].includes(p.type) || !p.walletId || !p.category) {
+        throw new Error(`Transaction proposal is missing required fields. Amount: ${p.amount}, Type: ${p.type}, Wallet: ${p.walletId}, Category: ${p.category}`);
       }
       results.push(await transactionService.createTransaction(userId, p));
     }
@@ -78,13 +78,13 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
 
     if (action.type === 'settle_debt') {
       if (p.amount !== undefined) p.amount = Number(p.amount);
-      if (!p.debtId || !Number.isFinite(p.amount) || !['Bank', 'Cash'].includes(p.sourceWallet)) {
-        throw new Error('Settle debt proposal is missing required fields (debtId, amount, sourceWallet).');
+      if (!p.debtId || !Number.isFinite(p.amount) || !p.walletId) {
+        throw new Error('Settle debt proposal is missing required fields (debtId, amount, wallet).');
       }
       results.push(await debtService.processDebt(userId, {
         debt_id: String(p.debtId),
         amount: p.amount,
-        wallet: p.sourceWallet as 'Bank' | 'Cash',
+        wallet: p.walletId,
       }));
     }
   }

@@ -59,7 +59,7 @@ export class PayrollService {
         payrollId: payroll.id,
         amount: String(payroll.amount),
         type: 'Income',
-        sourceWallet: 'Bank',
+        walletId: 'Bank',
         category: '📥 Income',
         notes: 'Payroll deposited automatically',
         createdAt: payrollDay,

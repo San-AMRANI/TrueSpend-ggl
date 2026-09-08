@@ -30,7 +30,7 @@ export const WhatIfTab: React.FC<WhatIfTabProps> = ({ kpis, amount, setAmount, t
       createdAt: new Date().toISOString(),
       amount: Math.abs(effAmount).toString(),
       type: effAmount < 0 ? 'Income' : 'Expense', // if effAmount < 0, it's Income
-      sourceWallet: 'Bank',
+      walletId: 'Bank',
       category: scenario === 'save' ? 'Savings Contribution' : 'What-If Simulation',
     };
 

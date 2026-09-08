@@ -53,7 +53,7 @@ export class TransactionService {
       userId,
       amount: String(dto.amount),
       type: dto.type,
-      sourceWallet: dto.source_wallet,
+      walletId: dto.source_wallet,
       category: normalizeCategory(loanContactName ? '🤝 Loan Received' : dto.category),
       notes: dto.notes,
       createdAt,
@@ -188,7 +188,7 @@ export class TransactionService {
 
     const updated = await transactionRepository.update(transactionId, userId, {
       amount: String(dto.amount),
-      sourceWallet: dto.source_wallet,
+      walletId: dto.source_wallet,
       category: normalizeCategory(loanContactName ? '🤝 Loan Received' : dto.category),
       notes: dto.notes,
       ...(createdAt ? { createdAt } : {}),

@@ -52,6 +52,11 @@ export interface KPI {
   runwayDays: number;
   avgDailySpend: number;
   forecast: Forecast;
+  walletBalances: {
+    Bank: number;
+    Cash: number;
+    Savings: number;
+  };
   healthScore: number;
   healthFactors: HealthFactor[];
 }
@@ -62,7 +67,7 @@ export interface Transaction {
   createdAt: string;
   amount: string;
   type: 'Income' | 'Expense' | 'Transfer' | 'Debt Repayment';
-  sourceWallet: 'Bank' | 'Cash';
+  walletId: string | null;
   category: string;
   notes?: string;
   payrollId?: string | null;

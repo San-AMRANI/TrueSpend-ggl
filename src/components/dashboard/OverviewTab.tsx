@@ -83,8 +83,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
               {(kpis?.safeToSpend ?? 0).toFixed(2)} <span className="text-lg text-gray-400">MAD</span>
             </div>
             <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-400">
-              <span className="flex items-center gap-1"><Landmark className="h-3 w-3" />Bank: {kpis?.bankBalance.toFixed(2) || '0.00'}</span>
-              <span className="flex items-center gap-1"><Banknote className="h-3 w-3" />Cash: {kpis?.cashOnHand.toFixed(2) || '0.00'}</span>
+              {(kpis?.walletBalances?.Bank ?? 0).toFixed(2) > 0 && <span className="flex items-center gap-1"><Landmark className="h-3 w-3" />Bank: {(kpis?.walletBalances?.Bank ?? 0).toFixed(2)}</span>}
+              {(kpis?.walletBalances?.Cash ?? 0).toFixed(2) > 0 && <span className="flex items-center gap-1"><Banknote className="h-3 w-3" />Cash: {(kpis?.walletBalances?.Cash ?? 0).toFixed(2)}</span>}
+              {(kpis?.walletBalances?.Savings ?? 0).toFixed(2) > 0 && <span className="flex items-center gap-1"><Savings className="h-3 w-3" />Savings: {(kpis?.walletBalances?.Savings ?? 0).toFixed(2)}</span>}
             </p>
             <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-wider text-gray-500">
               <span>Liquidity {(kpis?.totalLiquidity ?? 0).toFixed(0)}</span>
@@ -332,7 +333,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
                     </div>
                     <div className="min-w-0">
                       <p className="truncate font-medium text-gray-900 dark:text-gray-100">{transaction.notes || transaction.category || transaction.type}</p>
-                      <p className="truncate text-xs text-gray-500 dark:text-gray-400">{format(new Date(transaction.createdAt), 'MMM d, yyyy')} · {transaction.sourceWallet}</p>
+                      <p className="truncate text-xs text-gray-500 dark:text-gray-400">{format(new Date(transaction.createdAt), 'MMM d, yyyy')} · {transaction.walletId}</p>
                     </div>
                   </div>
                   <span className={`shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums ${transaction.type === 'Income' ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
