@@ -8,8 +8,9 @@ import { getSpendingPace, isInMonth } from '../../lib/finance';
 import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 import { generateFacts, selectFacts } from '../../lib/financialFacts';
 import { FinancialFactsCarousel } from './FinancialFactsCarousel';
+import { FinancialInsightModal } from './FinancialInsightModal';
 import {
-  ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
+  AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
   Landmark, RefreshCw, Shield, TrendingUp, WalletCards, Clock, Zap
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -43,6 +44,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 }) => {
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
   const [showWalletsModal, setShowWalletsModal] = useState(false);
+  const [insightModalType, setInsightModalType] = useState<'forecast' | 'health' | null>(null);
   
   const currentFm = getCurrentFinancialMonth(payrolls);
   const year = currentFm?.year ?? -1;
@@ -221,17 +223,38 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-2">
         {/* End-of-Month Forecast */}
         <Card className="min-w-0 overflow-hidden">
-          <CardHeader className="pb-2">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" /> End-of-Period Forecast
             </CardTitle>
+            <button
+              type="button"
+              onClick={() => setInsightModalType('forecast')}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+              title="Click for clarification and calculation formula"
+              aria-label="Forecast calculation clarification"
+            >
+              <AlertCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Explanation</span>
+            </button>
           </CardHeader>
           <CardContent>
             {kpis?.forecast && kpis.forecast.totalDays > 0 ? (
               <div className="space-y-4">
                 {/* Expected balance */}
                 <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4 dark:border-blue-900/40 dark:bg-blue-950/20">
-                  <p className="text-xs font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">Expected end-of-period balance</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">Expected end-of-period balance</p>
+                    <button
+                      type="button"
+                      onClick={() => setInsightModalType('forecast')}
+                      className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200"
+                      title="How is this expected balance calculated?"
+                      aria-label="Expected balance explanation"
+                    >
+                      <AlertCircle className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                   {kpis.avgDailySpend > 0 && (
                     <p className="mt-1 text-[10px] text-blue-500/80 dark:text-blue-400/80">Based on your current average spending of {kpis.avgDailySpend.toFixed(2)} MAD/day</p>
                   )}
@@ -286,10 +309,20 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
         {/* Financial Health Score */}
         <Card className="min-w-0 overflow-hidden">
-          <CardHeader className="pb-2">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <Heart className="h-5 w-5 text-rose-500" /> Financial Health
             </CardTitle>
+            <button
+              type="button"
+              onClick={() => setInsightModalType('health')}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+              title="Click for clarification and calculation formula"
+              aria-label="Financial health calculation clarification"
+            >
+              <AlertCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Explanation</span>
+            </button>
           </CardHeader>
           <CardContent>
             {kpis ? (
@@ -424,6 +457,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           onDeleteWallet={handleDeleteWallet}
         />
       )}
+
+      <FinancialInsightModal
+        type={insightModalType || 'forecast'}
+        isOpen={Boolean(insightModalType)}
+        onClose={() => setInsightModalType(null)}
+        kpis={kpis}
+      />
     </div>
   );
 };

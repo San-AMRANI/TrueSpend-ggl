@@ -52,6 +52,8 @@ export function computeFinancialState(input: FinancialEngineInput) {
   }
 
   let monthlyExpenses = 0;
+  let monthlyVariableExpenses = 0;
+  let monthlyFixedExpenses = 0;
   let monthlyIncome = 0;
   let dailySpent = 0;
   let todaysIncome = 0;
@@ -59,6 +61,18 @@ export function computeFinancialState(input: FinancialEngineInput) {
   let reimbursements = 0;
 
   const isExpenseOutflow = (type: string) => type === 'Expense' || type === 'Debt Repayment';
+  
+  const variableCategories = [
+    '🛒 Groceries',
+    '🍔 Dining & Takeaway',
+    '☕ Coffee & Quick Food',
+    '🚗 Transportation',
+    '👕 Personal & Clothing',
+    '🎬 Entertainment',
+    '👥 Social',
+    '👨‍👩‍👦 Family & Gifts',
+    '🚨 Unexpected',
+  ];
 
   const applyTransaction = (tx: Transaction, balances: { [key: string]: number }) => {
     const amount = parseFloat(tx.amount as unknown as string);
@@ -124,7 +138,14 @@ export function computeFinancialState(input: FinancialEngineInput) {
     }
 
     if (currentFm && transactionDay <= today && isInFinancialMonth(txDate, input.payrolls, currentFm.year, currentFm.month)) {
-      if (tx.type === 'Expense') monthlyExpenses += txAmount;
+      if (tx.type === 'Expense') {
+        monthlyExpenses += txAmount;
+        if (variableCategories.includes(tx.category || '')) {
+          monthlyVariableExpenses += txAmount;
+        } else {
+          monthlyFixedExpenses += txAmount;
+        }
+      }
       if (tx.type === 'Income') monthlyIncome += txAmount;
     }
     if (transactionDay.getTime() === today.getTime()) {
@@ -163,6 +184,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
   const safeToSpend = totalLiquidity - emergencyBuffer - pendingPayables;
 
   let avgDailySpend = 0;
+  let avgDailyVariableSpend = 0;
   let elapsedDays = 1;
   let totalDaysInMonth = 30; // fallback
   let daysRemaining = 0;
@@ -175,21 +197,34 @@ export function computeFinancialState(input: FinancialEngineInput) {
     ? input.budgets.filter(b => b.year === currentFm.year && b.month === currentFm.month) 
     : [];
   const totalBudget = currentMonthBudgets.reduce((sum, b) => sum + (parseFloat(b.amount as string) || 0), 0);
+  const totalVariableBudget = currentMonthBudgets.filter(b => variableCategories.includes(b.category)).reduce((sum, b) => sum + (parseFloat(b.amount as string) || 0), 0);
+  const totalFixedBudget = currentMonthBudgets.filter(b => !variableCategories.includes(b.category)).reduce((sum, b) => sum + (parseFloat(b.amount as string) || 0), 0);
 
   if (currentFm) {
     totalDaysInMonth = Math.max(1, Math.round((currentFm.end.getTime() - currentFm.start.getTime()) / 86_400_000) + 1);
     elapsedDays = Math.max(1, Math.round((today.getTime() - currentFm.start.getTime()) / 86_400_000) + 1);
     daysRemaining = Math.max(0, totalDaysInMonth - elapsedDays);
+    
+    // avgDailySpend displayed in UI will still show total avg for transparency
     avgDailySpend = monthlyExpenses / elapsedDays;
+    
+    avgDailyVariableSpend = monthlyVariableExpenses / elapsedDays;
+    const remainingFixedBudget = Math.max(0, totalFixedBudget - monthlyFixedExpenses);
 
-    const projectedTotalExpenses = monthlyExpenses + (avgDailySpend * daysRemaining);
-    expectedEndBalance = totalLiquidity - (avgDailySpend * daysRemaining);
+    expectedEndBalance = totalLiquidity - remainingFixedBudget - (avgDailyVariableSpend * daysRemaining);
+    bestEndBalance = totalLiquidity - remainingFixedBudget - (avgDailyVariableSpend * 0.7 * daysRemaining);
+    worstEndBalance = totalLiquidity - remainingFixedBudget - (avgDailyVariableSpend * 1.5 * daysRemaining);
 
-    const idealSpendToDate = totalBudget > 0 ? (totalBudget * elapsedDays / totalDaysInMonth) : 0;
-    spendingPacePercent = idealSpendToDate > 0 ? ((monthlyExpenses / idealSpendToDate) * 100) : 0;
-
-    bestEndBalance = totalLiquidity - (avgDailySpend * 0.8 * daysRemaining);
-    worstEndBalance = totalLiquidity - (avgDailySpend * 1.3 * daysRemaining);
+    const idealVariableSpendToDate = totalVariableBudget > 0 ? (totalVariableBudget * elapsedDays / totalDaysInMonth) : 0;
+    
+    if (idealVariableSpendToDate > 0) {
+      // Focus spending pace purely on controllable variable spending
+      spendingPacePercent = (monthlyVariableExpenses / idealVariableSpendToDate) * 100;
+    } else {
+      // fallback to total budget pace if no variable budget exists
+      const idealSpendToDate = totalBudget > 0 ? (totalBudget * elapsedDays / totalDaysInMonth) : 0;
+      spendingPacePercent = idealSpendToDate > 0 ? ((monthlyExpenses / idealSpendToDate) * 100) : 0;
+    }
   }
 
   const runwayDays = avgDailySpend > 0 ? Math.floor(safeToSpend / avgDailySpend) : safeToSpend > 0 ? 999 : 0;
@@ -206,6 +241,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
     emergencyBuffer,
     monthlyIncome,
     monthlyExpenses,
+    projectedTotalExpenses: monthlyExpenses + (avgDailyVariableSpend * daysRemaining),
     safeToSpend,
     pendingPayables,
     pendingReceivables,
@@ -278,6 +314,7 @@ interface HealthInput {
   emergencyBuffer: number;
   monthlyIncome: number;
   monthlyExpenses: number;
+  projectedTotalExpenses: number;
   safeToSpend: number;
   pendingPayables: number;
   pendingReceivables: number;
@@ -291,33 +328,34 @@ interface HealthInput {
 
 function computeHealthScore(input: HealthInput) {
   const factors = [];
+  const referenceIncome = Math.max(input.salary, input.monthlyIncome, 1);
 
-  // 1. Savings rate (20 pts)
-  const savingsRate = input.monthlyIncome > 0 ? ((input.monthlyIncome - input.monthlyExpenses) / input.monthlyIncome) * 100 : 0;
-  const savingsScore = Math.min(20, Math.max(0, Math.round(savingsRate)));
-  const savingsLabel = savingsRate >= 20 ? 'Excellent saving' : savingsRate >= 10 ? 'Good saving' : savingsRate > 0 ? 'Low saving' : 'No savings this period';
-  factors.push({ name: 'Savings', score: savingsScore, maxPoints: 20, label: savingsLabel });
+  // 1. Cash Flow Retention (20 pts)
+  const savingsRate = ((referenceIncome - input.projectedTotalExpenses) / referenceIncome) * 100;
+  const savingsScore = Math.min(20, Math.max(0, Math.round(savingsRate >= 15 ? 20 : savingsRate >= 5 ? 10 : savingsRate > 0 ? 5 : 0)));
+  const savingsLabel = savingsRate >= 15 ? 'Excellent cash retention' : savingsRate >= 5 ? 'Good cash retention' : savingsRate > 0 ? 'Low cash retention' : 'Negative cash flow';
+  factors.push({ name: 'Cash Flow', score: savingsScore, maxPoints: 20, label: savingsLabel });
 
   // 2. Emergency buffer coverage (20 pts)
-  // Target is roughly 3x monthly expenses
-  const targetBuffer = input.monthlyExpenses * 3 > 0 ? input.monthlyExpenses * 3 : 5000; // fallback target
+  // Target is roughly 3x projected monthly expenses
+  const targetBuffer = input.projectedTotalExpenses * 3 > 0 ? input.projectedTotalExpenses * 3 : 5000; // fallback target
   const bufferCoverage = Math.min(1, input.emergencyBuffer / targetBuffer);
   const bufferScore = Math.round(bufferCoverage * 20);
   const bufferLabel = bufferCoverage >= 1 ? 'Buffer fully funded (3x expenses)' : bufferCoverage >= 0.3 ? 'Buffer partially funded' : 'Buffer needs funding';
   factors.push({ name: 'Emergency Buffer', score: bufferScore, maxPoints: 20, label: bufferLabel });
 
   // 3. Debt load (15 pts)
-  const debtRatio = input.monthlyIncome > 0 ? Math.min(1, input.pendingPayables / input.monthlyIncome) : (input.pendingPayables > 0 ? 1 : 0);
+  const debtRatio = Math.min(1, input.pendingPayables / referenceIncome);
   const debtScore = Math.round((1 - debtRatio) * 15);
   const debtLabel = debtRatio <= 0.1 ? 'Minimal debt' : debtRatio <= 0.3 ? 'Manageable debt' : 'Heavy debt load';
   factors.push({ name: 'Debt Load', score: debtScore, maxPoints: 15, label: debtLabel });
 
   // 4. Budget adherence (15 pts)
-  let budgetScore = 8;
+  let budgetScore = 10;
   let budgetLabel = 'No budgets set';
   if (input.totalBudget > 0) {
     const adherence = input.spendingPacePercent;
-    budgetScore = adherence <= 100 ? 15 : adherence <= 120 ? 10 : adherence <= 150 ? 5 : 0;
+    budgetScore = adherence <= 100 ? 15 : adherence <= 110 ? 10 : adherence <= 130 ? 5 : 0;
     budgetLabel = adherence <= 90 ? 'Under budget' : adherence <= 100 ? 'On budget' : adherence <= 120 ? 'Slightly over budget' : 'Significantly over budget';
   }
   factors.push({ name: 'Budget Control', score: budgetScore, maxPoints: 15, label: budgetLabel });
