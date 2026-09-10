@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send, Cloud, Clock, Check } from 'lucide-react';
+import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send, Cloud, Clock, Check, User, ShieldCheck, LogOut, Mail, Key } from 'lucide-react';
 import { googleSignIn, getGoogleAccessToken } from '../../lib/googleAuth';
 import { uploadToGoogleDrive } from '../../lib/driveUpload';
 import { dashboardService } from '../../services/api/dashboardService';
@@ -56,7 +56,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [notifToast, setNotifToast] = useState<string | null>(null);
   const [isDriveConnecting, setIsDriveConnecting] = useState(false);
   const [isDriveBackingUp, setIsDriveBackingUp] = useState(false);
-  const { token } = useAuth();
+  const { user, token, signOut } = useAuth();
 
   
   const handleToggleAutoBackup = async () => {
@@ -239,6 +239,60 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           {notifToast}
         </div>
       )}
+
+      {/* ── Profile & Account ── */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <User className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            Profile & Account
+          </CardTitle>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Active Session
+          </span>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/60">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white font-bold text-lg shadow-sm">
+                {(user?.username?.[0] || user?.email?.[0] || 'U').toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                  {user?.username || user?.uid || user?.email?.split('@')[0] || 'Administrator'}
+                </h4>
+                <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                  <Mail className="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
+                  <span className="truncate">{user?.email || 'Authenticated User'}</span>
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700">
+                    <ShieldCheck className="h-3 w-3 text-indigo-500" />
+                    Admin Privileges
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700">
+                    <Key className="h-3 w-3 text-amber-500" />
+                    JWT Authenticated
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-200 dark:border-gray-800 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={signOut}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/40 font-medium"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign Out
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ── Wallets & Accounts Management ── */}
       {handleCreateWallet && handleUpdateWallet && handleDeleteWallet && (

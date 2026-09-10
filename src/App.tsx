@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
+import { DesktopHeaderNav } from './components/dashboard/DesktopHeaderNav';
 import type { DashboardTab } from './types';
 import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart } from 'lucide-react';
 
@@ -18,13 +19,18 @@ const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
 
 
 function AppContent() {
-  const { user, loading, signIn, signOut } = useAuth();
+  const { user, loading, signIn } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const handleSelectTab = (tab: DashboardTab) => {
+    setActiveTab(tab);
+    window.dispatchEvent(new CustomEvent('truespend:setTab', { detail: tab }));
+  };
 
   useEffect(() => {
     const cleanup = initGoogleAuth();
@@ -125,23 +131,20 @@ function AppContent() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
       {/* Header — hidden on mobile when the chat tab is active (chat becomes a full-screen overlay) */}
-      <header className={`sticky top-0 z-10 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 sm:px-6 lg:px-8 ${isChatOnMobile ? 'hidden sm:block' : ''}`}>
-        <div className="mx-auto flex max-w-7xl items-center justify-between">
-          <div className="flex items-center gap-2">
+      <header className={`sticky top-0 z-30 border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md px-4 py-2.5 sm:px-6 lg:px-8 ${isChatOnMobile ? 'hidden sm:block' : ''}`}>
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <div className="flex items-center gap-2 shrink-0">
             <button className="md:hidden p-1.5 -ml-1.5 rounded-md text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" onClick={() => setIsSidebarOpen(true)}>
               <Menu className="h-5 w-5" />
             </button>
             <img src={appIconSrc} alt="TrueSpend Logo" className="h-8 w-8" />
             <span className="text-lg font-bold tracking-tight text-gray-900 dark:text-white">TrueSpend</span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="hidden sm:block text-sm font-medium text-gray-600 dark:text-gray-300">{user.email}</span>
-            <Button variant="outline" size="sm" onClick={signOut}>Sign Out</Button>
-          </div>
+          <DesktopHeaderNav activeTab={activeTab} onSelectTab={handleSelectTab} />
         </div>
       </header>
       <main className={`mx-auto min-w-0 max-w-7xl overflow-x-hidden ${isChatOnMobile ? 'p-0 sm:p-6 sm:pb-24 md:pb-6 lg:p-8' : 'p-3 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8'}`}>
-        <Dashboard onTabChange={setActiveTab} />
+        <Dashboard activeTab={activeTab} onTabChange={setActiveTab} />
       </main>
 
       {/* Sidebar Drawer */}

@@ -18,9 +18,10 @@ import type { DashboardTab } from '../types';
 
 interface DashboardProps {
   onTabChange?: (tab: DashboardTab) => void;
+  activeTab?: DashboardTab;
 }
 
-export default function Dashboard({ onTabChange }: DashboardProps = {}) {
+export default function Dashboard({ onTabChange, activeTab: propActiveTab }: DashboardProps = {}) {
 
   const { token } = useAuth();
   const {
@@ -69,6 +70,12 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     setActiveTabRaw(tab);
     onTabChange?.(tab);
   };
+
+  useEffect(() => {
+    if (propActiveTab && propActiveTab !== activeTab) {
+      setActiveTabRaw(propActiveTab);
+    }
+  }, [propActiveTab]);
 
   useEffect(() => {
     const handleSetTab = (e: any) => {
