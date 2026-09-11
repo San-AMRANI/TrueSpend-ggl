@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { DashboardNav } from './dashboard/DashboardNav';
 import { OverviewTab } from './dashboard/OverviewTab';
+import { CashFlowTab } from './dashboard/CashFlowTab';
 import { TransactionsTab } from './dashboard/TransactionsTab';
 
 import { DebtsTab } from './dashboard/DebtsTab';
@@ -106,6 +107,13 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           handleCreateWallet={handleCreateWallet}
           handleUpdateWallet={handleUpdateWallet}
           handleDeleteWallet={handleDeleteWallet}
+        />
+      )}
+
+      {activeTab === 'cash-flow' && (
+        <CashFlowTab 
+          kpis={kpis} 
+          transactions={transactions}
         />
       )}
 

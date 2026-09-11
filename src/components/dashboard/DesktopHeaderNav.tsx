@@ -15,6 +15,7 @@ import {
   Bot,
   FileBarChart,
   MoreHorizontal,
+  TrendingUp,
 } from 'lucide-react';
 
 interface DesktopHeaderNavProps {
@@ -30,13 +31,14 @@ interface NavTabItem {
 
 const mainTabs: NavTabItem[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'cash-flow', label: 'Cash Flow', icon: TrendingUp },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
-  { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
   { id: 'budgets', label: 'Budgets', icon: WalletCards },
 ];
 
 const moreTabs: NavTabItem[] = [
+  { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   { id: 'debts', label: 'Debts & Splits', icon: Users },
   { id: 'what-if', label: 'What-If', icon: Calculator },
   { id: 'digest', label: 'Digest', icon: FileText },

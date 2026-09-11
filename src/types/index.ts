@@ -62,6 +62,8 @@ export interface KPI {
   pendingReceivables: number;
   runwayDays: number;
   avgDailySpend: number;
+  avgDailyVariableSpend?: number;
+  remainingFixedBudget?: number;
   forecast: Forecast;
   walletBalances: {
     [key: string]: number;
@@ -154,4 +156,4 @@ export interface UserSettings {
   googleDriveToken?: string;
 }
 
-export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'reports';
+export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'reports' | 'cash-flow';

@@ -295,6 +295,8 @@ export function computeFinancialState(input: FinancialEngineInput) {
     pendingReceivables,
     runwayDays,
     avgDailySpend: Math.round(avgDailySpend * 100) / 100,
+    avgDailyVariableSpend: Math.round(avgDailyVariableSpend * 100) / 100,
+    remainingFixedBudget: Math.round(Math.max(0, totalFixedBudget - monthlyFixedExpenses) * 100) / 100,
     forecast: {
       expected: Math.round(expectedEndBalance * 100) / 100,
       best: Math.round(bestEndBalance * 100) / 100,

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DashboardTab } from '../../types';
-import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, ChevronDown, ChevronUp, Bot, FileBarChart } from 'lucide-react';
+import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, ChevronDown, ChevronUp, Bot, FileBarChart, TrendingUp } from 'lucide-react';
 
 interface DashboardNavProps {
   activeTab: DashboardTab;
@@ -9,6 +9,7 @@ interface DashboardNavProps {
 
 const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.FC<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
+  { id: 'cash-flow', label: 'Cash Flow', shortLabel: 'Cash Flow', icon: TrendingUp },
   { id: 'calendar', label: 'Calendar', shortLabel: 'Calendar', icon: CalendarDays },
   { id: 'analytics', label: 'Analytics', shortLabel: 'Analytics', icon: BarChart2 },
   { id: 'transactions', label: 'Transactions', shortLabel: 'Transactions', icon: ArrowRightLeft },
