@@ -3,9 +3,9 @@ import { debtService } from './DebtService.js';
 import { settingsService } from './SettingsService.js';
 import { categoryBudgetService } from './CategoryBudgetService.js';
 
-export type AiAction = { type: 'create_transaction' | 'create_debt' | 'update_settings' | 'upsert_budget'; parameters: Record<string, unknown>; summary: string };
+export type AiAction = { type: 'create_transaction' | 'create_debt' | 'update_settings' | 'upsert_budget' | 'settle_debt'; parameters: Record<string, unknown>; summary: string };
 
-const permitted = new Set<AiAction['type']>(['create_transaction', 'create_debt', 'update_settings', 'upsert_budget']);
+const permitted = new Set<AiAction['type']>(['create_transaction', 'create_debt', 'update_settings', 'upsert_budget', 'settle_debt']);
 
 export const sanitizeAiActions = (value: unknown): AiAction[] => {
   if (!Array.isArray(value)) return [];
@@ -39,8 +39,8 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
       if (p.amount !== undefined) p.amount = Number(p.amount);
       if (p.reimbursable_amount !== undefined) p.reimbursable_amount = Number(p.reimbursable_amount);
       
-      if (!Number.isFinite(p.amount) || !['Income', 'Expense', 'Transfer', 'Debt Repayment'].includes(p.type) || !['Bank', 'Cash'].includes(p.source_wallet) || !p.category) {
-        throw new Error(`Transaction proposal is missing required fields. Amount: ${p.amount}, Type: ${p.type}, Wallet: ${p.source_wallet}, Category: ${p.category}`);
+      if (!Number.isFinite(p.amount) || !['Income', 'Expense', 'Transfer', 'Debt Repayment'].includes(p.type) || !p.walletId || !p.category) {
+        throw new Error(`Transaction proposal is missing required fields. Amount: ${p.amount}, Type: ${p.type}, Wallet: ${p.walletId}, Category: ${p.category}`);
       }
       results.push(await transactionService.createTransaction(userId, p));
     }
@@ -56,10 +56,9 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
     
     if (action.type === 'update_settings') {
       if (p.payday !== undefined) p.payday = Number(p.payday);
-      if (p.emergencyBuffer !== undefined) p.emergencyBuffer = Number(p.emergencyBuffer);
       if (p.salary !== undefined) p.salary = Number(p.salary);
       
-      if (p.payday === undefined && p.emergencyBuffer === undefined && p.salary === undefined) {
+      if (p.payday === undefined && p.salary === undefined) {
         throw new Error('Settings proposal has no changes');
       }
       results.push(await settingsService.updateSettings(userId, p));
@@ -74,6 +73,18 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
         throw new Error('Budget proposal is missing required fields.');
       }
       results.push(await categoryBudgetService.upsertBudget(userId, p));
+    }
+
+    if (action.type === 'settle_debt') {
+      if (p.amount !== undefined) p.amount = Number(p.amount);
+      if (!p.debtId || !Number.isFinite(p.amount) || !p.walletId) {
+        throw new Error('Settle debt proposal is missing required fields (debtId, amount, wallet).');
+      }
+      results.push(await debtService.processDebt(userId, {
+        debt_id: String(p.debtId),
+        amount: p.amount,
+        walletId: String(p.walletId),
+      }));
     }
   }
   

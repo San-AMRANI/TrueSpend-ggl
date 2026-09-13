@@ -3,7 +3,35 @@ export interface User {
   uid: string;
 }
 
+export interface HealthFactor {
+  name: string;
+  score: number;
+  maxPoints: number;
+  label: string;
+}
+
+export interface Forecast {
+  expected: number;
+  best: number;
+  worst: number;
+  daysRemaining: number;
+  totalDays: number;
+  elapsedDays: number;
+  spendingPacePercent: number;
+}
+
+export interface Wallet {
+  id: string;
+  userId: string;
+  name: string;
+  type: 'Bank' | 'Cash' | 'Savings';
+  isMain: boolean;
+  initialBalance: string;
+  balance: number;
+}
+
 export interface KPI {
+  accounts: Wallet[];
   totalLiquidity: number;
   bankBalance: number;
   cashOnHand: number;
@@ -19,12 +47,49 @@ export interface KPI {
   payday: number | null;
   emergencyBuffer: number;
   salary?: number;
+  automatedDriveBackups?: boolean;
+  lastDriveBackupDate?: string;
+  driveBackupFrequency?: 'daily' | '3days' | 'weekly';
   currentFinancialAmount: number;
   financialPeriodStart: string | null;
   financialPeriodEnd: string | null;
   nextPayrollDate: string | null;
   financialMonthReady: boolean;
   financialMonthMessage: string | null;
+  // Phase 1 Intelligence
+  safeToSpend: number;
+  pendingPayables: number;
+  pendingReceivables: number;
+  runwayDays: number;
+  avgDailySpend: number;
+  avgDailyVariableSpend?: number;
+  remainingFixedBudget?: number;
+  forecast: Forecast;
+  walletBalances: {
+    [key: string]: number;
+    Bank?: number;
+    Cash?: number;
+    Savings?: number;
+  };
+  healthScore: number;
+  healthFactors: HealthFactor[];
+}
+
+export type FinancialContextType = 'Trip' | 'Work / Mission' | 'Project' | 'Life Event' | 'Other';
+export type FinancialContextStatus = 'Planned' | 'Active' | 'Completed';
+
+export interface FinancialContext {
+  id: string;
+  userId: string;
+  name: string;
+  type: FinancialContextType;
+  startDate: string | null;
+  endDate: string | null;
+  budget: string | null;
+  status: FinancialContextStatus;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Transaction {
@@ -33,7 +98,10 @@ export interface Transaction {
   createdAt: string;
   amount: string;
   type: 'Income' | 'Expense' | 'Transfer' | 'Debt Repayment';
-  sourceWallet: 'Bank' | 'Cash';
+  walletId?: string | null;
+  sourceWallet?: string | null;
+  destinationWalletId?: string | null;
+  toWalletId?: string | null;
   category: string;
   notes?: string;
   payrollId?: string | null;
@@ -41,6 +109,20 @@ export interface Transaction {
   linkedContactId?: string | null;
   linkedContactName?: string | null;
   linkedDebtType?: 'Receivable' | 'Payable' | null;
+  contextId?: string | null;
+}
+
+export interface Goal {
+  id?: string;
+  name?: string;
+  targetAmount?: number;
+  currentAmount?: number;
+}
+
+export interface Subscription {
+  id?: string;
+  name?: string;
+  amount?: number;
 }
 
 export interface CategoryBudget {
@@ -86,6 +168,10 @@ export interface UserSettings {
   emergencyBuffer: number;
   payday?: number;
   salary?: number;
+  automatedDriveBackups?: boolean;
+  lastDriveBackupDate?: string;
+  driveBackupFrequency?: 'daily' | '3days' | 'weekly';
+  googleDriveToken?: string;
 }
 
-export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat';
+export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'reports' | 'cash-flow' | 'contexts';

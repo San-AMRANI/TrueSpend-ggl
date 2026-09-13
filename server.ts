@@ -4,6 +4,7 @@ import path from "path";
 import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
 import apiRouter from "./server/routes/index.js";
+import { NotificationScheduler } from './server/services/NotificationScheduler.js';
 
 async function startServer() {
   const app = express();
@@ -14,6 +15,10 @@ async function startServer() {
 
   // Mount clean layered API routes
   app.use("/api", apiRouter);
+
+  // Notification Scheduler
+  const scheduler = new NotificationScheduler();
+  scheduler.start();
 
   // Vite middleware for development vs static fallback for production
   if (process.env.NODE_ENV !== "production") {

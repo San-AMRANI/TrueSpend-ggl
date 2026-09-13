@@ -1,46 +1,153 @@
 import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send } from 'lucide-react';
+import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send, Cloud, Clock, Check, User, ShieldCheck, LogOut, Mail, Key } from 'lucide-react';
+import { googleSignIn, getGoogleAccessToken } from '../../lib/googleAuth';
+import { uploadToGoogleDrive } from '../../lib/driveUpload';
+import { dashboardService } from '../../services/api/dashboardService';
+import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import type { NotifSettings } from '../../hooks/useNotifications';
+import { WalletsManager } from './WalletsManager';
+import type { NotifSettings, ServerNotifSettings } from '../../hooks/useNotifications';
+import type { Wallet } from '../../types';
 
 interface NotificationsApi {
   supported: boolean;
   permission: NotificationPermission;
   settings: NotifSettings;
+  serverSettings: ServerNotifSettings | null;
   updateSettings: (patch: Partial<NotifSettings>) => void;
+  updateServerPreferences: (patch: Partial<ServerNotifSettings>) => void;
   requestPermission: () => Promise<boolean>;
   sendNow: (data: any) => void;
 }
 
 interface SettingsTabProps {
-  emergencyBuffer: number;
-  setEmergencyBuffer: (val: number) => void;
+  userSettings: any;
   isSaving: boolean;
   isExporting?: boolean;
   isImporting?: boolean;
-  handleSaveSettings: (buffer: number) => void;
+  handleSaveSettings: (payload: any, notifyUser?: boolean) => Promise<void>;
   handleExportSql?: () => void;
   handleImportSql?: (sql: string) => Promise<{ message: string }>;
+  wallets?: Wallet[];
+  handleCreateWallet?: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
+  handleUpdateWallet?: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
+  handleDeleteWallet?: (id: string, reassignToWalletId?: string) => Promise<any>;
   notifications: NotificationsApi;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
-  emergencyBuffer,
-  setEmergencyBuffer,
+  userSettings,
   isSaving,
   isExporting = false,
   isImporting = false,
   handleSaveSettings,
   handleExportSql,
   handleImportSql,
+  wallets = [],
+  handleCreateWallet,
+  handleUpdateWallet,
+  handleDeleteWallet,
   notifications,
 }) => {
   const { theme, setTheme } = useTheme();
   const importFileRef = useRef<HTMLInputElement>(null);
   const [notifToast, setNotifToast] = useState<string | null>(null);
+  const [isDriveConnecting, setIsDriveConnecting] = useState(false);
+  const [isDriveBackingUp, setIsDriveBackingUp] = useState(false);
+  const { user, token, signOut } = useAuth();
 
+  
+  const handleToggleAutoBackup = async () => {
+    if (userSettings?.automatedDriveBackups) {
+      await handleSaveSettings({ automatedDriveBackups: false }, false);
+      showNotifToast('Automated backups disabled.');
+    } else {
+      const accessToken = getGoogleAccessToken();
+      if (!accessToken) {
+        setIsDriveConnecting(true);
+        try {
+          const res = await googleSignIn();
+          if (res && res.accessToken) {
+            await handleSaveSettings({
+              automatedDriveBackups: true,
+              driveBackupFrequency: userSettings?.driveBackupFrequency || 'weekly',
+              googleDriveToken: res.accessToken,
+            }, false);
+            showNotifToast('Google Drive connected and automated backups enabled!');
+          }
+        } catch (e) {
+          console.error(e);
+          alert('Failed to connect Google Drive.');
+        } finally {
+          setIsDriveConnecting(false);
+        }
+      } else {
+        await handleSaveSettings({
+          automatedDriveBackups: true,
+          driveBackupFrequency: userSettings?.driveBackupFrequency || 'weekly',
+          googleDriveToken: accessToken,
+        }, false);
+        showNotifToast('Automated backups enabled!');
+      }
+    }
+  };
+
+  const handleFrequencyChange = async (freq: 'daily' | '3days' | 'weekly') => {
+    await handleSaveSettings({ driveBackupFrequency: freq }, false);
+    showNotifToast(`Backup schedule updated to ${freq === 'daily' ? 'Daily' : freq === '3days' ? 'Every 3 Days' : 'Weekly'}.`);
+  };
+
+  const handleBackupToDrive = async () => {
+    const performBackup = async (accessToken: string) => {
+      try {
+        setIsDriveBackingUp(true);
+        // Try server-side backup first
+        try {
+          const res = await dashboardService.backupToDrive(accessToken, token);
+          if (res && res.success) {
+            await handleSaveSettings({ lastDriveBackupDate: res.lastDriveBackupDate }, false);
+            showNotifToast('Backup saved to Google Drive successfully!');
+            return;
+          }
+        } catch (serverErr) {
+          console.warn('Server-side backup endpoint returned error, falling back to direct upload:', serverErr);
+        }
+
+        // Direct client-side fallback
+        const blob = await dashboardService.getSqlBlob(token);
+        const filename = `truespend_backup_${new Date().toISOString().slice(0, 10)}.sql`;
+        await uploadToGoogleDrive(accessToken, blob, filename);
+        await handleSaveSettings({ lastDriveBackupDate: new Date().toISOString() }, false);
+        showNotifToast('Backup saved to Google Drive successfully!');
+      } catch (e: any) {
+        console.error(e);
+        alert('Failed to backup to Google Drive: ' + (e?.message || 'Unknown error'));
+      } finally {
+        setIsDriveBackingUp(false);
+      }
+    };
+
+    let accessToken = getGoogleAccessToken();
+    if (!accessToken) {
+      setIsDriveConnecting(true);
+      try {
+        const res = await googleSignIn();
+        if (res && res.accessToken) {
+          await performBackup(res.accessToken);
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Google Sign-In was cancelled or failed.');
+      } finally {
+        setIsDriveConnecting(false);
+      }
+    } else {
+      await performBackup(accessToken);
+    }
+  };
+  
   const showNotifToast = (msg: string) => {
     setNotifToast(msg);
     setTimeout(() => setNotifToast(null), 3000);
@@ -79,7 +186,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       return;
     }
 
-    if (!notifications.settings.enabled) {
+    if (!notifications.serverSettings?.enabled) {
       // Turning ON
       if (notifications.permission !== 'granted') {
         const granted = await notifications.requestPermission();
@@ -88,11 +195,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           return;
         }
       }
-      notifications.updateSettings({ enabled: true });
-      showNotifToast('✅ Notifications enabled! You\'ll get one smart insight per day.');
+      notifications.updateServerPreferences({ enabled: true });
+      showNotifToast('✅ Notifications enabled!');
     } else {
       // Turning OFF
-      notifications.updateSettings({ enabled: false });
+      notifications.updateServerPreferences({ enabled: false });
       showNotifToast('🔕 Notifications disabled.');
     }
   };
@@ -131,6 +238,70 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-4 py-3 text-sm font-medium shadow-lg">
           {notifToast}
         </div>
+      )}
+
+      {/* ── Profile & Account ── */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <User className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            Profile & Account
+          </CardTitle>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Active Session
+          </span>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/60">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white font-bold text-lg shadow-sm">
+                {(user?.username?.[0] || user?.email?.[0] || 'U').toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                  {user?.username || user?.uid || user?.email?.split('@')[0] || 'Administrator'}
+                </h4>
+                <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                  <Mail className="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
+                  <span className="truncate">{user?.email || 'Authenticated User'}</span>
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700">
+                    <ShieldCheck className="h-3 w-3 text-indigo-500" />
+                    Admin Privileges
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700">
+                    <Key className="h-3 w-3 text-amber-500" />
+                    JWT Authenticated
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-200 dark:border-gray-800 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={signOut}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/40 font-medium"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign Out
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Wallets & Accounts Management ── */}
+      {handleCreateWallet && handleUpdateWallet && handleDeleteWallet && (
+        <WalletsManager
+          wallets={wallets}
+          onCreateWallet={handleCreateWallet}
+          onUpdateWallet={handleUpdateWallet}
+          onDeleteWallet={handleDeleteWallet}
+        />
       )}
 
       <Card>
@@ -181,29 +352,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 </button>
               </div>
             </div>
-
-            {/* Emergency buffer */}
-            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
-              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Emergency Liquidity Buffer</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                Keep a safety cushion. This amount will be excluded from your daily allowance calculation.
-              </p>
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  value={emergencyBuffer}
-                  onChange={(e) => setEmergencyBuffer(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  placeholder="Buffer amount"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <Button disabled={isSaving} onClick={() => handleSaveSettings(emergencyBuffer)}>
-                {isSaving ? 'Saving...' : 'Save Settings'}
-              </Button>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -252,15 +400,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <button
                   onClick={handleToggleNotifications}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
-                    notifications.settings.enabled ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
+                    notifications.serverSettings?.enabled ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
                   }`}
                   role="switch"
-                  aria-checked={notifications.settings.enabled}
+                  aria-checked={notifications.serverSettings?.enabled || false}
                   id="notif-toggle"
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
-                      notifications.settings.enabled ? 'translate-x-6' : 'translate-x-1'
+                      notifications.serverSettings?.enabled ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
                 </button>
@@ -268,7 +416,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             )}
 
             {/* Time picker */}
-            {notifications.settings.enabled && notifications.permission === 'granted' && (
+            {notifications.serverSettings?.enabled && notifications.permission === 'granted' && (
               <div className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
                 <div className="flex-1">
                   <label htmlFor="notif-time" className="text-sm font-medium text-gray-900 dark:text-gray-100 block mb-1">
@@ -279,15 +427,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <input
                   id="notif-time"
                   type="time"
-                  value={notifications.settings.time}
-                  onChange={e => notifications.updateSettings({ time: e.target.value })}
+                  value={notifications.serverSettings?.deliveryTime || '09:00'}
+                  onChange={e => notifications.updateServerPreferences({ deliveryTime: e.target.value })}
                   className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             )}
 
             {/* Test button */}
-            {notifications.settings.enabled && notifications.permission === 'granted' && (
+            {notifications.serverSettings?.enabled && notifications.permission === 'granted' && (
               <div className="flex items-center gap-3">
                 <Button
                   variant="outline"
@@ -304,6 +452,101 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </CardContent>
       </Card>
 
+            {/* ── Google Drive Backups ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Cloud className="h-5 w-5 text-blue-500" />
+            Google Drive Automated Backups
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-4 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Cloud Database Backups</h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 leading-relaxed">
+                Automatically backup your full PostgreSQL database to your personal Google Drive on your chosen schedule.
+                Backups are processed via server-side scheduler and cloud synchronization.
+              </p>
+            </div>
+            
+            <div className="flex items-center justify-between gap-4 border-t border-gray-200 dark:border-gray-800 pt-4">
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Automated Backups</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {userSettings?.lastDriveBackupDate ? `Last backup: ${new Date(userSettings.lastDriveBackupDate).toLocaleString()}` : 'No backups yet.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={isDriveConnecting}
+                onClick={handleToggleAutoBackup}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                  userSettings?.automatedDriveBackups ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
+                }`}
+                role="switch"
+                aria-checked={Boolean(userSettings?.automatedDriveBackups)}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                    userSettings?.automatedDriveBackups ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Configurable Interval when enabled */}
+            {userSettings?.automatedDriveBackups && (
+              <div className="border-t border-gray-200 dark:border-gray-800 pt-4 space-y-2">
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-indigo-500" />
+                  Backup Interval
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'daily', label: 'Daily', desc: 'Every 24h' },
+                    { id: '3days', label: 'Every 3 Days', desc: 'Every 72h' },
+                    { id: 'weekly', label: 'Weekly', desc: 'Every 7 days' },
+                  ].map((option) => {
+                    const isSelected = (userSettings?.driveBackupFrequency || 'weekly') === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => handleFrequencyChange(option.id as 'daily' | '3days' | 'weekly')}
+                        className={`flex flex-col items-center justify-center p-2.5 rounded-lg border text-xs font-medium transition-all ${
+                          isSelected
+                            ? 'bg-indigo-50 border-indigo-500 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-500 dark:text-indigo-300 shadow-sm'
+                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                      >
+                        <span className="font-semibold">{option.label}</span>
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{option.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 pt-1">
+                  Server-side scheduler checks pending backups on schedule and syncs securely to your Google Drive.
+                </p>
+              </div>
+            )}
+
+            <div className="pt-2 flex items-center gap-3">
+              <Button
+                variant="outline"
+                disabled={isDriveBackingUp || isDriveConnecting}
+                onClick={handleBackupToDrive}
+                className="flex items-center gap-2"
+              >
+                <Cloud className="h-4 w-4 text-blue-600" />
+                {isDriveBackingUp ? 'Uploading to Drive...' : isDriveConnecting ? 'Connecting Drive...' : 'Backup to Drive Now'}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      
       {/* ── Data Backup ── */}
       <Card>
         <CardHeader>

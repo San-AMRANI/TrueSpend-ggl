@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Payroll, Transaction } from '../../types';
+import { Payroll, Transaction, Wallet } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
@@ -17,6 +17,7 @@ interface AnalyticsTabProps {
   payrolls: Payroll[];
   analyticsMonth: string;
   setAnalyticsMonth: (month: string) => void;
+  wallets?: Wallet[];
 }
 
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
@@ -24,6 +25,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   payrolls,
   analyticsMonth,
   setAnalyticsMonth,
+  wallets = [],
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -54,7 +56,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   }, [filteredTransactions]);
 
   const incomeCategoryData = useMemo(() => {
-    const incomes = filteredTransactions.filter((t) => t.type !== 'Expense');
+    const incomes = filteredTransactions.filter((t) => t.type === 'Income');
     const grouped = incomes.reduce((acc, curr) => {
       const category = normalizeCategory(curr.category) || 'Uncategorized';
       acc[category] = (acc[category] || 0) + parseFloat(curr.amount);
@@ -71,17 +73,20 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const walletData = useMemo(() => {
     const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
-    let bank = 0;
-    let cash = 0;
+    const walletSums: Record<string, number> = {};
+
     expenses.forEach((t) => {
-      if (t.sourceWallet === 'Bank') bank += parseFloat(t.amount);
-      if (t.sourceWallet === 'Cash') cash += parseFloat(t.amount);
+      walletSums[t.walletId] = (walletSums[t.walletId] || 0) + parseFloat(t.amount);
     });
-    return [
-      { name: 'Bank', value: bank },
-      { name: 'Cash', value: cash }
-    ].filter(w => w.value > 0);
-  }, [filteredTransactions]);
+
+    return Object.entries(walletSums).map(([walletId, value]) => {
+      const wallet = wallets.find(w => w.id === walletId);
+      return {
+        name: wallet ? wallet.name : walletId,
+        value,
+      };
+    }).filter(w => w.value > 0);
+  }, [filteredTransactions, wallets]);
 
   const comparisonMonth = useMemo(() => {
     if (analyticsMonth === 'All Time') {
@@ -139,7 +144,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const incomeVsExpenseData = useMemo(() => {
     const income = filteredTransactions
-      .filter((t) => t.type !== 'Expense')
+      .filter((t) => t.type === 'Income')
       .reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const expense = filteredTransactions
       .filter((t) => t.type === 'Expense')
@@ -159,7 +164,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       const date = new Date(t.createdAt);
       allMonths.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
 
-      if (t.type !== 'Expense') totalIncome += parseFloat(t.amount);
+      if (t.type === 'Income') totalIncome += parseFloat(t.amount);
       if (t.type === 'Expense') totalExpense += parseFloat(t.amount);
     });
 
@@ -495,8 +500,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                       <span>{format(new Date(transaction.createdAt), 'MMM d, yyyy')}</span>
                       <span className="flex items-center gap-1">
-                        {transaction.sourceWallet === 'Bank' ? <Landmark className="h-3 w-3" /> : <Banknote className="h-3 w-3" />}
-                        {transaction.sourceWallet}
+                        {(() => {
+                          const w = wallets.find(w => w.id === transaction.walletId);
+                          const isBank = w ? w.type === 'Bank' || w.type === 'Savings' : transaction.walletId === 'Bank';
+                          return isBank ? <Landmark className="h-3 w-3" /> : <Banknote className="h-3 w-3" />;
+                        })()}
+                        {wallets.find(w => w.id === transaction.walletId)?.name || transaction.walletId}
                       </span>
                     </div>
                   </div>

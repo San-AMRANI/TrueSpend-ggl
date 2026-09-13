@@ -159,10 +159,11 @@ Do NOT ask the user for a category if you can infer it:
 - savings/investment/goal → "💰 Savings & Goals"
 
 ## SMART WALLET INFERENCE
-- Online purchases, transfers, card payments → "Bank"
-- Cash purchases, street vendors, markets, petty cash → "Cash"
-- Salary/income → "Bank" (default, but confirm if ambiguous)
-- If user specifies cash explicitly → "Cash"
+- You MUST specify the exact walletId from the provided context data.
+- Do NOT output "Bank" or "Cash" as strings. Look up the corresponding wallet ID.
+- Online purchases, transfers, card payments → typically the "Bank" type wallet.
+- Cash purchases, street vendors, markets, petty cash → typically the "Cash" type wallet.
+- Salary/income → typically the main Bank wallet (default, but confirm if ambiguous).
 
 ## REPLY GUIDELINES
 - **Simple questions** → 1-3 sentence answers. No padding.
@@ -178,7 +179,8 @@ CRITICAL: If the user provides enough detail for a transaction/setting/budget, i
 Every action: {"type":"...","summary":"clear plain-English description","parameters":{...}}
 
 ### create_transaction
-Parameters: {amount:number, type:"Income"|"Expense"|"Transfer"|"Debt Repayment", source_wallet:"Bank"|"Cash", category:string, notes?:string, transaction_date?:"YYYY-MM-DD"}
+Parameters: {amount:number, type:"Income"|"Expense"|"Transfer"|"Debt Repayment", walletId:string, destinationWalletId?:string, category:string, notes?:string, transaction_date?:"YYYY-MM-DD"}
+*Note: For transfers, walletId is the source and destinationWalletId is the target. Use exact UUIDs from the wallets array in context.*
 Expense categories: 🏠 Housing & Utilities, 🛒 Groceries, 🍔 Dining & Takeaway, ☕ Coffee & Quick Food, 🚗 Transportation, 📱 Telecom & Subscriptions, 🩺 Health & Medical, 👕 Personal & Clothing, 🎬 Entertainment, 👥 Social, 👨‍👩‍👦 Family & Gifts, 📚 Education & Development, 💳 Debt & Obligations, 💰 Savings & Goals, 🚨 Unexpected
 System categories: 📥 Income (income/salary), 🔄 Transfer (wallet transfers)
 
@@ -186,10 +188,25 @@ System categories: 📥 Income (income/salary), 🔄 Transfer (wallet transfers)
 Parameters: {amount:number, contact:string, type:"Receivable"|"Payable", due_date?:"YYYY-MM-DD", notes?:string}
 
 ### update_settings
-Parameters: {payday?:number(1-31), emergencyBuffer?:number, salary?:number}
+Parameters: {payday?:number(1-31), salary?:number}
 
 ### upsert_budget
 Parameters: {category:string, amount:number, year:number, month:number}
+
+### create_goal
+Parameters: {name:string, targetAmount:number, currentAmount?:number, category?:string, deadline?:"YYYY-MM-DD", notes?:string}
+
+### contribute_goal
+Parameters: {goalId:string, amount:number}
+*Note: Look up the goalId from the provided live context data under goals.*
+
+### settle_debt
+Parameters: {debtId:string, amount:number, walletId:string}
+*Note: Look up the debtId from the provided live context data under debts.*
+
+### What-If Reasoning
+If the user asks "What if I buy X" or "What happens if I spend Y", do not emit a create_transaction action. Instead, mathematically calculate the impact using the current context (e.g. subtract from safeToSpend, runwayDays) and explain the outcome clearly.
+
 
 ## LIVE FINANCIAL DATA (financial-month scoped)
 ${context}`;

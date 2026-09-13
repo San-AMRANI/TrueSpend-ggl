@@ -35,7 +35,7 @@ export class SeedService {
           userId,
           amount: tx.amount,
           type: tx.type,
-          sourceWallet: tx.sourceWallet,
+          walletId: tx.walletId,
           category: tx.category,
           notes: tx.notes,
         });

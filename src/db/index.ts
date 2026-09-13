@@ -30,6 +30,38 @@ export const createPool = () => {
     global._postgresPool.on('error', (err) => {
       console.error('Unexpected error on idle SQL pool client:', err);
     });
+
+    // Auto-migrate new backup settings columns and tables if not present
+    global._postgresPool
+      .query(`
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "automated_drive_backups" integer DEFAULT 0;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "last_drive_backup_date" timestamp;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "drive_backup_frequency" text DEFAULT 'weekly';
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "google_drive_token" text;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "google_drive_token_expiry" timestamp;
+
+        CREATE TABLE IF NOT EXISTS "financial_contexts" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id"),
+          "name" text NOT NULL,
+          "type" text NOT NULL,
+          "start_date" timestamp,
+          "end_date" timestamp,
+          "budget" numeric,
+          "status" text NOT NULL DEFAULT 'Planned',
+          "notes" text,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "wallet_id" uuid REFERENCES "wallets"("id");
+        ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "destination_wallet_id" uuid REFERENCES "wallets"("id");
+        ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "payroll_id" uuid REFERENCES "payrolls"("id");
+        ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "context_id" uuid REFERENCES "financial_contexts"("id");
+      `)
+      .catch((err) => {
+        console.warn('[DB Init] Schema columns ensure notice:', err?.message || err);
+      });
   }
   return global._postgresPool;
 };

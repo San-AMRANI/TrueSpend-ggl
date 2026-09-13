@@ -1,13 +1,18 @@
 import React, { useState, useMemo } from 'react';
-import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction } from '../../types';
+import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction, Goal } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SettleDebtModal } from '../SettleDebtModal';
+import { WalletsManager } from './WalletsManager';
 import { getSpendingPace, isInMonth } from '../../lib/finance';
 import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 import { generateFacts, selectFacts } from '../../lib/financialFacts';
 import { FinancialFactsCarousel } from './FinancialFactsCarousel';
-import { ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Landmark, RefreshCw, WalletCards } from 'lucide-react';
+import { FinancialInsightModal } from './FinancialInsightModal';
+import {
+  AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
+  Landmark, RefreshCw, Shield, TrendingUp, WalletCards, Clock, Zap
+} from 'lucide-react';
 import { format } from 'date-fns';
 
 interface OverviewTabProps {
@@ -17,12 +22,29 @@ interface OverviewTabProps {
   budgets: CategoryBudget[];
   setActiveTab: (tab: DashboardTab) => void;
   openTransaction: (transactionId: string) => void;
-  handleSettle: (debtId: string, amount: number, category?: string, wallet?: 'Bank' | 'Cash') => Promise<void> | void;
+  handleSettle: (debtId: string, amount: number, category?: string, walletId?: string) => Promise<void> | void;
   payrolls: Payroll[];
+  handleCreateWallet?: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
+  handleUpdateWallet?: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
+  handleDeleteWallet?: (id: string, reassignToWalletId?: string) => Promise<any>;
 }
 
-export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, debts, budgets, payrolls, setActiveTab, openTransaction, handleSettle }) => {
+export const OverviewTab: React.FC<OverviewTabProps> = ({
+  kpis,
+  transactions,
+  debts,
+  budgets,
+  payrolls,
+  setActiveTab,
+  openTransaction,
+  handleSettle,
+  handleCreateWallet,
+  handleUpdateWallet,
+  handleDeleteWallet,
+}) => {
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
+  const [showWalletsModal, setShowWalletsModal] = useState(false);
+  const [insightModalType, setInsightModalType] = useState<'forecast' | 'health' | null>(null);
   
   const currentFm = getCurrentFinancialMonth(payrolls);
   const year = currentFm?.year ?? -1;
@@ -38,6 +60,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
   const activeReceivables = debts
     .filter((debt) => debt.type === 'Receivable' && debt.status === 'Pending')
     .reduce((sum, debt) => sum + Number.parseFloat(debt.remainingBalance), 0);
+  
+  const activePayables = debts
+    .filter((debt) => debt.type === 'Payable' && debt.status === 'Pending')
+    .reduce((sum, debt) => sum + Number.parseFloat(debt.remainingBalance), 0);
+  
+  // Phase 3: Net Worth Tracking (Liquidity + Receivables - Payables)
+  const netWorth = (kpis?.totalLiquidity ?? 0) + activeReceivables - activePayables;
   const dailyStatusStyles = { on_track: 'text-blue-600', warning: 'text-amber-600', critical: 'text-red-600' };
 
   // Generate financial facts for the carousel
@@ -47,35 +76,64 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
     [kpis, transactions, debts, budgets, payrolls],
   );
 
+  // Health score ring color
+  const healthColor = (score: number) =>
+    score >= 75 ? 'text-emerald-500' : score >= 50 ? 'text-amber-500' : 'text-red-500';
+  const healthBg = (score: number) =>
+    score >= 75 ? 'from-emerald-500/10 to-emerald-500/5' : score >= 50 ? 'from-amber-500/10 to-amber-500/5' : 'from-red-500/10 to-red-500/5';
+  const healthLabel = (score: number) =>
+    score >= 85 ? 'Excellent' : score >= 70 ? 'Good' : score >= 50 ? 'Fair' : score >= 30 ? 'Needs Attention' : 'Critical';
+
   return (
     <div className="min-w-0 overflow-x-hidden space-y-4 sm:space-y-6">
       {!currentFm && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Your financial period is not set yet. Add the current and next payroll in Financial Calendar so balances, budgets, and reports use the right period.</div>}
+
+      {/* Row 1 – Safe to Spend Hero + Daily Allowance + Runway */}
       <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
-        <Card className="col-span-2 min-w-0 border-transparent bg-gray-900 text-white xl:col-span-1">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Total Liquidity</CardTitle>
+        {/* Safe to Spend — Hero Card */}
+        <Card className="col-span-2 min-w-0 border-transparent bg-gradient-to-br from-gray-900 via-gray-900 to-indigo-950 text-white xl:col-span-1">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-gray-400">
+              <Shield className="h-4 w-4 text-indigo-400" /> Safe to Spend
+            </CardTitle>
+            {handleCreateWallet && (
+              <button
+                type="button"
+                onClick={() => setShowWalletsModal(true)}
+                className="text-xs font-medium text-indigo-300 hover:text-white bg-indigo-900/40 hover:bg-indigo-900/80 border border-indigo-700/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+              >
+                <WalletCards className="h-3.5 w-3.5" /> Manage Wallets
+              </button>
+            )}
           </CardHeader>
           <CardContent>
-            <div className="break-words text-2xl font-bold sm:text-3xl">{kpis?.totalLiquidity.toFixed(2) || '0.00'} MAD</div>
-            <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-400">
-              <span className="flex items-center gap-1"><Landmark className="h-3 w-3" />Bank: {kpis?.bankBalance.toFixed(2) || '0.00'}</span>
-              <span className="flex items-center gap-1"><Banknote className="h-3 w-3" />Cash: {kpis?.cashOnHand.toFixed(2) || '0.00'}</span>
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="min-w-0">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-gray-500 dark:text-gray-400 sm:text-sm">Adjusted True Spend</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="break-words text-xl font-bold text-gray-900 dark:text-gray-100 sm:text-3xl">
-              {kpis?.adjustedTrueSpend.toFixed(2) || '0.00'} <span className="text-sm sm:text-base">MAD</span>
+            <div className="break-words text-2xl font-bold sm:text-3xl">
+              {(kpis?.safeToSpend ?? 0).toFixed(2)} <span className="text-lg text-gray-400">MAD</span>
             </div>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">This month</p>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-400">
+                {kpis?.accounts?.map((acc) => (
+                  <span key={acc.id} className="flex items-center gap-1">
+                    {acc.type === 'Bank' ? <Landmark className="h-3 w-3" /> : acc.type === 'Cash' ? <Banknote className="h-3 w-3" /> : <WalletCards className="h-3 w-3" />}
+                    {acc.name}: {acc.balance.toFixed(2)}
+                  </span>
+                ))}
+              </p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+              <span>Liquidity {(kpis?.totalLiquidity ?? 0).toFixed(0)}</span>
+              <span>· Buffer −{(kpis?.emergencyBuffer ?? 0).toFixed(0)}</span>
+              {(kpis?.pendingPayables ?? 0) > 0 && <span>· Payables −{(kpis?.pendingPayables ?? 0).toFixed(0)}</span>}
+            </div>
+            {/* Net Worth Badge */}
+            <div className="mt-4 pt-3 border-t border-gray-800">
+              <p className="text-xs text-gray-400">Estimated Net Worth</p>
+              <p className="text-lg font-semibold text-white">{netWorth.toFixed(2)} MAD</p>
+            </div>
           </CardContent>
         </Card>
 
+        {/* Daily Allowance */}
         <Card className="min-w-0">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-gray-500 dark:text-gray-400 sm:text-sm">Daily Allowance</CardTitle>
@@ -88,9 +146,33 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
             <Button type="button" variant="ghost" size="sm" className="mt-1 -ml-2 hidden sm:inline-flex" onClick={() => setActiveTab('what-if')}>Simulate a purchase</Button>
           </CardContent>
         </Card>
+
+        {/* Runway */}
+        <Card className="min-w-0">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 sm:text-sm">
+              <Clock className="h-3.5 w-3.5" /> Financial Runway
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="break-words text-xl font-bold text-gray-900 dark:text-gray-100 sm:text-3xl">
+              {kpis?.runwayDays !== undefined && kpis.runwayDays < 999
+                ? <>{kpis.runwayDays} <span className="text-sm sm:text-base font-normal text-gray-500">days</span></>
+                : <span className="text-sm text-gray-400">—</span>}
+            </div>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              at {(kpis?.avgDailySpend ?? 0).toFixed(0)} MAD/day avg spend
+            </p>
+            {kpis && kpis.runwayDays < 7 && kpis.runwayDays < 999 && (
+              <p className="mt-2 text-xs font-medium text-red-600 dark:text-red-400">
+                ⚠ Short runway — consider reducing spending
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Row 2 – Financial Facts Carousel + Spending Pace */}
+      {/* Row 3 – Financial Facts Carousel + Spending Pace */}
       <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-3">
         {/* Facts carousel */}
         <Card className="min-w-0 overflow-hidden lg:col-span-2">
@@ -137,7 +219,163 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
         </Card>
       </div>
 
-      {/* Row 3 – Recent Transactions + Pending Receivables */}
+      {/* Row 2 – End-of-Month Forecast + Health Score */}
+      <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-2">
+        {/* End-of-Month Forecast */}
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" /> End-of-Period Forecast
+            </CardTitle>
+            <button
+              type="button"
+              onClick={() => setInsightModalType('forecast')}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40"
+              title="Click for clarification and calculation formula"
+              aria-label="Forecast calculation clarification"
+            >
+              <AlertCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Explanation</span>
+            </button>
+          </CardHeader>
+          <CardContent>
+            {kpis?.forecast && kpis.forecast.totalDays > 0 ? (
+              <div className="space-y-4">
+                {/* Expected balance */}
+                <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4 dark:border-blue-900/40 dark:bg-blue-950/20">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">Expected end-of-period balance</p>
+                    <button
+                      type="button"
+                      onClick={() => setInsightModalType('forecast')}
+                      className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200"
+                      title="How is this expected balance calculated?"
+                      aria-label="Expected balance explanation"
+                    >
+                      <AlertCircle className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  {kpis.avgDailySpend > 0 && (
+                    <p className="mt-1 text-[10px] text-blue-500/80 dark:text-blue-400/80">Based on your current average spending of {kpis.avgDailySpend.toFixed(2)} MAD/day</p>
+                  )}
+                  <p className={`mt-1 text-2xl font-bold ${kpis.forecast.expected >= 0 ? 'text-blue-700 dark:text-blue-300' : 'text-red-600 dark:text-red-400'}`}>
+                    {kpis.forecast.expected.toFixed(2)} MAD
+                  </p>
+                </div>
+                {/* Scenarios */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-lg bg-green-50 p-3 dark:bg-green-950/20">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-green-600 dark:text-green-400">Best</p>
+                    <p className="mt-1 text-sm font-bold text-green-700 dark:text-green-300">{kpis.forecast.best.toFixed(0)}</p>
+                  </div>
+                  <div className="rounded-lg bg-blue-50 p-3 dark:bg-blue-950/20">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-blue-600 dark:text-blue-400">Expected</p>
+                    <p className="mt-1 text-sm font-bold text-blue-700 dark:text-blue-300">{kpis.forecast.expected.toFixed(0)}</p>
+                  </div>
+                  <div className="rounded-lg bg-red-50 p-3 dark:bg-red-950/20">
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-red-600 dark:text-red-400">Worst</p>
+                    <p className="mt-1 text-sm font-bold text-red-700 dark:text-red-300">{kpis.forecast.worst.toFixed(0)}</p>
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div>
+                  <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <span>Day {kpis.forecast.elapsedDays} of {kpis.forecast.totalDays}</span>
+                    <span>{kpis.forecast.daysRemaining} days left</span>
+                  </div>
+                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all"
+                      style={{ width: `${Math.min(100, (kpis.forecast.elapsedDays / kpis.forecast.totalDays) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+                {/* Spending pace tag */}
+                {kpis.forecast.spendingPacePercent > 0 && (
+                  <p className={`text-sm font-medium ${kpis.forecast.spendingPacePercent > 110 ? 'text-red-600 dark:text-red-400' : kpis.forecast.spendingPacePercent > 100 ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}`}>
+                    {kpis.forecast.spendingPacePercent > 100
+                      ? `${(kpis.forecast.spendingPacePercent - 100).toFixed(1)}% ahead of budget pace`
+                      : `${(100 - kpis.forecast.spendingPacePercent).toFixed(1)}% behind budget pace`}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                Set up your financial period to see your forecast.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Financial Health Score */}
+        <Card className="min-w-0 overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Heart className="h-5 w-5 text-rose-500" /> Financial Health
+            </CardTitle>
+            <button
+              type="button"
+              onClick={() => setInsightModalType('health')}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+              title="Click for clarification and calculation formula"
+              aria-label="Financial health calculation clarification"
+            >
+              <AlertCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">Explanation</span>
+            </button>
+          </CardHeader>
+          <CardContent>
+            {kpis ? (
+              <div className="space-y-4">
+                {/* Score Ring */}
+                <div className={`flex items-center gap-5 rounded-xl bg-gradient-to-br p-4 ${healthBg(kpis.healthScore)}`}>
+                  <div className="relative flex h-20 w-20 shrink-0 items-center justify-center">
+                    <svg viewBox="0 0 36 36" className="h-full w-full -rotate-90">
+                      <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" className="text-gray-200 dark:text-gray-800" />
+                      <circle
+                        cx="18" cy="18" r="15.5" fill="none" strokeWidth="3"
+                        strokeLinecap="round"
+                        stroke="currentColor"
+                        className={healthColor(kpis.healthScore)}
+                        strokeDasharray={`${(kpis.healthScore / 100) * 97.4} 97.4`}
+                      />
+                    </svg>
+                    <span className={`absolute text-xl font-bold ${healthColor(kpis.healthScore)}`}>{kpis.healthScore}</span>
+                  </div>
+                  <div>
+                    <p className={`text-lg font-bold ${healthColor(kpis.healthScore)}`}>{healthLabel(kpis.healthScore)}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">out of 100</p>
+                  </div>
+                </div>
+                {/* Factor Breakdown */}
+                <div className="space-y-2">
+                  {kpis.healthFactors?.map((factor) => (
+                    <div key={factor.name} className="flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{factor.name}</span>
+                          <span className="tabular-nums text-gray-500 dark:text-gray-400">{factor.score}/{factor.maxPoints}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
+                          <div
+                            className={`h-full rounded-full transition-all ${factor.score / factor.maxPoints >= 0.7 ? 'bg-emerald-500' : factor.score / factor.maxPoints >= 0.4 ? 'bg-amber-500' : 'bg-red-500'}`}
+                            style={{ width: `${(factor.score / factor.maxPoints) * 100}%` }}
+                          />
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">{factor.label}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading health score…</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* Row 4 – Recent Transactions + Pending Receivables */}
       <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-3">
         <Card className="min-w-0 overflow-hidden lg:col-span-2">
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
@@ -159,7 +397,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
                     </div>
                     <div className="min-w-0">
                       <p className="truncate font-medium text-gray-900 dark:text-gray-100">{transaction.notes || transaction.category || transaction.type}</p>
-                      <p className="truncate text-xs text-gray-500 dark:text-gray-400">{format(new Date(transaction.createdAt), 'MMM d, yyyy')} · {transaction.sourceWallet}</p>
+                      <p className="truncate text-xs text-gray-500 dark:text-gray-400">{format(new Date(transaction.createdAt), 'MMM d, yyyy')} · {kpis?.accounts?.find(w => w.id === transaction.walletId)?.name || 'Unknown'}{transaction.type === 'Transfer' && transaction.destinationWalletId && <> → {kpis?.accounts?.find(w => w.id === transaction.destinationWalletId)?.name || 'Unknown'}</>}</p>
                     </div>
                   </div>
                   <span className={`shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums ${transaction.type === 'Income' ? 'text-green-600' : 'text-gray-900 dark:text-gray-100'}`}>
@@ -202,10 +440,29 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ kpis, transactions, de
 
       <SettleDebtModal
         debt={settlingDebt}
+        wallets={kpis?.accounts}
         onClose={() => setSettlingDebt(null)}
-        onConfirm={async (debtId, amount, category, wallet) => {
-          await handleSettle(debtId, amount, category, wallet);
+        onConfirm={async (debtId, amount, category, walletId) => {
+          await handleSettle(debtId, amount, category, walletId);
         }}
+      />
+
+      {showWalletsModal && handleCreateWallet && handleUpdateWallet && handleDeleteWallet && (
+        <WalletsManager
+          wallets={kpis?.accounts || []}
+          isModal={true}
+          onClose={() => setShowWalletsModal(false)}
+          onCreateWallet={handleCreateWallet}
+          onUpdateWallet={handleUpdateWallet}
+          onDeleteWallet={handleDeleteWallet}
+        />
+      )}
+
+      <FinancialInsightModal
+        type={insightModalType || 'forecast'}
+        isOpen={Boolean(insightModalType)}
+        onClose={() => setInsightModalType(null)}
+        kpis={kpis}
       />
     </div>
   );

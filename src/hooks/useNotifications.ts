@@ -3,7 +3,16 @@
  *
  * Manages browser Web Notifications for TrueSpend.
  * Delivers at most ONE personalised financial insight per day.
- * The notification is scheduled client-side (no server infra needed).
+ *
+ * How it works:
+ *   1. On every data refresh, `scheduleDaily(data)` stores the latest
+ *      financial snapshot and (re)starts a periodic 30-second check.
+ *   2. Every 30 s the check compares the current time to the configured
+ *      delivery time. If the time has passed and we haven't sent today's
+ *      notification yet, it fires immediately.
+ *   3. On app launch, if the scheduled time has already passed today and
+ *      no notification was sent, it fires straight away so the user
+ *      never misses a daily insight regardless of when they open the app.
  *
  * Settings are persisted in localStorage:
  *   truespend_notif_enabled   – "true" | "false"
@@ -17,6 +26,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 export interface NotifSettings {
   enabled: boolean;
   time: string; // "HH:MM"
+}
+
+export interface ServerNotifSettings {
+  enabled: boolean;
+  dailyInsightEnabled: boolean;
+  budgetWarningEnabled: boolean;
+  forecastWarningEnabled: boolean;
+  debtReminderEnabled: boolean;
+  anomalyEnabled: boolean;
+  goalEnabled: boolean;
+  deliveryTime: string;
+  timezone: string;
+  quietHoursStart: string;
+  quietHoursEnd: string;
 }
 
 export interface NotifData {
@@ -38,6 +61,9 @@ const KEY_TIME = 'truespend_notif_time';
 const KEY_LAST_SENT = 'truespend_notif_last_sent';
 const DEFAULT_TIME = '09:00';
 
+// How often to check if it's time to send (ms)
+const CHECK_INTERVAL_MS = 30_000; // 30 seconds
+
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function toDay(date: Date) {
   return date.toISOString().slice(0, 10); // "YYYY-MM-DD"
@@ -50,6 +76,18 @@ function alreadySentToday(): boolean {
 
 function markSentToday() {
   localStorage.setItem(KEY_LAST_SENT, toDay(new Date()));
+}
+
+/**
+ * Returns true if the current local time is at or past the configured
+ * delivery time for today.
+ */
+function isDeliveryTimePassed(timeStr: string): boolean {
+  const [hh, mm] = timeStr.split(':').map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return false;
+  const now = new Date();
+  const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0);
+  return now >= target;
 }
 
 /** Pick a personalised insight from the user's real financial data */
@@ -150,9 +188,26 @@ export function useNotifications() {
     enabled: localStorage.getItem(KEY_ENABLED) === 'true',
     time: localStorage.getItem(KEY_TIME) ?? DEFAULT_TIME,
   });
+  const [serverSettings, setServerSettings] = useState<ServerNotifSettings | null>(null);
 
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  };
+
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dataRef = useRef<NotifData | null>(null);
+  // Keep a ref of settings so the interval callback always reads fresh values
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const permissionRef = useRef(permission);
+  permissionRef.current = permission;
 
   // Check browser support
   useEffect(() => {
@@ -167,21 +222,121 @@ export function useNotifications() {
     if (!('Notification' in window)) return false;
     const result = await Notification.requestPermission();
     setPermission(result);
+    if (result === 'granted') {
+      await subscribeToServer();
+    }
     return result === 'granted';
   }, []);
 
-  // Fire a notification immediately (for preview / debug)
-  const sendNow = useCallback(async (data: NotifData) => {
-    if (!supported || permission !== 'granted') return;
+  const subscribeToServer = async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+    try {
+      if (!('serviceWorker' in navigator)) return;
+      const reg = await navigator.serviceWorker.ready;
+      let subscription = await reg.pushManager.getSubscription();
+      if (!subscription) {
+        const response = await fetch('/api/notifications/vapid-public-key');
+        if (!response.ok) return;
+        const { publicKey } = await response.json();
+        if (!publicKey) return;
+        const applicationServerKey = urlBase64ToUint8Array(publicKey);
+        subscription = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        });
+      }
+      await fetch('/api/notifications/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(subscription),
+      });
+    } catch (err) {
+      console.error('Failed to subscribe to push service', err);
+    }
+  };
+
+  const fetchServerPreferences = useCallback(async () => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+    try {
+      const res = await fetch('/api/notifications/preferences', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (res.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
+      if (res.ok) {
+        const data = await res.json();
+        setServerSettings({
+          enabled: data.enabled,
+          dailyInsightEnabled: data.dailyInsightEnabled,
+          budgetWarningEnabled: data.budgetWarningEnabled,
+          forecastWarningEnabled: data.forecastWarningEnabled,
+          debtReminderEnabled: data.debtReminderEnabled,
+          anomalyEnabled: data.anomalyEnabled,
+          goalEnabled: data.goalEnabled ?? false,
+          deliveryTime: data.deliveryTime,
+          timezone: data.timezone,
+          quietHoursStart: data.quietHoursStart,
+          quietHoursEnd: data.quietHoursEnd,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch server preferences', err);
+    }
+  }, []);
+
+  const updateServerPreferences = useCallback(async (patch: Partial<ServerNotifSettings>) => {
+    const token = localStorage.getItem('auth_token');
+    if (!token) return;
+    try {
+      const res = await fetch('/api/notifications/preferences', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(patch),
+      });
+      if (res.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
+      if (res.ok) {
+        const data = await res.json();
+        setServerSettings(prev => ({ ...prev, ...data }));
+        if (patch.enabled && permission === 'granted') {
+          await subscribeToServer();
+        }
+      }
+    } catch (err) {
+      console.error('Failed to update server preferences', err);
+    }
+  }, [permission]);
+
+  useEffect(() => {
+    fetchServerPreferences();
+  }, [fetchServerPreferences]);
+
+  /**
+   * Actually fire a notification. Tries the service worker first (works
+   * even when the tab is in the background for installed PWAs), then falls
+   * back to the Notification constructor.
+   */
+  const fireNotification = useCallback(async (data: NotifData) => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
     const { title, body } = buildInsight(data);
-    const options = {
+    const options: NotificationOptions & { tag: string } = {
       body,
-      icon: '/logo.png',
-      badge: '/logo.png',
+      icon: '/app-icon.png',
+      badge: '/app-icon.png',
       tag: 'truespend-daily',
       requireInteraction: false,
     };
 
+    // Try service-worker showNotification first (visible even when tab is bg)
     if ('serviceWorker' in navigator) {
       try {
         const reg = await navigator.serviceWorker.getRegistration();
@@ -191,77 +346,77 @@ export function useNotifications() {
           return;
         }
       } catch (e) {
-        console.error('Service worker notification failed', e);
+        console.warn('[TrueSpend] SW showNotification failed, using fallback:', e);
       }
     }
 
-    // Fallback for desktop browsers without SW
-    new Notification(title, options);
-    markSentToday();
-  }, [supported, permission]);
+    // Fallback: plain Notification constructor
+    try {
+      new Notification(title, options);
+      markSentToday();
+    } catch (e) {
+      console.error('[TrueSpend] Notification constructor failed:', e);
+    }
+  }, []);
 
-  // Schedule the daily notification at the configured time
+  // Fire a notification immediately (for preview / debug from Settings)
+  const sendNow = useCallback(async (data: NotifData) => {
+    if (!supported || permission !== 'granted') return;
+    await fireNotification(data);
+  }, [supported, permission, fireNotification]);
+
+  /**
+   * The core periodic check. Called every CHECK_INTERVAL_MS.
+   * Reads from refs so the interval closure always has the latest values.
+   */
+  const tick = useCallback(() => {
+    const s = settingsRef.current;
+    const p = permissionRef.current;
+    if (!s.enabled || p !== 'granted' || !dataRef.current) return;
+
+    // Is the delivery time already past for today, and we haven't sent yet?
+    if (isDeliveryTimePassed(s.time) && !alreadySentToday()) {
+      console.log('[TrueSpend] Notification delivery time reached, firing now.');
+      fireNotification(dataRef.current);
+    }
+  }, [fireNotification]);
+
+  /**
+   * Start (or restart) the periodic check interval.
+   * Called by `scheduleDaily` and also when settings change.
+   */
+  const startInterval = useCallback(() => {
+    // Clear any existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    const s = settingsRef.current;
+    const p = permissionRef.current;
+    if (!s.enabled || p !== 'granted') return;
+
+    // Run one immediate check (catches the case where the user just opened
+    // the app and the delivery time already passed today)
+    tick();
+
+    // Then run every 30 seconds
+    intervalRef.current = setInterval(tick, CHECK_INTERVAL_MS);
+  }, [tick]);
+
+  /**
+   * Called by the dashboard whenever fresh KPI / transaction data arrives.
+   * Stores the latest financial snapshot and (re)starts the periodic check.
+   */
   const scheduleDaily = useCallback((data: NotifData) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (!settings.enabled || permission !== 'granted') return;
-
     dataRef.current = data;
+    startInterval();
+  }, [startInterval]);
 
-    const [hh, mm] = settings.time.split(':').map(Number);
-    const now = new Date();
-    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0);
-
-    // If the target time has already passed today, schedule for tomorrow
-    if (target <= now) {
-      target.setDate(target.getDate() + 1);
-    }
-
-    const delay = target.getTime() - now.getTime();
-
-    // Check if the Notification Triggers API is supported (Chrome/Edge/Android)
-    // This allows scheduling the notification at the OS level even if the app is closed.
-    if ('showTrigger' in Notification.prototype && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then(reg => {
-        const isTargetToday = target.getDate() === now.getDate();
-        const shouldSchedule = !isTargetToday || !alreadySentToday();
-        
-        if (reg && shouldSchedule && dataRef.current) {
-          const { title, body } = buildInsight(dataRef.current);
-          
-          // First, clear any previously scheduled notification with the same tag
-          reg.getNotifications({ tag: 'truespend-daily' }).then(notifications => {
-            notifications.forEach(n => n.close());
-            
-            // Then schedule the new one
-            reg.showNotification(title, {
-              body,
-              icon: '/logo.png',
-              badge: '/logo.png',
-              tag: 'truespend-daily',
-              // @ts-ignore
-              showTrigger: new TimestampTrigger(target.getTime()),
-            }).catch(err => console.error('Failed to schedule with showTrigger', err));
-          });
-        }
-      });
-      
-      // Reschedule for the next day via a loose timeout just to keep the loop going if the app stays open
-      timerRef.current = setTimeout(() => {
-        scheduleDaily(dataRef.current!);
-      }, delay + 60000); // 1 minute after trigger
-      return;
-    }
-
-    // Fallback: in-memory timeout (only works if the tab remains open)
-    timerRef.current = setTimeout(() => {
-      const isTargetToday = target.getDate() === new Date().getDate();
-      if ((!isTargetToday || !alreadySentToday()) && dataRef.current) {
-        sendNow(dataRef.current);
-      }
-      // After firing, reschedule for next day (keep the loop alive)
-      scheduleDaily(dataRef.current!);
-    }, delay);
-  }, [settings, permission, sendNow]);
+  // Re-start the interval when settings or permission changes
+  useEffect(() => {
+    startInterval();
+  }, [settings.enabled, settings.time, permission, startInterval]);
 
   // Persist settings changes
   const updateSettings = useCallback((patch: Partial<NotifSettings>) => {
@@ -273,10 +428,21 @@ export function useNotifications() {
     });
   }, []);
 
-  // Clean up timer on unmount
+  // Also check when the document becomes visible (user switches back to app)
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        tick();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [tick]);
+
+  // Clean up interval on unmount
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
 
@@ -284,7 +450,9 @@ export function useNotifications() {
     supported,
     permission,
     settings,
+    serverSettings,
     updateSettings,
+    updateServerPreferences,
     requestPermission,
     scheduleDaily,
     sendNow,

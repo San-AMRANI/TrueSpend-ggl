@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Landmark, Trash2, WalletCards } from 'lucide-react';
-import { Debt, Payroll, Transaction } from '../../types';
+import { Debt, Payroll, Transaction, Goal, Subscription } from '../../types';
 import { Button } from '../ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 
-type EventKind = 'income' | 'expense' | 'transfer' | 'debt' | 'payroll';
-type CalendarEvent = { id: string; date: string; kind: EventKind; title: string; amount?: number; transactionId?: string; debtId?: string; payroll?: Payroll };
+type EventKind = 'income' | 'expense' | 'transfer' | 'debt' | 'payroll' | 'goal' | 'subscription';
+type CalendarEvent = { id: string; date: string; kind: EventKind; title: string; amount?: number; transactionId?: string; debtId?: string; payroll?: Payroll; goalId?: string };
 
 const dateKey = (value: Date | string) => new Date(value).toISOString().slice(0, 10);
 const monthLabel = (year: number, month: number) => new Date(Date.UTC(year, month, 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -63,6 +63,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
       amount: Number.parseFloat(debt.remainingBalance),
       debtId: debt.id,
     }));
+
     return [...transactionEvents, ...payrollEvents, ...debtEvents];
   }, [debts, payrolls, transactions]);
 
@@ -125,6 +126,8 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     transfer: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     debt: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
     payroll: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+    goal: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+    subscription: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
   };
 
   return <div className="min-w-0 space-y-4">
@@ -142,11 +145,11 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
         const day = index + 1;
         const key = dateKey(new Date(Date.UTC(ref.year, ref.month, day)));
         const dayEvents = visible.filter((event) => event.date === key);
-        return <button key={key} onClick={() => selectDay(key)} className={`min-h-20 min-w-0 bg-white p-1 text-left align-top dark:bg-gray-950 sm:min-h-28 sm:p-2 ${selectedDate === key ? 'ring-2 ring-inset ring-indigo-600 dark:ring-indigo-400' : ''}`}><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${key === today ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'text-gray-600 dark:text-gray-400'}`}>{day}</span><div className="mt-1 space-y-1">{dayEvents.slice(0, 2).map((event) => <div key={event.id} className={`truncate rounded px-1 py-0.5 text-[9px] font-medium sm:text-[10px] ${eventStyle[event.kind]}`}>{event.kind === 'income' ? '+' : event.kind === 'expense' ? '−' : event.kind === 'payroll' ? '◆ ' : ''}{event.amount ? `${event.amount} ` : ''}{event.title}</div>)}{dayEvents.length > 2 && <p className="text-[10px] text-gray-500 dark:text-gray-400">+{dayEvents.length - 2} more</p>}</div></button>;
+        return <button key={key} onClick={() => selectDay(key)} className={`min-h-20 min-w-0 bg-white p-1 text-left align-top dark:bg-gray-950 sm:min-h-28 sm:p-2 ${selectedDate === key ? 'ring-2 ring-inset ring-indigo-600 dark:ring-indigo-400' : ''}`}><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${key === today ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'text-gray-600 dark:text-gray-400'}`}>{day}</span><div className="mt-1 space-y-1">{dayEvents.slice(0, 3).map((event) => <div key={event.id} className={`truncate rounded px-1 py-0.5 text-[9px] font-medium sm:text-[10px] ${eventStyle[event.kind]}`}>{event.kind === 'income' ? '+' : event.kind === 'expense' ? '−' : event.kind === 'payroll' ? '◆ ' : event.kind === 'goal' ? '★ ' : event.kind === 'subscription' ? '↻ ' : ''}{event.amount ? `${event.amount} ` : ''}{event.title}</div>)}{dayEvents.length > 3 && <p className="text-[10px] text-gray-500 dark:text-gray-400">+{dayEvents.length - 3} more</p>}</div></button>;
       })}</div></CardContent></Card>
       <Card><CardHeader><CardTitle>Payroll setup</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><p className="font-medium text-gray-900 dark:text-gray-100">{formatDate(selectedDate)}</p>{selectedPayroll ? <><div className="rounded-lg bg-violet-50 p-3 dark:bg-violet-950/50"><p className="text-xs font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">Configured payroll</p><p className="mt-1 text-lg font-bold text-violet-800 dark:text-violet-100">+{Number(selectedPayroll.amount).toFixed(2)} MAD</p><p className="mt-1 text-xs text-violet-700 dark:text-violet-300">{generatedTransaction ? 'Automatically posted to Bank.' : selectedDate <= today ? 'Will post on your next data refresh.' : 'Will post automatically on this date.'}</p></div>{generatedTransaction ? <Button className="w-full" variant="outline" onClick={() => openTransaction(generatedTransaction.id)}><Landmark className="mr-2 h-4 w-4" />Open payroll transaction</Button> : <Button className="w-full text-red-600" variant="outline" disabled={saving} onClick={removePayroll}><Trash2 className="mr-2 h-4 w-4" />Remove payroll</Button>}</> : <><p className="text-gray-500 dark:text-gray-400">Set this day as the one payroll for {monthLabel(ref.year, ref.month)}. You must also set the next month to form a complete financial period.</p><label className="block text-xs font-medium text-gray-700 dark:text-gray-300" htmlFor="payroll-amount">Payroll amount (MAD)</label><input id="payroll-amount" type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white" placeholder="e.g. 8000" /><Button className="w-full" disabled={saving} onClick={savePayroll}><WalletCards className="mr-2 h-4 w-4" />{saving ? 'Saving…' : 'Set payroll day'}</Button></>}</CardContent></Card>
     </div>
 
-    <Card><CardHeader><CardTitle>{formatDate(selectedDate)}</CardTitle></CardHeader><CardContent>{selected.length ? <div className="space-y-2">{selected.filter((event) => event.kind !== 'payroll').map((event) => <button key={event.id} onClick={() => event.transactionId ? openTransaction(event.transactionId) : event.debtId ? setActiveTab('debts') : undefined} className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50"><div className="min-w-0"><p className="font-medium text-gray-900 dark:text-gray-100">{event.title}</p><p className="text-xs text-gray-500 dark:text-gray-400">{event.kind}</p></div><span className="shrink-0 font-semibold text-gray-900 dark:text-gray-100">{event.amount ? `${event.kind === 'income' ? '+' : event.kind === 'expense' ? '−' : ''}${event.amount.toFixed(2)} MAD` : ''}</span></button>)}</div> : <p className="py-2 text-sm text-gray-500 dark:text-gray-400">No other financial activity.</p>}</CardContent></Card>
+    <Card><CardHeader><CardTitle>{formatDate(selectedDate)}</CardTitle></CardHeader><CardContent>{selected.length ? <div className="space-y-2">{selected.filter((event) => event.kind !== 'payroll').map((event) => <button key={event.id} onClick={() => event.transactionId ? openTransaction(event.transactionId) : event.debtId ? setActiveTab('debts') : undefined} className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50"><div className="min-w-0"><p className="font-medium text-gray-900 dark:text-gray-100">{event.title}</p><p className="text-xs text-gray-500 dark:text-gray-400">{event.kind}</p></div><span className="shrink-0 font-semibold text-gray-900 dark:text-gray-100">{event.amount ? `${event.kind === 'income' ? '+' : event.kind === 'expense' || event.kind === 'subscription' ? '−' : ''}${event.amount.toFixed(2)} MAD` : ''}</span></button>)}</div> : <p className="py-2 text-sm text-gray-500 dark:text-gray-400">No other financial activity.</p>}</CardContent></Card>
   </div>;
 };

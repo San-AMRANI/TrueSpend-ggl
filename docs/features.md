@@ -30,11 +30,31 @@ Budgets are tracked on a rolling basis tied to the user's custom payday. The app
 ### Settings & User Preferences
 - **Custom Payday Tracking**: Financial months reset on a custom date (e.g., the 25th of the month) rather than the 1st of the calendar month. This drives all KPI and budget calculations.
 - **Salary & Emergency Buffer**: Set fixed incomes and emergency thresholds to drive the What-If and KPI engines.
-- **Daily Insights & Push Notifications**: Users can opt-in to daily browser notifications summarizing their budget pacing, overspent categories, or remaining daily allowance. These are scheduled client-side using Web Notifications and Service Workers.
-- **Full Data Sovereignty**: Users can export their entire database profile to raw SQL via the **Export to SQL** button, and similarly import raw `.sql` backups to instantly restore their profile across instances.
+- **Daily Insights & Web Push Notifications**: Users can opt-in to daily notifications summarizing their budget pacing, overspent categories, or remaining daily allowance via Web Push (VAPID) and background service workers.
+- **Google Drive Automated Cloud Backups**:
+  - **Direct Drive Integration**: Authenticate with Google to backup your entire PostgreSQL database directly to your personal Google Drive account.
+  - **Configurable Backup Intervals**: Schedule automated backups at custom cadences: **Daily** (every 24h), **Every 3 Days** (every 72h), or **Weekly** (every 7 days).
+  - **Server-Side & Hybrid Cron Execution**: Automated recurring background jobs run every 15 minutes checking backup eligibility and uploading SQL dumps securely, backed by proactive client-side sync checks.
+  - **Instant On-Demand Backups**: Trigger immediate cloud backups anytime via the "Backup to Drive Now" button.
+- **Full Data Sovereignty**: Users can export their entire database profile to raw SQL via the **Export to SQL** button, and similarly import raw `.sql` backups to instantly restore their profile across instances. For complete database schema, tables, and restore mechanics, refer to **[TrueSpend Database Schema & Architecture](database.md)**.
 
-## The AI Assistant (TrueSpend Copilot)
-An integrated Gemini-powered AI chat interface. The assistant possesses "Agentic" capabilities, utilizing server-side function calling (the `AiActionGateway`):
+### Financial Goals & Milestone Tracking
+- Create custom financial targets with deadlines, priority tags, and target amounts (e.g., emergency fund, car down payment, vacation).
+- Track real-time progress percentages, remaining balances, required monthly contributions, and required weekly contributions.
+- Make direct progress contributions with automatic transaction logging and KPI synchronization.
+
+### Personal Intelligence & Deep Insights
+- **Financial Health Score**: Unified 0–100 score dynamically calculated across emergency buffer health, debt-to-income ratio, daily burn pacing, and goal progression.
+- **Financial Runway & Forecasting**: Real-time runway analysis (e.g., "18 days of financial runway") paired with best-case, expected, and worst-case end-of-period balance predictions.
+- **Merchant & Category Intelligence**: Breakdown of top merchants, frequency of visits, average spend per transaction, and month-over-month trend changes.
+- **Spending Anomaly Detection**: Automated flagging of irregular spikes, off-pattern purchases, or unusually high ticket items with severity indicators.
+
+### Account Reconciliation & Reports
+- **Reconciliation Module**: Verify bank and cash balances against statement totals, highlight unaccounted discrepancies, and log balance adjustments.
+- **Structured Financial Reports**: Generate monthly financial statements, budget adherence reports, and category expense breakdowns ready for export.
+
+## The AI Assistant (TrueSpend Copilot / Spex)
+An integrated AI chat interface. The assistant possesses "Agentic" capabilities, utilizing server-side function calling (the `AiActionGateway`). For an exhaustive technical breakdown of the AI architecture, prompt engineering, context serialization, and model failover, see **[TrueSpend AI Feature Architecture](ai.md)**.
 - **Conversational Queries**: "How much did I spend on dining out this month?"
 - **Data Insertion**: "I just bought a coffee for 40 MAD from Starbucks in Cash." The AI parses the request, prepares the transaction payload, and requests the user's approval before committing it to the database.
 - **Budget Advice**: "Based on my current spending pace, do I need to cut back on wants this week?"

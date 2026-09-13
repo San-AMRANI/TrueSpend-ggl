@@ -1,9 +1,27 @@
 import { apiClient } from './apiClient';
-import { CategoryBudget, KPI, Transaction, Debt, Payroll, UserSettings } from '../../types';
+import { CategoryBudget, KPI, Transaction, Debt, Payroll, UserSettings, Wallet, FinancialContext } from '../../types';
 
 export const dashboardService = {
+  getContexts: (token: string | null) => apiClient.get<FinancialContext[]>('/api/contexts', token),
+  createContext: (payload: Partial<FinancialContext>, token: string | null) =>
+    apiClient.post<FinancialContext>('/api/contexts', payload, token),
+  updateContext: (id: string, payload: Partial<FinancialContext>, token: string | null) =>
+    apiClient.put<FinancialContext>(`/api/contexts/${id}`, payload, token),
+  deleteContext: (id: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/contexts/${id}`, token),
+  linkTransactionsToContext: (transactionIds: string[], contextId: string | null, token: string | null) =>
+    apiClient.post<{ success: boolean; count: number }>('/api/contexts/link-transactions', { transactionIds, contextId }, token),
   getKpis: (token: string | null) => apiClient.get<KPI>('/api/kpis', token),
+  getWallets: (token: string | null) => apiClient.get<Wallet[]>('/api/wallets', token),
+  createWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
+    apiClient.post<Wallet>('/api/wallets', payload, token),
+  updateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
+    apiClient.put<Wallet>(`/api/wallets/${id}`, payload, token),
+  deleteWallet: (id: string, reassignToWalletId: string | undefined, token: string | null) =>
+    apiClient.delete<{ success: boolean; message: string }>(`/api/wallets/${id}${reassignToWalletId ? `?reassignTo=${reassignToWalletId}` : ''}`, token),
   getTransactions: (token: string | null) => apiClient.get<Transaction[]>('/api/transactions', token),
+  createTransaction: (payload: Record<string, unknown>, token: string | null) =>
+    apiClient.post<{ message: string; transaction: Transaction }>('/api/transactions', payload, token),
   getPayrolls: (token: string | null) => apiClient.get<Payroll[]>('/api/payrolls', token),
   createPayroll: (payload: { scheduledFor: string; amount: number }, token: string | null) =>
     apiClient.post<Payroll>('/api/payrolls', payload, token),
@@ -24,20 +42,52 @@ export const dashboardService = {
   deleteCategoryBudget: (id: string, token: string | null) =>
     apiClient.delete<CategoryBudget>(`/api/category-budgets/${id}`, token),
   getDebts: (token: string | null) => apiClient.get<Debt[]>('/api/debts', token),
-  settleDebt: (debtId: string, amount: number, token: string | null, category?: string, wallet?: 'Bank' | 'Cash') =>
-    apiClient.post<{ message: string }>('/api/debts', { debt_id: debtId, amount, category, wallet }, token),
+  settleDebt: (debtId: string, amount: number, token: string | null, category?: string, walletId?: string) =>
+    apiClient.post<{ message: string }>('/api/debts', { debt_id: debtId, amount, category, walletId }, token),
   updateDebt: (debtId: string, payload: { amount: number; contact: string; type: string }, token: string | null) =>
     apiClient.put<{ message: string }>(`/api/debts/${debtId}`, payload, token),
   deleteDebt: (debtId: string, token: string | null) =>
     apiClient.delete<{ message: string }>(`/api/debts/${debtId}`, token),
   getSettings: (token: string | null) => apiClient.get<UserSettings>('/api/settings', token),
-  updateSettings: (payload: { emergencyBuffer?: number }, token: string | null) =>
-    apiClient.post<{ success: boolean; payday?: number; emergencyBuffer?: number }>('/api/settings', payload, token),
+  updateSettings: (
+    payload: {
+      emergencyBuffer?: number;
+      payday?: number;
+      salary?: number;
+      automatedDriveBackups?: boolean;
+      lastDriveBackupDate?: string;
+      driveBackupFrequency?: 'daily' | '3days' | 'weekly';
+      googleDriveToken?: string;
+    },
+    token: string | null
+  ) =>
+    apiClient.post<{ success: boolean; payday?: number; emergencyBuffer?: number; automatedDriveBackups?: number; driveBackupFrequency?: string }>(
+      '/api/settings',
+      payload,
+      token
+    ),
+  backupToDrive: (accessToken: string | null, token: string | null) =>
+    apiClient.post<{ success: boolean; fileId: string; lastDriveBackupDate: string }>(
+      '/api/settings/backup-drive',
+      { accessToken },
+      token
+    ),
+  getSqlBlob: async (token: string | null) => {
+    const response = await fetch('/api/settings/export-sql', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      if (response.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
+      throw new Error('Failed to download SQL export');
+    }
+    return await response.blob();
+  },
   exportSql: async (token: string | null) => {
     const response = await fetch('/api/settings/export-sql', {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!response.ok) {
+      if (response.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
       throw new Error('Failed to download SQL export');
     }
     const blob = await response.blob();
