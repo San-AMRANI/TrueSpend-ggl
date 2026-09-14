@@ -32,20 +32,22 @@ interface NavTabItem {
 
 const mainTabs: NavTabItem[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'cash-flow', label: 'Cash Flow', icon: TrendingUp },
+  { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
+  { id: 'cash-flow', label: 'Cash Flow', icon: TrendingUp },
   { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
   { id: 'budgets', label: 'Budgets', icon: WalletCards },
+  { id: 'contexts', label: 'Contexts', icon: Map },
+  { id: 'chat', label: 'AI Chat', icon: Bot },
 ];
 
 const moreTabs: NavTabItem[] = [
-  { id: 'analytics', label: 'Analytics', icon: BarChart2 },
-  { id: 'contexts', label: 'Contexts', icon: Map },
+  
   { id: 'debts', label: 'Debts & Splits', icon: Users },
   { id: 'what-if', label: 'What-If', icon: Calculator },
   { id: 'digest', label: 'Digest', icon: FileText },
   { id: 'reports', label: 'Reports', icon: FileBarChart },
-  { id: 'chat', label: 'AI Chat', icon: Bot },
+  
 ];
 
 export const DesktopHeaderNav: React.FC<DesktopHeaderNavProps> = ({ activeTab, onSelectTab }) => {
