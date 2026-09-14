@@ -45,6 +45,8 @@ export function buildAiContextSnapshot({
     budgets: budgets.slice(0, 30).map((budget) => ({ category: budget.category, amount: amountOf(budget.amount), year: budget.year, month: budget.month })),
     emergencyBuffer: kpis ? amountOf(kpis.emergencyBuffer) : 0,
     debts: debts.slice(0, 20).map((debt) => ({ contact: debt.contactName, type: debt.type, remaining: amountOf(debt.remainingBalance), dueDate: dateKey(debt.dueDate) })),
-    recentTransactions: transactions.slice().sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()).slice(0, 30).map((transaction) => ({ date: dateKey(transaction.createdAt), amount: amountOf(transaction.amount), type: transaction.type, category: transaction.category, note: transaction.notes, inCurrentFinancialPeriod: current ? isInFinancialMonth(new Date(transaction.createdAt), payrolls, current.year, current.month) : false })),
+    currentPeriodTransactions: (current ? periodTransactions : transactions.slice(0, 30))
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+      .map((transaction) => ({ date: dateKey(transaction.createdAt), amount: amountOf(transaction.amount), type: transaction.type, category: transaction.category, note: transaction.notes })),
   };
 }
