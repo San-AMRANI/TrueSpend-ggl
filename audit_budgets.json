@@ -1,0 +1,58 @@
+[
+  {
+    "category": "💰 Savings & Goals",
+    "budget_count": "2"
+  },
+  {
+    "category": "👥 Social",
+    "budget_count": "2"
+  },
+  {
+    "category": "📱 Telecom & Subscriptions",
+    "budget_count": "4"
+  },
+  {
+    "category": "🍔 Dining & Takeaway",
+    "budget_count": "4"
+  },
+  {
+    "category": "🩺 Health & Medical",
+    "budget_count": "4"
+  },
+  {
+    "category": "🏠 Housing & Utilities",
+    "budget_count": "4"
+  },
+  {
+    "category": "🎬 Entertainment",
+    "budget_count": "4"
+  },
+  {
+    "category": "📚 Education & Development",
+    "budget_count": "1"
+  },
+  {
+    "category": "🚗 Transportation",
+    "budget_count": "4"
+  },
+  {
+    "category": "💳 Debt & Obligations",
+    "budget_count": "2"
+  },
+  {
+    "category": "👨‍👩‍👦 Family & Gifts",
+    "budget_count": "4"
+  },
+  {
+    "category": "👕 Personal & Clothing",
+    "budget_count": "4"
+  },
+  {
+    "category": "🛒 Groceries",
+    "budget_count": "4"
+  },
+  {
+    "category": "☕ Coffee & Quick Food",
+    "budget_count": "4"
+  }
+]
