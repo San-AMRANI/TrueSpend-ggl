@@ -1,121 +1,76 @@
 import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { payrollRepository } from '../repositories/PayrollRepository.js';
+import { debtRepository } from '../repositories/DebtRepository.js';
+import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
+import { walletRepository } from '../repositories/WalletRepository.js';
 import { payrollService } from './PayrollService.js';
-import { getCurrentFinancialMonth, getNextPayroll, isInFinancialMonth } from '../../src/lib/financialMonth.js';
+import { computeFinancialState } from '../../src/lib/financialEngine.js';
 
 export class KpiService {
   async getKpisForUser(dbUser: any) {
     const userId = dbUser.id;
     await payrollService.reconcileDuePayrolls(userId);
 
-    const [allTx, payrolls] = await Promise.all([
+    // Auto-seed default wallets if none exist
+    let userWallets = await walletRepository.findAllByUserId(userId);
+    if (userWallets.length === 0) {
+      await walletRepository.create({ userId, name: 'Bank Account', type: 'Bank', isMain: true });
+      await walletRepository.create({ userId, name: 'Cash Wallet', type: 'Cash', isMain: false });
+      userWallets = await walletRepository.findAllByUserId(userId);
+    }
+
+    // Assign orphaned transactions to default Bank wallet
+    const mainBank = userWallets.find(w => w.type === 'Bank' && w.isMain) || userWallets.find(w => w.type === 'Bank') || userWallets[0];
+    const defaultCash = userWallets.find(w => w.type === 'Cash') || mainBank;
+
+    const [allTx, payrolls, allDebts, allBudgets] = await Promise.all([
       transactionRepository.findAllByUserId(userId),
       payrollRepository.findAllByUserId(userId),
+      debtRepository.findAllByUserId(userId),
+      categoryBudgetRepository.findAllByUserId(userId),
     ]);
+    
+    // Fix legacy transactions without walletId or with text 'Bank'/'Cash'
+    const transactions = allTx.map(tx => {
+      let wid = tx.walletId as any;
+      if (!wid || wid === 'Bank') {
+        wid = (tx as any).sourceWallet === 'Cash' ? defaultCash.id : mainBank.id;
+      } else if (wid === 'Cash') {
+        wid = defaultCash.id;
+      }
+      return { ...tx, walletId: wid };
+    });
 
-    const now = new Date();
-    const currentFm = getCurrentFinancialMonth(payrolls, now);
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    let bankBalance = 0;
-    let cashOnHand = 0;
-    let openingBankBalance = 0;
-    let openingCashOnHand = 0;
-    let monthlyExpenses = 0;
-    let monthlyIncome = 0;
-    let dailySpent = 0;
-    let todaysIncome = 0;
-
-    const toCalendarDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const isExpenseOutflow = (type: string) => type === 'Expense' || type === 'Debt Repayment';
-    const applyTransaction = (transaction: (typeof allTx)[number], balances: { bank: number; cash: number }) => {
-      const amount = parseFloat(transaction.amount as unknown as string);
-      if (transaction.sourceWallet === 'Bank') {
-        if (transaction.type === 'Income') balances.bank += amount;
-        if (isExpenseOutflow(transaction.type)) balances.bank -= amount;
-        if (transaction.type === 'Transfer') { balances.bank -= amount; balances.cash += amount; }
-      } else {
-        if (transaction.type === 'Income') balances.cash += amount;
-        if (isExpenseOutflow(transaction.type)) balances.cash -= amount;
-        if (transaction.type === 'Transfer') { balances.cash -= amount; balances.bank += amount; }
+    const engineInput = {
+      transactions: transactions as any,
+      payrolls: payrolls as any,
+      debts: allDebts as any,
+      budgets: allBudgets as any,
+      wallets: userWallets.map(w => ({
+        id: w.id,
+        name: w.name,
+        type: w.type,
+        isMain: w.isMain,
+        initialBalance: w.initialBalance,
+      })),
+      userSettings: {
+        emergencyBuffer: parseFloat(dbUser.emergencyBuffer as unknown as string) || 0,
+        salary: parseFloat(dbUser.salary as unknown as string) || 0,
       }
     };
-
-    for (const tx of allTx) {
-      const txAmount = parseFloat(tx.amount as unknown as string);
-      const txDate = new Date(tx.createdAt!);
-      const transactionDay = toCalendarDay(txDate);
-
-      if (transactionDay < today) {
-        const openingBalances = { bank: openingBankBalance, cash: openingCashOnHand };
-        applyTransaction(tx, openingBalances);
-        openingBankBalance = openingBalances.bank;
-        openingCashOnHand = openingBalances.cash;
-      }
-      if (transactionDay <= today) {
-        const currentBalances = { bank: bankBalance, cash: cashOnHand };
-        applyTransaction(tx, currentBalances);
-        bankBalance = currentBalances.bank;
-        cashOnHand = currentBalances.cash;
-      }
-      if (currentFm && transactionDay <= today && isInFinancialMonth(txDate, payrolls, currentFm.year, currentFm.month)) {
-        if (tx.type === 'Expense') monthlyExpenses += txAmount;
-        if (tx.type === 'Income') monthlyIncome += txAmount;
-      }
-      if (transactionDay.getTime() === today.getTime()) {
-        if (isExpenseOutflow(tx.type)) dailySpent += txAmount;
-        if (tx.type === 'Income') todaysIncome += txAmount;
-      }
-    }
-
-    let debtRepayments = 0;
-    let reimbursements = 0;
-    if (currentFm) {
-      for (const tx of allTx) {
-        const txDate = new Date(tx.createdAt!);
-        const transactionDay = toCalendarDay(txDate);
-        if (transactionDay > today || !isInFinancialMonth(txDate, payrolls, currentFm.year, currentFm.month)) continue;
-        const amount = parseFloat(tx.amount as unknown as string);
-        if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) debtRepayments += amount;
-        if (tx.type === 'Income' && ['Reimbursement', '🔙 Reimbursement', 'Refund'].includes(tx.category || '')) reimbursements += amount;
-      }
-    }
-
-    const emergencyBuffer = parseFloat(dbUser.emergencyBuffer as unknown as string) || 0;
-    const totalLiquidity = bankBalance + cashOnHand;
-    const openingLiquidity = openingBankBalance + openingCashOnHand;
-    const nextPayroll = getNextPayroll(payrolls, now);
-    const nextPayday = nextPayroll ? new Date(nextPayroll.scheduledFor) : null;
-    const daysUntilPayday = nextPayday ? Math.max(0, Math.ceil((nextPayday.getTime() - today.getTime()) / 86_400_000)) : 0;
-    const dailyAllowance = daysUntilPayday > 0 ? (openingLiquidity + todaysIncome - emergencyBuffer) / daysUntilPayday : 0;
-    const dailyRemaining = dailyAllowance - dailySpent;
-    const dailyUsagePercent = dailyAllowance > 0 ? (dailySpent / dailyAllowance) * 100 : dailySpent > 0 ? 100 : 0;
-    const dailyStatus = dailyRemaining < 0 || dailyUsagePercent >= 100 ? 'critical' : dailyUsagePercent >= 80 ? 'warning' : 'on_track';
+    
+    const kpis = computeFinancialState(engineInput);
+    
+    // Aggregate balances into wallets
+    const accounts = userWallets.map(w => ({
+      ...w,
+      balance: kpis.walletBalances[w.id] !== undefined ? kpis.walletBalances[w.id] : parseFloat(w.initialBalance as string || '0')
+    }));
 
     return {
-      totalLiquidity,
-      bankBalance,
-      cashOnHand,
-      monthlyExpenses,
-      monthlyIncome,
-      adjustedTrueSpend: monthlyExpenses - debtRepayments - reimbursements,
-      daysUntilPayday,
-      dailyAllowance,
-      dailySpent,
-      dailyRemaining,
-      dailyUsagePercent,
-      dailyStatus,
-      /** Legacy field retained for API compatibility; it is no longer used. */
-      payday: null,
-      currentFinancialAmount: currentFm ? Number(currentFm.startPayroll.amount) : 0,
-      financialPeriodStart: currentFm ? currentFm.start.toISOString() : null,
-      financialPeriodEnd: currentFm ? currentFm.end.toISOString() : null,
-      nextPayrollDate: nextPayroll ? new Date(nextPayroll.scheduledFor).toISOString() : null,
-      financialMonthReady: Boolean(currentFm),
-      financialMonthMessage: currentFm ? null : 'Add a payroll for this month and the next month in Financial Calendar to define your financial period.',
-      emergencyBuffer,
+      accounts,
+      ...kpis
     };
   }
 }
-
 export const kpiService = new KpiService();

@@ -1,6 +1,6 @@
-import { CategoryBudget, KPI, Transaction } from '../types';
-import { normalizeCategory } from './categories';
-import { FinancialMonthRef, PayrollLike, getFinancialMonthBounds, getFinancialMonthRef, getPreviousFinancialMonth, isInFinancialMonth } from './financialMonth';
+import { CategoryBudget, KPI, Transaction } from '../types/index.js';
+import { normalizeCategory } from './categories.js';
+import { FinancialMonthRef, PayrollLike, getFinancialMonthBounds, getFinancialMonthRef, getPreviousFinancialMonth, isInFinancialMonth } from './financialMonth.js';
 
 export const BUDGET_STATUS_THRESHOLDS = { warning: 80, overBudget: 100, critical: 120 } as const;
 export type BudgetStatus = 'normal' | 'warning' | 'over_budget' | 'critical' | 'not_set';
@@ -12,7 +12,7 @@ export interface TransactionFilters {
   endDate?: string;
   types?: Transaction['type'][];
   categories?: string[];
-  wallets?: Transaction['sourceWallet'][];
+  wallets?: Transaction['walletId'][];
   minAmount?: number;
   maxAmount?: number;
   reimbursable?: 'all' | 'reimbursable' | 'non-reimbursable';
@@ -79,7 +79,7 @@ export const filterTransactions = (transactions: Transaction[], filters: Transac
   return transactions.filter((transaction) => {
     const haystack = [transaction.category, transaction.notes, transaction.linkedContactName].filter(Boolean).join(' ').toLowerCase();
     const amount = amountOf(transaction);
-    return (!query || haystack.includes(query)) && matchesDate(transaction) && (!filters.types?.length || filters.types.includes(transaction.type)) && (!filters.categories?.length || filters.categories.map(normalizeCategory).includes(normalizeCategory(transaction.category))) && (!filters.wallets?.length || filters.wallets.includes(transaction.sourceWallet)) && (filters.minAmount === undefined || amount >= filters.minAmount) && (filters.maxAmount === undefined || amount <= filters.maxAmount) && (filters.reimbursable === undefined || filters.reimbursable === 'all' || (filters.reimbursable === 'reimbursable') === Boolean(transaction.reimbursableAmount && amountOf({ amount: transaction.reimbursableAmount }) > 0)) && (filters.debtRelationship === undefined || filters.debtRelationship === 'all' || (filters.debtRelationship === 'debt-linked') === Boolean(transaction.linkedContactId));
+    return (!query || haystack.includes(query)) && matchesDate(transaction) && (!filters.types?.length || filters.types.includes(transaction.type)) && (!filters.categories?.length || filters.categories.map(normalizeCategory).includes(normalizeCategory(transaction.category))) && (!filters.wallets?.length || filters.wallets.includes(transaction.walletId)) && (filters.minAmount === undefined || amount >= filters.minAmount) && (filters.maxAmount === undefined || amount <= filters.maxAmount) && (filters.reimbursable === undefined || filters.reimbursable === 'all' || (filters.reimbursable === 'reimbursable') === Boolean(transaction.reimbursableAmount && amountOf({ amount: transaction.reimbursableAmount }) > 0)) && (filters.debtRelationship === undefined || filters.debtRelationship === 'all' || (filters.debtRelationship === 'debt-linked') === Boolean(transaction.linkedContactId));
   }).sort((a, b) => filters.sort === 'oldest' ? transactionDate(a).getTime() - transactionDate(b).getTime() : filters.sort === 'highest' ? amountOf(b) - amountOf(a) : filters.sort === 'lowest' ? amountOf(a) - amountOf(b) : transactionDate(b).getTime() - transactionDate(a).getTime());
 };
 

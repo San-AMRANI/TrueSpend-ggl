@@ -8,8 +8,14 @@ import seedRoutes from './seedRoutes.js';
 import categoryBudgetRoutes from './categoryBudgetRoutes.js';
 import chatRoutes from './chatRoutes.js';
 import payrollRoutes from './payrollRoutes.js';
+import receiptRoutes from './receiptRoutes.js';
+import walletRoutes from './walletRoutes.js';
+import contextRoutes from './contextRoutes.js';
+import { NotificationController } from '../controllers/NotificationController.js';
+import { requireAuth } from '../../src/middleware/auth.js';
 
 const apiRouter = Router();
+const notificationController = new NotificationController();
 
 apiRouter.get('/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -24,5 +30,15 @@ apiRouter.use('/', seedRoutes);
 apiRouter.use('/', categoryBudgetRoutes);
 apiRouter.use('/chat', chatRoutes);
 apiRouter.use('/', payrollRoutes);
+apiRouter.use('/', receiptRoutes);
+apiRouter.use('/', walletRoutes);
+apiRouter.use('/', contextRoutes);
+
+// Push Notifications v2
+apiRouter.get('/notifications/vapid-public-key', notificationController.getPublicKey);
+apiRouter.post('/notifications/subscribe', requireAuth, notificationController.subscribe);
+apiRouter.post('/notifications/unsubscribe', requireAuth, notificationController.unsubscribe);
+apiRouter.get('/notifications/preferences', requireAuth, notificationController.getPreferences);
+apiRouter.put('/notifications/preferences', requireAuth, notificationController.updatePreferences);
 
 export default apiRouter;

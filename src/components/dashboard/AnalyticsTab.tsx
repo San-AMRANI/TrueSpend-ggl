@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Payroll, Transaction } from '../../types';
+import { Debt, Payroll, Transaction, Wallet } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
@@ -15,15 +15,19 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
 interface AnalyticsTabProps {
   transactions: Transaction[];
   payrolls: Payroll[];
+  debts: Debt[];
   analyticsMonth: string;
   setAnalyticsMonth: (month: string) => void;
+  wallets?: Wallet[];
 }
 
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   transactions,
   payrolls,
+  debts,
   analyticsMonth,
   setAnalyticsMonth,
+  wallets = [],
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -54,7 +58,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   }, [filteredTransactions]);
 
   const incomeCategoryData = useMemo(() => {
-    const incomes = filteredTransactions.filter((t) => t.type !== 'Expense');
+    const incomes = filteredTransactions.filter((t) => t.type === 'Income');
     const grouped = incomes.reduce((acc, curr) => {
       const category = normalizeCategory(curr.category) || 'Uncategorized';
       acc[category] = (acc[category] || 0) + parseFloat(curr.amount);
@@ -71,17 +75,20 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const walletData = useMemo(() => {
     const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
-    let bank = 0;
-    let cash = 0;
+    const walletSums: Record<string, number> = {};
+
     expenses.forEach((t) => {
-      if (t.sourceWallet === 'Bank') bank += parseFloat(t.amount);
-      if (t.sourceWallet === 'Cash') cash += parseFloat(t.amount);
+      walletSums[t.walletId] = (walletSums[t.walletId] || 0) + parseFloat(t.amount);
     });
-    return [
-      { name: 'Bank', value: bank },
-      { name: 'Cash', value: cash }
-    ].filter(w => w.value > 0);
-  }, [filteredTransactions]);
+
+    return Object.entries(walletSums).map(([walletId, value]) => {
+      const wallet = wallets.find(w => w.id === walletId);
+      return {
+        name: wallet ? wallet.name : walletId,
+        value,
+      };
+    }).filter(w => w.value > 0);
+  }, [filteredTransactions, wallets]);
 
   const comparisonMonth = useMemo(() => {
     if (analyticsMonth === 'All Time') {
@@ -139,7 +146,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const incomeVsExpenseData = useMemo(() => {
     const income = filteredTransactions
-      .filter((t) => t.type !== 'Expense')
+      .filter((t) => t.type === 'Income')
       .reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const expense = filteredTransactions
       .filter((t) => t.type === 'Expense')
@@ -159,7 +166,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       const date = new Date(t.createdAt);
       allMonths.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
 
-      if (t.type !== 'Expense') totalIncome += parseFloat(t.amount);
+      if (t.type === 'Income') totalIncome += parseFloat(t.amount);
       if (t.type === 'Expense') totalExpense += parseFloat(t.amount);
     });
 
@@ -169,6 +176,46 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       avgExpense: totalExpense / monthCount,
     };
   }, [transactions]);
+
+  const adjustedTrueSpendData = useMemo(() => {
+    let totalExpenses = 0;
+    let debtRepayments = 0;
+    let reimbursements = 0;
+    let pendingReimbursable = 0;
+
+    filteredTransactions.forEach((tx) => {
+      const amount = parseFloat(tx.amount);
+      if (tx.type === 'Expense') {
+        totalExpenses += amount;
+      }
+      
+      if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) {
+        debtRepayments += amount;
+      }
+      
+      if (tx.type === 'Expense' && tx.reimbursableAmount && parseFloat(tx.reimbursableAmount) > 0) {
+        reimbursements += parseFloat(tx.reimbursableAmount);
+        
+        if (tx.linkedContactId) {
+          const linkedDebt = debts.find(d => d.id === tx.linkedContactId);
+          if (linkedDebt && linkedDebt.status === 'Pending') {
+            pendingReimbursable += parseFloat(linkedDebt.remainingBalance);
+          }
+        } else {
+          // Fallback for legacy transactions without a linked debt
+          pendingReimbursable += parseFloat(tx.reimbursableAmount);
+        }
+      }
+    });
+
+    return {
+      totalExpenses,
+      debtRepayments,
+      reimbursements,
+      pendingReimbursable,
+      adjustedTrueSpend: totalExpenses - debtRepayments - reimbursements
+    };
+  }, [filteredTransactions, debts]);
 
   const savingsRate = useMemo(() => {
     const income = incomeVsExpenseData[0].amount;
@@ -279,6 +326,44 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </div>
         )}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Adjusted True Spend Breakdown</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Expenses</p>
+              <p className="mt-1 text-xl font-bold text-gray-900 dark:text-gray-100">{adjustedTrueSpendData.totalExpenses.toFixed(2)} MAD</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">All outbound transactions</p>
+            </div>
+            
+            <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Debt Repayments</p>
+              <p className="mt-1 text-xl font-bold text-gray-900 dark:text-gray-100">-{adjustedTrueSpendData.debtRepayments.toFixed(2)} MAD</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Money moved, not spent</p>
+            </div>
+
+            <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Reimbursable Expenses</p>
+              <p className="mt-1 text-xl font-bold text-gray-900 dark:text-gray-100">-{adjustedTrueSpendData.reimbursements.toFixed(2)} MAD</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Money you spent for others</p>
+            </div>
+
+            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 p-4">
+              <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Adjusted True Spend</p>
+              <p className="mt-1 text-2xl font-bold text-blue-700 dark:text-blue-300">{adjustedTrueSpendData.adjustedTrueSpend.toFixed(2)} MAD</p>
+              <p className="mt-1 text-xs text-blue-600/80 dark:text-blue-400/80">Money spent on yourself</p>
+            </div>
+          </div>
+          {adjustedTrueSpendData.pendingReimbursable > 0 && (
+            <div className="mt-4 flex items-center justify-between rounded-md bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+              <p>You also have <strong>{adjustedTrueSpendData.pendingReimbursable.toFixed(2)} MAD</strong> in pending reimbursable expenses this period.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card>
@@ -495,8 +580,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                       <span>{format(new Date(transaction.createdAt), 'MMM d, yyyy')}</span>
                       <span className="flex items-center gap-1">
-                        {transaction.sourceWallet === 'Bank' ? <Landmark className="h-3 w-3" /> : <Banknote className="h-3 w-3" />}
-                        {transaction.sourceWallet}
+                        {(() => {
+                          const w = wallets.find(w => w.id === transaction.walletId);
+                          const isBank = w ? w.type === 'Bank' || w.type === 'Savings' : transaction.walletId === 'Bank';
+                          return isBank ? <Landmark className="h-3 w-3" /> : <Banknote className="h-3 w-3" />;
+                        })()}
+                        {wallets.find(w => w.id === transaction.walletId)?.name || transaction.walletId}
                       </span>
                     </div>
                   </div>

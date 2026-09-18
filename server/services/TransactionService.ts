@@ -6,7 +6,8 @@ import { normalizeCategory } from '../../src/lib/categories.js';
 export interface CreateTransactionDTO {
   amount: number;
   type: 'Income' | 'Expense' | 'Transfer' | 'Debt Repayment';
-  source_wallet: 'Bank' | 'Cash';
+  walletId: string; // Wallet UUID
+  destinationWalletId?: string;
   category?: string;
   notes?: string;
   transaction_date?: string;
@@ -14,6 +15,7 @@ export interface CreateTransactionDTO {
   linked_contact_name?: string;
   /** When present, this income is money borrowed and creates a payable debt. */
   loan_contact_name?: string;
+  contextId?: string | null;
 }
 
 export interface UpdateTransactionDTO extends Omit<CreateTransactionDTO, 'type'> {
@@ -53,10 +55,12 @@ export class TransactionService {
       userId,
       amount: String(dto.amount),
       type: dto.type,
-      sourceWallet: dto.source_wallet,
+      walletId: dto.walletId,
+      destinationWalletId: dto.destinationWalletId || null,
       category: normalizeCategory(loanContactName ? '🤝 Loan Received' : dto.category),
       notes: dto.notes,
       createdAt,
+      contextId: dto.contextId || null,
     });
 
     if (dto.reimbursable_amount && dto.reimbursable_amount > 0 && dto.linked_contact_name) {
@@ -188,10 +192,14 @@ export class TransactionService {
 
     const updated = await transactionRepository.update(transactionId, userId, {
       amount: String(dto.amount),
-      sourceWallet: dto.source_wallet,
+      walletId: dto.walletId,
+      ...(dto.destinationWalletId !== undefined
+        ? { destinationWalletId: dto.destinationWalletId || null }
+        : {}),
       category: normalizeCategory(loanContactName ? '🤝 Loan Received' : dto.category),
       notes: dto.notes,
       ...(createdAt ? { createdAt } : {}),
+      ...(dto.contextId !== undefined ? { contextId: dto.contextId || null } : {}),
     });
     return updated;
   }

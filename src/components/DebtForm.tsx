@@ -32,10 +32,13 @@ export default function DebtForm({ onSuccess }: { onSuccess: () => void }) {
           due_date: formData.due_date || undefined,
         })
       });
-      if (res.ok) {
-        onSuccess();
-        setFormData({ amount: '', contact: '', type: 'Receivable', due_date: '' });
+      if (!res.ok) {
+        if (res.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to add debt');
       }
+      onSuccess();
+      setFormData({ amount: '', contact: '', type: 'Receivable', due_date: '' });
     } catch (err) {
       console.error(err);
     } finally {

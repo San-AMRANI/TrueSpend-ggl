@@ -310,6 +310,24 @@ function BudgetCard({ category, budget, spent, year, month, payrolls, onSave, on
                 {Math.abs(pace.difference).toFixed(2)} MAD {pace.difference > 0 ? 'ahead of pace' : 'behind pace'}
               </p>
             )}
+            {/* Adaptive daily category limit */}
+            {amount !== undefined && isCurrentMonth && pace && pace.daysInMonth > 0 && (
+              (() => {
+                const daysLeft = Math.max(1, pace.daysInMonth - pace.elapsedDays);
+                const remaining = Math.max(0, amount - spent);
+                const dailyLimit = remaining / daysLeft;
+                return (
+                  <div className="flex items-center gap-1.5 rounded-md bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1.5 text-xs">
+                    <span className="font-medium text-indigo-700 dark:text-indigo-300">
+                      {dailyLimit.toFixed(0)} MAD/day
+                    </span>
+                    <span className="text-indigo-500 dark:text-indigo-400">
+                      for {daysLeft} day{daysLeft !== 1 ? 's' : ''} left
+                    </span>
+                  </div>
+                );
+              })()
+            )}
             {daysWarning !== null && daysWarning <= 5 && (
               <div className="flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-900/20 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="h-3 w-3 shrink-0" />

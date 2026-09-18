@@ -6,11 +6,14 @@ export interface CreateTransactionParams {
   userId: string;
   amount: string;
   type: 'Income' | 'Expense' | 'Transfer' | 'Debt Repayment';
-  sourceWallet: 'Bank' | 'Cash';
+  walletId: string;
+  destinationWalletId?: string | null;
+  sourceWallet?: string | null;
   category?: string;
   notes?: string;
   createdAt?: Date;
   payrollId?: string;
+  contextId?: string | null;
 }
 
 export interface CreateSplitParams {

@@ -7,9 +7,9 @@ export class KpiController {
     try {
       const kpis = await kpiService.getKpisForUser(req.dbUser);
       res.json(kpis);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      res.status(500).json({ error: 'Internal Server Error' });
+      res.status(500).json({ error: 'Internal Server Error', details: e?.message, stack: e?.stack });
     }
   }
 }

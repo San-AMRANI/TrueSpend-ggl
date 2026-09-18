@@ -14,6 +14,10 @@ async function request<T>(url: string, options: RequestInit = {}, token?: string
   });
 
   if (!response.ok) {
+    if (response.status === 401) {
+      // Token is invalid or expired
+      window.dispatchEvent(new Event('auth:unauthorized'));
+    }
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `Request failed with status ${response.status}`);
   }

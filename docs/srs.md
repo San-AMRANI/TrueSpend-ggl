@@ -18,14 +18,18 @@ The application follows a standard React SPA + Express API architecture.
 - **ORM**: Drizzle ORM.
 - **AI Integration**: Google Gen AI SDK (`@google/genai`) configured for Gemini Pro models.
 
-## 3. Data Model (Drizzle ORM Schema)
-The PostgreSQL schema consists of several core tables linked by the user's UUID:
+## 3. Data Model & Database Architecture
+The application runs on PostgreSQL with Drizzle ORM. For an exhaustive, field-by-field specification of all 10 tables, custom ENUMs, ER diagrams, foreign key relationships, and backup/restore workflows, see **[TrueSpend PostgreSQL Database Schema & Architecture](database.md)**.
 
-- **Users**: `id` (UUID), `uid` (Firebase UID), `email`, `payday`, `salary`, `emergencyBuffer`.
-- **Transactions**: `id`, `userId`, `amount`, `type` (Enum: Income, Expense, Transfer, Debt Repayment), `sourceWallet` (Enum: Bank, Cash), `category`, `notes`, `createdAt`.
-- **Debts**: `id`, `userId`, `contactName`, `type` (Enum: Receivable, Payable), `originalAmount`, `remainingBalance`, `status` (Enum: Pending, Cleared), `dueDate`.
-- **CategoryBudgets**: `id`, `userId`, `category`, `year`, `month`, `amount`. (Unique constraint on userId + category + year + month).
-- **Splits**: Links transactions that are reimbursable or tied specifically to a debt settlement (columns: `transactionId`, `reimbursableAmount`, `linkedContactId`).
+Key entities include:
+- **Users**: Identity, payday cycles, emergency buffers, and cloud backup configurations.
+- **Transactions**: Core financial ledger capturing Income, Expense, Transfer, and Debt Repayment events across Bank and Cash wallets.
+- **Debts**: Counterparty obligation management (Receivables & Payables), balance tracking, and status states.
+- **Splits**: Multi-party expense allocations linked to transactions and debt counterparties.
+- **Payrolls**: Scheduled calendar-based income dates and salary projections.
+- **CategoryBudgets**: Monthly category spending limits with atomic upsert guarantees.
+- **Goals**: Savings targets, deadlines, and milestone progress tracking.
+- **Push Subscriptions & Notification Engine**: Web Push VAPID endpoints, quiet hour preferences, and delivery idempotency logs.
 
 ## 4. Key Systems
 ### Authentication

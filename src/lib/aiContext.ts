@@ -1,5 +1,5 @@
-import type { CategoryBudget, Debt, KPI, Payroll, Transaction } from '../types';
-import { financialPeriodLabel, getCurrentFinancialMonth, getPreviousFinancialMonth, isInFinancialMonth } from './financialMonth';
+import type { CategoryBudget, Debt, KPI, Payroll, Transaction } from '../types/index.js';
+import { financialPeriodLabel, getCurrentFinancialMonth, getPreviousFinancialMonth, isInFinancialMonth } from './financialMonth.js';
 
 const amountOf = (value: string | number | null | undefined) => Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : 0;
 const dateKey = (value: string | Date | null | undefined) => {
@@ -8,13 +8,12 @@ const dateKey = (value: string | Date | null | undefined) => {
 };
 
 export function buildAiContextSnapshot({
-  kpis, transactions, debts, budgets, emergencyBuffer, payrolls,
+  kpis, transactions, debts, budgets, payrolls,
 }: {
   kpis: KPI | null;
   transactions: Transaction[];
   debts: Debt[];
   budgets: CategoryBudget[];
-  emergencyBuffer: number;
   payrolls: Payroll[];
 }) {
   const current = getCurrentFinancialMonth(payrolls);
@@ -35,6 +34,7 @@ export function buildAiContextSnapshot({
       startsWithPayroll: amountOf(current.startPayroll.amount),
       closesWithPayroll: dateKey(current.endPayroll.scheduledFor),
     } : { configured: false, message: 'No complete financial period is configured. Add consecutive payroll dates in Financial Calendar.' },
+    wallets: kpis ? kpis.accounts.map(w => ({ id: w.id, name: w.name, type: w.type, balance: amountOf(w.balance) })) : [],
     kpis: kpis ? {
       totalLiquidity: amountOf(kpis.totalLiquidity), bankBalance: amountOf(kpis.bankBalance), cashOnHand: amountOf(kpis.cashOnHand),
       monthlyIncome: amountOf(kpis.monthlyIncome), monthlyExpenses: amountOf(kpis.monthlyExpenses), dailyAllowance: amountOf(kpis.dailyAllowance),
@@ -43,8 +43,10 @@ export function buildAiContextSnapshot({
     financialPeriodSummary: { income: amountOf(income), expenses: amountOf(expenses), netPosition: amountOf(income - expenses), previousPeriodExpenses: previousTransactions.filter((transaction) => transaction.type === 'Expense').reduce((sum, transaction) => sum + amountOf(transaction.amount), 0) },
     payrolls: payrolls.map((payroll) => ({ date: dateKey(payroll.scheduledFor), amount: amountOf(payroll.amount) })),
     budgets: budgets.slice(0, 30).map((budget) => ({ category: budget.category, amount: amountOf(budget.amount), year: budget.year, month: budget.month })),
-    emergencyBuffer: amountOf(emergencyBuffer),
+    emergencyBuffer: kpis ? amountOf(kpis.emergencyBuffer) : 0,
     debts: debts.slice(0, 20).map((debt) => ({ contact: debt.contactName, type: debt.type, remaining: amountOf(debt.remainingBalance), dueDate: dateKey(debt.dueDate) })),
-    recentTransactions: transactions.slice().sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()).slice(0, 30).map((transaction) => ({ date: dateKey(transaction.createdAt), amount: amountOf(transaction.amount), type: transaction.type, category: transaction.category, note: transaction.notes, inCurrentFinancialPeriod: current ? isInFinancialMonth(new Date(transaction.createdAt), payrolls, current.year, current.month) : false })),
+    currentPeriodTransactions: (current ? periodTransactions : transactions.slice(0, 30))
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+      .map((transaction) => ({ date: dateKey(transaction.createdAt), amount: amountOf(transaction.amount), type: transaction.type, category: transaction.category, note: transaction.notes })),
   };
 }

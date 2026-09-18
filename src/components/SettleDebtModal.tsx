@@ -9,13 +9,14 @@ import { expenseCategories, incomeAndTransferCategories } from '../lib/categorie
 interface SettleDebtModalProps {
   debt: Debt | null;
   onClose: () => void;
-  onConfirm: (debtId: string, amount: number, category?: string, wallet?: 'Bank' | 'Cash') => Promise<void>;
+  onConfirm: (debtId: string, amount: number, category?: string, walletId?: string) => Promise<void>;
+  wallets?: { id: string; name: string }[];
 }
 
-export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose, onConfirm }) => {
+export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose, onConfirm, wallets }) => {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
-  const [wallet, setWallet] = useState<'Bank' | 'Cash'>('Bank');
+  const [wallet, setWallet] = useState<string>(wallets?.[0]?.id || 'Bank');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -24,10 +25,10 @@ export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose,
       setAmount(debt.remainingBalance);
       const defaultCat = debt.type === 'Receivable' ? 'Reimbursement' : 'Debt Repayment';
       setCategory(defaultCat);
-      setWallet('Bank'); // sensible default — most settlements go through Bank
+      setWallet(wallets?.[0]?.id || 'Bank'); // sensible default
       setError('');
     }
-  }, [debt]);
+  }, [debt, wallets]);
 
   if (!debt) return null;
 
@@ -95,10 +96,9 @@ export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose,
               </label>
               <Select
                 value={wallet}
-                onChange={(e) => setWallet(e.target.value as 'Bank' | 'Cash')}
+                onChange={(e) => setWallet(e.target.value)}
               >
-                <option value="Bank">🏦 Bank</option>
-                <option value="Cash">💵 Cash</option>
+                {(wallets || []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
               </Select>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {debt.type === 'Receivable'

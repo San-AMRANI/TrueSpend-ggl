@@ -6,41 +6,64 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { useAuth } from '../context/AuthContext';
 import { Transaction } from '../types';
 import { expenseCategories, incomeAndTransferCategories } from '../lib/categories';
+import { Trash2, AlertCircle } from 'lucide-react';
 
 type FormData = {
   amount: string;
   type: 'Income' | 'Expense' | 'Transfer' | 'Loan Received';
-  source_wallet: 'Bank' | 'Cash';
+  walletId: string;
+  toWalletId?: string;
   category: string;
   notes: string;
   transaction_date: string;
+  contextId?: string | null;
 };
 
-const emptyForm = (): FormData => ({
+const emptyForm = (wallets?: { id: string; name: string }[]): FormData => ({
   amount: '',
   type: 'Expense',
-  source_wallet: 'Bank',
+  walletId: wallets?.[0]?.id || '',
+  toWalletId: wallets?.[1]?.id || wallets?.[0]?.id || '',
   category: '',
   notes: '',
   transaction_date: new Date().toISOString().slice(0, 10),
+  contextId: null,
 });
 
 interface TransactionFormProps {
   onSuccess: () => void;
   transaction?: Transaction | null;
   onCancel?: () => void;
+  wallets?: { id: string; name: string }[];
+  contexts?: any[];
+  onDelete?: (id: string) => Promise<void> | void;
 }
 
-export default function TransactionForm({ onSuccess, transaction, onCancel }: TransactionFormProps) {
+export default function TransactionForm({ onSuccess, transaction, onCancel, wallets, contexts = [], onDelete }: TransactionFormProps) {
   const { token } = useAuth();
   const isEditing = Boolean(transaction);
   const [loading, setLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
-  const [formData, setFormData] = useState<FormData>(emptyForm());
+  const [formData, setFormData] = useState<FormData>(emptyForm(wallets));
   const [isSplit, setIsSplit] = useState(false);
   const [splitData, setSplitData] = useState({ reimbursable_amount: '', linked_contact_name: '' });
   const [loanContactName, setLoanContactName] = useState('');
   const isPayroll = Boolean(transaction?.payrollId);
+
+  const handleDelete = async () => {
+    if (!transaction || !onDelete) return;
+    setIsDeleting(true);
+    try {
+      await onDelete(transaction.id);
+      onCancel?.();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to delete transaction');
+      setIsDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
 
   useEffect(() => {
     if (!transaction) {
@@ -58,10 +81,12 @@ export default function TransactionForm({ onSuccess, transaction, onCancel }: Tr
     setFormData({
       amount: transaction.amount,
       type: transaction.category === '🤝 Loan Received' && transaction.linkedDebtType === 'Payable' ? 'Loan Received' : transaction.type,
-      source_wallet: transaction.sourceWallet,
+      walletId: transaction.walletId || wallets?.[0]?.id || '',
+      toWalletId: transaction.destinationWalletId || (transaction as any).toWalletId || wallets?.[1]?.id || '',
       category: transaction.category || '',
       notes: transaction.notes || '',
       transaction_date: new Date(transaction.createdAt).toISOString().slice(0, 10),
+      contextId: transaction.contextId || null,
     });
     setIsSplit(Boolean(transaction.reimbursableAmount && Number.parseFloat(transaction.reimbursableAmount) > 0));
     setSplitData({
@@ -71,6 +96,22 @@ export default function TransactionForm({ onSuccess, transaction, onCancel }: Tr
     setLoanContactName(transaction.linkedDebtType === 'Payable' ? transaction.linkedContactName || '' : '');
   }, [transaction]);
 
+  useEffect(() => {
+    // Only auto-suggest context for NEW transactions when date changes
+    if (!isEditing && contexts.length > 0 && formData.transaction_date && !formData.contextId) {
+      const txDate = new Date(formData.transaction_date).getTime();
+      const matchingContext = contexts.find(c => {
+        if (!c.startDate || !c.endDate || c.status === 'Planned') return false;
+        const start = new Date(c.startDate).getTime();
+        const end = new Date(c.endDate).getTime();
+        return txDate >= start && txDate <= end;
+      });
+      if (matchingContext) {
+        setFormData(prev => ({ ...prev, contextId: matchingContext.id }));
+      }
+    }
+  }, [formData.transaction_date, isEditing, contexts]);
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
@@ -78,6 +119,10 @@ export default function TransactionForm({ onSuccess, transaction, onCancel }: Tr
     const reimbursableAmount = isSplit ? Number.parseFloat(splitData.reimbursable_amount) : 0;
     if (!Number.isFinite(amount) || amount <= 0) {
       setError('Enter an amount greater than zero.');
+      return;
+    }
+    if (formData.type === 'Transfer' && formData.toWalletId && formData.walletId === formData.toWalletId) {
+      setError('Source and destination wallets must be different.');
       return;
     }
     if (isSplit && (!Number.isFinite(reimbursableAmount) || reimbursableAmount <= 0 || reimbursableAmount > amount)) {
@@ -96,10 +141,14 @@ export default function TransactionForm({ onSuccess, transaction, onCancel }: Tr
     setLoading(true);
     try {
       const payload = {
-        ...formData,
         amount,
         type: formData.type === 'Loan Received' ? 'Income' : formData.type,
-        category: formData.type === 'Loan Received' ? '🤝 Loan Received' : formData.category,
+        walletId: formData.walletId,
+        destinationWalletId: formData.type === 'Transfer' ? formData.toWalletId : undefined,
+        category: formData.type === 'Loan Received' ? '🤝 Loan Received' : (formData.type === 'Transfer' && !formData.category ? '🔄 Transfer' : formData.category),
+        notes: formData.notes,
+        transaction_date: formData.transaction_date,
+        contextId: formData.contextId || null,
         ...(formData.type === 'Loan Received' ? { loan_contact_name: loanContactName.trim() } : {}),
         ...(formData.type === 'Expense' ? {
           reimbursable_amount: reimbursableAmount,
@@ -112,7 +161,10 @@ export default function TransactionForm({ onSuccess, transaction, onCancel }: Tr
         body: JSON.stringify(payload),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || 'Unable to save the transaction.');
+      if (!response.ok) {
+        if (response.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
+        throw new Error(data.error || 'Unable to save the transaction.');
+      }
 
       onSuccess();
       if (isEditing) onCancel?.();
@@ -153,10 +205,25 @@ export default function TransactionForm({ onSuccess, transaction, onCancel }: Tr
               </div>
               <div className="space-y-2"><label className="text-sm font-medium">Transaction Date</label><Input required disabled={!isEditable} type="date" value={formData.transaction_date} onChange={(event) => setFormData({ ...formData, transaction_date: event.target.value })} /><p className="text-xs text-gray-500 dark:text-gray-400">This date controls your reports, budgets, and trends.</p></div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2"><label className="text-sm font-medium">Wallet</label><Select disabled={!isEditable || isPayroll} value={formData.source_wallet} onChange={(event) => setFormData({ ...formData, source_wallet: event.target.value as FormData['source_wallet'] })}><option value="Bank">Bank / Card</option><option value="Cash">Physical Cash</option></Select></div>
-                <div className="space-y-2"><label className="text-sm font-medium">Category</label><Select required disabled={!isEditable || isPayroll || isLoanReceived} value={formData.category} onChange={(event) => setFormData({ ...formData, category: event.target.value })}><option value="" disabled>Select category</option>{hasLegacyCategory && <option value={formData.category}>Legacy category: {formData.category}</option>}<optgroup label="Expenses">{expenseCategories.map((category) => <option key={category} value={category}>{category}</option>)}</optgroup><optgroup label="Income & Transfers">{incomeAndTransferCategories.map((category) => <option key={category} value={category}>{category}</option>)}</optgroup></Select>{hasLegacyCategory && <p className="text-xs text-amber-600 dark:text-amber-400">This is a legacy category. Choose one of the fixed categories when you are ready to recategorize it.</p>}</div>
+                <div className="space-y-2"><label className="text-sm font-medium">{formData.type === 'Transfer' ? 'From Wallet' : 'Wallet'}</label><Select disabled={!isEditable || isPayroll} value={formData.walletId} onChange={(event) => { const walletId = event.target.value as FormData['walletId']; setFormData({ ...formData, walletId }); }}><option value="" disabled>Select wallet</option>{(wallets || []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></div>
+                {formData.type === 'Transfer' ? (
+                  <div className="space-y-2"><label className="text-sm font-medium">To Wallet</label><Select disabled={!isEditable || isPayroll} value={formData.toWalletId} onChange={(event) => setFormData({ ...formData, toWalletId: event.target.value })}><option value="" disabled>Select destination wallet</option>{(wallets || []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></div>
+                ) : (
+                  <div className="space-y-2"><label className="text-sm font-medium">Category</label><Select required disabled={!isEditable || isPayroll || isLoanReceived} value={formData.category} onChange={(event) => setFormData({ ...formData, category: event.target.value })}><option value="" disabled>Select category</option>{hasLegacyCategory && <option value={formData.category}>Legacy category: {formData.category}</option>}<optgroup label="Expenses">{expenseCategories.map((category) => <option key={category} value={category}>{category}</option>)}</optgroup><optgroup label="Income & Transfers">{incomeAndTransferCategories.map((category) => <option key={category} value={category}>{category}</option>)}</optgroup></Select>{hasLegacyCategory && <p className="text-xs text-amber-600 dark:text-amber-400">This is a legacy category. Choose one of the fixed categories when you are ready to recategorize it.</p>}</div>
+                )}
               </div>
               {isLoanReceived && <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/70 dark:bg-amber-950/20"><label className="text-sm font-medium">Who did you borrow from?</label><Input required disabled={!isEditable} value={loanContactName} onChange={(event) => setLoanContactName(event.target.value)} placeholder="Person or lender name" /><p className="text-xs text-amber-800 dark:text-amber-200">This records the money in your balance and creates a payable debt to settle later.</p></div>}
+              {contexts.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Financial Context <span className="text-gray-400 font-normal">(Optional)</span></label>
+                  <Select disabled={!isEditable || isPayroll} value={formData.contextId || ''} onChange={(event) => setFormData({ ...formData, contextId: event.target.value || null })}>
+                    <option value="">None</option>
+                    {contexts.filter(c => c.status === 'Active' || c.status === 'Planned' || formData.contextId === c.id).map(ctx => (
+                      <option key={ctx.id} value={ctx.id}>{ctx.name} {ctx.status === 'Completed' ? '(Completed)' : ''}</option>
+                    ))}
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2"><label className="text-sm font-medium">Notes</label><Input disabled={!isEditable || isPayroll} value={formData.notes} onChange={(event) => setFormData({ ...formData, notes: event.target.value })} placeholder="Optional details" /></div>
               {formData.type === 'Expense' && (
                 <div className="space-y-4 rounded-lg border dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50/50 dark:bg-gray-900/50 p-4">
@@ -165,7 +232,54 @@ export default function TransactionForm({ onSuccess, transaction, onCancel }: Tr
                 </div>
               )}
               {error && <p className="text-sm text-red-600 dark:text-red-400" role="alert">{error}</p>}
-              <Button type="submit" className="w-full" disabled={loading || !isEditable}>{loading ? 'Saving...' : isEditing ? 'Save Changes' : 'Save Transaction'}</Button>
+              
+              {confirmDelete && (
+                <div className="rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/30 p-3.5 space-y-2.5 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-red-700 dark:text-red-300">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+                    Permanently delete this transaction? This will update your wallet balance.
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={isDeleting}
+                      onClick={() => setConfirmDelete(false)}
+                      className="text-xs"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={isDeleting}
+                      onClick={handleDelete}
+                      className="bg-red-600 hover:bg-red-700 text-white text-xs font-medium"
+                    >
+                      {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                {isEditing && !isPayroll && onDelete && !confirmDelete && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={loading || isDeleting || !isEditable}
+                    onClick={() => setConfirmDelete(true)}
+                    className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:hover:bg-red-950/20"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </Button>
+                )}
+                <Button type="submit" className="flex-1" disabled={loading || isDeleting || !isEditable}>
+                  {loading ? 'Saving...' : isEditing ? 'Save Changes' : 'Save Transaction'}
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>

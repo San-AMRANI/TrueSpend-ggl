@@ -8,7 +8,7 @@ export class UserRepository {
     return result[0] || null;
   }
 
-  async updateSettings(userId: string, data: { payday?: number; emergencyBuffer?: string }) {
+  async updateSettings(userId: string, data: any) {
     await db.update(users).set(data).where(eq(users.id, userId));
   }
 }

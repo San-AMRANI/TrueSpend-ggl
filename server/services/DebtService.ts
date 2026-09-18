@@ -7,8 +7,8 @@ export interface SettleDebtDTO {
   type?: 'Receivable' | 'Payable';
   debt_id?: string;
   due_date?: string;
-  /** Wallet that sends or receives the settlement money. Defaults to 'Bank'. */
-  wallet?: 'Bank' | 'Cash';
+  /** Wallet that sends or receives the settlement money. */
+  walletId?: string;
   category?: string;
 }
 
@@ -38,8 +38,18 @@ export class DebtService {
         })
         .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
 
+      // Auto-correct any floating point remaining balance artifacts
+      const remainingNum = parseFloat(debt.remainingBalance as unknown as string);
+      let correctedStatus = debt.status;
+      if (remainingNum <= 0.001 && debt.status === 'Pending') {
+        correctedStatus = 'Cleared';
+        debtRepository.update(debt.id, userId, { status: 'Cleared', remainingBalance: '0' }).catch(() => {});
+      }
+
       return {
         ...debt,
+        remainingBalance: remainingNum <= 0.001 ? '0' : debt.remainingBalance,
+        status: correctedStatus,
         settlements,
       };
     });
@@ -57,18 +67,18 @@ export class DebtService {
 
       await debtRepository.update(dto.debt_id, userId, {
         remainingBalance: String(newRemaining),
-        status: newRemaining <= 0 ? 'Cleared' : 'Pending',
+        status: newRemaining <= 0.001 ? 'Cleared' : 'Pending',
       });
 
       const txType = debt.type === 'Receivable' ? 'Income' : 'Expense';
       const txCategory = dto.category || (debt.type === 'Receivable' ? 'Reimbursement' : 'Debt Repayment');
-      const txWallet = (dto.wallet === 'Cash' ? 'Cash' : 'Bank') as 'Bank' | 'Cash';
+      const txWallet = dto.walletId || 'Cash'; // The UI should always pass a walletId uuid, fallback shouldn't be used
 
       const newTx = await transactionRepository.create({
         userId,
         amount: String(dto.amount),
         type: txType,
-        sourceWallet: txWallet,
+        walletId: txWallet as any,
         category: txCategory,
         notes: `Settlement for ${debt.contactName}`,
       });
@@ -115,7 +125,7 @@ export class DebtService {
       type: dto.type,
       originalAmount: String(newOriginal),
       remainingBalance: String(newRemaining),
-      status: newRemaining <= 0 ? 'Cleared' : 'Pending',
+      status: newRemaining <= 0.001 ? 'Cleared' : 'Pending',
       ...(dto.due_date !== undefined ? { dueDate: this.parseDueDate(dto.due_date) } : {}),
     });
 

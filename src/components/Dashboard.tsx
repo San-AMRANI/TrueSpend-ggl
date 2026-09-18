@@ -3,7 +3,9 @@ import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { DashboardNav } from './dashboard/DashboardNav';
 import { OverviewTab } from './dashboard/OverviewTab';
+import { CashFlowTab } from './dashboard/CashFlowTab';
 import { TransactionsTab } from './dashboard/TransactionsTab';
+
 import { DebtsTab } from './dashboard/DebtsTab';
 import { AnalyticsTab } from './dashboard/AnalyticsTab';
 import { DigestTab } from './dashboard/DigestTab';
@@ -11,14 +13,17 @@ import { SettingsTab } from './dashboard/SettingsTab';
 import { BudgetsTab } from './dashboard/BudgetsTab';
 import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
+import { ReportsTab } from './dashboard/ReportsTab';
+import { ContextsTab } from './dashboard/ContextsTab';
 import { AIChat } from './AIChat';
 import type { DashboardTab } from '../types';
 
 interface DashboardProps {
   onTabChange?: (tab: DashboardTab) => void;
+  activeTab?: DashboardTab;
 }
 
-export default function Dashboard({ onTabChange }: DashboardProps = {}) {
+export default function Dashboard({ onTabChange, activeTab: propActiveTab }: DashboardProps = {}) {
 
   const { token } = useAuth();
   const {
@@ -27,8 +32,6 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     debts,
     payrolls,
     budgets,
-    emergencyBuffer,
-    setEmergencyBuffer,
     loading,
     isSaving,
     isExporting,
@@ -57,6 +60,15 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     handleDeletePayroll,
     handleExportSql,
     handleImportSql,
+    handleCreateWallet,
+    handleUpdateWallet,
+    handleDeleteWallet,
+    contexts,
+    handleCreateContext,
+    handleUpdateContext,
+    handleDeleteContext,
+    handleLinkTransactionsToContext,
+    userSettings,
     notifications,
   } = useDashboardData(token);
 
@@ -67,6 +79,12 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
   };
 
   useEffect(() => {
+    if (propActiveTab && propActiveTab !== activeTab) {
+      setActiveTabRaw(propActiveTab);
+    }
+  }, [propActiveTab]);
+
+  useEffect(() => {
     const handleSetTab = (e: any) => {
       setActiveTab(e.detail);
     };
@@ -74,15 +92,25 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
     return () => window.removeEventListener('truespend:setTab', handleSetTab);
   }, []);
 
-  if (loading && !kpis) {
-    return <div className="py-12 text-center text-gray-500 dark:text-gray-400">Loading your financial data...</div>;
-  }
-
   return (
     <div className="space-y-8 relative">
       <DashboardNav activeTab={activeTab} setActiveTab={setActiveTab} />
-
-      {activeTab === 'overview' && (
+      
+      {loading && !kpis ? (
+        <div className="space-y-6 animate-pulse">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-32 bg-gray-200 dark:bg-gray-800 rounded-xl"></div>
+            ))}
+          </div>
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2 h-96 bg-gray-200 dark:bg-gray-800 rounded-xl"></div>
+            <div className="h-96 bg-gray-200 dark:bg-gray-800 rounded-xl"></div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {activeTab === 'overview' && (
         <OverviewTab
           kpis={kpis}
           transactions={transactions}
@@ -92,12 +120,24 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
           openTransaction={openTransaction}
           handleSettle={handleSettleDebt}
           payrolls={payrolls}
+          handleCreateWallet={handleCreateWallet}
+          handleUpdateWallet={handleUpdateWallet}
+          handleDeleteWallet={handleDeleteWallet}
+        />
+      )}
+
+      {activeTab === 'cash-flow' && (
+        <CashFlowTab 
+          kpis={kpis} 
+          transactions={transactions}
         />
       )}
 
       {activeTab === 'transactions' && (
         <TransactionsTab
           transactions={transactions}
+          wallets={kpis?.accounts || []}
+          contexts={contexts}
           handleDeleteTx={handleDeleteTransaction}
           fetchData={fetchData}
           selectedTransactionId={selectedTransactionId}
@@ -105,7 +145,17 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
         />
       )}
 
-      {activeTab === 'calendar' && <FinancialCalendarTab transactions={transactions} debts={debts} payrolls={payrolls} openTransaction={openTransaction} setActiveTab={setActiveTab} onCreatePayroll={handleCreatePayroll} onDeletePayroll={handleDeletePayroll} />}
+      {activeTab === 'calendar' && (
+        <FinancialCalendarTab
+          transactions={transactions}
+          debts={debts}
+          payrolls={payrolls}
+          openTransaction={openTransaction}
+          setActiveTab={setActiveTab}
+          onCreatePayroll={handleCreatePayroll}
+          onDeletePayroll={handleDeletePayroll}
+        />
+      )}
 
       {activeTab === 'budgets' && (
       <BudgetsTab
@@ -120,11 +170,12 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
         />
       )}
 
-      {activeTab === 'what-if' && <WhatIfTab kpis={kpis} amount={whatIfAmount} setAmount={setWhatIfAmount} />}
+      {activeTab === 'what-if' && <WhatIfTab kpis={kpis} amount={whatIfAmount} setAmount={setWhatIfAmount} transactions={transactions} payrolls={payrolls} debts={debts} budgets={budgets} />}
 
       {activeTab === 'debts' && (
         <DebtsTab
           debts={debts}
+          wallets={kpis?.accounts}
           fetchData={fetchData}
           handleSettle={handleSettleDebt}
           handleEditDebt={handleEditDebt}
@@ -136,8 +187,10 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
         <AnalyticsTab
           transactions={transactions}
           payrolls={payrolls}
+          debts={debts}
           analyticsMonth={analyticsMonth}
           setAnalyticsMonth={setAnalyticsMonth}
+          wallets={kpis?.accounts || []}
         />
       )}
 
@@ -145,19 +198,37 @@ export default function Dashboard({ onTabChange }: DashboardProps = {}) {
 
       {activeTab === 'settings' && (
         <SettingsTab
-          emergencyBuffer={emergencyBuffer}
-          setEmergencyBuffer={setEmergencyBuffer}
+          userSettings={userSettings}
           isSaving={isSaving}
           isExporting={isExporting}
           isImporting={isImporting}
           handleSaveSettings={handleSaveSettings}
           handleExportSql={handleExportSql}
           handleImportSql={handleImportSql}
+          wallets={kpis?.accounts || []}
+          handleCreateWallet={handleCreateWallet}
+          handleUpdateWallet={handleUpdateWallet}
+          handleDeleteWallet={handleDeleteWallet}
           notifications={notifications}
         />
       )}
 
+      {activeTab === 'reports' && (
+        <ReportsTab transactions={transactions} kpis={kpis} budgets={budgets} onDataChange={fetchData} />
+      )}
+      {activeTab === 'contexts' && (
+        <ContextsTab
+          contexts={contexts}
+          transactions={transactions}
+          handleCreateContext={handleCreateContext}
+          handleUpdateContext={handleUpdateContext}
+          handleDeleteContext={handleDeleteContext}
+          handleLinkTransactions={handleLinkTransactionsToContext}
+        />
+      )}
       {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}
+        </>
+      )}
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { googleSignIn, getGoogleAccessToken } from '../lib/googleAuth';
+import { uploadToGoogleDrive } from '../lib/driveUpload';
 import { useState, useEffect, useCallback } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
 import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll } from '../types';
@@ -9,7 +11,8 @@ export function useDashboardData(token: string | null) {
   const [debts, setDebts] = useState<Debt[]>([]);
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
-  const [emergencyBuffer, setEmergencyBuffer] = useState<number>(0);
+  const [contexts, setContexts] = useState<any[]>([]);
+  const [userSettings, setUserSettings] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
@@ -25,21 +28,23 @@ export function useDashboardData(token: string | null) {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData] = await Promise.all([
+      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
         dashboardService.getSettings(token),
         dashboardService.getCategoryBudgets(token),
         dashboardService.getPayrolls(token),
+        dashboardService.getContexts(token),
       ]);
 
       setKpis(kpiData || null);
       setTransactions(txData || []);
       setDebts(debtData || []);
-      setEmergencyBuffer(settingsData?.emergencyBuffer ?? 0);
+      setUserSettings(settingsData);
       setBudgets(budgetData || []);
       setPayrolls(payrollData || []);
+      setContexts(contextData || []);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -101,9 +106,27 @@ export function useDashboardData(token: string | null) {
     fetchData();
   }, [fetchData]);
 
-  const handleSettleDebt = async (debtId: string, amount: number, category?: string, wallet?: 'Bank' | 'Cash') => {
+  useEffect(() => {
+    if (!userSettings || !userSettings.automatedDriveBackups) return;
+    const lastBackup = userSettings.lastDriveBackupDate ? new Date(userSettings.lastDriveBackupDate).getTime() : 0;
+    const now = Date.now();
+    const freq = userSettings.driveBackupFrequency || 'weekly';
+    const intervalMs =
+      freq === 'daily'
+        ? 24 * 60 * 60 * 1000
+        : freq === '3days'
+        ? 3 * 24 * 60 * 60 * 1000
+        : 7 * 24 * 60 * 60 * 1000;
+
+    if (now - lastBackup >= intervalMs) {
+      handleBackupToDrive(false);
+    }
+  }, [userSettings]);
+
+
+  const handleSettleDebt = async (debtId: string, amount: number, category?: string, walletId?: string) => {
     try {
-      await dashboardService.settleDebt(debtId, amount, token, category, wallet);
+      await dashboardService.settleDebt(debtId, amount, token, category, walletId);
       await fetchData();
     } catch (e) {
       console.error('Error settling debt:', e);
@@ -111,13 +134,12 @@ export function useDashboardData(token: string | null) {
   };
 
   const handleDeleteDebt = async (debtId: string) => {
-    if (!confirm('Are you sure you want to delete this debt? This cannot be undone.')) return;
     try {
       await dashboardService.deleteDebt(debtId, token);
       await fetchData();
     } catch (e: any) {
       console.error('Error deleting debt:', e);
-      alert(e?.message || 'Failed to delete debt.');
+      throw e;
     }
   };
 
@@ -145,13 +167,12 @@ export function useDashboardData(token: string | null) {
   };
 
   const handleDeleteTransaction = async (txId: string) => {
-    if (!confirm('Are you sure you want to delete this transaction?')) return;
     try {
       await dashboardService.deleteTransaction(txId, token);
       await fetchData();
     } catch (e: any) {
       console.error('Error deleting transaction:', e);
-      alert(e?.message || 'Failed to delete transaction.');
+      throw e;
     }
   };
 
@@ -188,15 +209,35 @@ export function useDashboardData(token: string | null) {
     setActiveTab('transactions');
   };
 
-  const handleSaveSettings = async (newBuffer: number) => {
+  const handleSaveSettings = async (
+    payload: {
+      emergencyBuffer?: number;
+      payday?: number;
+      salary?: number;
+      automatedDriveBackups?: boolean;
+      lastDriveBackupDate?: string;
+      driveBackupFrequency?: 'daily' | '3days' | 'weekly';
+      googleDriveToken?: string;
+    },
+    notifyUser: boolean = true
+  ) => {
     setIsSaving(true);
+    // Optimistic update so UI toggles and switches respond instantly without reverting
+    setUserSettings((prev: any) => ({
+      ...(prev || {}),
+      ...payload,
+    }));
     try {
-      await dashboardService.updateSettings({ emergencyBuffer: newBuffer }, token);
+      await dashboardService.updateSettings(payload, token);
       await fetchData();
-      alert('Settings saved successfully!');
+      if (notifyUser) {
+        alert('Settings saved successfully!');
+      }
     } catch (e) {
       console.error('Error saving settings:', e);
-      alert('Failed to save settings.');
+      if (notifyUser) {
+        alert('Failed to save settings.');
+      }
     } finally {
       setIsSaving(false);
     }
@@ -225,6 +266,52 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleBackupToDrive = async (interactive: boolean = false) => {
+    try {
+      let accessToken = await getGoogleAccessToken();
+      if (!accessToken) {
+        if (interactive) {
+          const authRes = await googleSignIn();
+          accessToken = authRes?.accessToken || null;
+        }
+        if (!accessToken) return;
+      }
+
+      // 1. Try server-side backup first (backend dumps database and uploads directly to Google Drive)
+      try {
+        const res = await dashboardService.backupToDrive(accessToken, token);
+        if (res && res.success) {
+          setUserSettings((prev: any) => ({
+            ...(prev || {}),
+            lastDriveBackupDate: res.lastDriveBackupDate,
+          }));
+          if (interactive) {
+            alert('Database backup successfully uploaded to Google Drive!');
+          }
+          return;
+        }
+      } catch (serverErr) {
+        console.warn('Server-side backup endpoint returned error, falling back to direct upload:', serverErr);
+      }
+
+      // 2. Client-side fallback if server-side route is unavailable
+      const blob = await dashboardService.getSqlBlob(token);
+      const filename = `truespend_backup_${new Date().toISOString().slice(0, 10)}.sql`;
+      await uploadToGoogleDrive(accessToken, blob, filename);
+      
+      const newDate = new Date().toISOString();
+      await handleSaveSettings({ lastDriveBackupDate: newDate }, false);
+      if (interactive) {
+        alert('Database backup successfully uploaded to Google Drive!');
+      }
+    } catch (e: any) {
+      console.error('Backup to Google Drive failed:', e);
+      if (interactive) {
+        alert('Failed to upload backup to Google Drive: ' + (e?.message || 'Unknown error'));
+      }
+    }
+  };
+
   const handleExportSql = async () => {
     setIsExporting(true);
     try {
@@ -248,14 +335,97 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleCreateWallet = async (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const created = await dashboardService.createWallet(payload, token);
+      await fetchData();
+      return created;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateWallet = async (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const updated = await dashboardService.updateWallet(id, payload, token);
+      await fetchData();
+      return updated;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteWallet = async (id: string, reassignToWalletId?: string) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.deleteWallet(id, reassignToWalletId, token);
+      await fetchData();
+      return res;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCreateContext = async (context: any) => {
+    try {
+      const created = await dashboardService.createContext(context, token);
+      setContexts((prev) => [created, ...prev]);
+    } catch (error) {
+      console.error('Error creating context', error);
+      throw error;
+    }
+  };
+
+  const handleUpdateContext = async (id: string, updates: any) => {
+    try {
+      const updated = await dashboardService.updateContext(id, updates, token);
+      setContexts((prev) => prev.map((c) => (c.id === id ? updated : c)));
+    } catch (error) {
+      console.error('Error updating context', error);
+      throw error;
+    }
+  };
+
+  const handleDeleteContext = async (id: string) => {
+    try {
+      await dashboardService.deleteContext(id, token);
+      setContexts((prev) => prev.filter((c) => c.id !== id));
+      // Re-fetch transactions because some might have had contextId nullified
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting context', error);
+      throw error;
+    }
+  };
+
+  const handleLinkTransactionsToContext = async (transactionIds: string[], contextId: string | null) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.linkTransactionsToContext(transactionIds, contextId, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error linking transactions to context:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return {
     kpis,
     transactions,
     debts,
     payrolls,
     budgets,
-    emergencyBuffer,
-    setEmergencyBuffer,
+    contexts,
+    userSettings,
     loading,
     isSaving,
     isExporting,
@@ -285,6 +455,13 @@ export function useDashboardData(token: string | null) {
     handleSeedData,
     handleExportSql,
     handleImportSql,
+    handleCreateWallet,
+    handleUpdateWallet,
+    handleDeleteWallet,
+    handleCreateContext,
+    handleUpdateContext,
+    handleDeleteContext,
+    handleLinkTransactionsToContext,
     notifications,
   };
 }

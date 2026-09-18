@@ -4,8 +4,9 @@ import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
-  BarChart2,
+  Award,
   Banknote,
+  BarChart2,
   Calendar,
   ChevronLeft,
   ChevronRight,
@@ -14,15 +15,19 @@ import {
   HandCoins,
   Landmark,
   Layers,
+  Percent,
+  PieChart,
   PiggyBank,
   Receipt,
   Repeat,
   ShieldCheck,
   ShoppingBag,
+  Sparkles,
   Target,
   TrendingDown,
   TrendingUp,
   Users,
+  Utensils,
   Wallet,
   Zap,
 } from 'lucide-react';
@@ -54,6 +59,11 @@ const ICON_MAP: Record<FactIcon, React.ComponentType<{ className?: string }>> = 
   users: Users,
   'hand-coins': HandCoins,
   layers: Layers,
+  utensils: Utensils,
+  award: Award,
+  sparkles: Sparkles,
+  percent: Percent,
+  'pie-chart': PieChart,
 };
 
 // ── Colour palette per fact type ─────────────────────────────────────────────
@@ -97,6 +107,18 @@ const TYPE_STYLES: Record<
     icon: 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400',
     value: 'text-emerald-700 dark:text-emerald-300',
     dot: 'bg-emerald-400',
+  },
+  savings: {
+    card: 'bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/40 border-emerald-100 dark:border-emerald-900/50',
+    icon: 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400',
+    value: 'text-emerald-700 dark:text-emerald-300',
+    dot: 'bg-emerald-400',
+  },
+  milestone: {
+    card: 'bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border-amber-100 dark:border-amber-900/50',
+    icon: 'bg-amber-100 dark:bg-amber-900/60 text-amber-600 dark:text-amber-400',
+    value: 'text-amber-700 dark:text-amber-300',
+    dot: 'bg-amber-400',
   },
   behavioral: {
     card: 'bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/40 dark:to-amber-950/40 border-orange-100 dark:border-orange-900/50',
@@ -243,17 +265,19 @@ export const FinancialFactsCarousel: React.FC<FinancialFactsCarouselProps> = ({ 
       {/* Controls row */}
       <div className="mt-3 flex items-center justify-between gap-2">
         {/* Dot indicators */}
-        <div className="flex items-center gap-1.5 overflow-hidden">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%] sm:max-w-[75%] py-1">
           {facts.map((fact, i) => {
-            const dotColor = TYPE_STYLES[fact.type].dot;
+            const dotColor = TYPE_STYLES[fact.type]?.dot || 'bg-gray-400';
             return (
               <button
                 key={fact.id}
                 type="button"
                 aria-label={`Go to fact ${i + 1}`}
                 onClick={() => goTo(i)}
-                className={`h-1.5 rounded-full transition-all duration-200 ${dotColor} ${
-                  i === currentIndex ? 'w-5 opacity-100' : 'w-1.5 opacity-30'
+                className={`h-1.5 shrink-0 rounded-full transition-all duration-200 ${dotColor} ${
+                  i === currentIndex
+                    ? (facts.length > 15 ? 'w-4' : 'w-5') + ' opacity-100'
+                    : 'w-1.5 opacity-30 hover:opacity-60'
                 }`}
               />
             );
