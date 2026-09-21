@@ -3,6 +3,7 @@ import { FinancialContext, Transaction } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { format } from 'date-fns';
+import { netExpenseOf } from '../../lib/finance';
 import {
   Map,
   Briefcase,
@@ -243,7 +244,7 @@ export const ContextsTab: React.FC<ContextsTabProps> = ({
 
   const ContextCard = ({ ctx }: { ctx: FinancialContext }) => {
     const ctxTransactions = transactions.filter(t => t.contextId === ctx.id);
-    const spent = ctxTransactions.filter(t => t.type === 'Expense').reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const spent = ctxTransactions.filter(t => t.type === 'Expense').reduce((sum, t) => sum + netExpenseOf(t), 0);
     const refunds = ctxTransactions.filter(t => t.type === 'Income').reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const netSpent = spent - refunds;
 

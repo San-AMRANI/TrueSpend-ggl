@@ -5,7 +5,7 @@ import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { normalizeCategory } from '../../lib/categories';
-import { getSpendingChange, monthLabel, transactionMonth } from '../../lib/finance';
+import { getSpendingChange, monthLabel, transactionMonth, netExpenseOf } from '../../lib/finance';
 import { financialPeriodLabel, getFinancialMonthsFromTransactions, getCurrentFinancialMonth, getPreviousFinancialMonth } from '../../lib/financialMonth';
 import { Banknote, Landmark, X } from 'lucide-react';
 import { format } from 'date-fns';
@@ -48,12 +48,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
     const grouped = expenses.reduce((acc, curr) => {
       const category = normalizeCategory(curr.category) || 'Uncategorized';
-      acc[category] = (acc[category] || 0) + parseFloat(curr.amount);
+      acc[category] = (acc[category] || 0) + netExpenseOf(curr);
       return acc;
     }, {} as Record<string, number>);
 
     return Object.entries(grouped)
       .map(([name, value]) => ({ name, value: Number(value) }))
+      .filter((item) => item.value > 0)
       .sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
 
@@ -78,7 +79,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     const walletSums: Record<string, number> = {};
 
     expenses.forEach((t) => {
-      walletSums[t.walletId] = (walletSums[t.walletId] || 0) + parseFloat(t.amount);
+      walletSums[t.walletId] = (walletSums[t.walletId] || 0) + netExpenseOf(t);
     });
 
     return Object.entries(walletSums).map(([walletId, value]) => {
@@ -127,7 +128,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   }, [activeCategory, filteredTransactions]);
 
   const selectedCategoryTotal = selectedCategoryTransactions.reduce(
-    (total, transaction) => total + parseFloat(transaction.amount),
+    (total, transaction) => total + (transaction.type === 'Expense' ? netExpenseOf(transaction) : parseFloat(transaction.amount)),
     0,
   );
 
@@ -135,7 +136,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
     const grouped = expenses.reduce((acc, curr) => {
       const date = new Date(curr.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      acc[date] = (acc[date] || 0) + parseFloat(curr.amount);
+      acc[date] = (acc[date] || 0) + netExpenseOf(curr);
       return acc;
     }, {} as Record<string, number>);
 
@@ -150,7 +151,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       .reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const expense = filteredTransactions
       .filter((t) => t.type === 'Expense')
-      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+      .reduce((sum, t) => sum + netExpenseOf(t), 0);
     return [
       { name: 'Income', amount: income },
       { name: 'Expense', amount: expense },
@@ -167,7 +168,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       allMonths.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
 
       if (t.type === 'Income') totalIncome += parseFloat(t.amount);
-      if (t.type === 'Expense') totalExpense += parseFloat(t.amount);
+      if (t.type === 'Expense') totalExpense += netExpenseOf(t);
     });
 
     const monthCount = allMonths.size > 0 ? allMonths.size : 1;
@@ -178,6 +179,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   }, [transactions]);
 
   const adjustedTrueSpendData = useMemo(() => {
+    let totalGrossExpenses = 0;
     let totalExpenses = 0;
     let debtRepayments = 0;
     let reimbursements = 0;
@@ -186,7 +188,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     filteredTransactions.forEach((tx) => {
       const amount = parseFloat(tx.amount);
       if (tx.type === 'Expense') {
-        totalExpenses += amount;
+        totalGrossExpenses += amount;
+        totalExpenses += netExpenseOf(tx);
       }
       
       if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) {
@@ -209,11 +212,12 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     });
 
     return {
-      totalExpenses,
+      totalGrossExpenses,
+      totalExpenses, // Net expenses
       debtRepayments,
       reimbursements,
       pendingReimbursable,
-      adjustedTrueSpend: totalExpenses - debtRepayments - reimbursements
+      adjustedTrueSpend: totalExpenses - debtRepayments
     };
   }, [filteredTransactions, debts]);
 
@@ -227,7 +231,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const topExpense = useMemo(() => {
     const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
     if (expenses.length === 0) return null;
-    return expenses.reduce((max, current) => (parseFloat(current.amount) > parseFloat(max.amount) ? current : max));
+    return expenses.reduce((max, current) => (netExpenseOf(current) > netExpenseOf(max) ? current : max));
   }, [filteredTransactions]);
 
   const comparisonLabel = comparisonMonth ? financialPeriodLabel(comparisonMonth) : 'No configured financial period';
@@ -320,7 +324,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               <p className="text-lg font-bold text-gray-900 dark:text-gray-100 truncate mt-1">{topExpense.notes || normalizeCategory(topExpense.category) || 'Unknown'}</p>
             </div>
             <div className="mt-2">
-              <p className="text-sm text-red-600 dark:text-red-400 font-semibold">{parseFloat(topExpense.amount).toFixed(2)} MAD</p>
+              <p className="text-sm text-red-600 dark:text-red-400 font-semibold">
+                {netExpenseOf(topExpense).toFixed(2)} MAD
+                {topExpense.reimbursableAmount && parseFloat(topExpense.reimbursableAmount) > 0 && (
+                  <span className="text-xs font-normal text-gray-500 dark:text-gray-400 ml-1">
+                    (gross {parseFloat(topExpense.amount).toFixed(2)})
+                  </span>
+                )}
+              </p>
               <p className="text-xs text-gray-500 mt-0.5">{format(new Date(topExpense.createdAt), 'MMM d, yyyy')}</p>
             </div>
           </div>
@@ -334,9 +345,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Expenses</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Net Expenses</p>
               <p className="mt-1 text-xl font-bold text-gray-900 dark:text-gray-100">{adjustedTrueSpendData.totalExpenses.toFixed(2)} MAD</p>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">All outbound transactions</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {adjustedTrueSpendData.reimbursements > 0
+                  ? `Gross outflow: ${adjustedTrueSpendData.totalGrossExpenses.toFixed(2)} MAD`
+                  : 'All outbound transactions'}
+              </p>
             </div>
             
             <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
@@ -346,9 +361,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             </div>
 
             <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Reimbursable Expenses</p>
-              <p className="mt-1 text-xl font-bold text-gray-900 dark:text-gray-100">-{adjustedTrueSpendData.reimbursements.toFixed(2)} MAD</p>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Money you spent for others</p>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Reimbursements Deducted</p>
+              <p className="mt-1 text-xl font-bold text-emerald-600 dark:text-emerald-400">-{adjustedTrueSpendData.reimbursements.toFixed(2)} MAD</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Settled or split for others</p>
             </div>
 
             <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 p-4">
@@ -589,9 +604,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       </span>
                     </div>
                   </div>
-                  <span className={`font-semibold ${transaction.type === 'Expense' ? 'text-gray-900 dark:text-gray-100' : 'text-green-600 dark:text-green-400'}`}>
-                    {transaction.type === 'Expense' ? '-' : '+'}{parseFloat(transaction.amount).toFixed(2)} MAD
-                  </span>
+                  <div className="text-right">
+                    <span className={`font-semibold ${transaction.type === 'Expense' ? 'text-gray-900 dark:text-gray-100' : 'text-green-600 dark:text-green-400'}`}>
+                      {transaction.type === 'Expense' ? '-' : '+'}{(transaction.type === 'Expense' ? netExpenseOf(transaction) : parseFloat(transaction.amount)).toFixed(2)} MAD
+                    </span>
+                    {transaction.type === 'Expense' && transaction.reimbursableAmount && parseFloat(transaction.reimbursableAmount) > 0 && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        gross {parseFloat(transaction.amount).toFixed(2)} • -{parseFloat(transaction.reimbursableAmount).toFixed(2)} reimb.
+                      </p>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

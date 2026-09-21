@@ -1,4 +1,5 @@
 import { transactionRepository } from '../repositories/TransactionRepository.js';
+import { transactionService } from './TransactionService.js';
 import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
 import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
@@ -24,7 +25,7 @@ export class KpiService {
     const defaultCash = userWallets.find(w => w.type === 'Cash') || mainBank;
 
     const [allTx, payrolls, allDebts, allBudgets] = await Promise.all([
-      transactionRepository.findAllByUserId(userId),
+      transactionService.getTransactionsForUser(userId),
       payrollRepository.findAllByUserId(userId),
       debtRepository.findAllByUserId(userId),
       categoryBudgetRepository.findAllByUserId(userId),

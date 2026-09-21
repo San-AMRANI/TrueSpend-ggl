@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { format } from 'date-fns';
 import { ArrowLeft, Pencil, Trash, Tag, Landmark, Banknote, Sparkles, Link2, Check } from 'lucide-react';
+import { netExpenseOf } from '../../lib/finance';
 
 interface ContextDetailProps {
   context: FinancialContext;
@@ -73,7 +74,7 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
   const expenses = transactions.filter(t => t.type === 'Expense');
   const refunds = transactions.filter(t => t.type === 'Income');
   
-  const spent = expenses.reduce((sum, t) => sum + parseFloat(t.amount), 0);
+  const spent = expenses.reduce((sum, t) => sum + netExpenseOf(t), 0);
   const refunded = refunds.reduce((sum, t) => sum + parseFloat(t.amount), 0);
   const netCost = spent - refunded;
   const budget = context.budget ? parseFloat(context.budget) : 0;
@@ -83,7 +84,7 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
   const categoryBreakdown = useMemo(() => {
     const cats: Record<string, number> = {};
     expenses.forEach(t => {
-      cats[t.category] = (cats[t.category] || 0) + parseFloat(t.amount);
+      cats[t.category] = (cats[t.category] || 0) + netExpenseOf(t);
     });
     return Object.entries(cats).sort((a, b) => b[1] - a[1]);
   }, [expenses]);
@@ -293,8 +294,15 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
                       </div>
                     </div>
                   </div>
-                  <div className={`font-semibold ${tx.type === 'Expense' ? 'text-gray-900 dark:text-gray-100' : 'text-green-600 dark:text-green-400'}`}>
-                    {tx.type === 'Expense' ? '-' : '+'}{parseFloat(tx.amount).toLocaleString()} MAD
+                  <div className="text-right">
+                    <div className={`font-semibold ${tx.type === 'Expense' ? 'text-gray-900 dark:text-gray-100' : 'text-green-600 dark:text-green-400'}`}>
+                      {tx.type === 'Expense' ? '-' : '+'}{(tx.type === 'Expense' ? netExpenseOf(tx) : parseFloat(tx.amount)).toLocaleString()} MAD
+                    </div>
+                    {tx.type === 'Expense' && tx.reimbursableAmount && parseFloat(tx.reimbursableAmount) > 0 && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        gross {parseFloat(tx.amount).toLocaleString()} • -{parseFloat(tx.reimbursableAmount).toLocaleString()} reimb.
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}

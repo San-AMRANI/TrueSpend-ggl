@@ -21,13 +21,26 @@ export interface TransactionFilters {
 }
 
 export const amountOf = (transaction: Pick<Transaction, 'amount'>) => Number.parseFloat(transaction.amount) || 0;
+
+/**
+ * Returns the effective net expense of a transaction.
+ * For an Expense transaction with a reimbursableAmount, returns max(0, amount - reimbursableAmount).
+ * For example: 25 MAD expense with 20 MAD reimbursable returns 5 MAD.
+ */
+export const netExpenseOf = (transaction: Pick<Transaction, 'amount' | 'type'> & Partial<Pick<Transaction, 'reimbursableAmount'>>) => {
+  const gross = Number.parseFloat(transaction.amount) || 0;
+  if (transaction.type !== 'Expense') return gross;
+  const reimbursable = transaction.reimbursableAmount ? Number.parseFloat(transaction.reimbursableAmount) || 0 : 0;
+  return Math.max(0, gross - reimbursable);
+};
+
 export const transactionDate = (transaction: Pick<Transaction, 'createdAt'>) => new Date(transaction.createdAt);
 export const transactionMonth = (transaction: Pick<Transaction, 'createdAt'>, payrolls: PayrollLike[]): FinancialMonthRef | null => getFinancialMonthRef(transactionDate(transaction), payrolls);
 export const monthLabel = (year: number, month: number) => new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 export const isInMonth = (transaction: Pick<Transaction, 'createdAt'>, year: number, month: number, payrolls: PayrollLike[]) => isInFinancialMonth(transactionDate(transaction), payrolls, year, month);
 export const isExpense = (transaction: Pick<Transaction, 'type'>) => transaction.type === 'Expense';
 export const getExpensesForMonth = (transactions: Transaction[], year: number, month: number, payrolls: PayrollLike[]) => transactions.filter((transaction) => isExpense(transaction) && isInMonth(transaction, year, month, payrolls));
-export const getCategorySpending = (transactions: Transaction[], category: string, year: number, month: number, payrolls: PayrollLike[]) => getExpensesForMonth(transactions, year, month, payrolls).filter((transaction) => normalizeCategory(transaction.category) === normalizeCategory(category)).reduce((total, transaction) => total + amountOf(transaction), 0);
+export const getCategorySpending = (transactions: Transaction[], category: string, year: number, month: number, payrolls: PayrollLike[]) => getExpensesForMonth(transactions, year, month, payrolls).filter((transaction) => normalizeCategory(transaction.category) === normalizeCategory(category)).reduce((total, transaction) => total + netExpenseOf(transaction), 0);
 
 export const getBudgetStatus = (budgetAmount: number | undefined, spent: number) => {
   if (budgetAmount === undefined || !Number.isFinite(budgetAmount)) return { status: 'not_set' as BudgetStatus, usagePercentage: 0, remaining: 0 };
@@ -39,7 +52,7 @@ export const getBudgetStatus = (budgetAmount: number | undefined, spent: number)
 
 export const getSpendingChange = (transactions: Transaction[], year: number, month: number, category: string | undefined, payrolls: PayrollLike[]) => {
   const previous = getPreviousFinancialMonth(payrolls, { year, month });
-  const total = (ref: FinancialMonthRef | null) => ref ? getExpensesForMonth(transactions, ref.year, ref.month, payrolls).filter((transaction) => !category || normalizeCategory(transaction.category) === normalizeCategory(category)).reduce((sum, transaction) => sum + amountOf(transaction), 0) : 0;
+  const total = (ref: FinancialMonthRef | null) => ref ? getExpensesForMonth(transactions, ref.year, ref.month, payrolls).filter((transaction) => !category || normalizeCategory(transaction.category) === normalizeCategory(category)).reduce((sum, transaction) => sum + netExpenseOf(transaction), 0) : 0;
   const current = total({ year, month });
   const previousAmount = total(previous);
   const difference = current - previousAmount;
@@ -55,7 +68,7 @@ export const getSpendingPace = (actual: number, monthlyBudget: number, year: num
   return { ideal, actual, difference: actual - ideal, elapsedDays, daysInMonth: totalDays };
 };
 
-export const getLargestExpenses = (transactions: Transaction[], year: number, month: number, payrolls: PayrollLike[], count = 5) => getExpensesForMonth(transactions, year, month, payrolls).slice().sort((a, b) => amountOf(b) - amountOf(a)).slice(0, count);
+export const getLargestExpenses = (transactions: Transaction[], year: number, month: number, payrolls: PayrollLike[], count = 5) => getExpensesForMonth(transactions, year, month, payrolls).slice().sort((a, b) => netExpenseOf(b) - netExpenseOf(a)).slice(0, count);
 
 const dateKey = (date: Date) => date.toISOString().slice(0, 10);
 export const filterTransactions = (transactions: Transaction[], filters: TransactionFilters, now = new Date()) => {

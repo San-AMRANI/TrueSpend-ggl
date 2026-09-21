@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SettleDebtModal } from '../SettleDebtModal';
 import { WalletsManager } from './WalletsManager';
-import { getSpendingPace, isInMonth } from '../../lib/finance';
+import { getSpendingPace, isInMonth, netExpenseOf } from '../../lib/finance';
 import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 import { generateFacts, selectFacts } from '../../lib/financialFacts';
 import { FinancialFactsCarousel } from './FinancialFactsCarousel';
@@ -55,7 +55,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     .reduce((sum, budget) => sum + Number.parseFloat(budget.amount), 0);
   const monthlyActual = transactions
     .filter((transaction) => currentFm && transaction.type === 'Expense' && isInMonth(transaction, year, month, payrolls))
-    .reduce((sum, transaction) => sum + Number.parseFloat(transaction.amount), 0);
+    .reduce((sum, transaction) => sum + netExpenseOf(transaction), 0);
   const pace = getSpendingPace(monthlyActual, monthlyBudget, year, month, payrolls);
   const activeReceivables = debts
     .filter((debt) => debt.type === 'Receivable' && debt.status === 'Pending')
