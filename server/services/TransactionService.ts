@@ -33,13 +33,17 @@ export class TransactionService {
     const debtById = new Map(allDebts.map((debt) => [debt.id, debt]));
     return transactions.map((transaction) => {
       const split = splitByTransactionId.get(transaction.id);
+      const linkedDebt = split?.linkedContactId ? debtById.get(split.linkedContactId) : null;
+      const isPayableDebt = linkedDebt?.type === 'Payable' || transaction.category === 'Debt Repayment';
       return {
         ...transaction,
         category: normalizeCategory(transaction.category),
-        reimbursableAmount: split?.reimbursableAmount,
+        // Only Receivable debts represent money that is reimbursable to the user!
+        // A Payable debt settlement or repayment is an out-of-pocket obligation and not reimbursable.
+        reimbursableAmount: isPayableDebt ? null : (parseFloat(split?.reimbursableAmount || '0') > 0 ? split?.reimbursableAmount : null),
         linkedContactId: split?.linkedContactId,
-        linkedContactName: split?.linkedContactId ? debtById.get(split.linkedContactId)?.contactName : null,
-        linkedDebtType: split?.linkedContactId ? debtById.get(split.linkedContactId)?.type : null,
+        linkedContactName: linkedDebt?.contactName ?? null,
+        linkedDebtType: linkedDebt?.type ?? null,
       };
     });
   }
@@ -250,7 +254,8 @@ export class TransactionService {
           } else {
             // Deleting a settlement transaction -> restore debt balance
             const currentRemaining = parseFloat(debt.remainingBalance as unknown as string);
-            const reimbAmount = parseFloat(split.reimbursableAmount as unknown as string);
+            const splitReimbNum = parseFloat(split.reimbursableAmount as unknown as string);
+            const reimbAmount = splitReimbNum > 0 ? splitReimbNum : (parseFloat(transaction.amount as unknown as string) || 0);
             const originalAmount = parseFloat(debt.originalAmount as unknown as string);
             const newRemaining = Math.min(originalAmount, currentRemaining + reimbAmount);
 

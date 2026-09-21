@@ -196,12 +196,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         debtRepayments += amount;
       }
       
-      if (tx.type === 'Expense' && tx.reimbursableAmount && parseFloat(tx.reimbursableAmount) > 0) {
+      const isPayableTx = (tx as any).linkedDebtType === 'Payable' || tx.category === 'Debt Repayment';
+      if (tx.type === 'Expense' && !isPayableTx && tx.reimbursableAmount && parseFloat(tx.reimbursableAmount) > 0) {
         reimbursements += parseFloat(tx.reimbursableAmount);
         
         if (tx.linkedContactId) {
           const linkedDebt = debts.find(d => d.id === tx.linkedContactId);
-          if (linkedDebt && linkedDebt.status === 'Pending') {
+          if (linkedDebt && linkedDebt.type === 'Receivable' && linkedDebt.status === 'Pending') {
             pendingReimbursable += parseFloat(linkedDebt.remainingBalance);
           }
         } else {
@@ -326,7 +327,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             <div className="mt-2">
               <p className="text-sm text-red-600 dark:text-red-400 font-semibold">
                 {netExpenseOf(topExpense).toFixed(2)} MAD
-                {topExpense.reimbursableAmount && parseFloat(topExpense.reimbursableAmount) > 0 && (
+                {topExpense.linkedDebtType !== 'Payable' && topExpense.category !== 'Debt Repayment' && topExpense.reimbursableAmount && parseFloat(topExpense.reimbursableAmount) > 0 && (
                   <span className="text-xs font-normal text-gray-500 dark:text-gray-400 ml-1">
                     (gross {parseFloat(topExpense.amount).toFixed(2)})
                   </span>
@@ -608,7 +609,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                     <span className={`font-semibold ${transaction.type === 'Expense' ? 'text-gray-900 dark:text-gray-100' : 'text-green-600 dark:text-green-400'}`}>
                       {transaction.type === 'Expense' ? '-' : '+'}{(transaction.type === 'Expense' ? netExpenseOf(transaction) : parseFloat(transaction.amount)).toFixed(2)} MAD
                     </span>
-                    {transaction.type === 'Expense' && transaction.reimbursableAmount && parseFloat(transaction.reimbursableAmount) > 0 && (
+                    {transaction.type === 'Expense' && transaction.linkedDebtType !== 'Payable' && transaction.category !== 'Debt Repayment' && transaction.reimbursableAmount && parseFloat(transaction.reimbursableAmount) > 0 && (
                       <p className="text-xs text-gray-400 dark:text-gray-500">
                         gross {parseFloat(transaction.amount).toFixed(2)} • -{parseFloat(transaction.reimbursableAmount).toFixed(2)} reimb.
                       </p>

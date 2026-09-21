@@ -30,9 +30,10 @@ export class DebtService {
       const settlements = debtSplits
         .map((s) => {
           const tx = allTxs.find((t) => t.id === s.transactionId);
+          const splitAmountNum = parseFloat(s.reimbursableAmount || '0');
           return {
             id: s.id,
-            amount: s.reimbursableAmount,
+            amount: splitAmountNum > 0 ? s.reimbursableAmount : (tx ? tx.amount : '0'),
             createdAt: tx ? tx.createdAt : debt.createdAt,
           };
         })
@@ -85,7 +86,8 @@ export class DebtService {
 
       await transactionRepository.createSplit({
         transactionId: newTx.id,
-        reimbursableAmount: String(dto.amount),
+        // Only Receivable settlements are reimbursable to the user; Payable settlements are bill/debt payments.
+        reimbursableAmount: debt.type === 'Receivable' ? String(dto.amount) : '0',
         linkedContactId: dto.debt_id,
       });
 

@@ -129,7 +129,8 @@ export function computeFinancialState(input: FinancialEngineInput) {
     const txAmount = parseFloat(tx.amount as unknown as string);
     const txDate = new Date(tx.createdAt);
     const transactionDay = toCalendarDay(txDate);
-    const reimbursableAmt = tx.reimbursableAmount ? Math.max(0, parseFloat(tx.reimbursableAmount as string) || 0) : 0;
+    const isPayableTx = (tx as any).linkedDebtType === 'Payable' || tx.category === 'Debt Repayment';
+    const reimbursableAmt = (!isPayableTx && tx.reimbursableAmount) ? Math.max(0, parseFloat(tx.reimbursableAmount as string) || 0) : 0;
     const netExpense = Math.max(0, txAmount - reimbursableAmt);
 
     if (transactionDay < today) {
@@ -161,7 +162,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
 
     if (currentFm && transactionDay <= today && isInFinancialMonth(txDate, input.payrolls, currentFm.year, currentFm.month)) {
       if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) debtRepayments += txAmount;
-      if (tx.type === 'Expense' && tx.reimbursableAmount) reimbursements += reimbursableAmt;
+      if (tx.type === 'Expense' && !isPayableTx && tx.reimbursableAmount) reimbursements += reimbursableAmt;
     }
   }
 

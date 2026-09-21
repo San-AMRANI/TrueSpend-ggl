@@ -27,9 +27,13 @@ export const amountOf = (transaction: Pick<Transaction, 'amount'>) => Number.par
  * For an Expense transaction with a reimbursableAmount, returns max(0, amount - reimbursableAmount).
  * For example: 25 MAD expense with 20 MAD reimbursable returns 5 MAD.
  */
-export const netExpenseOf = (transaction: Pick<Transaction, 'amount' | 'type'> & Partial<Pick<Transaction, 'reimbursableAmount'>>) => {
+export const netExpenseOf = (transaction: Pick<Transaction, 'amount' | 'type'> & Partial<Pick<Transaction, 'reimbursableAmount' | 'linkedDebtType' | 'category'>>) => {
   const gross = Number.parseFloat(transaction.amount) || 0;
   if (transaction.type !== 'Expense') return gross;
+  // Payable debt repayments or bill settlements are out-of-pocket obligations, never reimbursable
+  if (transaction.linkedDebtType === 'Payable' || transaction.category === 'Debt Repayment') {
+    return gross;
+  }
   const reimbursable = transaction.reimbursableAmount ? Number.parseFloat(transaction.reimbursableAmount) || 0 : 0;
   return Math.max(0, gross - reimbursable);
 };
