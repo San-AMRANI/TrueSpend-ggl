@@ -3,6 +3,12 @@ import { debtRepository } from '../repositories/DebtRepository.js';
 import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { normalizeCategory } from '../../src/lib/categories.js';
 
+export interface SplitInput {
+  id?: string;
+  reimbursable_amount: number;
+  linked_contact_name: string;
+}
+
 export interface CreateTransactionDTO {
   amount: number;
   type: 'Income' | 'Expense' | 'Transfer' | 'Debt Repayment';
@@ -13,6 +19,7 @@ export interface CreateTransactionDTO {
   transaction_date?: string;
   reimbursable_amount?: number;
   linked_contact_name?: string;
+  splits?: SplitInput[];
   /** When present, this income is money borrowed and creates a payable debt. */
   loan_contact_name?: string;
   contextId?: string | null;
@@ -29,31 +36,89 @@ export class TransactionService {
       transactionRepository.findSplitsByTransactionIds(transactions.map((transaction) => transaction.id)),
       debtRepository.findAllByUserId(userId),
     ]);
-    const splitByTransactionId = new Map(allSplits.map((split) => [split.transactionId, split]));
+
+    const splitsByTxId = new Map<string, typeof allSplits>();
+    for (const split of allSplits) {
+      const list = splitsByTxId.get(split.transactionId) || [];
+      list.push(split);
+      splitsByTxId.set(split.transactionId, list);
+    }
     const debtById = new Map(allDebts.map((debt) => [debt.id, debt]));
+
     return transactions.map((transaction) => {
-      const split = splitByTransactionId.get(transaction.id);
-      const linkedDebt = split?.linkedContactId ? debtById.get(split.linkedContactId) : null;
-      const isPayableDebt = linkedDebt?.type === 'Payable' || transaction.category === 'Debt Repayment';
+      const txSplits = splitsByTxId.get(transaction.id) || [];
+      const mappedSplits = txSplits.map((split) => {
+        const linkedDebt = split.linkedContactId ? debtById.get(split.linkedContactId) : null;
+        return {
+          id: split.id,
+          reimbursableAmount: split.reimbursableAmount,
+          linkedContactId: split.linkedContactId,
+          linkedContactName: linkedDebt?.contactName ?? null,
+          linkedDebtType: linkedDebt?.type ?? null,
+          remainingBalance: linkedDebt?.remainingBalance ?? null,
+          status: linkedDebt?.status ?? null,
+        };
+      });
+
+      const firstDebt = mappedSplits[0]?.linkedContactId ? debtById.get(mappedSplits[0].linkedContactId) : null;
+      const isPayableDebt = firstDebt?.type === 'Payable' || transaction.category === 'Debt Repayment';
+
+      // Total reimbursable amount across all Receivable splits
+      const totalReimbursable = mappedSplits
+        .filter((s) => s.linkedDebtType === 'Receivable' || (!s.linkedDebtType && transaction.type === 'Expense'))
+        .reduce((sum, s) => sum + (parseFloat(s.reimbursableAmount || '0') || 0), 0);
+
+      const contactNames = mappedSplits
+        .map((s) => s.linkedContactName)
+        .filter(Boolean) as string[];
+
       return {
         ...transaction,
         category: normalizeCategory(transaction.category),
         // Only Receivable debts represent money that is reimbursable to the user!
         // A Payable debt settlement or repayment is an out-of-pocket obligation and not reimbursable.
-        reimbursableAmount: isPayableDebt ? null : (parseFloat(split?.reimbursableAmount || '0') > 0 ? split?.reimbursableAmount : null),
-        linkedContactId: split?.linkedContactId,
-        linkedContactName: linkedDebt?.contactName ?? null,
-        linkedDebtType: linkedDebt?.type ?? null,
+        reimbursableAmount: isPayableDebt || totalReimbursable <= 0 ? null : String(totalReimbursable),
+        linkedContactId: mappedSplits[0]?.linkedContactId || null,
+        linkedContactName: contactNames.length > 0 ? contactNames.join(', ') : null,
+        linkedDebtType: mappedSplits[0]?.linkedDebtType ?? null,
+        splits: mappedSplits,
       };
     });
   }
 
   async createTransaction(userId: string, dto: CreateTransactionDTO) {
     this.validateAmount(dto.amount);
-    this.validateReimbursement(dto.amount, dto.reimbursable_amount);
+    
+    // Normalize splits from DTO:
+    let splitList: SplitInput[] = [];
+    if (Array.isArray(dto.splits) && dto.splits.length > 0) {
+      splitList = dto.splits
+        .map((s) => ({
+          ...s,
+          reimbursable_amount: Number(s.reimbursable_amount),
+          linked_contact_name: (s.linked_contact_name || '').trim(),
+        }))
+        .filter((s) => s.reimbursable_amount > 0 && s.linked_contact_name.length > 0);
+    } else if (dto.reimbursable_amount && dto.reimbursable_amount > 0 && dto.linked_contact_name?.trim()) {
+      splitList = [{
+        reimbursable_amount: Number(dto.reimbursable_amount),
+        linked_contact_name: dto.linked_contact_name.trim(),
+      }];
+    }
+
+    const totalReimbursable = splitList.reduce((sum, s) => sum + s.reimbursable_amount, 0);
+    if (splitList.length > 0) {
+      if (dto.type !== 'Expense') {
+        throw new Error('Only expense transactions can be split or reimbursable');
+      }
+      if (totalReimbursable > dto.amount) {
+        throw new Error(`Total reimbursable amount (${totalReimbursable.toFixed(2)} MAD) cannot exceed transaction amount (${dto.amount.toFixed(2)} MAD)`);
+      }
+    }
+
     const loanContactName = dto.loan_contact_name?.trim();
     if (loanContactName && dto.type !== 'Income') throw new Error('A loan received must be an income transaction');
-    if (loanContactName && dto.reimbursable_amount) throw new Error('A loan received cannot also be reimbursable');
+    if (loanContactName && splitList.length > 0) throw new Error('A loan received cannot also be reimbursable');
     const createdAt = this.parseTransactionDate(dto.transaction_date);
     const newTx = await transactionRepository.create({
       userId,
@@ -67,19 +132,20 @@ export class TransactionService {
       contextId: dto.contextId || null,
     });
 
-    if (dto.reimbursable_amount && dto.reimbursable_amount > 0 && dto.linked_contact_name) {
+    for (const split of splitList) {
       const newDebt = await debtRepository.create({
         userId,
-        contactName: dto.linked_contact_name,
+        contactName: split.linked_contact_name,
         type: 'Receivable',
-        originalAmount: String(dto.reimbursable_amount),
-        remainingBalance: String(dto.reimbursable_amount),
+        originalAmount: String(split.reimbursable_amount),
+        remainingBalance: String(split.reimbursable_amount),
         status: 'Pending',
+        createdAt,
       });
 
       await transactionRepository.createSplit({
         transactionId: newTx.id,
-        reimbursableAmount: String(dto.reimbursable_amount),
+        reimbursableAmount: String(split.reimbursable_amount),
         linkedContactId: newDebt.id,
       });
     }
@@ -111,73 +177,126 @@ export class TransactionService {
       throw new Error('Transaction type cannot be changed. Delete and create a new transaction instead.');
     }
     this.validateAmount(dto.amount);
-    this.validateReimbursement(dto.amount, dto.reimbursable_amount);
 
     const createdAt = this.parseTransactionDate(dto.transaction_date);
     if (current.payrollId) {
       await this.syncPostedPayroll(userId, current.payrollId, dto.amount, createdAt);
     }
-    const existingSplit = (await transactionRepository.findSplitsByTransactionId(transactionId))[0];
-    const reimbursementWasUpdated = dto.reimbursable_amount !== undefined;
 
-    if (current.type !== 'Expense' && reimbursementWasUpdated && dto.reimbursable_amount && dto.reimbursable_amount > 0) {
+    const existingSplits = await transactionRepository.findSplitsByTransactionId(transactionId);
+    const splitsProvided = dto.splits !== undefined || dto.reimbursable_amount !== undefined;
+
+    if (current.type !== 'Expense' && splitsProvided && ((dto.splits && dto.splits.length > 0) || (dto.reimbursable_amount && dto.reimbursable_amount > 0))) {
       throw new Error('Only expense transactions can be reimbursable');
     }
 
-    if (current.type === 'Expense' && reimbursementWasUpdated) {
-      const newReimbursableAmount = dto.reimbursable_amount || 0;
-      if (existingSplit?.linkedContactId) {
-        const debt = await debtRepository.findByIdAndUserId(existingSplit.linkedContactId, userId);
-        if (!debt) throw new Error('Linked debt not found');
-        const oldReimbursableAmount = parseFloat(existingSplit.reimbursableAmount as unknown as string);
-        const originalAmount = parseFloat(debt.originalAmount as unknown as string);
-        const settledAmount = originalAmount - parseFloat(debt.remainingBalance as unknown as string);
-        if (newReimbursableAmount < settledAmount) {
-          throw new Error('The reimbursement cannot be lower than the amount already settled.');
+    if (current.type === 'Expense' && splitsProvided) {
+      let updatedSplitsList: SplitInput[] = [];
+      if (Array.isArray(dto.splits)) {
+        updatedSplitsList = dto.splits
+          .map((s) => ({
+            id: s.id,
+            reimbursable_amount: Number(s.reimbursable_amount),
+            linked_contact_name: (s.linked_contact_name || '').trim(),
+          }))
+          .filter((s) => s.reimbursable_amount > 0 && s.linked_contact_name.length > 0);
+      } else if (dto.reimbursable_amount !== undefined) {
+        if (dto.reimbursable_amount > 0 && dto.linked_contact_name?.trim()) {
+          updatedSplitsList = [{
+            id: existingSplits[0]?.id,
+            reimbursable_amount: Number(dto.reimbursable_amount),
+            linked_contact_name: dto.linked_contact_name.trim(),
+          }];
         }
+      }
 
-        if (newReimbursableAmount === 0) {
-          const linkedSplits = await transactionRepository.findSplitsByDebtId(debt.id);
-          if (linkedSplits.some((split) => split.transactionId !== transactionId)) {
-            throw new Error('This reimbursement has settlements. Adjust the debt before removing it from the expense.');
+      const totalReimbursable = updatedSplitsList.reduce((sum, s) => sum + s.reimbursable_amount, 0);
+      if (totalReimbursable > dto.amount) {
+        throw new Error(`Total reimbursable amount (${totalReimbursable.toFixed(2)} MAD) cannot exceed transaction amount (${dto.amount.toFixed(2)} MAD)`);
+      }
+
+      // Handle removed splits
+      const updatedSplitIds = new Set(updatedSplitsList.map((s) => s.id).filter(Boolean));
+      for (const existingSplit of existingSplits) {
+        if (!updatedSplitIds.has(existingSplit.id)) {
+          if (existingSplit.linkedContactId) {
+            const debt = await debtRepository.findByIdAndUserId(existingSplit.linkedContactId, userId);
+            if (debt) {
+              const originalAmount = parseFloat(debt.originalAmount as unknown as string);
+              const remainingBalance = parseFloat(debt.remainingBalance as unknown as string);
+              const settledAmount = originalAmount - remainingBalance;
+              if (settledAmount > 0.001) {
+                throw new Error(`Cannot remove split for ${debt.contactName} because a settlement of ${settledAmount.toFixed(2)} MAD has already been received.`);
+              }
+              const linkedSplits = await transactionRepository.findSplitsByDebtId(debt.id);
+              if (linkedSplits.some((s) => s.transactionId !== transactionId)) {
+                throw new Error(`This reimbursement for ${debt.contactName} has settlements. Adjust the debt before removing it.`);
+              }
+              await transactionRepository.deleteSplitById(existingSplit.id);
+              await debtRepository.deleteByIdAndUserId(debt.id, userId);
+            } else {
+              await transactionRepository.deleteSplitById(existingSplit.id);
+            }
+          } else {
+            await transactionRepository.deleteSplitById(existingSplit.id);
           }
-          await transactionRepository.deleteSplitById(existingSplit.id);
-          await debtRepository.deleteByIdAndUserId(debt.id, userId);
-        } else {
-          const newOriginalAmount = originalAmount + (newReimbursableAmount - oldReimbursableAmount);
-          await debtRepository.update(debt.id, userId, {
-            originalAmount: String(newOriginalAmount),
-            remainingBalance: String(newOriginalAmount - settledAmount),
-            status: newOriginalAmount === settledAmount ? 'Cleared' : 'Pending',
-            ...(dto.linked_contact_name ? { contactName: dto.linked_contact_name.trim() } : {}),
-          });
-          await transactionRepository.updateSplit(existingSplit.id, { reimbursableAmount: String(newReimbursableAmount) });
         }
-      } else if (newReimbursableAmount > 0) {
-        const contactName = dto.linked_contact_name?.trim();
-        if (!contactName) throw new Error('A contact name is required for a reimbursable expense');
-        const debt = await debtRepository.create({
-          userId,
-          contactName,
-          type: 'Receivable',
-          originalAmount: String(newReimbursableAmount),
-          remainingBalance: String(newReimbursableAmount),
-          status: 'Pending',
-        });
-        await transactionRepository.createSplit({
-          transactionId,
-          reimbursableAmount: String(newReimbursableAmount),
-          linkedContactId: debt.id,
-        });
+      }
+
+      // Handle existing and new splits in updatedSplitsList
+      for (const splitDto of updatedSplitsList) {
+        if (splitDto.id) {
+          const existingSplit = existingSplits.find((s) => s.id === splitDto.id);
+          if (existingSplit && existingSplit.linkedContactId) {
+            const debt = await debtRepository.findByIdAndUserId(existingSplit.linkedContactId, userId);
+            if (debt) {
+              const oldReimbursableAmount = parseFloat(existingSplit.reimbursableAmount as unknown as string);
+              const originalAmount = parseFloat(debt.originalAmount as unknown as string);
+              const settledAmount = originalAmount - parseFloat(debt.remainingBalance as unknown as string);
+
+              if (splitDto.reimbursable_amount < settledAmount) {
+                throw new Error(`The reimbursement for ${debt.contactName} cannot be lower than the amount already settled (${settledAmount.toFixed(2)} MAD).`);
+              }
+
+              const newOriginalAmount = originalAmount + (splitDto.reimbursable_amount - oldReimbursableAmount);
+              await debtRepository.update(debt.id, userId, {
+                originalAmount: String(newOriginalAmount),
+                remainingBalance: String(newOriginalAmount - settledAmount),
+                status: Math.abs(newOriginalAmount - settledAmount) <= 0.001 ? 'Cleared' : 'Pending',
+                contactName: splitDto.linked_contact_name,
+              });
+              await transactionRepository.updateSplit(existingSplit.id, {
+                reimbursableAmount: String(splitDto.reimbursable_amount),
+              });
+            }
+          }
+        } else {
+          // New split
+          const newDebt = await debtRepository.create({
+            userId,
+            contactName: splitDto.linked_contact_name,
+            type: 'Receivable',
+            originalAmount: String(splitDto.reimbursable_amount),
+            remainingBalance: String(splitDto.reimbursable_amount),
+            status: 'Pending',
+            createdAt,
+          });
+          await transactionRepository.createSplit({
+            transactionId,
+            reimbursableAmount: String(splitDto.reimbursable_amount),
+            linkedContactId: newDebt.id,
+          });
+        }
       }
     }
 
     const loanContactName = dto.loan_contact_name?.trim();
     if (loanContactName) {
-      if (current.type !== 'Income' || !existingSplit?.linkedContactId) {
+      const loanSplit = existingSplits[0];
+      if (current.type !== 'Income' || !loanSplit?.linkedContactId) {
         throw new Error('This transaction is not a loan received');
       }
-      const debt = await debtRepository.findByIdAndUserId(existingSplit.linkedContactId, userId);
+      const debt = await debtRepository.findByIdAndUserId(loanSplit.linkedContactId, userId);
       if (!debt || debt.type !== 'Payable') throw new Error('Linked loan debt not found');
       const originalAmount = parseFloat(debt.originalAmount as unknown as string);
       const remainingAmount = parseFloat(debt.remainingBalance as unknown as string);
@@ -191,7 +310,7 @@ export class TransactionService {
         remainingBalance: String(dto.amount - settledAmount),
         status: dto.amount === settledAmount ? 'Cleared' : 'Pending',
       });
-      await transactionRepository.updateSplit(existingSplit.id, { reimbursableAmount: String(dto.amount) });
+      await transactionRepository.updateSplit(loanSplit.id, { reimbursableAmount: String(dto.amount) });
     }
 
     const updated = await transactionRepository.update(transactionId, userId, {

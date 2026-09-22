@@ -92,6 +92,16 @@ export interface FinancialContext {
   updatedAt: string;
 }
 
+export interface TransactionSplit {
+  id?: string;
+  reimbursableAmount: string;
+  linkedContactId?: string | null;
+  linkedContactName?: string | null;
+  linkedDebtType?: 'Receivable' | 'Payable' | null;
+  remainingBalance?: string | null;
+  status?: 'Pending' | 'Cleared' | null;
+}
+
 export interface Transaction {
   id: string;
   userId: string;
@@ -109,6 +119,7 @@ export interface Transaction {
   linkedContactId?: string | null;
   linkedContactName?: string | null;
   linkedDebtType?: 'Receivable' | 'Payable' | null;
+  splits?: TransactionSplit[];
   contextId?: string | null;
 }
 

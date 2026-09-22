@@ -21,8 +21,8 @@ export class TransactionController {
       res.status(201).json({ message: 'Transaction created', id: created.id });
     } catch (e: any) {
       console.error(e);
-      res.status(e.message === 'Invalid transaction date' ? 400 : 500).json({
-        error: e.message === 'Invalid transaction date' ? e.message : 'Internal Server Error',
+      res.status(400).json({
+        error: e.message || 'Unable to create transaction',
       });
     }
   }
