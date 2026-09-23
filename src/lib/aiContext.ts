@@ -46,15 +46,21 @@ export function buildAiContextSnapshot({
     budgets: budgets.slice(0, 30).map((budget) => ({ category: budget.category, amount: amountOf(budget.amount), year: budget.year, month: budget.month })),
     emergencyBuffer: kpis ? amountOf(kpis.emergencyBuffer) : 0,
     debts: debts.slice(0, 20).map((debt) => ({ contact: debt.contactName, type: debt.type, remaining: amountOf(debt.remainingBalance), dueDate: dateKey(debt.dueDate) })),
-    goals: goals.map((goal) => ({
-      id: goal.id,
-      name: goal.name,
-      category: goal.category,
-      targetAmount: amountOf(goal.targetAmount),
-      currentAmount: amountOf(goal.currentAmount),
-      deadline: dateKey(goal.deadline),
-      notes: goal.notes,
-    })),
+    goals: goals.map((goal) => {
+      const linkedWallet = kpis?.accounts?.find((w) => w.id === goal.walletId);
+      return {
+        id: goal.id,
+        name: goal.name,
+        category: goal.category,
+        targetAmount: amountOf(goal.targetAmount),
+        currentAmount: amountOf(goal.currentAmount),
+        walletId: goal.walletId || null,
+        linkedWalletName: linkedWallet ? `${linkedWallet.name} (${linkedWallet.type})` : null,
+        autoSyncBalance: Boolean(goal.autoSyncBalance),
+        deadline: dateKey(goal.deadline),
+        notes: goal.notes,
+      };
+    }),
     currentPeriodTransactions: (current ? periodTransactions : transactions.slice(0, 30))
       .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
       .map((transaction) => ({ date: dateKey(transaction.createdAt), amount: amountOf(transaction.amount), type: transaction.type, category: transaction.category, note: transaction.notes })),

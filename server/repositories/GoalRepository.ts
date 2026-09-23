@@ -7,6 +7,8 @@ export interface CreateGoalParams {
   name: string;
   targetAmount: string;
   currentAmount?: string;
+  walletId?: string | null;
+  autoSyncBalance?: boolean;
   deadline?: Date | null;
   category?: string;
   notes?: string;

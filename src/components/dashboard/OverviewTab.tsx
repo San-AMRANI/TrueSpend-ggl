@@ -507,9 +507,16 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{g.name}</p>
-                        <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
-                          {g.category || 'Savings'}
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
+                            {g.category || 'Savings'}
+                          </span>
+                          {g.walletId && (
+                            <span className="rounded bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 truncate max-w-[110px]">
+                              🏦 {kpis?.accounts?.find((w) => w.id === g.walletId)?.name || 'Linked Vault'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <span className={`text-xs font-black ${isCompleted ? 'text-emerald-500' : 'text-indigo-600 dark:text-indigo-400'}`}>
                         {progress.toFixed(0)}%

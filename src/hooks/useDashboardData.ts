@@ -1,6 +1,6 @@
 import { googleSignIn, getGoogleAccessToken } from '../lib/googleAuth';
 import { uploadToGoogleDrive } from '../lib/driveUpload';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
 import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll, Goal } from '../types';
 import { useNotifications } from './useNotifications';
@@ -421,7 +421,7 @@ export function useDashboardData(token: string | null) {
     }
   };
 
-  const handleCreateGoal = async (payload: { name: string; targetAmount: number; currentAmount?: number; deadline?: string | null; category?: string; notes?: string }) => {
+  const handleCreateGoal = async (payload: { name: string; targetAmount: number; currentAmount?: number; walletId?: string | null; autoSyncBalance?: boolean; deadline?: string | null; category?: string; notes?: string }) => {
     if (!token) return;
     setIsSaving(true);
     try {
@@ -436,7 +436,7 @@ export function useDashboardData(token: string | null) {
     }
   };
 
-  const handleUpdateGoal = async (id: string, payload: { name?: string; targetAmount?: number; currentAmount?: number; deadline?: string | null; category?: string; notes?: string }) => {
+  const handleUpdateGoal = async (id: string, payload: { name?: string; targetAmount?: number; currentAmount?: number; walletId?: string | null; autoSyncBalance?: boolean; deadline?: string | null; category?: string; notes?: string }) => {
     if (!token) return;
     setIsSaving(true);
     try {
@@ -451,7 +451,7 @@ export function useDashboardData(token: string | null) {
     }
   };
 
-  const handleContributeToGoal = async (id: string, payload: { amount: number; walletId?: string; note?: string; date?: string }) => {
+  const handleContributeToGoal = async (id: string, payload: { amount: number; walletId?: string; destinationWalletId?: string; note?: string; date?: string }) => {
     if (!token) return;
     setIsSaving(true);
     try {
@@ -466,7 +466,7 @@ export function useDashboardData(token: string | null) {
     }
   };
 
-  const handleWithdrawFromGoal = async (id: string, payload: { amount: number; walletId?: string; note?: string; date?: string }) => {
+  const handleWithdrawFromGoal = async (id: string, payload: { amount: number; walletId?: string; destinationWalletId?: string; note?: string; date?: string }) => {
     if (!token) return;
     setIsSaving(true);
     try {
@@ -496,6 +496,21 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const syncedGoals = useMemo(() => {
+    if (!goals) return [];
+    if (!kpis?.accounts) return goals;
+    const walletMap = new Map(kpis.accounts.map(w => [w.id, w.balance]));
+    return goals.map(g => {
+      if (g.autoSyncBalance && g.walletId && walletMap.has(g.walletId)) {
+        return {
+          ...g,
+          currentAmount: String(Math.max(0, walletMap.get(g.walletId)!)),
+        };
+      }
+      return g;
+    });
+  }, [goals, kpis?.accounts]);
+
   return {
     kpis,
     transactions,
@@ -503,7 +518,7 @@ export function useDashboardData(token: string | null) {
     payrolls,
     budgets,
     contexts,
-    goals,
+    goals: syncedGoals,
     userSettings,
     loading,
     isSaving,

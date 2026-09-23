@@ -24,6 +24,14 @@ import {
   Wallet as WalletIcon,
   X,
   Compass,
+  ArrowRightLeft,
+  Check,
+  PiggyBank,
+  RefreshCw,
+  Landmark,
+  Layers,
+  Link as LinkIcon,
+  AlertCircle,
 } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 
@@ -34,6 +42,8 @@ interface GoalsTabProps {
     name: string;
     targetAmount: number;
     currentAmount?: number;
+    walletId?: string | null;
+    autoSyncBalance?: boolean;
     deadline?: string | null;
     category?: string;
     notes?: string;
@@ -44,6 +54,8 @@ interface GoalsTabProps {
       name?: string;
       targetAmount?: number;
       currentAmount?: number;
+      walletId?: string | null;
+      autoSyncBalance?: boolean;
       deadline?: string | null;
       category?: string;
       notes?: string;
@@ -51,13 +63,19 @@ interface GoalsTabProps {
   ) => Promise<any>;
   onContributeGoal: (
     id: string,
-    payload: { amount: number; walletId?: string; note?: string; date?: string },
+    payload: { amount: number; walletId?: string; destinationWalletId?: string; note?: string; date?: string },
   ) => Promise<any>;
   onWithdrawGoal: (
     id: string,
-    payload: { amount: number; walletId?: string; note?: string; date?: string },
+    payload: { amount: number; walletId?: string; destinationWalletId?: string; note?: string; date?: string },
   ) => Promise<any>;
   onDeleteGoal: (id: string) => Promise<any>;
+  onCreateWallet?: (payload: {
+    name: string;
+    type: 'Bank' | 'Cash' | 'Savings';
+    isMain?: boolean;
+    initialBalance?: number;
+  }) => Promise<any>;
 }
 
 const CATEGORY_THEMES: Record<
@@ -168,8 +186,10 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
   onContributeGoal,
   onWithdrawGoal,
   onDeleteGoal,
+  onCreateWallet,
 }) => {
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
+  const [walletFilter, setWalletFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'deadline' | 'progress' | 'target'>('deadline');
 
   // Modals state
@@ -177,20 +197,64 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [contributeTarget, setContributeTarget] = useState<Goal | null>(null);
   const [withdrawTarget, setWithdrawTarget] = useState<Goal | null>(null);
+  const [showNewWalletModal, setShowNewWalletModal] = useState(false);
 
-  // Form states
+  // Goal Form state
   const [name, setName] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
   const [currentAmount, setCurrentAmount] = useState('');
+  const [selectedWalletId, setSelectedWalletId] = useState('');
+  const [autoSyncBalance, setAutoSyncBalance] = useState(false);
   const [deadline, setDeadline] = useState('');
   const [category, setCategory] = useState('Emergency');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Quick Wallet Creation state
+  const [newWalletName, setNewWalletName] = useState('');
+  const [newWalletInitialBalance, setNewWalletInitialBalance] = useState('0');
+  const [isCreatingWallet, setIsCreatingWallet] = useState(false);
+
   // Contribution / Withdrawal modal form state
   const [actionAmount, setActionAmount] = useState('');
-  const [actionWalletId, setActionWalletId] = useState('');
+  const [actionSourceWalletId, setActionSourceWalletId] = useState('');
+  const [actionDestWalletId, setActionDestWalletId] = useState('');
   const [actionNote, setActionNote] = useState('');
+
+  // Wallets mapping & helper lookups
+  const walletMap = useMemo(() => {
+    return new Map(wallets.map((w) => [w.id, w]));
+  }, [wallets]);
+
+  const savingsWallets = useMemo(() => {
+    return wallets.filter((w) => w.type === 'Savings');
+  }, [wallets]);
+
+  const nonSavingsWallets = useMemo(() => {
+    return wallets.filter((w) => w.type !== 'Savings');
+  }, [wallets]);
+
+  // Savings Wallets & Goal Allocation overview
+  const savingsAllocation = useMemo(() => {
+    const totalInSavingsWallets = savingsWallets.reduce((sum, w) => sum + (Number(w.balance) || 0), 0);
+    const goalsLinkedToSavings = goals.filter((g) => {
+      if (!g.walletId) return false;
+      const w = walletMap.get(g.walletId);
+      return w && w.type === 'Savings';
+    });
+    const totalAllocatedToSavingsGoals = goalsLinkedToSavings.reduce(
+      (sum, g) => sum + (parseFloat(g.currentAmount) || 0),
+      0,
+    );
+    const unallocatedSavings = Math.max(0, totalInSavingsWallets - totalAllocatedToSavingsGoals);
+
+    return {
+      totalInSavingsWallets,
+      goalsLinkedToSavingsCount: goalsLinkedToSavings.length,
+      totalAllocatedToSavingsGoals,
+      unallocatedSavings,
+    };
+  }, [savingsWallets, goals, walletMap]);
 
   // Portfolio Totals & Metrics
   const metrics = useMemo(() => {
@@ -240,8 +304,21 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
       const target = parseFloat(g.targetAmount) || 0;
       const current = parseFloat(g.currentAmount) || 0;
       const isCompleted = current >= target && target > 0;
-      if (filter === 'active') return !isCompleted;
-      if (filter === 'completed') return isCompleted;
+
+      if (filter === 'active' && isCompleted) return false;
+      if (filter === 'completed' && !isCompleted) return false;
+
+      if (walletFilter !== 'all') {
+        if (walletFilter === 'linked_savings') {
+          const w = g.walletId ? walletMap.get(g.walletId) : null;
+          if (!w || w.type !== 'Savings') return false;
+        } else if (walletFilter === 'unlinked') {
+          if (g.walletId) return false;
+        } else if (g.walletId !== walletFilter) {
+          return false;
+        }
+      }
+
       return true;
     });
 
@@ -264,13 +341,16 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
       if (!b.deadline) return -1;
       return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
     });
-  }, [goals, filter, sortBy]);
+  }, [goals, filter, walletFilter, sortBy, walletMap]);
 
   // Open Create Modal
   const openCreateModal = () => {
     setName('');
     setTargetAmount('');
     setCurrentAmount('0');
+    // Pre-select first savings wallet if available
+    setSelectedWalletId(savingsWallets.length > 0 ? savingsWallets[0].id : '');
+    setAutoSyncBalance(false);
     setCategory('Emergency');
     setDeadline('');
     setNotes('');
@@ -283,6 +363,8 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
     setName(goal.name);
     setTargetAmount(goal.targetAmount);
     setCurrentAmount(goal.currentAmount);
+    setSelectedWalletId(goal.walletId || '');
+    setAutoSyncBalance(Boolean(goal.autoSyncBalance));
     setCategory(goal.category || 'General');
     setDeadline(goal.deadline ? new Date(goal.deadline).toISOString().slice(0, 10) : '');
     setNotes(goal.notes || '');
@@ -296,6 +378,8 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
     setCategory(preset.category);
     setTargetAmount(String(preset.targetAmount));
     setCurrentAmount('0');
+    setSelectedWalletId(savingsWallets.length > 0 ? savingsWallets[0].id : '');
+    setAutoSyncBalance(false);
     setNotes(preset.notes);
     const future = new Date();
     future.setMonth(future.getMonth() + preset.monthsAhead);
@@ -311,24 +395,21 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
 
     setIsSubmitting(true);
     try {
+      const payload = {
+        name: name.trim(),
+        targetAmount: target,
+        currentAmount: parseFloat(currentAmount) || 0,
+        walletId: selectedWalletId || null,
+        autoSyncBalance: Boolean(autoSyncBalance && selectedWalletId),
+        category,
+        deadline: deadline || null,
+        notes: notes.trim(),
+      };
+
       if (editingGoal) {
-        await onUpdateGoal(editingGoal.id, {
-          name: name.trim(),
-          targetAmount: target,
-          currentAmount: parseFloat(currentAmount) || 0,
-          category,
-          deadline: deadline || null,
-          notes: notes.trim(),
-        });
+        await onUpdateGoal(editingGoal.id, payload);
       } else {
-        await onCreateGoal({
-          name: name.trim(),
-          targetAmount: target,
-          currentAmount: parseFloat(currentAmount) || 0,
-          category,
-          deadline: deadline || null,
-          notes: notes.trim(),
-        });
+        await onCreateGoal(payload);
       }
       setShowCreateModal(false);
     } catch (err) {
@@ -338,7 +419,71 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
     }
   };
 
-  // Handle Contribute
+  // Quick Create Savings Wallet
+  const handleQuickCreateSavingsWallet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWalletName.trim() || !onCreateWallet) return;
+
+    setIsCreatingWallet(true);
+    try {
+      const created = await onCreateWallet({
+        name: newWalletName.trim(),
+        type: 'Savings',
+        isMain: false,
+        initialBalance: parseFloat(newWalletInitialBalance) || 0,
+      });
+
+      if (created && created.id) {
+        setSelectedWalletId(created.id);
+      }
+      setShowNewWalletModal(false);
+      setNewWalletName('');
+      setNewWalletInitialBalance('0');
+    } catch (err) {
+      console.error('Failed to create savings wallet:', err);
+    } finally {
+      setIsCreatingWallet(false);
+    }
+  };
+
+  // Open Deposit Modal
+  const openDepositModal = (goal: Goal) => {
+    setContributeTarget(goal);
+    setActionAmount('');
+    setActionNote('');
+
+    // If goal is linked to a wallet:
+    if (goal.walletId) {
+      setActionDestWalletId(goal.walletId);
+      // Source wallet: pick a non-savings wallet (Bank or Cash) as primary source
+      const defaultSource = nonSavingsWallets.find((w) => w.isMain) || nonSavingsWallets[0] || wallets[0];
+      setActionSourceWalletId(defaultSource ? defaultSource.id : '');
+    } else {
+      setActionDestWalletId('');
+      const defaultSource = wallets.find((w) => w.isMain) || wallets[0];
+      setActionSourceWalletId(defaultSource ? defaultSource.id : '');
+    }
+  };
+
+  // Open Withdraw Modal
+  const openWithdrawModal = (goal: Goal) => {
+    setWithdrawTarget(goal);
+    setActionAmount('');
+    setActionNote('');
+
+    if (goal.walletId) {
+      setActionSourceWalletId(goal.walletId);
+      // Destination: pick checking account or cash
+      const defaultTarget = nonSavingsWallets.find((w) => w.isMain) || nonSavingsWallets[0] || wallets[0];
+      setActionDestWalletId(defaultTarget ? defaultTarget.id : '');
+    } else {
+      setActionSourceWalletId('');
+      const defaultTarget = wallets.find((w) => w.isMain) || wallets[0];
+      setActionDestWalletId(defaultTarget ? defaultTarget.id : '');
+    }
+  };
+
+  // Handle Contribute (Deposit)
   const handleContribute = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!contributeTarget) return;
@@ -349,12 +494,14 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
     try {
       await onContributeGoal(contributeTarget.id, {
         amount: amt,
-        walletId: actionWalletId || undefined,
+        walletId: actionSourceWalletId || undefined,
+        destinationWalletId: actionDestWalletId || undefined,
         note: actionNote.trim() || undefined,
       });
       setContributeTarget(null);
       setActionAmount('');
-      setActionWalletId('');
+      setActionSourceWalletId('');
+      setActionDestWalletId('');
       setActionNote('');
     } catch (err) {
       console.error(err);
@@ -374,12 +521,14 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
     try {
       await onWithdrawGoal(withdrawTarget.id, {
         amount: amt,
-        walletId: actionWalletId || undefined,
+        walletId: actionDestWalletId || undefined, // destination account where cash goes
+        destinationWalletId: actionDestWalletId || undefined,
         note: actionNote.trim() || undefined,
       });
       setWithdrawTarget(null);
       setActionAmount('');
-      setActionWalletId('');
+      setActionSourceWalletId('');
+      setActionDestWalletId('');
       setActionNote('');
     } catch (err) {
       console.error(err);
@@ -400,12 +549,23 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Financial Savings Goals</h1>
             <p className="max-w-xl text-sm text-indigo-200/80">
-              Earmark your money for what matters most. Track milestones, compute exact monthly savings velocity, and
-              stay disciplined towards your future.
+              Earmark your capital for what matters most. Connect dedicated <strong>Savings Wallets</strong> to individual
+              goals to track progress directly from your real-life bank balances and account transfers.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {onCreateWallet && (
+              <Button
+                onClick={() => setShowNewWalletModal(true)}
+                variant="outline"
+                className="inline-flex items-center gap-2 rounded-xl border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white hover:bg-white/20 active:scale-95 transition-all backdrop-blur-md"
+              >
+                <Landmark className="h-3.5 w-3.5 text-emerald-400" />
+                <span>+ New Savings Vault</span>
+              </Button>
+            )}
+
             <Button
               onClick={openCreateModal}
               className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-600 active:scale-95 transition-all"
@@ -448,55 +608,256 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
             <div className="text-xs font-medium uppercase tracking-wider text-indigo-200/70">Monthly Savings Pace</div>
             <div className="mt-1 text-xl sm:text-2xl font-black text-amber-300">
               {Math.round(metrics.totalMonthlyNeeded).toLocaleString()}{' '}
-              <span className="text-xs font-semibold text-amber-200">MAD/mo</span>
+              <span className="text-xs font-semibold text-amber-200/80">MAD / mo</span>
             </div>
-          </div>
-        </div>
-
-        {/* Global Progress Bar */}
-        <div className="relative z-10 mt-4">
-          <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-indigo-400 via-sky-400 to-emerald-400 transition-all duration-500"
-              style={{ width: `${metrics.overallProgress}%` }}
-            />
           </div>
         </div>
       </div>
 
-      {/* Filter and Sorting Toolbar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-1 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 text-xs font-medium shadow-sm">
-          <button
-            onClick={() => setFilter('all')}
-            className={`rounded-lg px-3 py-1.5 transition-colors ${
-              filter === 'all'
-                ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-semibold'
-                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-            }`}
+      {/* SAVINGS WALLETS & ALLOCATION HUB */}
+      <Card className="border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-50/30 via-white to-white dark:from-indigo-950/20 dark:via-gray-900 dark:to-gray-900">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+                <PiggyBank className="h-5 w-5" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <span>Savings Accounts & Vault Allocation</span>
+                  <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                    {savingsWallets.length} {savingsWallets.length === 1 ? 'Savings Vault' : 'Savings Vaults'}
+                  </span>
+                </CardTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Track real capital deposited across your dedicated Savings accounts vs active target goals
+                </p>
+              </div>
+            </div>
+
+            {onCreateWallet && (
+              <Button
+                onClick={() => setShowNewWalletModal(true)}
+                size="sm"
+                variant="outline"
+                className="inline-flex items-center gap-1.5 rounded-xl border-dashed border-gray-300 dark:border-gray-700 text-xs font-semibold hover:border-emerald-500 hover:text-emerald-600 self-start sm:self-auto"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Savings Wallet</span>
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {/* Top Metrics Row */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800/60 p-3.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Total in Savings Wallets</span>
+                <Landmark className="h-4 w-4 text-emerald-500" />
+              </div>
+              <div className="mt-1.5 text-xl font-black text-gray-900 dark:text-white">
+                {savingsAllocation.totalInSavingsWallets.toLocaleString()}{' '}
+                <span className="text-xs font-bold text-gray-400">MAD</span>
+              </div>
+              <div className="mt-0.5 text-[11px] text-gray-500">Across {savingsWallets.length} savings accounts</div>
+            </div>
+
+            <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800/60 p-3.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Allocated to Goals</span>
+                <Target className="h-4 w-4 text-indigo-500" />
+              </div>
+              <div className="mt-1.5 text-xl font-black text-indigo-600 dark:text-indigo-400">
+                {savingsAllocation.totalAllocatedToSavingsGoals.toLocaleString()}{' '}
+                <span className="text-xs font-bold text-gray-400">MAD</span>
+              </div>
+              <div className="mt-0.5 text-[11px] text-gray-500">
+                {savingsAllocation.goalsLinkedToSavingsCount} linked savings goals
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800/60 p-3.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Unallocated Capital</span>
+                <Sparkles className="h-4 w-4 text-teal-500" />
+              </div>
+              <div className="mt-1.5 text-xl font-black text-teal-600 dark:text-teal-400">
+                {savingsAllocation.unallocatedSavings.toLocaleString()}{' '}
+                <span className="text-xs font-bold text-gray-400">MAD</span>
+              </div>
+              <div className="mt-0.5 text-[11px] text-gray-500">Available in savings, unassigned to goals</div>
+            </div>
+          </div>
+
+          {/* Savings Wallets List / Pills */}
+          {savingsWallets.length === 0 ? (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-xl border border-dashed border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 p-4">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl bg-emerald-100 dark:bg-emerald-900/50 p-2 text-emerald-600 dark:text-emerald-300 shrink-0">
+                  <PiggyBank className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                    Connect a Savings Wallet to your Goals
+                  </h4>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 max-w-xl">
+                    Create a dedicated wallet of type <strong>&ldquo;Savings&rdquo;</strong> (e.g. &ldquo;Attijari Tawfir&rdquo;,
+                    &ldquo;Emergency Vault&rdquo;, or &ldquo;Travel Pot&rdquo;). You can link it to individual goals to
+                    auto-sync live balances and transfer funds between your everyday checking and your savings vault!
+                  </p>
+                </div>
+              </div>
+              {onCreateWallet && (
+                <Button
+                  onClick={() => setShowNewWalletModal(true)}
+                  className="rounded-xl bg-emerald-600 text-xs font-bold text-white hover:bg-emerald-700 shrink-0"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Create First Savings Wallet
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {savingsWallets.map((sw) => {
+                const balance = Number(sw.balance) || 0;
+                const linkedGoals = goals.filter((g) => g.walletId === sw.id);
+                const totalTargetForWallet = linkedGoals.reduce(
+                  (sum, g) => sum + (parseFloat(g.targetAmount) || 0),
+                  0,
+                );
+                const isFiltered = walletFilter === sw.id;
+
+                return (
+                  <div
+                    key={sw.id}
+                    className={`rounded-xl border p-3.5 transition-all ${
+                      isFiltered
+                        ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/30 ring-2 ring-indigo-500/20'
+                        : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800/40 hover:border-gray-300 dark:hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="rounded-lg bg-emerald-100 dark:bg-emerald-950/60 p-2 text-emerald-600 dark:text-emerald-400 shrink-0">
+                          <Landmark className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="truncate text-sm font-bold text-gray-900 dark:text-white">{sw.name}</h4>
+                          <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+                            Savings Wallet
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => setWalletFilter(isFiltered ? 'all' : sw.id)}
+                        className={`rounded-lg px-2 py-1 text-[10px] font-bold transition-colors ${
+                          isFiltered
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                        }`}
+                        title="Filter goals linked to this wallet"
+                      >
+                        {isFiltered ? 'Active Filter' : 'Filter Goals'}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 flex items-baseline justify-between border-t border-gray-100 dark:border-gray-800 pt-2.5 text-xs">
+                      <span className="text-gray-500">Live Balance:</span>
+                      <span className="font-extrabold text-gray-900 dark:text-white">
+                        {balance.toLocaleString()} MAD
+                      </span>
+                    </div>
+
+                    <div className="mt-1 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                      <span>Linked Goals:</span>
+                      <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                        {linkedGoals.length} {linkedGoals.length === 1 ? 'goal' : 'goals'}
+                        {totalTargetForWallet > 0 && ` (${totalTargetForWallet.toLocaleString()} MAD target)`}
+                      </span>
+                    </div>
+
+                    {linkedGoals.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {linkedGoals.slice(0, 2).map((g) => (
+                          <span
+                            key={g.id}
+                            className="inline-flex items-center gap-1 rounded-md bg-gray-100 dark:bg-gray-700/60 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:text-gray-300"
+                          >
+                            <Target className="h-2.5 w-2.5 text-indigo-500" />
+                            <span className="truncate max-w-[100px]">{g.name}</span>
+                          </span>
+                        ))}
+                        {linkedGoals.length > 2 && (
+                          <span className="rounded-md bg-gray-100 dark:bg-gray-700/60 px-1.5 py-0.5 text-[10px] text-gray-500">
+                            +{linkedGoals.length - 2} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* FILTER & SORT BAR */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-200 dark:border-gray-800 pb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Status Pills */}
+          <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
+            <button
+              onClick={() => setFilter('all')}
+              className={`rounded-lg px-3 py-1.5 transition-all ${
+                filter === 'all'
+                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm'
+                  : 'hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              All ({goals.length})
+            </button>
+            <button
+              onClick={() => setFilter('active')}
+              className={`rounded-lg px-3 py-1.5 transition-all ${
+                filter === 'active'
+                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm'
+                  : 'hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Active ({metrics.activeCount})
+            </button>
+            <button
+              onClick={() => setFilter('completed')}
+              className={`rounded-lg px-3 py-1.5 transition-all ${
+                filter === 'completed'
+                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm'
+                  : 'hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Completed ({metrics.completedCount})
+            </button>
+          </div>
+
+          {/* Wallet Filter Dropdown */}
+          <select
+            value={walletFilter}
+            onChange={(e) => setWalletFilter(e.target.value)}
+            className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
-            All Goals ({goals.length})
-          </button>
-          <button
-            onClick={() => setFilter('active')}
-            className={`rounded-lg px-3 py-1.5 transition-colors ${
-              filter === 'active'
-                ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-semibold'
-                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            In Progress ({metrics.activeCount})
-          </button>
-          <button
-            onClick={() => setFilter('completed')}
-            className={`rounded-lg px-3 py-1.5 transition-colors ${
-              filter === 'completed'
-                ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-semibold'
-                : 'text-gray-500 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            Completed ({metrics.completedCount})
-          </button>
+            <option value="all">All Wallets & Vaults</option>
+            <option value="linked_savings">🌟 Only Linked to Savings Accounts</option>
+            <option value="unlinked">Unlinked (Manual Tracking)</option>
+            {wallets.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name} ({w.type})
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="flex items-center gap-2">
@@ -513,7 +874,7 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
         </div>
       </div>
 
-      {/* Goals Grid */}
+      {/* GOALS GRID */}
       {displayedGoals.length === 0 ? (
         <Card className="border-dashed border-gray-300 dark:border-gray-800 py-12 text-center">
           <CardContent className="space-y-4">
@@ -523,13 +884,13 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
             <div className="space-y-1">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">No savings goals found</h3>
               <p className="mx-auto max-w-md text-sm text-gray-500 dark:text-gray-400">
-                {filter !== 'all'
-                  ? `You don't have any ${filter} goals right now.`
+                {filter !== 'all' || walletFilter !== 'all'
+                  ? 'No goals match your current filter criteria.'
                   : 'Start by creating your first savings target, or pick one of the recommended presets below.'}
               </p>
             </div>
 
-            {filter === 'all' && (
+            {filter === 'all' && walletFilter === 'all' && (
               <div className="pt-4">
                 <div className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
                   Quick Start Templates
@@ -570,11 +931,13 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
             const theme = CATEGORY_THEMES[goal.category] || CATEGORY_THEMES.General;
             const Icon = theme.icon;
 
+            const linkedWallet = goal.walletId ? walletMap.get(goal.walletId) : null;
+            const isSavingsWallet = linkedWallet?.type === 'Savings';
+
             // Pacing & velocity calculations
             const today = new Date();
             let daysLeft = null;
             let requiredMonthly = 0;
-            let requiredDaily = 0;
             let pacingStatus: 'completed' | 'on_track' | 'behind' | 'accelerated' = 'on_track';
 
             if (isCompleted) {
@@ -585,13 +948,10 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
               if (daysLeft <= 0) {
                 pacingStatus = 'behind';
                 requiredMonthly = remaining;
-                requiredDaily = remaining;
               } else {
                 const monthsLeft = Math.max(0.2, daysLeft / 30.4);
                 requiredMonthly = remaining / monthsLeft;
-                requiredDaily = remaining / daysLeft;
 
-                // Check expected pace vs actual progress
                 const created = new Date(goal.createdAt);
                 const totalGoalDays = Math.max(1, differenceInDays(d, created));
                 const elapsedDays = Math.max(0, differenceInDays(today, created));
@@ -618,21 +978,47 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
 
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 dark:bg-gray-800 ${theme.color}`}>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 dark:bg-gray-800 ${theme.color}`}
+                      >
                         <Icon className="h-5 w-5" />
                       </div>
-                      <div>
-                        <CardTitle className="text-base font-bold text-gray-900 dark:text-white line-clamp-1">
+                      <div className="min-w-0">
+                        <CardTitle className="text-base font-bold text-gray-900 dark:text-white truncate">
                           {goal.name}
                         </CardTitle>
-                        <span className={`inline-block mt-0.5 rounded-md px-2 py-0.5 text-[10px] font-semibold ${theme.badge}`}>
-                          {goal.category || 'General'}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                          <span className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold ${theme.badge}`}>
+                            {goal.category || 'General'}
+                          </span>
+
+                          {/* Linked Wallet Pill */}
+                          {linkedWallet ? (
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                                isSavingsWallet
+                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                  : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300'
+                              }`}
+                              title={`Linked to wallet: ${linkedWallet.name} (Balance: ${Number(linkedWallet.balance).toLocaleString()} MAD)`}
+                            >
+                              <Landmark className="h-2.5 w-2.5" />
+                              <span className="truncate max-w-[90px]">{linkedWallet.name}</span>
+                              {goal.autoSyncBalance && (
+                                <RefreshCw className="h-2.5 w-2.5 text-emerald-600 animate-spin-slow" />
+                              )}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-400">
+                              Manual tracking
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">
+                    <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 shrink-0">
                       <button
                         onClick={() => openEditModal(goal)}
                         aria-label="Edit goal"
@@ -668,11 +1054,13 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                       </div>
                     </div>
                     <div className="mt-0.5 flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                      <span>{isCompleted ? 'Goal fully conquered! 🎉' : `Remaining: ${remaining.toLocaleString()} MAD`}</span>
+                      <span>
+                        {isCompleted ? 'Goal fully conquered! 🎉' : `Remaining: ${remaining.toLocaleString()} MAD`}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Progress Bar with Milestone Dots */}
+                  {/* Progress Bar */}
                   <div className="space-y-1">
                     <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
                       <div
@@ -697,8 +1085,26 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                     </div>
                   </div>
 
-                  {/* Deadline & Pacing Diagnostics */}
+                  {/* Details & Diagnostics */}
                   <div className="rounded-xl border border-gray-100 dark:border-gray-800/60 bg-gray-50/50 dark:bg-gray-800/30 p-2.5 space-y-1.5 text-xs">
+                    {/* Linked Wallet Details */}
+                    {linkedWallet && (
+                      <div className="flex items-center justify-between text-gray-600 dark:text-gray-300">
+                        <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                          <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                          <span>Vault Balance:</span>
+                        </span>
+                        <span className="font-bold text-gray-900 dark:text-white">
+                          {Number(linkedWallet.balance).toLocaleString()} MAD
+                          {goal.autoSyncBalance && (
+                            <span className="ml-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                              (Auto-Synced)
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+
                     {goal.deadline ? (
                       <div className="flex items-center justify-between text-gray-600 dark:text-gray-300">
                         <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
@@ -728,7 +1134,7 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
 
                     {/* Status Pill */}
                     <div className="flex items-center justify-between pt-1 border-t border-gray-200/40 dark:border-gray-700/40 text-[11px]">
-                      <span className="text-gray-500">Pacing Status:</span>
+                      <span className="text-gray-500">Status:</span>
                       {pacingStatus === 'completed' && (
                         <span className="inline-flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400">
                           <CheckCircle2 className="h-3 w-3" /> Conquered
@@ -761,12 +1167,7 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                   {/* Actions */}
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <Button
-                      onClick={() => {
-                        setContributeTarget(goal);
-                        setActionAmount('');
-                        setActionWalletId('');
-                        setActionNote('');
-                      }}
+                      onClick={() => openDepositModal(goal)}
                       className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold py-2"
                     >
                       <ArrowUpRight className="h-3.5 w-3.5" />
@@ -775,12 +1176,7 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
 
                     <Button
                       variant="outline"
-                      onClick={() => {
-                        setWithdrawTarget(goal);
-                        setActionAmount('');
-                        setActionWalletId('');
-                        setActionNote('');
-                      }}
+                      onClick={() => openWithdrawModal(goal)}
                       disabled={current <= 0}
                       className="inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-medium py-2 disabled:opacity-40"
                     >
@@ -798,7 +1194,7 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
       {/* CREATE / EDIT GOAL MODAL */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+          <div className="relative w-full max-w-lg rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
@@ -808,7 +1204,7 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                   <h3 className="text-base font-bold text-gray-900 dark:text-white">
                     {editingGoal ? 'Edit Savings Goal' : 'Create New Savings Goal'}
                   </h3>
-                  <p className="text-xs text-gray-500">Define your target, category, and timeline</p>
+                  <p className="text-xs text-gray-500">Define your target, linked savings wallet, and timeline</p>
                 </div>
               </div>
               <button
@@ -832,6 +1228,93 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                 />
               </div>
 
+              {/* LINKED WALLET SELECTOR */}
+              <div className="space-y-1.5 rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/30 dark:bg-indigo-950/20 p-3">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                    <PiggyBank className="h-4 w-4 text-emerald-500" />
+                    <span>Linked Savings Wallet / Vault</span>
+                  </label>
+                  {onCreateWallet && (
+                    <button
+                      type="button"
+                      onClick={() => setShowNewWalletModal(true)}
+                      className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <span>New Savings Wallet</span>
+                    </button>
+                  )}
+                </div>
+
+                <select
+                  value={selectedWalletId}
+                  onChange={(e) => {
+                    const newWId = e.target.value;
+                    setSelectedWalletId(newWId);
+                    if (newWId && autoSyncBalance) {
+                      const w = walletMap.get(newWId);
+                      if (w) setCurrentAmount(String(w.balance));
+                    }
+                  }}
+                  className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                >
+                  <option value="">None (Manual Goal Tracking)</option>
+                  {savingsWallets.length > 0 && (
+                    <optgroup label="🌟 Dedicated Savings Accounts">
+                      {savingsWallets.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name} (Savings) - Balance: {Number(w.balance).toLocaleString()} MAD
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {nonSavingsWallets.length > 0 && (
+                    <optgroup label="Other Accounts (Bank & Cash)">
+                      {nonSavingsWallets.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name} ({w.type}) - Balance: {Number(w.balance).toLocaleString()} MAD
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+
+                {selectedWalletId ? (
+                  <div className="pt-2">
+                    <label className="flex items-start gap-2 cursor-pointer text-xs text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={autoSyncBalance}
+                        onChange={(e) => {
+                          const isChecked = e.target.checked;
+                          setAutoSyncBalance(isChecked);
+                          if (isChecked && selectedWalletId) {
+                            const w = walletMap.get(selectedWalletId);
+                            if (w) setCurrentAmount(String(w.balance));
+                          }
+                        }}
+                        className="mt-0.5 rounded border-gray-300 dark:border-gray-700 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <div>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          Auto-sync goal progress with live wallet balance
+                        </span>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                          When checked, this goal&apos;s saved amount will automatically equal this wallet&apos;s balance.
+                          Any transfer or deposit into this wallet will instantly advance your goal.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    Tip: Linking a dedicated Savings wallet lets TrueSpend automatically execute bank-to-savings
+                    transfers whenever you contribute!
+                  </p>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
@@ -845,22 +1328,28 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                     placeholder="15000"
                     value={targetAmount}
                     onChange={(e) => setTargetAmount(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="mt-1 w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
                     Already Saved (MAD)
+                    {autoSyncBalance && (
+                      <span className="ml-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                        (Synced from wallet)
+                      </span>
+                    )}
                   </label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
+                    disabled={autoSyncBalance}
                     placeholder="0"
                     value={currentAmount}
                     onChange={(e) => setCurrentAmount(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="mt-1 w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-60 disabled:bg-gray-100 dark:disabled:bg-gray-800"
                   />
                 </div>
               </div>
@@ -929,6 +1418,93 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
         </div>
       )}
 
+      {/* QUICK CREATE SAVINGS WALLET MODAL */}
+      {showNewWalletModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+                  <Landmark className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">Create Savings Vault</h3>
+                  <p className="text-xs text-gray-500">Dedicated account for earmarked goal capital</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowNewWalletModal(false)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickCreateSavingsWallet} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Vault / Wallet Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Emergency Savings Vault, CIH Tawfir, Travel Pot"
+                  value={newWalletName}
+                  onChange={(e) => setNewWalletName(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Starting Balance (MAD)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0"
+                  value={newWalletInitialBalance}
+                  onChange={(e) => setNewWalletInitialBalance(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-transparent px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                  Initial money currently inside this bank account or savings vault.
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/40 dark:bg-emerald-950/20 p-3 text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5" />
+                  <span>Wallet Type: Savings Account</span>
+                </div>
+                <p className="text-[11px] opacity-90">
+                  This wallet will be tagged as &ldquo;Savings&rdquo; and immediately available to link with any goals.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowNewWalletModal(false)}
+                  className="rounded-xl px-4 text-xs font-semibold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isCreatingWallet}
+                  className="rounded-xl bg-emerald-600 px-5 text-xs font-semibold text-white hover:bg-emerald-700"
+                >
+                  {isCreatingWallet ? 'Creating...' : 'Create Savings Vault'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* CONTRIBUTE / DEPOSIT MODAL */}
       {contributeTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
@@ -982,28 +1558,40 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                 </div>
               </div>
 
+              {/* Source Account */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                  Deduct from Wallet (optional)
+                  Source Account (Deduct from)
                 </label>
                 <select
-                  value={actionWalletId}
-                  onChange={(e) => setActionWalletId(e.target.value)}
+                  value={actionSourceWalletId}
+                  onChange={(e) => setActionSourceWalletId(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 >
-                  <option value="">No Wallet Deduction (Direct Adjustment)</option>
+                  <option value="">No Wallet Deduction (Manual Goal Adjustment)</option>
                   {wallets.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name} ({w.type}) - Balance: {Number(w.balance).toLocaleString()} MAD
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-[11px] text-gray-400">
-                  {actionWalletId
-                    ? 'This will record a Savings expense in your selected wallet to keep balances synchronized.'
-                    : 'Increases goal saved balance without creating a bank/cash transaction.'}
-                </p>
               </div>
+
+              {/* Destination Savings Wallet if linked or chosen */}
+              {actionDestWalletId && actionSourceWalletId && actionSourceWalletId !== actionDestWalletId ? (
+                <div className="rounded-xl border border-emerald-100 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 p-3 text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-300">
+                    <ArrowRightLeft className="h-3.5 w-3.5" />
+                    <span>Account Transfer Execution:</span>
+                  </div>
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300">
+                    Deducts <strong>{actionAmount || '0'} MAD</strong> from{' '}
+                    <strong>{walletMap.get(actionSourceWalletId)?.name || 'Source'}</strong> and deposits into{' '}
+                    <strong>{walletMap.get(actionDestWalletId)?.name || 'Savings Vault'}</strong>, keeping both your
+                    wallet balances and goal progress 100% synchronized!
+                  </p>
+                </div>
+              ) : null}
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
@@ -1103,16 +1691,17 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                 </p>
               </div>
 
+              {/* Destination Account */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">
-                  Deposit to Wallet (optional)
+                  Deposit / Transfer into Account
                 </label>
                 <select
-                  value={actionWalletId}
-                  onChange={(e) => setActionWalletId(e.target.value)}
+                  value={actionDestWalletId}
+                  onChange={(e) => setActionDestWalletId(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 >
-                  <option value="">No Wallet Credit (Direct Adjustment)</option>
+                  <option value="">No Wallet Credit (Manual Goal Adjustment)</option>
                   {wallets.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name} ({w.type}) - Balance: {Number(w.balance).toLocaleString()} MAD
@@ -1120,6 +1709,20 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                   ))}
                 </select>
               </div>
+
+              {withdrawTarget.walletId && actionDestWalletId && withdrawTarget.walletId !== actionDestWalletId ? (
+                <div className="rounded-xl border border-amber-100 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 p-3 text-xs space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300">
+                    <ArrowRightLeft className="h-3.5 w-3.5" />
+                    <span>Reverse Transfer:</span>
+                  </div>
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300">
+                    Transfers funds from your savings vault back into{' '}
+                    <strong>{walletMap.get(actionDestWalletId)?.name || 'Selected Account'}</strong> for everyday
+                    spending.
+                  </p>
+                </div>
+              ) : null}
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300">

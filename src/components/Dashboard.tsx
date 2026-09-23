@@ -187,6 +187,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onContributeGoal={handleContributeToGoal}
           onWithdrawGoal={handleWithdrawFromGoal}
           onDeleteGoal={handleDeleteGoal}
+          onCreateWallet={handleCreateWallet}
         />
       )}
 

@@ -194,11 +194,12 @@ Parameters: {payday?:number(1-31), salary?:number}
 Parameters: {category:string, amount:number, year:number, month:number}
 
 ### create_goal
-Parameters: {name:string, targetAmount:number, currentAmount?:number, category?:string, deadline?:"YYYY-MM-DD", notes?:string}
+Parameters: {name:string, targetAmount:number, currentAmount?:number, walletId?:string, autoSyncBalance?:boolean, category?:string, deadline?:"YYYY-MM-DD", notes?:string}
+*Note: If the user wants to link this goal to a savings wallet (type "Savings" from wallets array), specify walletId. Set autoSyncBalance: true if they want the goal progress to automatically mirror the savings wallet balance.*
 
 ### contribute_goal
-Parameters: {goalId:string, amount:number}
-*Note: Look up the goalId from the provided live context data under goals.*
+Parameters: {goalId:string, amount:number, walletId?:string, destinationWalletId?:string, note?:string}
+*Note: Look up the goalId from live context data under goals. If contributing from a bank/cash wallet into a linked savings goal, walletId is the source and destinationWalletId is the target savings wallet.*
 
 ### settle_debt
 Parameters: {debtId:string, amount:number, walletId:string}

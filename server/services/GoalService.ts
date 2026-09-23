@@ -1,10 +1,13 @@
 import { goalRepository } from '../repositories/GoalRepository.js';
 import { transactionService } from './TransactionService.js';
+import { walletRepository } from '../repositories/WalletRepository.js';
 
 export interface CreateGoalDTO {
   name: string;
   targetAmount: number;
   currentAmount?: number;
+  walletId?: string | null;
+  autoSyncBalance?: boolean;
   deadline?: string | null;
   category?: string;
   notes?: string;
@@ -14,6 +17,8 @@ export interface UpdateGoalDTO {
   name?: string;
   targetAmount?: number;
   currentAmount?: number;
+  walletId?: string | null;
+  autoSyncBalance?: boolean;
   deadline?: string | null;
   category?: string;
   notes?: string;
@@ -22,6 +27,7 @@ export interface UpdateGoalDTO {
 export interface GoalContributionDTO {
   amount: number;
   walletId?: string;
+  destinationWalletId?: string;
   note?: string;
   date?: string;
 }
@@ -47,11 +53,19 @@ export class GoalService {
     const current = Number(dto.currentAmount ?? 0);
     const deadline = dto.deadline ? new Date(dto.deadline) : null;
 
+    let walletId = dto.walletId?.trim() || null;
+    if (walletId) {
+      const wallet = await walletRepository.findById(walletId, userId);
+      if (!wallet) walletId = null;
+    }
+
     return await goalRepository.create({
       userId,
       name,
       targetAmount: String(target),
       currentAmount: String(Math.max(0, Number.isFinite(current) ? current : 0)),
+      walletId,
+      autoSyncBalance: Boolean(dto.autoSyncBalance),
       deadline,
       category: dto.category?.trim() || 'General',
       notes: dto.notes?.trim() || '',
@@ -82,6 +96,18 @@ export class GoalService {
       }
       updateData.currentAmount = String(curr);
     }
+    if (dto.walletId !== undefined) {
+      const wId = dto.walletId?.trim() || null;
+      if (wId) {
+        const wallet = await walletRepository.findById(wId, userId);
+        updateData.walletId = wallet ? wId : null;
+      } else {
+        updateData.walletId = null;
+      }
+    }
+    if (dto.autoSyncBalance !== undefined) {
+      updateData.autoSyncBalance = Boolean(dto.autoSyncBalance);
+    }
     if (dto.deadline !== undefined) {
       updateData.deadline = dto.deadline ? new Date(dto.deadline) : null;
     }
@@ -105,7 +131,21 @@ export class GoalService {
     }
 
     let transaction = null;
-    if (dto.walletId) {
+    const targetWalletId = dto.destinationWalletId || goal.walletId;
+
+    if (dto.walletId && targetWalletId && dto.walletId !== targetWalletId) {
+      // Linked wallet transfer: Move funds from source wallet (e.g. checking/cash) to savings wallet
+      transaction = await transactionService.createTransaction(userId, {
+        amount,
+        type: 'Transfer',
+        walletId: dto.walletId,
+        destinationWalletId: targetWalletId,
+        category: '🔄 Transfer',
+        notes: dto.note?.trim() || `Deposit to Goal: ${goal.name}`,
+        transaction_date: dto.date || new Date().toISOString().slice(0, 10),
+      });
+    } else if (dto.walletId) {
+      // Regular direct expense contribution
       transaction = await transactionService.createTransaction(userId, {
         amount,
         type: 'Expense',
@@ -139,7 +179,20 @@ export class GoalService {
     }
 
     let transaction = null;
-    if (dto.walletId) {
+    const sourceWalletId = goal.walletId;
+
+    if (sourceWalletId && dto.walletId && sourceWalletId !== dto.walletId) {
+      // Transfer back from the linked savings wallet to the spending/cash wallet
+      transaction = await transactionService.createTransaction(userId, {
+        amount,
+        type: 'Transfer',
+        walletId: sourceWalletId,
+        destinationWalletId: dto.walletId,
+        category: '🔄 Transfer',
+        notes: dto.note?.trim() || `Withdrawal from Goal: ${goal.name}`,
+        transaction_date: dto.date || new Date().toISOString().slice(0, 10),
+      });
+    } else if (dto.walletId) {
       transaction = await transactionService.createTransaction(userId, {
         amount,
         type: 'Income',

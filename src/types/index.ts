@@ -126,9 +126,11 @@ export interface Transaction {
 export interface Goal {
   id: string;
   userId: string;
+  walletId?: string | null;
   name: string;
   targetAmount: string;
   currentAmount: string;
+  autoSyncBalance?: boolean;
   deadline?: string | null;
   category: string;
   notes?: string;

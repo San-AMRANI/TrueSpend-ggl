@@ -162,9 +162,11 @@ export const splits = pgTable('splits', {
 export const goals = pgTable('goals', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
   name: text('name').notNull(),
   targetAmount: decimal('target_amount').notNull(),
   currentAmount: decimal('current_amount').default('0').notNull(),
+  autoSyncBalance: boolean('auto_sync_balance').default(false).notNull(),
   deadline: timestamp('deadline'),
   category: text('category').default('').notNull(),
   notes: text('notes').default('').notNull(),
@@ -301,10 +303,23 @@ export const categoryBudgetsRelations = relations(categoryBudgets, ({ one }) => 
   }),
 }));
 
+export const walletsRelations = relations(wallets, ({ one, many }) => ({
+  user: one(users, {
+    fields: [wallets.userId],
+    references: [users.id],
+  }),
+  goals: many(goals),
+  transactions: many(transactions),
+}));
+
 export const goalsRelations = relations(goals, ({ one }) => ({
   user: one(users, {
     fields: [goals.userId],
     references: [users.id],
+  }),
+  wallet: one(wallets, {
+    fields: [goals.walletId],
+    references: [wallets.id],
   }),
 }));
 

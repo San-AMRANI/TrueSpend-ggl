@@ -98,6 +98,8 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
         name: String(p.name),
         targetAmount: p.targetAmount,
         currentAmount: p.currentAmount,
+        walletId: p.walletId ? String(p.walletId) : undefined,
+        autoSyncBalance: p.autoSyncBalance !== undefined ? Boolean(p.autoSyncBalance) : undefined,
         deadline: p.deadline ? String(p.deadline) : undefined,
         category: p.category ? String(p.category) : undefined,
         notes: p.notes ? String(p.notes) : undefined,
@@ -112,6 +114,7 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
       results.push(await goalService.contributeToGoal(String(p.goalId), userId, {
         amount: p.amount,
         walletId: p.walletId ? String(p.walletId) : undefined,
+        destinationWalletId: p.destinationWalletId ? String(p.destinationWalletId) : undefined,
         note: p.note ? String(p.note) : undefined,
       }));
     }
