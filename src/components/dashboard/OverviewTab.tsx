@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction, Goal } from '../../types';
+import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction, Goal, Subscription } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SettleDebtModal } from '../SettleDebtModal';
@@ -12,7 +12,7 @@ import { FinancialInsightModal } from './FinancialInsightModal';
 import {
   AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
   Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap,
-  Target, ChevronRight, Plus
+  Target, ChevronRight, Plus, Repeat
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -22,6 +22,7 @@ interface OverviewTabProps {
   debts: Debt[];
   budgets: CategoryBudget[];
   goals?: Goal[];
+  subscriptions?: Subscription[];
   setActiveTab: (tab: DashboardTab) => void;
   openTransaction: (transactionId: string) => void;
   handleSettle: (debtId: string, amount: number, category?: string, walletId?: string) => Promise<void> | void;
@@ -37,6 +38,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   debts,
   budgets,
   goals = [],
+  subscriptions = [],
   payrolls,
   setActiveTab,
   openTransaction,
@@ -71,6 +73,18 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   // Phase 3: Net Worth Tracking (Liquidity + Receivables - Payables)
   const netWorth = (kpis?.totalLiquidity ?? 0) + activeReceivables - activePayables;
   const dailyStatusStyles = { on_track: 'text-blue-600', warning: 'text-amber-600', critical: 'text-red-600' };
+
+  // Subscriptions metrics
+  const activeSubs = useMemo(() => subscriptions.filter((s) => s.status === 'active'), [subscriptions]);
+  const monthlySubBurn = useMemo(() => {
+    return activeSubs.reduce((sum, s) => {
+      const amt = parseFloat(s.amount) || 0;
+      if (s.billingCycle === 'yearly') return sum + amt / 12;
+      if (s.billingCycle === 'quarterly') return sum + amt / 3;
+      if (s.billingCycle === 'weekly') return sum + (amt * 52) / 12;
+      return sum + amt;
+    }, 0);
+  }, [activeSubs]);
 
   // Generate financial facts for the carousel
   const facts = useMemo(
@@ -544,6 +558,68 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               })}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Row 6 – Recurring Subscriptions Radar Glance */}
+      <Card className="min-w-0 overflow-hidden border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-r from-white via-indigo-50/20 to-purple-50/20 dark:from-gray-900 dark:via-indigo-950/20 dark:to-purple-950/20">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg text-gray-900 dark:text-gray-100">
+            <Repeat className="h-5 w-5 text-indigo-500" /> Recurring Subscriptions & Fixed Commitments
+          </CardTitle>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+            onClick={() => setActiveTab('subscriptions')}
+          >
+            <span>Subscriptions Radar ({subscriptions.length})</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-white/80 dark:bg-gray-900/80 p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-xl">
+                💳
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Total Monthly Recurring Drain</p>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                    {monthlySubBurn.toFixed(2)}
+                  </span>
+                  <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">MAD / month</span>
+                  <span className="text-xs text-gray-400">({(monthlySubBurn * 12).toFixed(0)} MAD / yr)</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {activeSubs.slice(0, 4).map((sub) => (
+                <div
+                  key={sub.id}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300"
+                >
+                  <span>{sub.icon || '📱'}</span>
+                  <span className="font-medium truncate max-w-[90px]">{sub.name}</span>
+                  <span className="text-[10px] text-gray-400 font-semibold">{parseFloat(sub.amount).toFixed(0)}</span>
+                </div>
+              ))}
+              {activeSubs.length > 4 && (
+                <span className="text-xs text-gray-400 font-medium">+{activeSubs.length - 4} more</span>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs border-indigo-200 text-indigo-700 dark:border-indigo-800 dark:text-indigo-300 ml-auto sm:ml-0"
+                onClick={() => setActiveTab('subscriptions')}
+              >
+                Open Radar & Pruner →
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

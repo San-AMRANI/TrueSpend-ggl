@@ -1,7 +1,18 @@
 import { apiClient } from './apiClient';
-import { CategoryBudget, KPI, Transaction, Debt, Payroll, UserSettings, Wallet, FinancialContext, Goal } from '../../types';
+import { CategoryBudget, KPI, Transaction, Debt, Payroll, UserSettings, Wallet, FinancialContext, Goal, Subscription, DetectedSubscription } from '../../types';
 
 export const dashboardService = {
+  getSubscriptions: (token: string | null) => apiClient.get<Subscription[]>('/api/subscriptions', token),
+  createSubscription: (payload: Partial<Subscription>, token: string | null) =>
+    apiClient.post<Subscription>('/api/subscriptions', payload, token),
+  updateSubscription: (id: string, payload: Partial<Subscription>, token: string | null) =>
+    apiClient.put<Subscription>(`/api/subscriptions/${id}`, payload, token),
+  deleteSubscription: (id: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/subscriptions/${id}`, token),
+  paySubscription: (id: string, payload: { walletId?: string; date?: string }, token: string | null) =>
+    apiClient.post<{ subscription: Subscription; transaction: Transaction }>(`/api/subscriptions/${id}/pay`, payload, token),
+  detectSubscriptions: (token: string | null) =>
+    apiClient.get<DetectedSubscription[]>('/api/subscriptions/detect', token),
   getGoals: (token: string | null) => apiClient.get<Goal[]>('/api/goals', token),
   createGoal: (payload: { name: string; targetAmount: number; currentAmount?: number; walletId?: string | null; autoSyncBalance?: boolean; deadline?: string | null; category?: string; notes?: string }, token: string | null) =>
     apiClient.post<Goal>('/api/goals', payload, token),

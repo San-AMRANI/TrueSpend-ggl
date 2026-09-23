@@ -12,6 +12,7 @@ import { DigestTab } from './dashboard/DigestTab';
 import { SettingsTab } from './dashboard/SettingsTab';
 import { BudgetsTab } from './dashboard/BudgetsTab';
 import { GoalsTab } from './dashboard/GoalsTab';
+import { SubscriptionsTab } from './dashboard/SubscriptionsTab';
 import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { ReportsTab } from './dashboard/ReportsTab';
@@ -66,11 +67,17 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleDeleteWallet,
     contexts,
     goals,
+    subscriptions,
     handleCreateGoal,
     handleUpdateGoal,
     handleContributeToGoal,
     handleWithdrawFromGoal,
     handleDeleteGoal,
+    handleCreateSubscription,
+    handleUpdateSubscription,
+    handleDeleteSubscription,
+    handlePaySubscription,
+    handleDetectSubscriptions,
     handleCreateContext,
     handleUpdateContext,
     handleDeleteContext,
@@ -124,6 +131,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           debts={debts}
           budgets={budgets}
           goals={goals}
+          subscriptions={subscriptions}
           setActiveTab={setActiveTab}
           openTransaction={openTransaction}
           handleSettle={handleSettleDebt}
@@ -188,6 +196,21 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onWithdrawGoal={handleWithdrawFromGoal}
           onDeleteGoal={handleDeleteGoal}
           onCreateWallet={handleCreateWallet}
+        />
+      )}
+
+      {activeTab === 'subscriptions' && (
+        <SubscriptionsTab
+          subscriptions={subscriptions}
+          wallets={kpis?.accounts || []}
+          goals={goals}
+          monthlySalary={userSettings?.salary}
+          avgDailySpend={kpis?.avgDailySpend}
+          onCreateSubscription={handleCreateSubscription}
+          onUpdateSubscription={handleUpdateSubscription}
+          onDeleteSubscription={handleDeleteSubscription}
+          onPaySubscription={handlePaySubscription}
+          onDetectSubscriptions={handleDetectSubscriptions}
         />
       )}
 

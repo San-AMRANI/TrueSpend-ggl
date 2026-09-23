@@ -2,7 +2,7 @@ import { googleSignIn, getGoogleAccessToken } from '../lib/googleAuth';
 import { uploadToGoogleDrive } from '../lib/driveUpload';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
-import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll, Goal } from '../types';
+import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll, Goal, Subscription, DetectedSubscription } from '../types';
 import { useNotifications } from './useNotifications';
 
 export function useDashboardData(token: string | null) {
@@ -13,6 +13,7 @@ export function useDashboardData(token: string | null) {
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
   const [contexts, setContexts] = useState<any[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [userSettings, setUserSettings] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -29,7 +30,7 @@ export function useDashboardData(token: string | null) {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData] = await Promise.all([
+      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
@@ -38,6 +39,7 @@ export function useDashboardData(token: string | null) {
         dashboardService.getPayrolls(token),
         dashboardService.getContexts(token),
         dashboardService.getGoals(token),
+        dashboardService.getSubscriptions(token),
       ]);
 
       setKpis(kpiData || null);
@@ -48,6 +50,7 @@ export function useDashboardData(token: string | null) {
       setPayrolls(payrollData || []);
       setContexts(contextData || []);
       setGoals(goalData || []);
+      setSubscriptions(subData || []);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -496,6 +499,76 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleCreateSubscription = async (payload: Partial<Subscription>) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.createSubscription(payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error creating subscription:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateSubscription = async (id: string, payload: Partial<Subscription>) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.updateSubscription(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteSubscription = async (id: string) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.deleteSubscription(id, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error deleting subscription:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handlePaySubscription = async (id: string, payload: { walletId?: string; date?: string } = {}) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.paySubscription(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error paying subscription:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDetectSubscriptions = async (): Promise<DetectedSubscription[]> => {
+    if (!token) return [];
+    try {
+      return await dashboardService.detectSubscriptions(token);
+    } catch (error) {
+      console.error('Error detecting subscriptions:', error);
+      return [];
+    }
+  };
+
   const syncedGoals = useMemo(() => {
     if (!goals) return [];
     if (!kpis?.accounts) return goals;
@@ -519,6 +592,7 @@ export function useDashboardData(token: string | null) {
     budgets,
     contexts,
     goals: syncedGoals,
+    subscriptions,
     userSettings,
     loading,
     isSaving,
@@ -561,6 +635,11 @@ export function useDashboardData(token: string | null) {
     handleContributeToGoal,
     handleWithdrawFromGoal,
     handleDeleteGoal,
+    handleCreateSubscription,
+    handleUpdateSubscription,
+    handleDeleteSubscription,
+    handlePaySubscription,
+    handleDetectSubscriptions,
     notifications,
   };
 }

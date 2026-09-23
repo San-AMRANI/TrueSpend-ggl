@@ -138,10 +138,37 @@ export interface Goal {
   updatedAt: string;
 }
 
+export type SubscriptionBillingCycle = 'monthly' | 'yearly' | 'quarterly' | 'weekly';
+export type SubscriptionStatus = 'active' | 'paused' | 'reviewing' | 'cancelled';
+
 export interface Subscription {
-  id?: string;
-  name?: string;
-  amount?: number;
+  id: string;
+  userId: string;
+  name: string;
+  amount: string;
+  currency: string;
+  billingCycle: SubscriptionBillingCycle;
+  category: string;
+  walletId?: string | null;
+  walletName?: string | null;
+  nextBillingDate?: string | null;
+  status: SubscriptionStatus;
+  notes?: string | null;
+  icon?: string | null;
+  websiteUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DetectedSubscription {
+  name: string;
+  suggestedAmount: number;
+  suggestedCycle: SubscriptionBillingCycle;
+  suggestedCategory: string;
+  frequencyCount: number;
+  lastSeenDate: string;
+  sampleTransactionNotes?: string;
+  confidence: 'high' | 'medium';
 }
 
 export interface CategoryBudget {
@@ -193,4 +220,4 @@ export interface UserSettings {
   googleDriveToken?: string;
 }
 
-export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'goals' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'reports' | 'cash-flow' | 'contexts';
+export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'goals' | 'subscriptions' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'reports' | 'cash-flow' | 'contexts';

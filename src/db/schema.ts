@@ -174,6 +174,24 @@ export const goals = pgTable('goals', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+export const subscriptions = pgTable('subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  amount: decimal('amount').notNull(),
+  currency: text('currency').default('MAD').notNull(),
+  billingCycle: text('billing_cycle').default('monthly').notNull(), // 'monthly' | 'yearly' | 'quarterly' | 'weekly'
+  category: text('category').default('Subscriptions & Streaming').notNull(),
+  walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+  nextBillingDate: timestamp('next_billing_date'),
+  status: text('status').default('active').notNull(), // 'active' | 'paused' | 'reviewing' | 'cancelled'
+  notes: text('notes'),
+  icon: text('icon').default('📱'),
+  websiteUrl: text('website_url'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export const categoryBudgets = pgTable(
   'category_budgets',
   {
@@ -205,6 +223,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   payrolls: many(payrolls),
   financialContexts: many(financialContexts),
   goals: many(goals),
+  subscriptions: many(subscriptions),
   notificationDevices: many(notificationDevices),
   pushSubscriptions: many(pushSubscriptions),
   notificationPreferences: one(notificationPreferences),
@@ -309,6 +328,7 @@ export const walletsRelations = relations(wallets, ({ one, many }) => ({
     references: [users.id],
   }),
   goals: many(goals),
+  subscriptions: many(subscriptions),
   transactions: many(transactions),
 }));
 
@@ -319,6 +339,17 @@ export const goalsRelations = relations(goals, ({ one }) => ({
   }),
   wallet: one(wallets, {
     fields: [goals.walletId],
+    references: [wallets.id],
+  }),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  user: one(users, {
+    fields: [subscriptions.userId],
+    references: [users.id],
+  }),
+  wallet: one(wallets, {
+    fields: [subscriptions.walletId],
     references: [wallets.id],
   }),
 }));

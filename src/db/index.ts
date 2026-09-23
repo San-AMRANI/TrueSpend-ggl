@@ -58,6 +58,25 @@ export const createPool = () => {
         ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "destination_wallet_id" uuid REFERENCES "wallets"("id");
         ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "payroll_id" uuid REFERENCES "payrolls"("id");
         ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "context_id" uuid REFERENCES "financial_contexts"("id");
+
+        CREATE TABLE IF NOT EXISTS "subscriptions" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "name" text NOT NULL,
+          "amount" numeric NOT NULL,
+          "currency" text NOT NULL DEFAULT 'MAD',
+          "billing_cycle" text NOT NULL DEFAULT 'monthly',
+          "category" text NOT NULL DEFAULT 'Subscriptions & Streaming',
+          "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+          "next_billing_date" timestamp,
+          "status" text NOT NULL DEFAULT 'active',
+          "notes" text,
+          "icon" text DEFAULT '📱',
+          "website_url" text,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS "subscriptions_user_id_idx" ON "subscriptions"("user_id");
       `)
       .catch((err) => {
         console.warn('[DB Init] Schema columns ensure notice:', err?.message || err);

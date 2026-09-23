@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Map,
   Target,
+  Repeat,
 } from 'lucide-react';
 
 interface DesktopHeaderNavProps {
@@ -43,6 +44,7 @@ const mainTabs: NavTabItem[] = [
 ];
 
 const moreTabs: NavTabItem[] = [
+  { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
   { id: 'goals', label: 'Goals', icon: Target },
   { id: 'debts', label: 'Debts & Splits', icon: Users },
   { id: 'what-if', label: 'What-If', icon: Calculator },
