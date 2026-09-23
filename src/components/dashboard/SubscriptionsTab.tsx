@@ -349,7 +349,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
     try {
       await onPaySubscription(payingSub.id, {
         walletId: selectedPayingWallet || payingSub.walletId || undefined,
-        date: new Date().toISOString(),
+        date: new Date().toISOString().slice(0, 10),
       });
       showToast(`Recorded payment of ${payingSub.amount} MAD for "${payingSub.name}" and scheduled next renewal!`);
       setPayingSub(null);

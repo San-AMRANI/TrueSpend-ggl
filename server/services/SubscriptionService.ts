@@ -145,7 +145,7 @@ export class SubscriptionService {
     }
 
     // 1. Record the transaction
-    const dateToUse = paymentDate || new Date().toISOString();
+    const dateToUse = (paymentDate ? new Date(paymentDate) : new Date()).toISOString().slice(0, 10);
     const createdTx = await transactionService.createTransaction(userId, {
       amount: amountNum,
       type: 'Expense',

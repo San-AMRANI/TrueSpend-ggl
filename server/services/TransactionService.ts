@@ -330,16 +330,21 @@ export class TransactionService {
   private parseTransactionDate(date?: string) {
     if (!date) return undefined;
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      throw new Error('Invalid transaction date');
+    if (typeof date === 'string' && date.includes('T')) {
+      const parsedDate = new Date(date);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        return parsedDate;
+      }
     }
 
-    const parsedDate = new Date(`${date}T12:00:00.000Z`);
-    if (Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
-      throw new Error('Invalid transaction date');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const parsedDate = new Date(`${date}T12:00:00.000Z`);
+      if (!Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === date) {
+        return parsedDate;
+      }
     }
 
-    return parsedDate;
+    throw new Error('Invalid transaction date');
   }
 
   async deleteTransaction(userId: string, transactionId: string) {
