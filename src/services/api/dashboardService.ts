@@ -1,7 +1,18 @@
 import { apiClient } from './apiClient';
-import { CategoryBudget, KPI, Transaction, Debt, Payroll, UserSettings, Wallet, FinancialContext } from '../../types';
+import { CategoryBudget, KPI, Transaction, Debt, Payroll, UserSettings, Wallet, FinancialContext, Goal } from '../../types';
 
 export const dashboardService = {
+  getGoals: (token: string | null) => apiClient.get<Goal[]>('/api/goals', token),
+  createGoal: (payload: { name: string; targetAmount: number; currentAmount?: number; deadline?: string | null; category?: string; notes?: string }, token: string | null) =>
+    apiClient.post<Goal>('/api/goals', payload, token),
+  updateGoal: (id: string, payload: { name?: string; targetAmount?: number; currentAmount?: number; deadline?: string | null; category?: string; notes?: string }, token: string | null) =>
+    apiClient.put<Goal>(`/api/goals/${id}`, payload, token),
+  contributeToGoal: (id: string, payload: { amount: number; walletId?: string; note?: string; date?: string }, token: string | null) =>
+    apiClient.post<{ goal: Goal; transaction: Transaction | null }>(`/api/goals/${id}/contribute`, payload, token),
+  withdrawFromGoal: (id: string, payload: { amount: number; walletId?: string; note?: string; date?: string }, token: string | null) =>
+    apiClient.post<{ goal: Goal; transaction: Transaction | null }>(`/api/goals/${id}/withdraw`, payload, token),
+  deleteGoal: (id: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/goals/${id}`, token),
   getContexts: (token: string | null) => apiClient.get<FinancialContext[]>('/api/contexts', token),
   createContext: (payload: Partial<FinancialContext>, token: string | null) =>
     apiClient.post<FinancialContext>('/api/contexts', payload, token),

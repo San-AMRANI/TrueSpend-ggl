@@ -124,10 +124,16 @@ export interface Transaction {
 }
 
 export interface Goal {
-  id?: string;
-  name?: string;
-  targetAmount?: number;
-  currentAmount?: number;
+  id: string;
+  userId: string;
+  name: string;
+  targetAmount: string;
+  currentAmount: string;
+  deadline?: string | null;
+  category: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Subscription {
@@ -185,4 +191,4 @@ export interface UserSettings {
   googleDriveToken?: string;
 }
 
-export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'reports' | 'cash-flow' | 'contexts';
+export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'goals' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'reports' | 'cash-flow' | 'contexts';

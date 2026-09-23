@@ -2,7 +2,7 @@ import { googleSignIn, getGoogleAccessToken } from '../lib/googleAuth';
 import { uploadToGoogleDrive } from '../lib/driveUpload';
 import { useState, useEffect, useCallback } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
-import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll } from '../types';
+import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll, Goal } from '../types';
 import { useNotifications } from './useNotifications';
 
 export function useDashboardData(token: string | null) {
@@ -12,6 +12,7 @@ export function useDashboardData(token: string | null) {
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
   const [contexts, setContexts] = useState<any[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
   const [userSettings, setUserSettings] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -28,7 +29,7 @@ export function useDashboardData(token: string | null) {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData] = await Promise.all([
+      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
@@ -36,6 +37,7 @@ export function useDashboardData(token: string | null) {
         dashboardService.getCategoryBudgets(token),
         dashboardService.getPayrolls(token),
         dashboardService.getContexts(token),
+        dashboardService.getGoals(token),
       ]);
 
       setKpis(kpiData || null);
@@ -45,6 +47,7 @@ export function useDashboardData(token: string | null) {
       setBudgets(budgetData || []);
       setPayrolls(payrollData || []);
       setContexts(contextData || []);
+      setGoals(goalData || []);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -418,6 +421,81 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleCreateGoal = async (payload: { name: string; targetAmount: number; currentAmount?: number; deadline?: string | null; category?: string; notes?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.createGoal(payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error creating goal:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateGoal = async (id: string, payload: { name?: string; targetAmount?: number; currentAmount?: number; deadline?: string | null; category?: string; notes?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.updateGoal(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error updating goal:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleContributeToGoal = async (id: string, payload: { amount: number; walletId?: string; note?: string; date?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.contributeToGoal(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error contributing to goal:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleWithdrawFromGoal = async (id: string, payload: { amount: number; walletId?: string; note?: string; date?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.withdrawFromGoal(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error withdrawing from goal:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteGoal = async (id: string) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.deleteGoal(id, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error deleting goal:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return {
     kpis,
     transactions,
@@ -425,6 +503,7 @@ export function useDashboardData(token: string | null) {
     payrolls,
     budgets,
     contexts,
+    goals,
     userSettings,
     loading,
     isSaving,
@@ -462,6 +541,11 @@ export function useDashboardData(token: string | null) {
     handleUpdateContext,
     handleDeleteContext,
     handleLinkTransactionsToContext,
+    handleCreateGoal,
+    handleUpdateGoal,
+    handleContributeToGoal,
+    handleWithdrawFromGoal,
+    handleDeleteGoal,
     notifications,
   };
 }

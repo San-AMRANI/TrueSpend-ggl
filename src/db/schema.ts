@@ -159,6 +159,19 @@ export const splits = pgTable('splits', {
   linkedContactId: uuid('linked_contact_id').references(() => debts.id),
 });
 
+export const goals = pgTable('goals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  targetAmount: decimal('target_amount').notNull(),
+  currentAmount: decimal('current_amount').default('0').notNull(),
+  deadline: timestamp('deadline'),
+  category: text('category').default('').notNull(),
+  notes: text('notes').default('').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export const categoryBudgets = pgTable(
   'category_budgets',
   {
@@ -189,6 +202,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   categoryBudgets: many(categoryBudgets),
   payrolls: many(payrolls),
   financialContexts: many(financialContexts),
+  goals: many(goals),
   notificationDevices: many(notificationDevices),
   pushSubscriptions: many(pushSubscriptions),
   notificationPreferences: one(notificationPreferences),
@@ -286,3 +300,11 @@ export const categoryBudgetsRelations = relations(categoryBudgets, ({ one }) => 
     references: [users.id],
   }),
 }));
+
+export const goalsRelations = relations(goals, ({ one }) => ({
+  user: one(users, {
+    fields: [goals.userId],
+    references: [users.id],
+  }),
+}));
+

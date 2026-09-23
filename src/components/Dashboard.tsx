@@ -11,6 +11,7 @@ import { AnalyticsTab } from './dashboard/AnalyticsTab';
 import { DigestTab } from './dashboard/DigestTab';
 import { SettingsTab } from './dashboard/SettingsTab';
 import { BudgetsTab } from './dashboard/BudgetsTab';
+import { GoalsTab } from './dashboard/GoalsTab';
 import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { ReportsTab } from './dashboard/ReportsTab';
@@ -64,6 +65,12 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleUpdateWallet,
     handleDeleteWallet,
     contexts,
+    goals,
+    handleCreateGoal,
+    handleUpdateGoal,
+    handleContributeToGoal,
+    handleWithdrawFromGoal,
+    handleDeleteGoal,
     handleCreateContext,
     handleUpdateContext,
     handleDeleteContext,
@@ -116,6 +123,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           transactions={transactions}
           debts={debts}
           budgets={budgets}
+          goals={goals}
           setActiveTab={setActiveTab}
           openTransaction={openTransaction}
           handleSettle={handleSettleDebt}
@@ -167,6 +175,18 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onCopyPrevious={handleCopyPreviousMonthBudgets}
           onClearMonth={handleClearCategoryBudgetsMonth}
           onDeleteBudget={handleDeleteCategoryBudget}
+        />
+      )}
+
+      {activeTab === 'goals' && (
+        <GoalsTab
+          goals={goals}
+          wallets={kpis?.accounts || []}
+          onCreateGoal={handleCreateGoal}
+          onUpdateGoal={handleUpdateGoal}
+          onContributeGoal={handleContributeToGoal}
+          onWithdrawGoal={handleWithdrawFromGoal}
+          onDeleteGoal={handleDeleteGoal}
         />
       )}
 

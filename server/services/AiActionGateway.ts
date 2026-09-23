@@ -2,10 +2,11 @@ import { transactionService } from './TransactionService.js';
 import { debtService } from './DebtService.js';
 import { settingsService } from './SettingsService.js';
 import { categoryBudgetService } from './CategoryBudgetService.js';
+import { goalService } from './GoalService.js';
 
-export type AiAction = { type: 'create_transaction' | 'create_debt' | 'update_settings' | 'upsert_budget' | 'settle_debt'; parameters: Record<string, unknown>; summary: string };
+export type AiAction = { type: 'create_transaction' | 'create_debt' | 'update_settings' | 'upsert_budget' | 'settle_debt' | 'create_goal' | 'contribute_goal'; parameters: Record<string, unknown>; summary: string };
 
-const permitted = new Set<AiAction['type']>(['create_transaction', 'create_debt', 'update_settings', 'upsert_budget', 'settle_debt']);
+const permitted = new Set<AiAction['type']>(['create_transaction', 'create_debt', 'update_settings', 'upsert_budget', 'settle_debt', 'create_goal', 'contribute_goal']);
 
 export const sanitizeAiActions = (value: unknown): AiAction[] => {
   if (!Array.isArray(value)) return [];
@@ -84,6 +85,34 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
         debt_id: String(p.debtId),
         amount: p.amount,
         walletId: String(p.walletId),
+      }));
+    }
+
+    if (action.type === 'create_goal') {
+      if (p.targetAmount !== undefined) p.targetAmount = Number(p.targetAmount);
+      if (p.currentAmount !== undefined) p.currentAmount = Number(p.currentAmount);
+      if (!p.name || !Number.isFinite(p.targetAmount) || p.targetAmount <= 0) {
+        throw new Error('Goal proposal is missing required fields (name, targetAmount).');
+      }
+      results.push(await goalService.createGoal(userId, {
+        name: String(p.name),
+        targetAmount: p.targetAmount,
+        currentAmount: p.currentAmount,
+        deadline: p.deadline ? String(p.deadline) : undefined,
+        category: p.category ? String(p.category) : undefined,
+        notes: p.notes ? String(p.notes) : undefined,
+      }));
+    }
+
+    if (action.type === 'contribute_goal') {
+      if (p.amount !== undefined) p.amount = Number(p.amount);
+      if (!p.goalId || !Number.isFinite(p.amount) || p.amount <= 0) {
+        throw new Error('Contribute goal proposal is missing required fields (goalId, amount).');
+      }
+      results.push(await goalService.contributeToGoal(String(p.goalId), userId, {
+        amount: p.amount,
+        walletId: p.walletId ? String(p.walletId) : undefined,
+        note: p.note ? String(p.note) : undefined,
       }));
     }
   }

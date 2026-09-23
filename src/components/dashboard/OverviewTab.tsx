@@ -11,7 +11,8 @@ import { FinancialFactsCarousel } from './FinancialFactsCarousel';
 import { FinancialInsightModal } from './FinancialInsightModal';
 import {
   AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
-  Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap
+  Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap,
+  Target, ChevronRight, Plus
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -20,6 +21,7 @@ interface OverviewTabProps {
   transactions: Transaction[];
   debts: Debt[];
   budgets: CategoryBudget[];
+  goals?: Goal[];
   setActiveTab: (tab: DashboardTab) => void;
   openTransaction: (transactionId: string) => void;
   handleSettle: (debtId: string, amount: number, category?: string, walletId?: string) => Promise<void> | void;
@@ -34,6 +36,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   transactions,
   debts,
   budgets,
+  goals = [],
   payrolls,
   setActiveTab,
   openTransaction,
@@ -449,6 +452,93 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CardContent>
         </Card>
       </div>
+
+      {/* Row 5 – Financial Goals & Savings Milestones */}
+      <Card className="min-w-0 overflow-hidden">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Target className="h-5 w-5 text-indigo-500" /> Savings Goals & Milestones
+          </CardTitle>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+            onClick={() => setActiveTab('goals')}
+          >
+            <span>Manage Goals ({goals.length})</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {goals.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 mb-3">
+                <Target className="h-6 w-6" />
+              </div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">No savings goals set yet</p>
+              <p className="max-w-sm text-xs text-gray-500 dark:text-gray-400 mt-1 mb-4">
+                Plan ahead for an emergency buffer, vacation, new tech, or big purchase with targeted saving.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setActiveTab('goals')}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 text-xs text-white hover:bg-indigo-700"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Create First Goal</span>
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {goals.slice(0, 3).map((g) => {
+                const target = parseFloat(g.targetAmount) || 0;
+                const current = parseFloat(g.currentAmount) || 0;
+                const progress = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+                const isCompleted = current >= target && target > 0;
+
+                return (
+                  <div
+                    key={g.id}
+                    onClick={() => setActiveTab('goals')}
+                    className="group cursor-pointer rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40 p-3.5 transition-all hover:border-indigo-300 dark:hover:border-indigo-700/60 hover:shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{g.name}</p>
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
+                          {g.category || 'Savings'}
+                        </span>
+                      </div>
+                      <span className={`text-xs font-black ${isCompleted ? 'text-emerald-500' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                        {progress.toFixed(0)}%
+                      </span>
+                    </div>
+
+                    <div className="mt-2.5 space-y-1">
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            isCompleted ? 'bg-emerald-500' : 'bg-indigo-500'
+                          }`}
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                        <span className="font-semibold text-gray-800 dark:text-gray-200">
+                          {current.toLocaleString()} MAD
+                        </span>
+                        <span>{target.toLocaleString()} MAD</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <SettleDebtModal
         debt={settlingDebt}
