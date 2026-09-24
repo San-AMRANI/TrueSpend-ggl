@@ -92,6 +92,16 @@ export interface FinancialContext {
   updatedAt: string;
 }
 
+export interface TransactionSplit {
+  id?: string;
+  reimbursableAmount: string;
+  linkedContactId?: string | null;
+  linkedContactName?: string | null;
+  linkedDebtType?: 'Receivable' | 'Payable' | null;
+  remainingBalance?: string | null;
+  status?: 'Pending' | 'Cleared' | null;
+}
+
 export interface Transaction {
   id: string;
   userId: string;
@@ -109,20 +119,56 @@ export interface Transaction {
   linkedContactId?: string | null;
   linkedContactName?: string | null;
   linkedDebtType?: 'Receivable' | 'Payable' | null;
+  splits?: TransactionSplit[];
   contextId?: string | null;
 }
 
 export interface Goal {
-  id?: string;
-  name?: string;
-  targetAmount?: number;
-  currentAmount?: number;
+  id: string;
+  userId: string;
+  walletId?: string | null;
+  name: string;
+  targetAmount: string;
+  currentAmount: string;
+  autoSyncBalance?: boolean;
+  deadline?: string | null;
+  category: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
+export type SubscriptionBillingCycle = 'monthly' | 'yearly' | 'quarterly' | 'weekly';
+export type SubscriptionStatus = 'active' | 'paused' | 'reviewing' | 'cancelled';
+
 export interface Subscription {
-  id?: string;
-  name?: string;
-  amount?: number;
+  id: string;
+  userId: string;
+  name: string;
+  amount: string;
+  currency: string;
+  billingCycle: SubscriptionBillingCycle;
+  category: string;
+  walletId?: string | null;
+  walletName?: string | null;
+  nextBillingDate?: string | null;
+  status: SubscriptionStatus;
+  notes?: string | null;
+  icon?: string | null;
+  websiteUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DetectedSubscription {
+  name: string;
+  suggestedAmount: number;
+  suggestedCycle: SubscriptionBillingCycle;
+  suggestedCategory: string;
+  frequencyCount: number;
+  lastSeenDate: string;
+  sampleTransactionNotes?: string;
+  confidence: 'high' | 'medium';
 }
 
 export interface CategoryBudget {
@@ -174,4 +220,73 @@ export interface UserSettings {
   googleDriveToken?: string;
 }
 
-export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'reports' | 'cash-flow' | 'contexts';
+export type ImpulseStatus = 'cooling' | 'resisted' | 'purchased' | 'dismissed';
+
+export interface ImpulseItem {
+  id: string;
+  userId: string;
+  name: string;
+  amount: string;
+  currency: string;
+  category: string;
+  notes?: string | null;
+  url?: string | null;
+  triggers: string[];
+  urgencyScore: number;
+  utilityScore: number;
+  coolingHours: number;
+  coolsAt: string;
+  status: ImpulseStatus;
+  decisionDate?: string | null;
+  decisionNotes?: string | null;
+  savedToGoalId?: string | null;
+  savedToGoalName?: string | null;
+  walletId?: string | null;
+  walletName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImpulseStats {
+  totalCoolingCount: number;
+  totalCoolingAmount: number;
+  totalResistedCount: number;
+  totalResistedAmount: number;
+  totalPurchasedCount: number;
+  totalPurchasedAmount: number;
+  totalReclaimedHours: number;
+  resistanceRate: number;
+  triggerBreakdown: { trigger: string; count: number; percentage: number }[];
+}
+
+export interface FireProfile {
+  id?: string;
+  userId?: string;
+  currentAge: number;
+  targetAge: number;
+  expectedReturn: number;
+  safeWithdrawalRate: number;
+  monthlySavingsBoost: number;
+  expenseTrimPercent: number;
+  customMonthlyExpense?: number | null;
+  updatedAt?: string;
+}
+
+export type DashboardTab =
+  | 'overview'
+  | 'calendar'
+  | 'transactions'
+  | 'budgets'
+  | 'goals'
+  | 'subscriptions'
+  | 'impulse-shield'
+  | 'freedom'
+  | 'what-if'
+  | 'debts'
+  | 'analytics'
+  | 'settings'
+  | 'digest'
+  | 'chat'
+  | 'reports'
+  | 'cash-flow'
+  | 'contexts';

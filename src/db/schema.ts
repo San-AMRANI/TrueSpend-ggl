@@ -159,6 +159,62 @@ export const splits = pgTable('splits', {
   linkedContactId: uuid('linked_contact_id').references(() => debts.id),
 });
 
+export const goals = pgTable('goals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+  targetAmount: decimal('target_amount').notNull(),
+  currentAmount: decimal('current_amount').default('0').notNull(),
+  autoSyncBalance: boolean('auto_sync_balance').default(false).notNull(),
+  deadline: timestamp('deadline'),
+  category: text('category').default('').notNull(),
+  notes: text('notes').default('').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const subscriptions = pgTable('subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  amount: decimal('amount').notNull(),
+  currency: text('currency').default('MAD').notNull(),
+  billingCycle: text('billing_cycle').default('monthly').notNull(), // 'monthly' | 'yearly' | 'quarterly' | 'weekly'
+  category: text('category').default('Subscriptions & Streaming').notNull(),
+  walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+  nextBillingDate: timestamp('next_billing_date'),
+  status: text('status').default('active').notNull(), // 'active' | 'paused' | 'reviewing' | 'cancelled'
+  notes: text('notes'),
+  icon: text('icon').default('📱'),
+  websiteUrl: text('website_url'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const impulseItems = pgTable('impulse_items', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  amount: decimal('amount').notNull(),
+  currency: text('currency').default('MAD').notNull(),
+  category: text('category').default('Shopping & Gadgets').notNull(),
+  notes: text('notes'),
+  url: text('url'),
+  triggers: text('triggers').default('[]').notNull(), // JSON string array
+  urgencyScore: integer('urgency_score').default(5).notNull(),
+  utilityScore: integer('utility_score').default(5).notNull(),
+  coolingHours: integer('cooling_hours').default(72).notNull(),
+  coolsAt: timestamp('cools_at').notNull(),
+  status: text('status').default('cooling').notNull(), // 'cooling' | 'resisted' | 'purchased' | 'dismissed'
+  decisionDate: timestamp('decision_date'),
+  decisionNotes: text('decision_notes'),
+  savedToGoalId: uuid('saved_to_goal_id').references(() => goals.id, { onDelete: 'set null' }),
+  walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 export const categoryBudgets = pgTable(
   'category_budgets',
   {
@@ -189,6 +245,10 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   categoryBudgets: many(categoryBudgets),
   payrolls: many(payrolls),
   financialContexts: many(financialContexts),
+  goals: many(goals),
+  subscriptions: many(subscriptions),
+  impulseItems: many(impulseItems),
+  fireProfile: one(fireProfiles),
   notificationDevices: many(notificationDevices),
   pushSubscriptions: many(pushSubscriptions),
   notificationPreferences: one(notificationPreferences),
@@ -286,3 +346,73 @@ export const categoryBudgetsRelations = relations(categoryBudgets, ({ one }) => 
     references: [users.id],
   }),
 }));
+
+export const walletsRelations = relations(wallets, ({ one, many }) => ({
+  user: one(users, {
+    fields: [wallets.userId],
+    references: [users.id],
+  }),
+  goals: many(goals),
+  subscriptions: many(subscriptions),
+  transactions: many(transactions),
+}));
+
+export const goalsRelations = relations(goals, ({ one }) => ({
+  user: one(users, {
+    fields: [goals.userId],
+    references: [users.id],
+  }),
+  wallet: one(wallets, {
+    fields: [goals.walletId],
+    references: [wallets.id],
+  }),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  user: one(users, {
+    fields: [subscriptions.userId],
+    references: [users.id],
+  }),
+  wallet: one(wallets, {
+    fields: [subscriptions.walletId],
+    references: [wallets.id],
+  }),
+}));
+
+export const impulseItemsRelations = relations(impulseItems, ({ one }) => ({
+  user: one(users, {
+    fields: [impulseItems.userId],
+    references: [users.id],
+  }),
+  goal: one(goals, {
+    fields: [impulseItems.savedToGoalId],
+    references: [goals.id],
+  }),
+  wallet: one(wallets, {
+    fields: [impulseItems.walletId],
+    references: [wallets.id],
+  }),
+}));
+
+export const fireProfiles = pgTable('fire_profiles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+  currentAge: integer('current_age').default(28).notNull(),
+  targetAge: integer('target_age').default(55).notNull(),
+  expectedReturn: decimal('expected_return').default('7.5').notNull(),
+  safeWithdrawalRate: decimal('safe_withdrawal_rate').default('4.0').notNull(),
+  monthlySavingsBoost: decimal('monthly_savings_boost').default('0').notNull(),
+  expenseTrimPercent: decimal('expense_trim_percent').default('0').notNull(),
+  customMonthlyExpense: decimal('custom_monthly_expense'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const fireProfilesRelations = relations(fireProfiles, ({ one }) => ({
+  user: one(users, {
+    fields: [fireProfiles.userId],
+    references: [users.id],
+  }),
+}));
+
+

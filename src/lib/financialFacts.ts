@@ -1093,10 +1093,11 @@ export function generateFacts(
   // ── REIMBURSEMENT FACTS ──────────────────────────────────────────────────
 
   const pendingReimbursableTxs = thisMonthExpenses.filter((t) => {
+    if (t.linkedDebtType === 'Payable' || t.category === 'Debt Repayment') return false;
     if (!t.reimbursableAmount || Number.parseFloat(t.reimbursableAmount) <= 0) return false;
     if (t.linkedContactId) {
       const debt = debts.find(d => d.id === t.linkedContactId);
-      return debt && debt.status === 'Pending' && Number.parseFloat(debt.remainingBalance) > 0;
+      return debt && debt.type === 'Receivable' && debt.status === 'Pending' && Number.parseFloat(debt.remainingBalance) > 0;
     }
     return true; // legacy fallback
   });

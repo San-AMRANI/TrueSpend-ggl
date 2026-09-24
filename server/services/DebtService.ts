@@ -1,5 +1,6 @@
 import { debtRepository } from '../repositories/DebtRepository.js';
 import { transactionRepository } from '../repositories/TransactionRepository.js';
+import { walletService } from './WalletService.js';
 
 export interface SettleDebtDTO {
   amount: number;
@@ -30,9 +31,10 @@ export class DebtService {
       const settlements = debtSplits
         .map((s) => {
           const tx = allTxs.find((t) => t.id === s.transactionId);
+          const splitAmountNum = parseFloat(s.reimbursableAmount || '0');
           return {
             id: s.id,
-            amount: s.reimbursableAmount,
+            amount: splitAmountNum > 0 ? s.reimbursableAmount : (tx ? tx.amount : '0'),
             createdAt: tx ? tx.createdAt : debt.createdAt,
           };
         })
@@ -72,20 +74,38 @@ export class DebtService {
 
       const txType = debt.type === 'Receivable' ? 'Income' : 'Expense';
       const txCategory = dto.category || (debt.type === 'Receivable' ? 'Reimbursement' : 'Debt Repayment');
-      const txWallet = dto.walletId || 'Cash'; // The UI should always pass a walletId uuid, fallback shouldn't be used
+
+      let targetWalletId: string;
+      try {
+        const wallets = await walletService.getWallets(userId);
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (dto.walletId && uuidRegex.test(dto.walletId)) {
+          const found = wallets.find(w => w.id === dto.walletId);
+          targetWalletId = found ? found.id : wallets[0]?.id;
+        } else if (dto.walletId === 'Bank') {
+          const bankWallet = wallets.find(w => w.type === 'Bank' && w.isMain) || wallets.find(w => w.type === 'Bank') || wallets[0];
+          targetWalletId = bankWallet?.id;
+        } else {
+          const cashWallet = wallets.find(w => w.type === 'Cash') || wallets[0];
+          targetWalletId = cashWallet?.id;
+        }
+      } catch {
+        targetWalletId = dto.walletId as string;
+      }
 
       const newTx = await transactionRepository.create({
         userId,
         amount: String(dto.amount),
         type: txType,
-        walletId: txWallet as any,
+        walletId: targetWalletId,
         category: txCategory,
         notes: `Settlement for ${debt.contactName}`,
       });
 
       await transactionRepository.createSplit({
         transactionId: newTx.id,
-        reimbursableAmount: String(dto.amount),
+        // Only Receivable settlements are reimbursable to the user; Payable settlements are bill/debt payments.
+        reimbursableAmount: debt.type === 'Receivable' ? String(dto.amount) : '0',
         linkedContactId: dto.debt_id,
       });
 

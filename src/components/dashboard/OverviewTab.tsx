@@ -1,17 +1,18 @@
 import React, { useState, useMemo } from 'react';
-import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction, Goal } from '../../types';
+import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction, Goal, Subscription } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SettleDebtModal } from '../SettleDebtModal';
 import { WalletsManager } from './WalletsManager';
-import { getSpendingPace, isInMonth } from '../../lib/finance';
+import { getSpendingPace, isInMonth, netExpenseOf } from '../../lib/finance';
 import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 import { generateFacts, selectFacts } from '../../lib/financialFacts';
 import { FinancialFactsCarousel } from './FinancialFactsCarousel';
 import { FinancialInsightModal } from './FinancialInsightModal';
 import {
   AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
-  Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap
+  Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap,
+  Target, ChevronRight, Plus, Repeat, Snowflake, ShieldCheck
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -20,6 +21,8 @@ interface OverviewTabProps {
   transactions: Transaction[];
   debts: Debt[];
   budgets: CategoryBudget[];
+  goals?: Goal[];
+  subscriptions?: Subscription[];
   setActiveTab: (tab: DashboardTab) => void;
   openTransaction: (transactionId: string) => void;
   handleSettle: (debtId: string, amount: number, category?: string, walletId?: string) => Promise<void> | void;
@@ -34,6 +37,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   transactions,
   debts,
   budgets,
+  goals = [],
+  subscriptions = [],
   payrolls,
   setActiveTab,
   openTransaction,
@@ -55,7 +60,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     .reduce((sum, budget) => sum + Number.parseFloat(budget.amount), 0);
   const monthlyActual = transactions
     .filter((transaction) => currentFm && transaction.type === 'Expense' && isInMonth(transaction, year, month, payrolls))
-    .reduce((sum, transaction) => sum + Number.parseFloat(transaction.amount), 0);
+    .reduce((sum, transaction) => sum + netExpenseOf(transaction), 0);
   const pace = getSpendingPace(monthlyActual, monthlyBudget, year, month, payrolls);
   const activeReceivables = debts
     .filter((debt) => debt.type === 'Receivable' && debt.status === 'Pending')
@@ -68,6 +73,18 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   // Phase 3: Net Worth Tracking (Liquidity + Receivables - Payables)
   const netWorth = (kpis?.totalLiquidity ?? 0) + activeReceivables - activePayables;
   const dailyStatusStyles = { on_track: 'text-blue-600', warning: 'text-amber-600', critical: 'text-red-600' };
+
+  // Subscriptions metrics
+  const activeSubs = useMemo(() => subscriptions.filter((s) => s.status === 'active'), [subscriptions]);
+  const monthlySubBurn = useMemo(() => {
+    return activeSubs.reduce((sum, s) => {
+      const amt = parseFloat(s.amount) || 0;
+      if (s.billingCycle === 'yearly') return sum + amt / 12;
+      if (s.billingCycle === 'quarterly') return sum + amt / 3;
+      if (s.billingCycle === 'weekly') return sum + (amt * 52) / 12;
+      return sum + amt;
+    }, 0);
+  }, [activeSubs]);
 
   // Generate financial facts for the carousel
   const facts = useMemo(
@@ -449,6 +466,197 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CardContent>
         </Card>
       </div>
+
+      {/* Row 5 – Financial Goals & Savings Milestones */}
+      <Card className="min-w-0 overflow-hidden">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Target className="h-5 w-5 text-indigo-500" /> Savings Goals & Milestones
+          </CardTitle>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+            onClick={() => setActiveTab('goals')}
+          >
+            <span>Manage Goals ({goals.length})</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {goals.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 mb-3">
+                <Target className="h-6 w-6" />
+              </div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">No savings goals set yet</p>
+              <p className="max-w-sm text-xs text-gray-500 dark:text-gray-400 mt-1 mb-4">
+                Plan ahead for an emergency buffer, vacation, new tech, or big purchase with targeted saving.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setActiveTab('goals')}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 text-xs text-white hover:bg-indigo-700"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Create First Goal</span>
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {goals.slice(0, 3).map((g) => {
+                const target = parseFloat(g.targetAmount) || 0;
+                const current = parseFloat(g.currentAmount) || 0;
+                const progress = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+                const isCompleted = current >= target && target > 0;
+
+                return (
+                  <div
+                    key={g.id}
+                    onClick={() => setActiveTab('goals')}
+                    className="group cursor-pointer rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40 p-3.5 transition-all hover:border-indigo-300 dark:hover:border-indigo-700/60 hover:shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-gray-900 dark:text-white">{g.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">
+                            {g.category || 'Savings'}
+                          </span>
+                          {g.walletId && (
+                            <span className="rounded bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 truncate max-w-[110px]">
+                              🏦 {kpis?.accounts?.find((w) => w.id === g.walletId)?.name || 'Linked Vault'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className={`text-xs font-black ${isCompleted ? 'text-emerald-500' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                        {progress.toFixed(0)}%
+                      </span>
+                    </div>
+
+                    <div className="mt-2.5 space-y-1">
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            isCompleted ? 'bg-emerald-500' : 'bg-indigo-500'
+                          }`}
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                        <span className="font-semibold text-gray-800 dark:text-gray-200">
+                          {current.toLocaleString()} MAD
+                        </span>
+                        <span>{target.toLocaleString()} MAD</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Row 6 – Recurring Subscriptions Radar Glance */}
+      <Card className="min-w-0 overflow-hidden border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-r from-white via-indigo-50/20 to-purple-50/20 dark:from-gray-900 dark:via-indigo-950/20 dark:to-purple-950/20">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg text-gray-900 dark:text-gray-100">
+            <Repeat className="h-5 w-5 text-indigo-500" /> Recurring Subscriptions & Fixed Commitments
+          </CardTitle>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+            onClick={() => setActiveTab('subscriptions')}
+          >
+            <span>Subscriptions Radar ({subscriptions.length})</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-white/80 dark:bg-gray-900/80 p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 text-xl">
+                💳
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">Total Monthly Recurring Drain</p>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                    {monthlySubBurn.toFixed(2)}
+                  </span>
+                  <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">MAD / month</span>
+                  <span className="text-xs text-gray-400">({(monthlySubBurn * 12).toFixed(0)} MAD / yr)</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {activeSubs.slice(0, 4).map((sub) => (
+                <div
+                  key={sub.id}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 px-2.5 py-1 text-xs text-gray-700 dark:text-gray-300"
+                >
+                  <span>{sub.icon || '📱'}</span>
+                  <span className="font-medium truncate max-w-[90px]">{sub.name}</span>
+                  <span className="text-[10px] text-gray-400 font-semibold">{parseFloat(sub.amount).toFixed(0)}</span>
+                </div>
+              ))}
+              {activeSubs.length > 4 && (
+                <span className="text-xs text-gray-400 font-medium">+{activeSubs.length - 4} more</span>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs border-indigo-200 text-indigo-700 dark:border-indigo-800 dark:text-indigo-300 ml-auto sm:ml-0"
+                onClick={() => setActiveTab('subscriptions')}
+              >
+                Open Radar & Pruner →
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Row 7 – Impulse Shield & Conscious Spending Banner */}
+      <Card className="min-w-0 overflow-hidden border-sky-100 dark:border-sky-900/40 bg-gradient-to-r from-sky-50/30 via-indigo-50/20 to-purple-50/30 dark:from-sky-950/20 dark:via-gray-900 dark:to-purple-950/20">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-100 dark:bg-sky-900/50 text-sky-600 dark:text-sky-400 text-2xl shadow-sm">
+                🧊
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    Impulse Shield & TrueCost Lab
+                  </span>
+                  <span className="rounded-full bg-sky-100 dark:bg-sky-900/60 px-2 py-0.5 text-[10px] font-extrabold text-sky-700 dark:text-sky-300">
+                    NEW
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Simulate any tempting purchase: calculate the real hours of labor and compound growth foregone before spending.
+                </p>
+              </div>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={() => setActiveTab('impulse-shield')}
+              className="bg-sky-600 hover:bg-sky-700 text-white font-semibold text-xs shrink-0 flex items-center gap-1.5 h-9 px-4 rounded-xl shadow-sm"
+            >
+              <span>Launch Simulator & Vault</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <SettleDebtModal
         debt={settlingDebt}

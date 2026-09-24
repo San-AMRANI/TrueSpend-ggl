@@ -1,30 +1,28 @@
 import { transactionRepository } from '../repositories/TransactionRepository.js';
+import { transactionService } from './TransactionService.js';
 import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
 import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
 import { walletRepository } from '../repositories/WalletRepository.js';
+import { walletService } from './WalletService.js';
 import { payrollService } from './PayrollService.js';
 import { computeFinancialState } from '../../src/lib/financialEngine.js';
 
 export class KpiService {
   async getKpisForUser(dbUser: any) {
     const userId = dbUser.id;
-    await payrollService.reconcileDuePayrolls(userId);
 
     // Auto-seed default wallets if none exist
-    let userWallets = await walletRepository.findAllByUserId(userId);
-    if (userWallets.length === 0) {
-      await walletRepository.create({ userId, name: 'Bank Account', type: 'Bank', isMain: true });
-      await walletRepository.create({ userId, name: 'Cash Wallet', type: 'Cash', isMain: false });
-      userWallets = await walletRepository.findAllByUserId(userId);
-    }
+    const userWallets = await walletService.getWallets(userId);
+
+    await payrollService.reconcileDuePayrolls(userId);
 
     // Assign orphaned transactions to default Bank wallet
     const mainBank = userWallets.find(w => w.type === 'Bank' && w.isMain) || userWallets.find(w => w.type === 'Bank') || userWallets[0];
     const defaultCash = userWallets.find(w => w.type === 'Cash') || mainBank;
 
     const [allTx, payrolls, allDebts, allBudgets] = await Promise.all([
-      transactionRepository.findAllByUserId(userId),
+      transactionService.getTransactionsForUser(userId),
       payrollRepository.findAllByUserId(userId),
       debtRepository.findAllByUserId(userId),
       categoryBudgetRepository.findAllByUserId(userId),

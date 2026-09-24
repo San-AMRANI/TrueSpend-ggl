@@ -12,7 +12,7 @@ import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 import { DesktopHeaderNav } from './components/dashboard/DesktopHeaderNav';
 import type { DashboardTab } from './types';
-import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart } from 'lucide-react';
+import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, Flame, ShieldCheck, Repeat, Target, TrendingUp } from 'lucide-react';
 
 const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}logo-1.png`;
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
@@ -44,17 +44,20 @@ function AppContent() {
 
   const tabs: { id: DashboardTab; label: string; icon: any }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'freedom', label: 'Freedom & FIRE', icon: Flame },
+    { id: 'impulse-shield', label: 'Impulse Shield', icon: ShieldCheck },
+    { id: 'cash-flow', label: 'Cash Flow', icon: TrendingUp },
     { id: 'calendar', label: 'Calendar', icon: CalendarDays },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },
     { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
+    { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
+    { id: 'goals', label: 'Goals', icon: Target },
     { id: 'debts', label: 'Debts & Splits', icon: Users },
     { id: 'budgets', label: 'Budgets', icon: WalletCards },
     { id: 'what-if', label: 'What-If', icon: Calculator },
     { id: 'digest', label: 'Digest', icon: FileText },
-
     { id: 'reports', label: 'Reports', icon: FileBarChart },
     { id: 'settings', label: 'Settings', icon: Settings },
-
     { id: 'chat', label: 'AI Chat', icon: Bot },
   ];
 

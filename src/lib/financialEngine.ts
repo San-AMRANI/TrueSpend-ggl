@@ -129,6 +129,9 @@ export function computeFinancialState(input: FinancialEngineInput) {
     const txAmount = parseFloat(tx.amount as unknown as string);
     const txDate = new Date(tx.createdAt);
     const transactionDay = toCalendarDay(txDate);
+    const isPayableTx = (tx as any).linkedDebtType === 'Payable' || tx.category === 'Debt Repayment';
+    const reimbursableAmt = (!isPayableTx && tx.reimbursableAmount) ? Math.max(0, parseFloat(tx.reimbursableAmount as string) || 0) : 0;
+    const netExpense = Math.max(0, txAmount - reimbursableAmt);
 
     if (transactionDay < today) {
       applyTransaction(tx, openingWalletBalances);
@@ -139,23 +142,27 @@ export function computeFinancialState(input: FinancialEngineInput) {
 
     if (currentFm && transactionDay <= today && isInFinancialMonth(txDate, input.payrolls, currentFm.year, currentFm.month)) {
       if (tx.type === 'Expense') {
-        monthlyExpenses += txAmount;
+        monthlyExpenses += netExpense;
         if (variableCategories.includes(tx.category || '')) {
-          monthlyVariableExpenses += txAmount;
+          monthlyVariableExpenses += netExpense;
         } else {
-          monthlyFixedExpenses += txAmount;
+          monthlyFixedExpenses += netExpense;
         }
       }
       if (tx.type === 'Income') monthlyIncome += txAmount;
     }
     if (transactionDay.getTime() === today.getTime()) {
-      if (isExpenseOutflow(tx.type)) dailySpent += txAmount;
+      if (tx.type === 'Expense') {
+        dailySpent += netExpense;
+      } else if (isExpenseOutflow(tx.type)) {
+        dailySpent += txAmount;
+      }
       if (tx.type === 'Income') todaysIncome += txAmount;
     }
 
     if (currentFm && transactionDay <= today && isInFinancialMonth(txDate, input.payrolls, currentFm.year, currentFm.month)) {
       if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) debtRepayments += txAmount;
-      if (tx.type === 'Expense' && tx.reimbursableAmount) reimbursements += parseFloat(tx.reimbursableAmount as string);
+      if (tx.type === 'Expense' && !isPayableTx && tx.reimbursableAmount) reimbursements += reimbursableAmt;
     }
   }
 
@@ -278,7 +285,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
     cashOnHand,
     monthlyExpenses,
     monthlyIncome,
-    adjustedTrueSpend: monthlyExpenses - debtRepayments - reimbursements,
+    adjustedTrueSpend: monthlyExpenses - debtRepayments,
     daysUntilPayday,
     dailyAllowance,
     dailySpent,

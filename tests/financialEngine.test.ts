@@ -70,4 +70,59 @@ const periodPayrolls = [
   assert.equal(state.totalLiquidity, 950);
 }
 
+{
+  const state = computeFinancialState({
+    now,
+    transactions: [
+      {
+        id: 'split-expense',
+        userId: 'user',
+        createdAt: '2026-09-10T00:00:00Z',
+        amount: '25',
+        type: 'Expense',
+        sourceWallet: 'Bank',
+        category: 'Food & Dining',
+        reimbursableAmount: '20',
+      },
+      transaction('income', '2026-08-26T00:00:00Z', '1000', 'Income', 'Bank'),
+    ],
+    payrolls: periodPayrolls,
+    debts: [],
+    budgets: [],
+    userSettings: settings,
+  });
+
+  // Gross expense is 25, reimbursable is 20 -> Net Expense should be 5
+  assert.equal(state.monthlyExpenses, 5, 'monthlyExpenses must account for reimbursable amounts as net cost');
+  assert.equal(state.adjustedTrueSpend, 5, 'adjustedTrueSpend must equal 5');
+  // Total liquidity reflects the actual cash outflow of 25 from the bank: 1000 - 25 = 975
+  assert.equal(state.totalLiquidity, 975, 'totalLiquidity tracks actual bank outflow');
+}
+
+{
+  // Test today's dailySpent with split transaction
+  const state = computeFinancialState({
+    now: new Date('2026-09-15T14:00:00Z'),
+    transactions: [
+      {
+        id: 'split-today',
+        userId: 'user',
+        createdAt: '2026-09-15T10:00:00Z',
+        amount: '100',
+        type: 'Expense',
+        sourceWallet: 'Bank',
+        category: 'Food & Dining',
+        reimbursableAmount: '80',
+      },
+    ],
+    payrolls: periodPayrolls,
+    debts: [],
+    budgets: [],
+    userSettings: settings,
+  });
+
+  // Daily spent should be 100 - 80 = 20
+  assert.equal(state.dailySpent, 20, 'dailySpent must be net of reimbursement');
+}
+
 console.log('financialEngine tests passed');
