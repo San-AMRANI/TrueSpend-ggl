@@ -13,6 +13,7 @@ const CHAT_SESSION_STORAGE_KEY = 'truespend_chat_session';
 const QUICK_PROMPTS = [
   '💰 What can I safely spend today?',
   '📊 How am I doing this month?',
+  '🎯 How are my savings goals tracking?',
   '🎯 Where can I cut spending?',
   '📅 When is my next payday?',
 ];
@@ -233,12 +234,13 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     debts,
     budgets,
     payrolls,
+    goals,
     fetchData,
   } = useDashboardData(token);
 
   const aiContext = useMemo(
-    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, payrolls }),
-    [kpis, transactions, debts, budgets, payrolls],
+    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, payrolls, goals }),
+    [kpis, transactions, debts, budgets, payrolls, goals],
   );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);

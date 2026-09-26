@@ -16,7 +16,7 @@ interface SettleDebtModalProps {
 export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose, onConfirm, wallets }) => {
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
-  const [wallet, setWallet] = useState<string>(wallets?.[0]?.id || 'Bank');
+  const [wallet, setWallet] = useState<string>(wallets?.[0]?.id || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -25,7 +25,7 @@ export const SettleDebtModal: React.FC<SettleDebtModalProps> = ({ debt, onClose,
       setAmount(debt.remainingBalance);
       const defaultCat = debt.type === 'Receivable' ? 'Reimbursement' : 'Debt Repayment';
       setCategory(defaultCat);
-      setWallet(wallets?.[0]?.id || 'Bank'); // sensible default
+      setWallet(wallets?.[0]?.id || '');
       setError('');
     }
   }, [debt, wallets]);

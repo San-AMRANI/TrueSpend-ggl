@@ -17,6 +17,12 @@ import {
   MoreHorizontal,
   TrendingUp,
   Map,
+  Target,
+  Repeat,
+  Flame,
+  ShieldCheck,
+  ShieldAlert,
+  Sparkles,
 } from 'lucide-react';
 
 interface DesktopHeaderNavProps {
@@ -42,12 +48,16 @@ const mainTabs: NavTabItem[] = [
 ];
 
 const moreTabs: NavTabItem[] = [
-  
+  { id: 'opportunity', label: 'Wealth Time Machine', icon: Sparkles },
+  { id: 'resilience', label: 'Resilience & Stress', icon: ShieldAlert },
+  { id: 'freedom', label: 'Freedom & FIRE', icon: Flame },
+  { id: 'impulse-shield', label: 'Impulse Shield', icon: ShieldCheck },
+  { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
+  { id: 'goals', label: 'Goals', icon: Target },
   { id: 'debts', label: 'Debts & Splits', icon: Users },
-  { id: 'what-if', label: 'What-If', icon: Calculator },
+  { id: 'what-if', label: 'Smart Calculator & Tools', icon: Calculator },
   { id: 'digest', label: 'Digest', icon: FileText },
   { id: 'reports', label: 'Reports', icon: FileBarChart },
-  
 ];
 
 export const DesktopHeaderNav: React.FC<DesktopHeaderNavProps> = ({ activeTab, onSelectTab }) => {

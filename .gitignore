@@ -4,6 +4,15 @@ dist/
 coverage/
 .DS_Store
 *.log
+*.sql
+audit_*.json
+fix_payrolls_schema.js
+inspect_db.js
+migrate_db.js
+query_august_budgets.js
+query_db.js
+run_migration_0002.js
+verify_db.js
 .env*
 !.env.example
 .aistudio/

@@ -1,5 +1,6 @@
 import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { transactionRepository } from '../repositories/TransactionRepository.js';
+import { walletService } from './WalletService.js';
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -49,6 +50,17 @@ export class PayrollService {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     let posted = 0;
 
+    let targetWalletId: string | null = null;
+    try {
+      const userWallets = await walletService.getWallets(userId);
+      const bankWallet = userWallets.find((w) => w.type === 'Bank' && w.isMain) 
+        || userWallets.find((w) => w.type === 'Bank') 
+        || userWallets[0];
+      targetWalletId = bankWallet?.id || null;
+    } catch (e) {
+      console.error('Failed to get wallets for payroll reconciliation:', e);
+    }
+
     for (const payroll of payrolls) {
       const payrollDay = new Date(payroll.scheduledFor);
       const calendarDay = new Date(payrollDay.getFullYear(), payrollDay.getMonth(), payrollDay.getDate()).getTime();
@@ -59,7 +71,7 @@ export class PayrollService {
         payrollId: payroll.id,
         amount: String(payroll.amount),
         type: 'Income',
-        walletId: 'Bank',
+        walletId: targetWalletId as any,
         category: '📥 Income',
         notes: 'Payroll deposited automatically',
         createdAt: payrollDay,

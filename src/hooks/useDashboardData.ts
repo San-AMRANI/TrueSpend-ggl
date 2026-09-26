@@ -1,8 +1,8 @@
 import { googleSignIn, getGoogleAccessToken } from '../lib/googleAuth';
 import { uploadToGoogleDrive } from '../lib/driveUpload';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
-import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll } from '../types';
+import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll, Goal, Subscription, DetectedSubscription, ImpulseItem, ImpulseStats, FireProfile, ResilienceAudit } from '../types';
 import { useNotifications } from './useNotifications';
 
 export function useDashboardData(token: string | null) {
@@ -12,6 +12,12 @@ export function useDashboardData(token: string | null) {
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
   const [contexts, setContexts] = useState<any[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [impulseItems, setImpulseItems] = useState<ImpulseItem[]>([]);
+  const [impulseStats, setImpulseStats] = useState<ImpulseStats | null>(null);
+  const [fireProfile, setFireProfile] = useState<FireProfile | null>(null);
+  const [resilienceAudit, setResilienceAudit] = useState<ResilienceAudit | null>(null);
   const [userSettings, setUserSettings] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -28,7 +34,7 @@ export function useDashboardData(token: string | null) {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData] = await Promise.all([
+      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData, impulseData, impulseStatsData, fireProfileData, resilienceAuditData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
@@ -36,6 +42,12 @@ export function useDashboardData(token: string | null) {
         dashboardService.getCategoryBudgets(token),
         dashboardService.getPayrolls(token),
         dashboardService.getContexts(token),
+        dashboardService.getGoals(token),
+        dashboardService.getSubscriptions(token),
+        dashboardService.getImpulseItems(token).catch(() => []),
+        dashboardService.getImpulseStats(token).catch(() => null),
+        dashboardService.getFireProfile(token).catch(() => null),
+        dashboardService.getResilienceAudit(token).catch(() => null),
       ]);
 
       setKpis(kpiData || null);
@@ -45,6 +57,12 @@ export function useDashboardData(token: string | null) {
       setBudgets(budgetData || []);
       setPayrolls(payrollData || []);
       setContexts(contextData || []);
+      setGoals(goalData || []);
+      setSubscriptions(subData || []);
+      setImpulseItems(impulseData || []);
+      setImpulseStats(impulseStatsData || null);
+      setFireProfile(fireProfileData || null);
+      setResilienceAudit(resilienceAuditData || null);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -418,6 +436,280 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleCreateGoal = async (payload: { name: string; targetAmount: number; currentAmount?: number; walletId?: string | null; autoSyncBalance?: boolean; deadline?: string | null; category?: string; notes?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.createGoal(payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error creating goal:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateGoal = async (id: string, payload: { name?: string; targetAmount?: number; currentAmount?: number; walletId?: string | null; autoSyncBalance?: boolean; deadline?: string | null; category?: string; notes?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.updateGoal(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error updating goal:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleContributeToGoal = async (id: string, payload: { amount: number; walletId?: string; destinationWalletId?: string; note?: string; date?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.contributeToGoal(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error contributing to goal:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleWithdrawFromGoal = async (id: string, payload: { amount: number; walletId?: string; destinationWalletId?: string; note?: string; date?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.withdrawFromGoal(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error withdrawing from goal:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteGoal = async (id: string) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.deleteGoal(id, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error deleting goal:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCreateSubscription = async (payload: Partial<Subscription>) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.createSubscription(payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error creating subscription:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateSubscription = async (id: string, payload: Partial<Subscription>) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.updateSubscription(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteSubscription = async (id: string) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.deleteSubscription(id, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error deleting subscription:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handlePaySubscription = async (id: string, payload: { walletId?: string; date?: string } = {}) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.paySubscription(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error paying subscription:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDetectSubscriptions = async (): Promise<DetectedSubscription[]> => {
+    if (!token) return [];
+    try {
+      return await dashboardService.detectSubscriptions(token);
+    } catch (error) {
+      console.error('Error detecting subscriptions:', error);
+      return [];
+    }
+  };
+
+  const handleCreateImpulseItem = async (payload: {
+    name: string;
+    amount: number;
+    currency?: string;
+    category?: string;
+    notes?: string;
+    url?: string;
+    triggers?: string[];
+    urgencyScore?: number;
+    utilityScore?: number;
+    coolingHours?: number;
+  }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.createImpulseItem(payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error creating impulse item:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateImpulseItem = async (id: string, payload: Partial<ImpulseItem>) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.updateImpulseItem(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error updating impulse item:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteImpulseItem = async (id: string) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.deleteImpulseItem(id, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error deleting impulse item:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleResolveImpulseItem = async (
+    id: string,
+    payload: { decision: 'resisted' | 'purchased' | 'dismissed'; notes?: string; goalId?: string; walletId?: string }
+  ) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.resolveImpulseItem(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error resolving impulse item:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateFireProfile = async (payload: Partial<FireProfile>) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.updateFireProfile(payload, token);
+      setFireProfile(res);
+      return res;
+    } catch (error) {
+      console.error('Error updating FIRE profile:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateResilienceProfile = async (payload: any) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.updateResilienceProfile(payload, token);
+      setResilienceAudit(res);
+      return res;
+    } catch (error) {
+      console.error('Error updating resilience profile:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSimulateCustomStress = async (payload: any) => {
+    if (!token) return;
+    try {
+      return await dashboardService.simulateCustomStress(payload, token);
+    } catch (error) {
+      console.error('Error simulating custom stress:', error);
+      throw error;
+    }
+  };
+
+  const syncedGoals = useMemo(() => {
+    if (!goals) return [];
+    if (!kpis?.accounts) return goals;
+    const walletMap = new Map(kpis.accounts.map(w => [w.id, w.balance]));
+    return goals.map(g => {
+      if (g.autoSyncBalance && g.walletId && walletMap.has(g.walletId)) {
+        return {
+          ...g,
+          currentAmount: String(Math.max(0, walletMap.get(g.walletId)!)),
+        };
+      }
+      return g;
+    });
+  }, [goals, kpis?.accounts]);
+
   return {
     kpis,
     transactions,
@@ -425,6 +717,10 @@ export function useDashboardData(token: string | null) {
     payrolls,
     budgets,
     contexts,
+    goals: syncedGoals,
+    subscriptions,
+    impulseItems,
+    impulseStats,
     userSettings,
     loading,
     isSaving,
@@ -462,6 +758,25 @@ export function useDashboardData(token: string | null) {
     handleUpdateContext,
     handleDeleteContext,
     handleLinkTransactionsToContext,
+    handleCreateGoal,
+    handleUpdateGoal,
+    handleContributeToGoal,
+    handleWithdrawFromGoal,
+    handleDeleteGoal,
+    handleCreateSubscription,
+    handleUpdateSubscription,
+    handleDeleteSubscription,
+    handlePaySubscription,
+    handleDetectSubscriptions,
+    handleCreateImpulseItem,
+    handleUpdateImpulseItem,
+    handleDeleteImpulseItem,
+    handleResolveImpulseItem,
+    fireProfile,
+    handleUpdateFireProfile,
+    resilienceAudit,
+    handleUpdateResilienceProfile,
+    handleSimulateCustomStress,
     notifications,
   };
 }

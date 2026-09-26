@@ -92,6 +92,16 @@ export interface FinancialContext {
   updatedAt: string;
 }
 
+export interface TransactionSplit {
+  id?: string;
+  reimbursableAmount: string;
+  linkedContactId?: string | null;
+  linkedContactName?: string | null;
+  linkedDebtType?: 'Receivable' | 'Payable' | null;
+  remainingBalance?: string | null;
+  status?: 'Pending' | 'Cleared' | null;
+}
+
 export interface Transaction {
   id: string;
   userId: string;
@@ -109,20 +119,56 @@ export interface Transaction {
   linkedContactId?: string | null;
   linkedContactName?: string | null;
   linkedDebtType?: 'Receivable' | 'Payable' | null;
+  splits?: TransactionSplit[];
   contextId?: string | null;
 }
 
 export interface Goal {
-  id?: string;
-  name?: string;
-  targetAmount?: number;
-  currentAmount?: number;
+  id: string;
+  userId: string;
+  walletId?: string | null;
+  name: string;
+  targetAmount: string;
+  currentAmount: string;
+  autoSyncBalance?: boolean;
+  deadline?: string | null;
+  category: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
+export type SubscriptionBillingCycle = 'monthly' | 'yearly' | 'quarterly' | 'weekly';
+export type SubscriptionStatus = 'active' | 'paused' | 'reviewing' | 'cancelled';
+
 export interface Subscription {
-  id?: string;
-  name?: string;
-  amount?: number;
+  id: string;
+  userId: string;
+  name: string;
+  amount: string;
+  currency: string;
+  billingCycle: SubscriptionBillingCycle;
+  category: string;
+  walletId?: string | null;
+  walletName?: string | null;
+  nextBillingDate?: string | null;
+  status: SubscriptionStatus;
+  notes?: string | null;
+  icon?: string | null;
+  websiteUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DetectedSubscription {
+  name: string;
+  suggestedAmount: number;
+  suggestedCycle: SubscriptionBillingCycle;
+  suggestedCategory: string;
+  frequencyCount: number;
+  lastSeenDate: string;
+  sampleTransactionNotes?: string;
+  confidence: 'high' | 'medium';
 }
 
 export interface CategoryBudget {
@@ -174,4 +220,239 @@ export interface UserSettings {
   googleDriveToken?: string;
 }
 
-export type DashboardTab = 'overview' | 'calendar' | 'transactions' | 'budgets' | 'what-if' | 'debts' | 'analytics' | 'settings' | 'digest' | 'chat' | 'reports' | 'cash-flow' | 'contexts';
+export type ImpulseStatus = 'cooling' | 'resisted' | 'purchased' | 'dismissed';
+
+export interface ImpulseItem {
+  id: string;
+  userId: string;
+  name: string;
+  amount: string;
+  currency: string;
+  category: string;
+  notes?: string | null;
+  url?: string | null;
+  triggers: string[];
+  urgencyScore: number;
+  utilityScore: number;
+  coolingHours: number;
+  coolsAt: string;
+  status: ImpulseStatus;
+  decisionDate?: string | null;
+  decisionNotes?: string | null;
+  savedToGoalId?: string | null;
+  savedToGoalName?: string | null;
+  walletId?: string | null;
+  walletName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImpulseStats {
+  totalCoolingCount: number;
+  totalCoolingAmount: number;
+  totalResistedCount: number;
+  totalResistedAmount: number;
+  totalPurchasedCount: number;
+  totalPurchasedAmount: number;
+  totalReclaimedHours: number;
+  resistanceRate: number;
+  triggerBreakdown: { trigger: string; count: number; percentage: number }[];
+}
+
+export interface FireProfile {
+  id?: string;
+  userId?: string;
+  currentAge: number;
+  targetAge: number;
+  expectedReturn: number;
+  safeWithdrawalRate: number;
+  monthlySavingsBoost: number;
+  expenseTrimPercent: number;
+  customMonthlyExpense?: number | null;
+  updatedAt?: string;
+}
+
+export interface ResiliencePillar {
+  id: string;
+  name: string;
+  score: number;
+  maxScore: number;
+  weight: string;
+  status: 'fortress' | 'good' | 'moderate' | 'warning' | 'critical';
+  headline: string;
+  description: string;
+  metric: string;
+}
+
+export interface MicroLeakItem {
+  category: string;
+  count: number;
+  totalAmount: number;
+  avgAmount: number;
+  sampleNotes: string[];
+}
+
+export interface ResilienceDirective {
+  id: string;
+  priority: 'high' | 'medium' | 'low';
+  title: string;
+  description: string;
+  estimatedBoost: number;
+  actionTab?: string;
+  actionLabel?: string;
+}
+
+export interface ResilienceAudit {
+  profile: {
+    emergencyTargetMonths: number;
+    stressJobLossMonths: number;
+    stressEmergencyExpense: string | number;
+    stressInflationRate: string | number;
+    essentialExpensesRatio: string | number;
+    customEssentialMonthly?: string | number | null;
+    microLeakThreshold: string | number;
+    notes?: string | null;
+  };
+  overallScore: number;
+  grade: string;
+  gradeLabel: string;
+  verdict: string;
+  summary: string;
+  baseline: {
+    liquidBalance: number;
+    savingsBalance: number;
+    totalAssets: number;
+    totalDebtsPayable: number;
+    totalDebtsReceivable: number;
+    monthlySalary: number;
+    monthlyExpenses: number;
+    essentialMonthly: number;
+    discretionaryMonthly: number;
+    subscriptionMonthly: number;
+    netMonthlySurplus: number;
+    savingsRatePercent: number;
+    runwayMonths: number;
+    runwayDays: number;
+    targetRunwayMonths: number;
+    emergencyTargetAmount: number;
+  };
+  pillars: ResiliencePillar[];
+  stressScenarios: {
+    jobLoss: {
+      testedMonths: number;
+      survives: boolean;
+      daysRemaining: number;
+      cashRemaining: number;
+      deficitAmount: number;
+      extendedDaysWithFreeze: number;
+      verdict: string;
+    };
+    emergencyShock: {
+      testedAmount: number;
+      survives: boolean;
+      cashRemaining: number;
+      bufferPreservationPercent: number;
+      shortfall: number;
+      verdict: string;
+    };
+    inflationSurge: {
+      testedRate: number;
+      newMonthlyExpenses: number;
+      newMonthlySurplus: number;
+      monthlySurplusErosion: number;
+      annualDrag: number;
+      verdict: string;
+    };
+    blackSwan: {
+      survives: boolean;
+      cashRemaining: number;
+      deficitAmount: number;
+      verdict: string;
+      timelineDescription: string;
+    };
+  };
+  microLeaks: {
+    threshold: number;
+    totalCount: number;
+    totalSpent: number;
+    monthlyDrain: number;
+    annualProjected: number;
+    tenYearCompounded: number;
+    workHoursEquivalent: number;
+    items: MicroLeakItem[];
+  };
+  directives: ResilienceDirective[];
+}
+
+export interface CustomStressSimulationResult {
+  input: {
+    jobLossMonths: number;
+    emergencyExpense: number;
+    inflationRate: number;
+    freezeSubscriptions: number;
+    cutDiscretionary: number;
+  };
+  baseline: {
+    liquidBalance: number;
+    originalMonthlyBurn: number;
+  };
+  simulatedMonthlyBurn: number;
+  totalSimulatedDrain: number;
+  projectedEndingCash: number;
+  survives: boolean;
+  shortfall: number;
+  runwayDays: number;
+  runwayMonths: number;
+  monthlySavingsFromAdjustments: number;
+}
+
+export type DashboardTab =
+  | 'overview'
+  | 'calendar'
+  | 'transactions'
+  | 'budgets'
+  | 'goals'
+  | 'subscriptions'
+  | 'impulse-shield'
+  | 'freedom'
+  | 'resilience'
+  | 'opportunity'
+  | 'what-if'
+  | 'debts'
+  | 'analytics'
+  | 'settings'
+  | 'digest'
+  | 'chat'
+  | 'reports'
+  | 'cash-flow'
+  | 'contexts';
+
+export interface WealthAssetBenchmark {
+  id: string;
+  name: string;
+  tickerOrCode: string;
+  cagrPercent: number;
+  description: string;
+  category: 'Equities' | 'Tech' | 'Real Assets' | 'Fixed Income' | 'Debt Payoff';
+  riskLabel: 'Low' | 'Moderate' | 'High' | 'Guaranteed';
+}
+
+export interface OpportunitySwap {
+  id: string;
+  title: string;
+  category: string;
+  monthlyAmountMAD: number;
+  tradeoffDescription: string;
+  streakWeeks: number;
+  createdAt: string;
+  isCustom?: boolean;
+}
+
+export interface LifeEnergyProfile {
+  monthlyNetSalary: number;
+  weeklyWorkHours: number;
+  weeklyCommuteHours: number;
+  monthlyWorkDirectExpenses: number;
+}
+
+

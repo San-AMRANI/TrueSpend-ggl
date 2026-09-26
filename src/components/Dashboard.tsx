@@ -11,6 +11,12 @@ import { AnalyticsTab } from './dashboard/AnalyticsTab';
 import { DigestTab } from './dashboard/DigestTab';
 import { SettingsTab } from './dashboard/SettingsTab';
 import { BudgetsTab } from './dashboard/BudgetsTab';
+import { GoalsTab } from './dashboard/GoalsTab';
+import { SubscriptionsTab } from './dashboard/SubscriptionsTab';
+import { ImpulseShieldTab } from './dashboard/ImpulseShieldTab';
+import { FreedomTab } from './dashboard/FreedomTab';
+import { ResilienceTab } from './dashboard/ResilienceTab';
+import { OpportunityTab } from './dashboard/OpportunityTab';
 import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { ReportsTab } from './dashboard/ReportsTab';
@@ -64,6 +70,29 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleUpdateWallet,
     handleDeleteWallet,
     contexts,
+    goals,
+    subscriptions,
+    impulseItems,
+    impulseStats,
+    handleCreateGoal,
+    handleUpdateGoal,
+    handleContributeToGoal,
+    handleWithdrawFromGoal,
+    handleDeleteGoal,
+    handleCreateSubscription,
+    handleUpdateSubscription,
+    handleDeleteSubscription,
+    handlePaySubscription,
+    handleDetectSubscriptions,
+    handleCreateImpulseItem,
+    handleUpdateImpulseItem,
+    handleDeleteImpulseItem,
+    handleResolveImpulseItem,
+    fireProfile,
+    handleUpdateFireProfile,
+    resilienceAudit,
+    handleUpdateResilienceProfile,
+    handleSimulateCustomStress,
     handleCreateContext,
     handleUpdateContext,
     handleDeleteContext,
@@ -116,6 +145,8 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           transactions={transactions}
           debts={debts}
           budgets={budgets}
+          goals={goals}
+          subscriptions={subscriptions}
           setActiveTab={setActiveTab}
           openTransaction={openTransaction}
           handleSettle={handleSettleDebt}
@@ -170,7 +201,105 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
         />
       )}
 
-      {activeTab === 'what-if' && <WhatIfTab kpis={kpis} amount={whatIfAmount} setAmount={setWhatIfAmount} transactions={transactions} payrolls={payrolls} debts={debts} budgets={budgets} />}
+      {activeTab === 'goals' && (
+        <GoalsTab
+          goals={goals}
+          wallets={kpis?.accounts || []}
+          onCreateGoal={handleCreateGoal}
+          onUpdateGoal={handleUpdateGoal}
+          onContributeGoal={handleContributeToGoal}
+          onWithdrawGoal={handleWithdrawFromGoal}
+          onDeleteGoal={handleDeleteGoal}
+          onCreateWallet={handleCreateWallet}
+        />
+      )}
+
+      {activeTab === 'subscriptions' && (
+        <SubscriptionsTab
+          subscriptions={subscriptions}
+          wallets={kpis?.accounts || []}
+          goals={goals}
+          monthlySalary={userSettings?.salary}
+          avgDailySpend={kpis?.avgDailySpend}
+          onCreateSubscription={handleCreateSubscription}
+          onUpdateSubscription={handleUpdateSubscription}
+          onDeleteSubscription={handleDeleteSubscription}
+          onPaySubscription={handlePaySubscription}
+          onDetectSubscriptions={handleDetectSubscriptions}
+        />
+      )}
+
+      {activeTab === 'impulse-shield' && (
+        <ImpulseShieldTab
+          impulseItems={impulseItems}
+          impulseStats={impulseStats}
+          wallets={kpis?.accounts || []}
+          goals={goals}
+          monthlySalary={userSettings?.salary}
+          safeToSpend={kpis?.safeToSpend}
+          emergencyBuffer={userSettings?.emergencyFundTarget || 10000}
+          onCreateImpulseItem={handleCreateImpulseItem}
+          onUpdateImpulseItem={handleUpdateImpulseItem}
+          onDeleteImpulseItem={handleDeleteImpulseItem}
+          onResolveImpulseItem={handleResolveImpulseItem}
+        />
+      )}
+
+      {activeTab === 'freedom' && (
+        <FreedomTab
+          kpis={kpis}
+          wallets={kpis?.accounts || []}
+          goals={goals}
+          debts={debts}
+          monthlySalary={userSettings?.salary}
+          fireProfile={fireProfile}
+          onUpdateFireProfile={handleUpdateFireProfile}
+          onNavigateToTab={setActiveTab}
+        />
+      )}
+
+      {activeTab === 'resilience' && (
+        <ResilienceTab
+          audit={resilienceAudit}
+          loading={loading}
+          onRefresh={fetchData}
+          onUpdateProfile={handleUpdateResilienceProfile}
+          onSimulateCustom={handleSimulateCustomStress}
+          onNavigateToTab={setActiveTab}
+        />
+      )}
+
+      {activeTab === 'opportunity' && (
+        <OpportunityTab
+          transactions={transactions}
+          kpis={kpis}
+          payrolls={payrolls}
+          debts={debts}
+          goals={goals}
+          budgets={budgets}
+          monthlySalary={userSettings?.salary}
+          onNavigateToTab={setActiveTab}
+          onCreateGoal={handleCreateGoal}
+        />
+      )}
+
+      {activeTab === 'what-if' && (
+        <WhatIfTab
+          kpis={kpis}
+          amount={whatIfAmount}
+          setAmount={setWhatIfAmount}
+          transactions={transactions}
+          payrolls={payrolls}
+          debts={debts}
+          budgets={budgets}
+          goals={goals}
+          userSettings={userSettings}
+          onNavigateToTab={setActiveTab}
+          onCreateGoal={handleCreateGoal}
+          onSaveCategoryBudget={handleSaveCategoryBudget}
+          onSaveSettings={handleSaveSettings}
+        />
+      )}
 
       {activeTab === 'debts' && (
         <DebtsTab

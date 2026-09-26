@@ -11,6 +11,11 @@ import payrollRoutes from './payrollRoutes.js';
 import receiptRoutes from './receiptRoutes.js';
 import walletRoutes from './walletRoutes.js';
 import contextRoutes from './contextRoutes.js';
+import goalRoutes from './goalRoutes.js';
+import subscriptionRoutes from './subscriptionRoutes.js';
+import impulseRoutes from './impulseRoutes.js';
+import fireRoutes from './fireRoutes.js';
+import resilienceRoutes from './resilienceRoutes.js';
 import { NotificationController } from '../controllers/NotificationController.js';
 import { requireAuth } from '../../src/middleware/auth.js';
 
@@ -33,6 +38,11 @@ apiRouter.use('/', payrollRoutes);
 apiRouter.use('/', receiptRoutes);
 apiRouter.use('/', walletRoutes);
 apiRouter.use('/', contextRoutes);
+apiRouter.use('/', goalRoutes);
+apiRouter.use('/', subscriptionRoutes);
+apiRouter.use('/', impulseRoutes);
+apiRouter.use('/', fireRoutes);
+apiRouter.use('/', resilienceRoutes);
 
 // Push Notifications v2
 apiRouter.get('/notifications/vapid-public-key', notificationController.getPublicKey);

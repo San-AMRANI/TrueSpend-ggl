@@ -8,6 +8,7 @@ import {
   getSpendingPace,
   monthLabel,
   getExpensesForMonth,
+  netExpenseOf,
   amountOf,
 } from '../../lib/finance';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
@@ -413,13 +414,13 @@ function Rule503020View({ budgets, transactions, totalBudget, year, month, payro
   };
 
   const totalSpent = useMemo(() => {
-    return getExpensesForMonth(transactions, year, month, payrolls).reduce((s, tx) => s + amountOf(tx), 0);
+    return getExpensesForMonth(transactions, year, month, payrolls).reduce((s, tx) => s + netExpenseOf(tx), 0);
   }, [transactions, year, month, payrolls]);
 
   const getGroupSpent = (cats: string[]) =>
     getExpensesForMonth(transactions, year, month, payrolls)
       .filter((tx) => cats.includes(tx.category ?? ''))
-      .reduce((s, tx) => s + amountOf(tx), 0);
+      .reduce((s, tx) => s + netExpenseOf(tx), 0);
 
   const groups = [
     { label: 'Needs', pct: needsPct, setPct: setNeedsPct, categories: NEEDS_CATEGORIES, color: '#6366f1', spent: getGroupSpent(NEEDS_CATEGORIES) },

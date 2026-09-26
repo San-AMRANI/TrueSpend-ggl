@@ -295,9 +295,16 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
-                      {wallet.type} Account
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                        {wallet.type} Account
+                      </p>
+                      {wallet.type === 'Savings' && (
+                        <span className="rounded bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300">
+                          Goal Vault
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 

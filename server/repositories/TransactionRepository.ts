@@ -1,6 +1,8 @@
 import { db } from '../../src/db/index.js';
-import { transactions, splits } from '../../src/db/schema.js';
+import { transactions, splits, wallets } from '../../src/db/schema.js';
 import { eq, desc, and, inArray } from 'drizzle-orm';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface CreateTransactionParams {
   userId: string;
@@ -32,7 +34,26 @@ export class TransactionRepository {
   }
 
   async create(data: CreateTransactionParams) {
-    const newTx = await db.insert(transactions).values(data).returning();
+    const sanitizedData = { ...data };
+    if (sanitizedData.walletId && !UUID_REGEX.test(sanitizedData.walletId)) {
+      try {
+        const userWallets = await db.select().from(wallets).where(eq(wallets.userId, sanitizedData.userId));
+        if (userWallets.length > 0) {
+          const match = sanitizedData.walletId === 'Cash'
+            ? userWallets.find((w) => w.type === 'Cash') || userWallets[0]
+            : userWallets.find((w) => w.type === 'Bank' && w.isMain) || userWallets.find((w) => w.type === 'Bank') || userWallets[0];
+          sanitizedData.walletId = match.id;
+        } else {
+          sanitizedData.walletId = null as any;
+        }
+      } catch {
+        sanitizedData.walletId = null as any;
+      }
+    }
+    if (sanitizedData.destinationWalletId && !UUID_REGEX.test(sanitizedData.destinationWalletId)) {
+      sanitizedData.destinationWalletId = null;
+    }
+    const newTx = await db.insert(transactions).values(sanitizedData).returning();
     return newTx[0];
   }
 
@@ -50,9 +71,28 @@ export class TransactionRepository {
   }
 
   async update(id: string, userId: string, data: Partial<CreateTransactionParams>) {
+    const sanitizedData = { ...data };
+    if (sanitizedData.walletId && !UUID_REGEX.test(sanitizedData.walletId)) {
+      try {
+        const userWallets = await db.select().from(wallets).where(eq(wallets.userId, userId));
+        if (userWallets.length > 0) {
+          const match = sanitizedData.walletId === 'Cash'
+            ? userWallets.find((w) => w.type === 'Cash') || userWallets[0]
+            : userWallets.find((w) => w.type === 'Bank' && w.isMain) || userWallets.find((w) => w.type === 'Bank') || userWallets[0];
+          sanitizedData.walletId = match.id;
+        } else {
+          delete sanitizedData.walletId;
+        }
+      } catch {
+        delete sanitizedData.walletId;
+      }
+    }
+    if (sanitizedData.destinationWalletId && !UUID_REGEX.test(sanitizedData.destinationWalletId)) {
+      sanitizedData.destinationWalletId = null;
+    }
     const result = await db
       .update(transactions)
-      .set(data)
+      .set(sanitizedData)
       .where(and(eq(transactions.id, id), eq(transactions.userId, userId)))
       .returning();
     return result[0] || null;

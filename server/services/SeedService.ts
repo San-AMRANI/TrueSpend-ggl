@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
+import { walletService } from './WalletService.js';
 
 export class SeedService {
   async seedForUser(userId: string) {
@@ -28,16 +29,22 @@ export class SeedService {
       }
     }
 
+    const userWallets = await walletService.getWallets(userId);
+    const mainBank = userWallets.find(w => w.type === 'Bank' && w.isMain) || userWallets.find(w => w.type === 'Bank') || userWallets[0];
+    const defaultCash = userWallets.find(w => w.type === 'Cash') || mainBank;
+
     const newTxMap: Record<string, string> = {};
     if (seedData.transactions && seedData.transactions.length > 0) {
       for (const tx of seedData.transactions) {
+        const targetWallet = tx.sourceWallet === 'Cash' || tx.walletId === 'Cash' ? defaultCash : mainBank;
         const created = await transactionRepository.create({
           userId,
           amount: tx.amount,
           type: tx.type,
-          walletId: tx.walletId,
+          walletId: targetWallet.id,
           category: tx.category,
           notes: tx.notes,
+          createdAt: tx.createdAt ? new Date(tx.createdAt) : undefined,
         });
         newTxMap[tx.id] = created.id;
       }

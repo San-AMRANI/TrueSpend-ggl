@@ -1,7 +1,80 @@
 import { apiClient } from './apiClient';
-import { CategoryBudget, KPI, Transaction, Debt, Payroll, UserSettings, Wallet, FinancialContext } from '../../types';
+import {
+  CategoryBudget,
+  KPI,
+  Transaction,
+  Debt,
+  Payroll,
+  UserSettings,
+  Wallet,
+  FinancialContext,
+  Goal,
+  Subscription,
+  DetectedSubscription,
+  ImpulseItem,
+  ImpulseStats,
+  FireProfile,
+  ResilienceAudit,
+  CustomStressSimulationResult,
+} from '../../types';
 
 export const dashboardService = {
+  getResilienceAudit: (token: string | null) => apiClient.get<ResilienceAudit>('/api/resilience/audit', token),
+  updateResilienceProfile: (payload: any, token: string | null) =>
+    apiClient.put<ResilienceAudit>('/api/resilience/profile', payload, token),
+  simulateCustomStress: (payload: any, token: string | null) =>
+    apiClient.post<CustomStressSimulationResult>('/api/resilience/simulate', payload, token),
+  getFireProfile: (token: string | null) => apiClient.get<FireProfile>('/api/fire-profile', token),
+  updateFireProfile: (payload: Partial<FireProfile>, token: string | null) =>
+    apiClient.put<FireProfile>('/api/fire-profile', payload, token),
+  getImpulseItems: (token: string | null) => apiClient.get<ImpulseItem[]>('/api/impulse', token),
+  getImpulseStats: (token: string | null) => apiClient.get<ImpulseStats>('/api/impulse/stats', token),
+  createImpulseItem: (
+    payload: {
+      name: string;
+      amount: number;
+      currency?: string;
+      category?: string;
+      notes?: string;
+      url?: string;
+      triggers?: string[];
+      urgencyScore?: number;
+      utilityScore?: number;
+      coolingHours?: number;
+    },
+    token: string | null
+  ) => apiClient.post<ImpulseItem>('/api/impulse', payload, token),
+  updateImpulseItem: (id: string, payload: Partial<ImpulseItem>, token: string | null) =>
+    apiClient.put<ImpulseItem>(`/api/impulse/${id}`, payload, token),
+  deleteImpulseItem: (id: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/impulse/${id}`, token),
+  resolveImpulseItem: (
+    id: string,
+    payload: { decision: 'resisted' | 'purchased' | 'dismissed'; notes?: string; goalId?: string; walletId?: string },
+    token: string | null
+  ) => apiClient.post<ImpulseItem>(`/api/impulse/${id}/resolve`, payload, token),
+  getSubscriptions: (token: string | null) => apiClient.get<Subscription[]>('/api/subscriptions', token),
+  createSubscription: (payload: Partial<Subscription>, token: string | null) =>
+    apiClient.post<Subscription>('/api/subscriptions', payload, token),
+  updateSubscription: (id: string, payload: Partial<Subscription>, token: string | null) =>
+    apiClient.put<Subscription>(`/api/subscriptions/${id}`, payload, token),
+  deleteSubscription: (id: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/subscriptions/${id}`, token),
+  paySubscription: (id: string, payload: { walletId?: string; date?: string }, token: string | null) =>
+    apiClient.post<{ subscription: Subscription; transaction: Transaction }>(`/api/subscriptions/${id}/pay`, payload, token),
+  detectSubscriptions: (token: string | null) =>
+    apiClient.get<DetectedSubscription[]>('/api/subscriptions/detect', token),
+  getGoals: (token: string | null) => apiClient.get<Goal[]>('/api/goals', token),
+  createGoal: (payload: { name: string; targetAmount: number; currentAmount?: number; walletId?: string | null; autoSyncBalance?: boolean; deadline?: string | null; category?: string; notes?: string }, token: string | null) =>
+    apiClient.post<Goal>('/api/goals', payload, token),
+  updateGoal: (id: string, payload: { name?: string; targetAmount?: number; currentAmount?: number; walletId?: string | null; autoSyncBalance?: boolean; deadline?: string | null; category?: string; notes?: string }, token: string | null) =>
+    apiClient.put<Goal>(`/api/goals/${id}`, payload, token),
+  contributeToGoal: (id: string, payload: { amount: number; walletId?: string; destinationWalletId?: string; note?: string; date?: string }, token: string | null) =>
+    apiClient.post<{ goal: Goal; transaction: Transaction | null }>(`/api/goals/${id}/contribute`, payload, token),
+  withdrawFromGoal: (id: string, payload: { amount: number; walletId?: string; destinationWalletId?: string; note?: string; date?: string }, token: string | null) =>
+    apiClient.post<{ goal: Goal; transaction: Transaction | null }>(`/api/goals/${id}/withdraw`, payload, token),
+  deleteGoal: (id: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/goals/${id}`, token),
   getContexts: (token: string | null) => apiClient.get<FinancialContext[]>('/api/contexts', token),
   createContext: (payload: Partial<FinancialContext>, token: string | null) =>
     apiClient.post<FinancialContext>('/api/contexts', payload, token),
