@@ -12,7 +12,6 @@ import { SettingsTab } from './dashboard/SettingsTab';
 import { BudgetsTab } from './dashboard/BudgetsTab';
 import { GoalsTab } from './dashboard/GoalsTab';
 import { SubscriptionsTab } from './dashboard/SubscriptionsTab';
-import { FreedomTab } from './dashboard/FreedomTab';
 import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { ReportsTab } from './dashboard/ReportsTab';
@@ -78,8 +77,6 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleDeleteSubscription,
     handlePaySubscription,
     handleDetectSubscriptions,
-    fireProfile,
-    handleUpdateFireProfile,
     handleCreateContext,
     handleUpdateContext,
     handleDeleteContext,
@@ -213,19 +210,6 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onDeleteSubscription={handleDeleteSubscription}
           onPaySubscription={handlePaySubscription}
           onDetectSubscriptions={handleDetectSubscriptions}
-        />
-      )}
-
-      {activeTab === 'freedom' && (
-        <FreedomTab
-          kpis={kpis}
-          wallets={kpis?.accounts || []}
-          goals={goals}
-          debts={debts}
-          monthlySalary={userSettings?.salary}
-          fireProfile={fireProfile}
-          onUpdateFireProfile={handleUpdateFireProfile}
-          onNavigateToTab={setActiveTab}
         />
       )}
 

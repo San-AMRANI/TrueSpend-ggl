@@ -11,13 +11,9 @@ import {
   Goal,
   Subscription,
   DetectedSubscription,
-  FireProfile,
 } from '../../types';
 
 export const dashboardService = {
-  getFireProfile: (token: string | null) => apiClient.get<FireProfile>('/api/fire-profile', token),
-  updateFireProfile: (payload: Partial<FireProfile>, token: string | null) =>
-    apiClient.put<FireProfile>('/api/fire-profile', payload, token),
   getSubscriptions: (token: string | null) => apiClient.get<Subscription[]>('/api/subscriptions', token),
   createSubscription: (payload: Partial<Subscription>, token: string | null) =>
     apiClient.post<Subscription>('/api/subscriptions', payload, token),

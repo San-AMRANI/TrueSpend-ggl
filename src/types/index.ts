@@ -220,19 +220,6 @@ export interface UserSettings {
   googleDriveToken?: string;
 }
 
-export interface FireProfile {
-  id?: string;
-  userId?: string;
-  currentAge: number;
-  targetAge: number;
-  expectedReturn: number;
-  safeWithdrawalRate: number;
-  monthlySavingsBoost: number;
-  expenseTrimPercent: number;
-  customMonthlyExpense?: number | null;
-  updatedAt?: string;
-}
-
 export type DashboardTab =
   | 'overview'
   | 'calendar'
@@ -240,7 +227,6 @@ export type DashboardTab =
   | 'budgets'
   | 'goals'
   | 'subscriptions'
-  | 'freedom'
   | 'what-if'
   | 'debts'
   | 'analytics'

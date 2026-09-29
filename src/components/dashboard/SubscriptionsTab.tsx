@@ -601,7 +601,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
         </motion.div>
       )}
 
-      {/* Pruning & Freedom Simulator */}
+      {/* Pruning & Savings Simulator */}
       <Card className="border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-r from-emerald-50/40 via-teal-50/20 to-white dark:from-emerald-950/20 dark:via-teal-950/10 dark:to-gray-900">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
@@ -611,7 +611,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
               </div>
               <div>
                 <CardTitle className="text-base text-gray-900 dark:text-gray-100">
-                  Subscription Pruner & Freedom Simulator
+                  Subscription Pruner & Savings Simulator
                 </CardTitle>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Select subscriptions below to simulate what you'd save by cancelling or renegotiating them.

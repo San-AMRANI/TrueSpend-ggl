@@ -2,7 +2,7 @@ import { googleSignIn, getGoogleAccessToken } from '../lib/googleAuth';
 import { uploadToGoogleDrive } from '../lib/driveUpload';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
-import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll, Goal, Subscription, DetectedSubscription, FireProfile } from '../types';
+import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll, Goal, Subscription, DetectedSubscription } from '../types';
 import { useNotifications } from './useNotifications';
 
 export function useDashboardData(token: string | null) {
@@ -14,7 +14,6 @@ export function useDashboardData(token: string | null) {
   const [contexts, setContexts] = useState<any[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [fireProfile, setFireProfile] = useState<FireProfile | null>(null);
   const [userSettings, setUserSettings] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -31,7 +30,7 @@ export function useDashboardData(token: string | null) {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData, fireProfileData] = await Promise.all([
+      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
@@ -41,7 +40,6 @@ export function useDashboardData(token: string | null) {
         dashboardService.getContexts(token),
         dashboardService.getGoals(token),
         dashboardService.getSubscriptions(token),
-        dashboardService.getFireProfile(token).catch(() => null),
       ]);
 
       setKpis(kpiData || null);
@@ -53,7 +51,6 @@ export function useDashboardData(token: string | null) {
       setContexts(contextData || []);
       setGoals(goalData || []);
       setSubscriptions(subData || []);
-      setFireProfile(fireProfileData || null);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -572,21 +569,6 @@ export function useDashboardData(token: string | null) {
     }
   };
 
-  const handleUpdateFireProfile = async (payload: Partial<FireProfile>) => {
-    if (!token) return;
-    setIsSaving(true);
-    try {
-      const res = await dashboardService.updateFireProfile(payload, token);
-      setFireProfile(res);
-      return res;
-    } catch (error) {
-      console.error('Error updating FIRE profile:', error);
-      throw error;
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const syncedGoals = useMemo(() => {
     if (!goals) return [];
     if (!kpis?.accounts) return goals;
@@ -658,8 +640,6 @@ export function useDashboardData(token: string | null) {
     handleDeleteSubscription,
     handlePaySubscription,
     handleDetectSubscriptions,
-    fireProfile,
-    handleUpdateFireProfile,
     notifications,
   };
 }

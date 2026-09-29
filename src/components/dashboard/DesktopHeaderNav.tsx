@@ -19,7 +19,6 @@ import {
   Map,
   Target,
   Repeat,
-  Flame,
   ShieldCheck,
   ShieldAlert,
   Sparkles,
@@ -48,7 +47,6 @@ const mainTabs: NavTabItem[] = [
 ];
 
 const moreTabs: NavTabItem[] = [
-  { id: 'freedom', label: 'Freedom & FIRE', icon: Flame },
   { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
   { id: 'goals', label: 'Goals', icon: Target },
   { id: 'debts', label: 'Debts & Splits', icon: Users },

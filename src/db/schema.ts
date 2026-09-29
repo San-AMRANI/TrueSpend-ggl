@@ -224,7 +224,6 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   financialContexts: many(financialContexts),
   goals: many(goals),
   subscriptions: many(subscriptions),
-  fireProfile: one(fireProfiles),
   notificationDevices: many(notificationDevices),
   pushSubscriptions: many(pushSubscriptions),
   notificationPreferences: one(notificationPreferences),
@@ -352,27 +351,6 @@ export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
   wallet: one(wallets, {
     fields: [subscriptions.walletId],
     references: [wallets.id],
-  }),
-}));
-
-export const fireProfiles = pgTable('fire_profiles', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
-  currentAge: integer('current_age').default(28).notNull(),
-  targetAge: integer('target_age').default(55).notNull(),
-  expectedReturn: decimal('expected_return').default('7.5').notNull(),
-  safeWithdrawalRate: decimal('safe_withdrawal_rate').default('4.0').notNull(),
-  monthlySavingsBoost: decimal('monthly_savings_boost').default('0').notNull(),
-  expenseTrimPercent: decimal('expense_trim_percent').default('0').notNull(),
-  customMonthlyExpense: decimal('custom_monthly_expense'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-export const fireProfilesRelations = relations(fireProfiles, ({ one }) => ({
-  user: one(users, {
-    fields: [fireProfiles.userId],
-    references: [users.id],
   }),
 }));
 
