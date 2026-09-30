@@ -33,8 +33,8 @@ export class WalletService {
     }
 
     const type = dto.type || 'Bank';
-    if (!['Bank', 'Cash', 'Savings'].includes(type)) {
-      throw new Error('Invalid wallet type. Allowed types: Bank, Cash, Savings');
+    if (!['Bank', 'Cash', 'Savings', 'Brokerage'].includes(type)) {
+      throw new Error('Invalid wallet type. Allowed types: Bank, Cash, Savings, Brokerage');
     }
 
     const existingWallets = await walletRepository.findAllByUserId(userId);
@@ -67,7 +67,7 @@ export class WalletService {
     }
 
     if (dto.type !== undefined) {
-      if (!['Bank', 'Cash', 'Savings'].includes(dto.type)) {
+      if (!['Bank', 'Cash', 'Savings', 'Brokerage'].includes(dto.type)) {
         throw new Error('Invalid wallet type');
       }
       updateData.type = dto.type;

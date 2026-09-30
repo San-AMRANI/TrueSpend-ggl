@@ -47,9 +47,9 @@ export const dashboardService = {
     apiClient.post<{ success: boolean; count: number }>('/api/contexts/link-transactions', { transactionIds, contextId }, token),
   getKpis: (token: string | null) => apiClient.get<KPI>('/api/kpis', token),
   getWallets: (token: string | null) => apiClient.get<Wallet[]>('/api/wallets', token),
-  createWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
+  createWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Brokerage'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
     apiClient.post<Wallet>('/api/wallets', payload, token),
-  updateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
+  updateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Brokerage'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
     apiClient.put<Wallet>(`/api/wallets/${id}`, payload, token),
   deleteWallet: (id: string, reassignToWalletId: string | undefined, token: string | null) =>
     apiClient.delete<{ success: boolean; message: string }>(`/api/wallets/${id}${reassignToWalletId ? `?reassignTo=${reassignToWalletId}` : ''}`, token),
@@ -137,4 +137,37 @@ export const dashboardService = {
   importSql: (sql: string, token: string | null) =>
     apiClient.post<{ success: boolean; message: string; restored: Record<string, number> }>('/api/settings/import-sql', { sql }, token),
   seedData: (token: string | null) => apiClient.post<{ success: boolean }>('/api/seed', {}, token),
+
+  // ─── Investment API ──────────────────────────────────────────────────────
+  getPortfolio: (token: string | null) =>
+    apiClient.get<any>('/api/investment/portfolio', token),
+  createHolding: (payload: any, token: string | null) =>
+    apiClient.post<any>('/api/investment/holdings', payload, token),
+  updateHolding: (id: string, payload: any, token: string | null) =>
+    apiClient.put<any>(`/api/investment/holdings/${id}`, payload, token),
+  deleteHolding: (id: string, token: string | null) =>
+    apiClient.delete<any>(`/api/investment/holdings/${id}`, token),
+  executeBuyOrder: (payload: any, token: string | null) =>
+    apiClient.post<any>('/api/investment/trade/buy', payload, token),
+  executeSellOrder: (payload: any, token: string | null) =>
+    apiClient.post<any>('/api/investment/trade/sell', payload, token),
+  recordDividend: (payload: any, token: string | null) =>
+    apiClient.post<any>('/api/investment/income/dividend', payload, token),
+  recordStakingYield: (payload: any, token: string | null) =>
+    apiClient.post<any>('/api/investment/income/staking', payload, token),
+  setManualPrice: (payload: any, token: string | null) =>
+    apiClient.put<any>('/api/investment/prices/manual', payload, token),
+  refreshInvestmentPrices: (token: string | null) =>
+    apiClient.post<any>('/api/investment/prices/refresh', {}, token),
+  getDcaPlans: (token: string | null) =>
+    apiClient.get<any[]>('/api/investment/dca', token),
+  createDcaPlan: (payload: any, token: string | null) =>
+    apiClient.post<any>('/api/investment/dca', payload, token),
+  updateDcaPlan: (id: string, payload: any, token: string | null) =>
+    apiClient.put<any>(`/api/investment/dca/${id}`, payload, token),
+  deleteDcaPlan: (id: string, token: string | null) =>
+    apiClient.delete<any>(`/api/investment/dca/${id}`, token),
+  getNetWorthHistory: (period: '6m' | '1y' | 'all', token: string | null) =>
+    apiClient.get<any[]>(`/api/investment/net-worth/history?period=${period}`, token),
 };
+

@@ -341,7 +341,7 @@ export function useDashboardData(token: string | null) {
     }
   };
 
-  const handleCreateWallet = async (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }) => {
+  const handleCreateWallet = async (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Brokerage'; isMain?: boolean; initialBalance?: number }) => {
     if (!token) return;
     setIsSaving(true);
     try {
@@ -353,7 +353,7 @@ export function useDashboardData(token: string | null) {
     }
   };
 
-  const handleUpdateWallet = async (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }) => {
+  const handleUpdateWallet = async (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Brokerage'; isMain?: boolean; initialBalance?: number }) => {
     if (!token) return;
     setIsSaving(true);
     try {

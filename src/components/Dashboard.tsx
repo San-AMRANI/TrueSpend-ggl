@@ -16,6 +16,8 @@ import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { ReportsTab } from './dashboard/ReportsTab';
 import { ContextsTab } from './dashboard/ContextsTab';
+import { InvestmentTab } from './dashboard/InvestmentTab';
+import { NetWorthDashboard } from './dashboard/NetWorthDashboard';
 import { AIChat } from './AIChat';
 import type { DashboardTab } from '../types';
 
@@ -283,6 +285,23 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           handleLinkTransactions={handleLinkTransactionsToContext}
         />
       )}
+      {activeTab === 'investment' && (
+        <InvestmentTab
+          kpis={kpis}
+          wallets={kpis?.accounts || []}
+          token={token}
+          onDataChange={fetchData}
+        />
+      )}
+
+      {activeTab === 'net-worth' && (
+        <NetWorthDashboard
+          kpis={kpis}
+          wallets={kpis?.accounts || []}
+          token={token}
+        />
+      )}
+
       {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}
         </>
       )}

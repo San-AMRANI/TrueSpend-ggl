@@ -24,7 +24,7 @@ export interface Wallet {
   id: string;
   userId: string;
   name: string;
-  type: 'Bank' | 'Cash' | 'Savings';
+  type: 'Bank' | 'Cash' | 'Savings' | 'Brokerage';
   isMain: boolean;
   initialBalance: string;
   balance: number;
@@ -70,9 +70,13 @@ export interface KPI {
     Bank?: number;
     Cash?: number;
     Savings?: number;
+    Brokerage?: number;
   };
   healthScore: number;
   healthFactors: HealthFactor[];
+  investmentValue?: number;
+  netWorthTotal?: number;
+  safeToInvestBreakdown?: SafeToInvestBreakdown;
 }
 
 export type FinancialContextType = 'Trip' | 'Work / Mission' | 'Project' | 'Life Event' | 'Other';
@@ -220,7 +224,106 @@ export interface UserSettings {
   googleDriveToken?: string;
 }
 
+export type InvestmentAssetType = 'crypto' | 'stock' | 'etf' | 'manual';
+export type InvestmentAction = 'Buy' | 'Sell' | 'Dividend' | 'Staking';
+
+export interface InvestmentHolding {
+  id: string;
+  userId: string;
+  walletId: string;
+  walletName?: string;
+  symbol: string;
+  name: string;
+  assetType: InvestmentAssetType;
+  quantity: string;
+  avgCostBasis: string;
+  currency: string;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Computed price fields
+  currentPriceUsd?: number;
+  currentPriceMad?: number;
+  currentPriceEur?: number;
+  marketValueMad?: number;
+  unrealizedGainLoss?: number;
+  unrealizedGainLossPct?: number;
+  lastPriceFetchedAt?: string;
+}
+
+export interface AssetPrice {
+  symbol: string;
+  assetType: InvestmentAssetType;
+  priceUsd: number;
+  priceMad: number;
+  priceEur: number;
+  fetchedAt: string;
+  source: string;
+}
+
+export interface DcaPlan {
+  id: string;
+  userId: string;
+  symbol: string;
+  assetName: string;
+  assetType: InvestmentAssetType;
+  walletId?: string | null;
+  walletName?: string | null;
+  amount: string;
+  currency: string;
+  frequency: 'weekly' | 'biweekly' | 'monthly';
+  nextDate: string;
+  active: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NetWorthSnapshot {
+  id: string;
+  userId: string;
+  date: string;
+  liquidValue: string;
+  investmentValue: string;
+  debtValue: string;
+  netWorth: string;
+  currency: string;
+  createdAt: string;
+}
+
+export interface InvestmentPortfolioSummary {
+  totalInvestedMad: number;
+  totalMarketValueMad: number;
+  totalUnrealizedGainLoss: number;
+  totalUnrealizedGainLossPct: number;
+  totalRealizedGainLoss: number;
+  passiveIncomeMonthlyMad: number;
+  holdings: InvestmentHolding[];
+}
+
+export interface SafeToInvestBreakdown {
+  salary: number;
+  fixedBills: number;
+  loans: number;
+  groceries: number;
+  emergencyBuffer: number;
+  projectedCashNeeds: number;
+  safeToInvest: number;
+}
+
+export interface FIREMetrics {
+  annualExpenses: number;
+  fiNumber: number;
+  currentNetWorth: number;
+  progressPct: number;
+  yearsToFIRE: number | null;
+  safeWithdrawalRate: number;
+  monthlyPassiveIncome: number;
+  monthlyExpensesNeeded: number;
+}
+
 export type DashboardTab =
+
   | 'overview'
   | 'calendar'
   | 'transactions'
@@ -234,6 +337,105 @@ export type DashboardTab =
   | 'chat'
   | 'reports'
   | 'cash-flow'
-  | 'contexts';
+  | 'contexts'
+  | 'investment'
+  | 'net-worth';
 
 
+
+export interface SafeToInvestBreakdown {
+  salary: number;
+  fixedBills: number;
+  loans: number;
+  groceries: number;
+  emergencyBuffer: number;
+  projectedCashNeeds: number;
+  safeToInvest: number;
+}
+
+export type InvestmentAssetType = 'crypto' | 'stock' | 'etf' | 'manual';
+export type InvestmentAction = 'Buy' | 'Sell' | 'Dividend' | 'Staking';
+
+export interface InvestmentHolding {
+  id: string;
+  userId: string;
+  walletId: string;
+  walletName?: string;
+  symbol: string;
+  name: string;
+  assetType: InvestmentAssetType;
+  quantity: string;
+  avgCostBasis: string;
+  currency: string;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  currentPriceUsd?: number;
+  currentPriceMad?: number;
+  currentPriceEur?: number;
+  marketValueMad?: number;
+  unrealizedGainLoss?: number;
+  unrealizedGainLossPct?: number;
+  lastPriceFetchedAt?: string;
+}
+
+export interface AssetPrice {
+  symbol: string;
+  assetType: InvestmentAssetType;
+  priceUsd: number;
+  priceMad: number;
+  priceEur: number;
+  fetchedAt: string;
+  source: string;
+}
+
+export interface DcaPlan {
+  id: string;
+  userId: string;
+  symbol: string;
+  assetName: string;
+  assetType: InvestmentAssetType;
+  walletId?: string | null;
+  walletName?: string | null;
+  amount: string;
+  currency: string;
+  frequency: 'weekly' | 'biweekly' | 'monthly';
+  nextDate: string;
+  active: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NetWorthSnapshot {
+  id: string;
+  userId: string;
+  date: string;
+  liquidValue: string;
+  investmentValue: string;
+  debtValue: string;
+  netWorth: string;
+  currency: string;
+  createdAt: string;
+}
+
+export interface InvestmentPortfolioSummary {
+  totalInvestedMad: number;
+  totalMarketValueMad: number;
+  totalUnrealizedGainLoss: number;
+  totalUnrealizedGainLossPct: number;
+  totalRealizedGainLoss: number;
+  passiveIncomeMonthlyMad: number;
+  holdings: InvestmentHolding[];
+}
+
+export interface FIREMetrics {
+  annualExpenses: number;
+  fiNumber: number;
+  currentNetWorth: number;
+  progressPct: number;
+  yearsToFIRE: number | null;
+  safeWithdrawalRate: number;
+  monthlyPassiveIncome: number;
+  monthlyExpensesNeeded: number;
+}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Landmark, Banknote, Wallet as WalletIcon, Plus, Edit2, Trash2, Star, Check, AlertCircle, X } from 'lucide-react';
+import { Landmark, Banknote, Wallet as WalletIcon, Plus, Edit2, Trash2, Star, Check, AlertCircle, X, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -148,6 +148,8 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
         return <Banknote className="h-5 w-5 text-green-600 dark:text-green-400" />;
       case 'Savings':
         return <WalletIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />;
+      case 'Brokerage':
+        return <TrendingUp className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />;
       default:
         return <WalletIcon className="h-5 w-5 text-gray-600 dark:text-gray-400" />;
     }
@@ -216,6 +218,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 <option value="Bank">Bank Account</option>
                 <option value="Cash">Physical Cash</option>
                 <option value="Savings">Savings / Emergency</option>
+                <option value="Brokerage">Brokerage / Exchange</option>
               </Select>
             </div>
 

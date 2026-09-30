@@ -25,7 +25,7 @@ export class WalletRepository {
     return result[0] || null;
   }
 
-  async create(data: { userId: string; name: string; type: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: string }) {
+  async create(data: { userId: string; name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Brokerage'; isMain?: boolean; initialBalance?: string }) {
     if (data.isMain) {
       await this.unsetOtherMain(data.userId);
     }
@@ -33,7 +33,7 @@ export class WalletRepository {
     return result[0];
   }
 
-  async update(id: string, userId: string, data: Partial<{ name: string; type: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: string }>) {
+  async update(id: string, userId: string, data: Partial<{ name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Brokerage'; isMain?: boolean; initialBalance?: string }>) {
     if (data.isMain) {
       await this.unsetOtherMain(userId, id);
     }

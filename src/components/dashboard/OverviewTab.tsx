@@ -70,8 +70,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     .filter((debt) => debt.type === 'Payable' && debt.status === 'Pending')
     .reduce((sum, debt) => sum + Number.parseFloat(debt.remainingBalance), 0);
   
-  // Phase 3: Net Worth Tracking (Liquidity + Receivables - Payables)
-  const netWorth = (kpis?.totalLiquidity ?? 0) + activeReceivables - activePayables;
+  // Phase 3: Net Worth Tracking — uses server-computed value (liquid + investments + receivables - payables)
+  const netWorth = kpis?.netWorthTotal ?? ((kpis?.totalLiquidity ?? 0) + activeReceivables - activePayables);
+  const investmentValue = kpis?.investmentValue ?? 0;
   const dailyStatusStyles = { on_track: 'text-blue-600', warning: 'text-amber-600', critical: 'text-red-600' };
 
   // Subscriptions metrics
@@ -144,8 +145,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </div>
             {/* Net Worth Badge */}
             <div className="mt-4 pt-3 border-t border-gray-800">
-              <p className="text-xs text-gray-400">Estimated Net Worth</p>
-              <p className="text-lg font-semibold text-white">{netWorth.toFixed(2)} MAD</p>
+              <p className="text-xs text-gray-400">Total Net Worth</p>
+              <p className="text-lg font-semibold text-white">{netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })} MAD</p>
+              {investmentValue > 0 && (
+                <p className="text-xs text-indigo-400 mt-0.5">📈 +{investmentValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} investments</p>
+              )}
+              <button onClick={() => setActiveTab('net-worth')} className="text-[10px] text-gray-500 hover:text-indigo-400 mt-1 transition-colors">
+                View trajectory →
+              </button>
             </div>
           </CardContent>
         </Card>
