@@ -12,7 +12,7 @@ import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 import { DesktopHeaderNav } from './components/dashboard/DesktopHeaderNav';
 import type { DashboardTab } from './types';
-import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp } from 'lucide-react';
+import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, BriefcaseBusiness, Landmark, Route, FlaskConical } from 'lucide-react';
 
 const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}logo-1.png`;
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
@@ -43,7 +43,11 @@ function AppContent() {
   }, []);
 
   const tabs: { id: DashboardTab; label: string; icon: any }[] = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'overview', label: 'Financial Home', icon: LayoutDashboard },
+    { id: 'plan', label: 'Salary Plan', icon: BriefcaseBusiness },
+    { id: 'roadmap', label: 'Roadmap', icon: Route },
+    { id: 'portfolio', label: 'Portfolio', icon: Landmark },
+    { id: 'decision-lab', label: 'Decision Lab', icon: FlaskConical },
     { id: 'cash-flow', label: 'Cash Flow', icon: TrendingUp },
     { id: 'calendar', label: 'Calendar', icon: CalendarDays },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },

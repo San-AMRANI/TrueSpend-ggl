@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
 import apiRouter from "./server/routes/index.js";
 import { NotificationScheduler } from './server/services/NotificationScheduler.js';
+import { FinancialOperatingSystemScheduler } from './server/services/FinancialOperatingSystemScheduler.js';
 
 async function startServer() {
   const app = express();
@@ -19,6 +20,8 @@ async function startServer() {
   // Notification Scheduler
   const scheduler = new NotificationScheduler();
   scheduler.start();
+  const financialOperatingSystemScheduler = new FinancialOperatingSystemScheduler();
+  financialOperatingSystemScheduler.start();
 
   // Vite middleware for development vs static fallback for production
   if (process.env.NODE_ENV !== "production") {

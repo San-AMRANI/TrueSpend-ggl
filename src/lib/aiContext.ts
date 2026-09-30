@@ -1,4 +1,4 @@
-import type { CategoryBudget, Debt, KPI, Payroll, Transaction, Goal } from '../types/index.js';
+import type { CategoryBudget, Debt, KPI, Payroll, Transaction, Goal, FinancialHomeResponse, PortfolioSummary } from '../types/index.js';
 import { financialPeriodLabel, getCurrentFinancialMonth, getPreviousFinancialMonth, isInFinancialMonth } from './financialMonth.js';
 
 const amountOf = (value: string | number | null | undefined) => Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : 0;
@@ -8,7 +8,7 @@ const dateKey = (value: string | Date | null | undefined) => {
 };
 
 export function buildAiContextSnapshot({
-  kpis, transactions, debts, budgets, payrolls, goals = [],
+  kpis, transactions, debts, budgets, payrolls, goals = [], financialHome = null, portfolio = null,
 }: {
   kpis: KPI | null;
   transactions: Transaction[];
@@ -16,6 +16,8 @@ export function buildAiContextSnapshot({
   budgets: CategoryBudget[];
   payrolls: Payroll[];
   goals?: Goal[];
+  financialHome?: FinancialHomeResponse | null;
+  portfolio?: PortfolioSummary | null;
 }) {
   const current = getCurrentFinancialMonth(payrolls);
   const previous = current ? getPreviousFinancialMonth(payrolls, current) : null;
@@ -61,6 +63,32 @@ export function buildAiContextSnapshot({
         notes: goal.notes,
       };
     }),
+    financialOperatingSystem: financialHome ? {
+      snapshot: {
+        asOf: financialHome.snapshot.asOf,
+        financialPeriod: financialHome.snapshot.financialPeriod,
+        liquidCash: financialHome.snapshot.liquidCash,
+        protectedEmergencyCash: financialHome.snapshot.protectedEmergencyCash,
+        reservedForCommitments: financialHome.snapshot.reservedForCommitments,
+        reservedForGoals: financialHome.snapshot.reservedForGoals,
+        safeToSpend: financialHome.snapshot.safeToSpend,
+        investmentCapacity: financialHome.snapshot.investmentCapacity,
+        pendingPayables: financialHome.snapshot.pendingPayables,
+        pendingReceivables: financialHome.snapshot.pendingReceivables,
+        investmentMarketValue: financialHome.snapshot.investmentMarketValue,
+        netWorth: financialHome.snapshot.netWorth,
+        forecast: financialHome.snapshot.forecast,
+        buffer: financialHome.snapshot.buffer,
+        confidence: financialHome.snapshot.confidence,
+        assumptions: financialHome.snapshot.assumptions,
+        safeToSpendBreakdown: financialHome.snapshot.safeToSpendBreakdown,
+      },
+      profile: { strategy: financialHome.profile.strategy, riskPreference: financialHome.profile.riskPreference, investmentExperience: financialHome.profile.investmentExperience, investmentHorizon: financialHome.profile.investmentHorizon },
+      activePlan: financialHome.activePlan ? { id: financialHome.activePlan.id, status: financialHome.activePlan.status, incomeAmount: financialHome.activePlan.incomeAmount, allocations: financialHome.activePlan.allocations.map((allocation) => ({ id: allocation.id, type: allocation.type, name: allocation.name, amount: allocation.amount, status: allocation.status })) } : null,
+      recommendations: financialHome.recommendations.map((recommendation) => ({ id: recommendation.id, type: recommendation.type, title: recommendation.title, summary: recommendation.summary, confidence: recommendation.confidence })),
+      portfolio: portfolio ? { marketValue: portfolio.marketValue, totalContributions: portfolio.totalContributions, unrealizedGain: portfolio.unrealizedGain, realizedGain: portfolio.realizedGain, riskConcentration: portfolio.riskConcentration, priceFreshness: portfolio.priceFreshness, latestPriceAsOf: portfolio.holdings.map((holding) => holding.priceAsOf).filter(Boolean).sort().at(-1) || null } : null,
+      limitations: 'Investment values are not cash available to spend. Explain deterministic facts and proposals; never predict prices or guarantee returns.',
+    } : null,
     currentPeriodTransactions: (current ? periodTransactions : transactions.slice(0, 30))
       .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
       .map((transaction) => ({ date: dateKey(transaction.createdAt), amount: amountOf(transaction.amount), type: transaction.type, category: transaction.category, note: transaction.notes })),

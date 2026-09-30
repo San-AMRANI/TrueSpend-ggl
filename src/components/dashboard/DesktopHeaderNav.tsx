@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { motion } from 'motion/react';
+import { motion as motionBase } from 'motion/react';
 import { DashboardTab } from '../../types';
 import {
   LayoutDashboard,
@@ -22,7 +22,14 @@ import {
   ShieldCheck,
   ShieldAlert,
   Sparkles,
+  BriefcaseBusiness,
+  Landmark,
 } from 'lucide-react';
+
+// The installed Motion build's JSX declarations omit layout animation props.
+// Preserve the runtime animation while keeping this component compatible with
+// the project's React 19 type package.
+const motion: { div: React.ComponentType<any> } = { div: motionBase.div as any };
 
 interface DesktopHeaderNavProps {
   activeTab: DashboardTab;
@@ -36,7 +43,9 @@ interface NavTabItem {
 }
 
 const mainTabs: NavTabItem[] = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'overview', label: 'Financial Home', icon: LayoutDashboard },
+  { id: 'plan', label: 'Salary Plan', icon: BriefcaseBusiness },
+  { id: 'portfolio', label: 'Portfolio', icon: Landmark },
   { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'cash-flow', label: 'Cash Flow', icon: TrendingUp },
@@ -51,6 +60,8 @@ const moreTabs: NavTabItem[] = [
   { id: 'goals', label: 'Goals', icon: Target },
   { id: 'debts', label: 'Debts & Splits', icon: Users },
   { id: 'what-if', label: 'Smart Calculator & Tools', icon: Calculator },
+  { id: 'roadmap', label: 'Roadmap', icon: Map },
+  { id: 'decision-lab', label: 'Decision Lab', icon: Calculator },
   { id: 'reports', label: 'Reports', icon: FileBarChart },
 ];
 

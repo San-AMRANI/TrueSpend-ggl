@@ -2,7 +2,7 @@ import { googleSignIn, getGoogleAccessToken } from '../lib/googleAuth';
 import { uploadToGoogleDrive } from '../lib/driveUpload';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
-import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll, Goal, Subscription, DetectedSubscription } from '../types';
+import { CategoryBudget, KPI, Transaction, Debt, DashboardTab, Payroll, Goal, Subscription, DetectedSubscription, FinancialHomeResponse, FinancialPlan, FinancialProfile, InvestmentAccount, InvestmentAsset, InvestmentEvent, PortfolioSummary, Recommendation, BudgetCategoryPreference } from '../types';
 import { useNotifications } from './useNotifications';
 
 export function useDashboardData(token: string | null) {
@@ -23,6 +23,13 @@ export function useDashboardData(token: string | null) {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [whatIfAmount, setWhatIfAmount] = useState<number>(0);
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
+  const [financialHome, setFinancialHome] = useState<FinancialHomeResponse | null>(null);
+  const [financialPlans, setFinancialPlans] = useState<FinancialPlan[]>([]);
+  const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
+  const [investmentAccounts, setInvestmentAccounts] = useState<InvestmentAccount[]>([]);
+  const [investmentAssets, setInvestmentAssets] = useState<InvestmentAsset[]>([]);
+  const [investmentEvents, setInvestmentEvents] = useState<InvestmentEvent[]>([]);
+  const [budgetCategoryPreferences, setBudgetCategoryPreferences] = useState<BudgetCategoryPreference[]>([]);
 
   const notifications = useNotifications();
 
@@ -51,6 +58,26 @@ export function useDashboardData(token: string | null) {
       setContexts(contextData || []);
       setGoals(goalData || []);
       setSubscriptions(subData || []);
+
+      // V2 data is additive. If migrations are not deployed yet, the established
+      // V1 dashboard remains usable and the V2 home shows its setup state.
+      try {
+        const [homeData, planData, portfolioData, accountData, assetData, eventData, preferenceData] = await Promise.all([
+          dashboardService.getFinancialHome(token), dashboardService.getFinancialPlans(token), dashboardService.getPortfolio(token),
+          dashboardService.getInvestmentAccounts(token), dashboardService.getInvestmentAssets(token), dashboardService.getInvestmentEvents(token),
+          dashboardService.getBudgetCategoryPreferences(token),
+        ]);
+        setFinancialHome(homeData);
+        setFinancialPlans(planData);
+        setPortfolio(portfolioData);
+        setInvestmentAccounts(accountData);
+        setInvestmentAssets(assetData);
+        setInvestmentEvents(eventData);
+        setBudgetCategoryPreferences(preferenceData);
+      } catch (v2Error) {
+        console.warn('V2 financial operating system data is not available yet:', v2Error);
+        setFinancialHome(null);
+      }
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -569,6 +596,122 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const refreshFinancialOperatingSystem = async () => {
+    if (!token) return;
+    await fetchData();
+  };
+
+  const handleUpdateFinancialProfile = async (payload: Partial<FinancialProfile>, checkup = false) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const result = checkup
+        ? (await dashboardService.completeFinancialCheckup(payload, token)).profile
+        : await dashboardService.updateFinancialProfile(payload, token);
+      await refreshFinancialOperatingSystem();
+      return result;
+    } finally { setIsSaving(false); }
+  };
+
+  const handleUpdateBudgetCategoryPreference = async (payload: Pick<BudgetCategoryPreference, 'category' | 'classification' | 'isLocked' | 'neverAutoChange'>) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const result = await dashboardService.updateBudgetCategoryPreference(payload, token);
+      await refreshFinancialOperatingSystem();
+      return result;
+    } finally { setIsSaving(false); }
+  };
+
+  const handleCreateFinancialPlanDraft = async (payload: { incomeAmount: number; payrollId?: string; sourceTransactionId?: string; periodStart?: string; periodEnd?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try { const result = await dashboardService.createFinancialPlanDraft(payload, token); await refreshFinancialOperatingSystem(); return result; }
+    finally { setIsSaving(false); }
+  };
+
+  const handleUpdateFinancialPlan = async (id: string, allocations: Array<{ id: string; amount?: string; name?: string; category?: string | null; goalId?: string | null; investmentAccountId?: string | null; sourceWalletId?: string | null; destinationWalletId?: string | null }>) => {
+    if (!token) return;
+    setIsSaving(true);
+    try { const result = await dashboardService.updateFinancialPlan(id, allocations, token); await refreshFinancialOperatingSystem(); return result; }
+    finally { setIsSaving(false); }
+  };
+
+  const handleApproveFinancialPlan = async (id: string, payload: { allocationIds: string[]; sourceWalletId?: string; confirmWarnings?: string[] }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try { const result = await dashboardService.approveFinancialPlan(id, payload, token); await refreshFinancialOperatingSystem(); return result; }
+    finally { setIsSaving(false); }
+  };
+
+  const handleReplanFinancialPlan = async (id: string) => {
+    if (!token) return;
+    setIsSaving(true);
+    try { const result = await dashboardService.replanFinancialPlan(id, token); await refreshFinancialOperatingSystem(); return result; }
+    finally { setIsSaving(false); }
+  };
+
+  const handleCancelFinancialPlan = async (id: string) => {
+    if (!token) return;
+    setIsSaving(true);
+    try { const result = await dashboardService.cancelFinancialPlan(id, token); await refreshFinancialOperatingSystem(); return result; }
+    finally { setIsSaving(false); }
+  };
+
+  const handleRecommendationStatus = async (id: string, action: 'viewed' | 'dismiss' | 'snooze' | 'approve', until?: string) => {
+    if (!token) return;
+    const result = await dashboardService.updateRecommendationStatus(id, action, until ? { until } : undefined, token);
+    await refreshFinancialOperatingSystem();
+    return result;
+  };
+
+  const handleCreateInvestmentAccount = async (payload: Omit<InvestmentAccount, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'isArchived'>) => {
+    if (!token) return;
+    setIsSaving(true);
+    try { const result = await dashboardService.createInvestmentAccount(payload, token); await refreshFinancialOperatingSystem(); return result; }
+    finally { setIsSaving(false); }
+  };
+
+  const handleCreateInvestmentAsset = async (payload: Omit<InvestmentAsset, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'isActive'>) => {
+    if (!token) return;
+    setIsSaving(true);
+    try { const result = await dashboardService.createInvestmentAsset(payload, token); await refreshFinancialOperatingSystem(); return result; }
+    finally { setIsSaving(false); }
+  };
+
+  const handleCreateInvestmentEvent = async (payload: { investmentAccountId: string; assetId?: string | null; type: InvestmentEvent['type']; tradeDate?: string; units?: number; unitPrice?: number; quoteCurrency?: string; grossAmount: number; feeAmount?: number; feeCurrency?: string; exchangeRateToBase?: number; notes?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try { const result = await dashboardService.createInvestmentEvent(payload, token); await refreshFinancialOperatingSystem(); return result; }
+    finally { setIsSaving(false); }
+  };
+
+  const handleRecordManualPrice = async (payload: { assetId: string; price: number; currency: string; capturedAt?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try { const result = await dashboardService.recordManualPrice(payload, token); await refreshFinancialOperatingSystem(); return result; }
+    finally { setIsSaving(false); }
+  };
+
+  const handleFundInvestmentAccount = async (id: string, payload: { sourceWalletId: string; amount: number; date?: string; note?: string }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try { const result = await dashboardService.fundInvestmentAccount(id, payload, token); await refreshFinancialOperatingSystem(); return result; }
+    finally { setIsSaving(false); }
+  };
+
+  const handleRefreshPortfolioPrices = async () => {
+    if (!token) return;
+    const result = await dashboardService.refreshPortfolioPrices(token);
+    await refreshFinancialOperatingSystem();
+    return result;
+  };
+
+  const handleSearchCryptoAssets = async (query: string) => {
+    if (!token || !query.trim()) return [];
+    return dashboardService.searchCryptoAssets(query, token);
+  };
+
   const syncedGoals = useMemo(() => {
     if (!goals) return [];
     if (!kpis?.accounts) return goals;
@@ -606,7 +749,15 @@ export function useDashboardData(token: string | null) {
     setWhatIfAmount,
     selectedTransactionId,
     setSelectedTransactionId,
+    financialHome,
+    financialPlans,
+    portfolio,
+    investmentAccounts,
+    investmentAssets,
+    investmentEvents,
+    budgetCategoryPreferences,
     fetchData,
+    refreshFinancialOperatingSystem,
     handleSettleDebt,
     handleDeleteDebt,
     handleEditDebt,
@@ -640,6 +791,21 @@ export function useDashboardData(token: string | null) {
     handleDeleteSubscription,
     handlePaySubscription,
     handleDetectSubscriptions,
+    handleUpdateFinancialProfile,
+    handleUpdateBudgetCategoryPreference,
+    handleCreateFinancialPlanDraft,
+    handleUpdateFinancialPlan,
+    handleApproveFinancialPlan,
+    handleReplanFinancialPlan,
+    handleCancelFinancialPlan,
+    handleRecommendationStatus,
+    handleCreateInvestmentAccount,
+    handleCreateInvestmentAsset,
+    handleCreateInvestmentEvent,
+    handleRecordManualPrice,
+    handleFundInvestmentAccount,
+    handleRefreshPortfolioPrices,
+    handleSearchCryptoAssets,
     notifications,
   };
 }

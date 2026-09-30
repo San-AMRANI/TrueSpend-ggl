@@ -103,6 +103,17 @@ export function computeFinancialState(input: FinancialEngineInput) {
     } else if (isExpenseOutflow(tx.type)) {
       balances[sourceId] -= amount;
     } else if (tx.type === 'Transfer') {
+      // V2 investment funding/withdrawal is a cash transfer, never an expense
+      // or income. Investment accounts are not V1 wallets, so their matching
+      // event lives in the portfolio ledger rather than destinationWalletId.
+      if (tx.notes?.startsWith('[Investment funding]')) {
+        balances[sourceId] -= amount;
+        return;
+      }
+      if (tx.notes?.startsWith('[Investment withdrawal]')) {
+        balances[sourceId] += amount;
+        return;
+      }
       // Determine destination wallet ID or key
       let destId = (tx as any).destinationWalletId || (tx as any).toWalletId;
       if (!destId || balances[destId] === undefined) {

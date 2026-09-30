@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion as motionBase, AnimatePresence } from 'motion/react';
 import {
   Subscription,
   DetectedSubscription,
@@ -30,6 +30,10 @@ import {
   X,
   RefreshCw,
 } from 'lucide-react';
+
+// The runtime supports these animation props; this small compatibility shape
+// works around incomplete Motion JSX declarations in the installed build.
+const motion: { div: React.ComponentType<any> } = { div: motionBase.div as any };
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 

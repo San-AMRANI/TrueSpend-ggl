@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DashboardTab } from '../../types';
-import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, ChevronDown, ChevronUp, Bot, FileBarChart, TrendingUp, Map, Target, Repeat, ShieldCheck, ShieldAlert, Sparkles } from 'lucide-react';
+import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, ChevronDown, ChevronUp, Bot, FileBarChart, TrendingUp, Map, Target, Repeat, ShieldCheck, ShieldAlert, Sparkles, BriefcaseBusiness, Landmark, Route, FlaskConical } from 'lucide-react';
 
 interface DashboardNavProps {
   activeTab: DashboardTab;
@@ -8,7 +8,11 @@ interface DashboardNavProps {
 }
 
 const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.FC<{ className?: string }> }[] = [
-  { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
+  { id: 'overview', label: 'Financial Home', shortLabel: 'Home', icon: LayoutDashboard },
+  { id: 'plan', label: 'Salary Plan', shortLabel: 'Plan', icon: BriefcaseBusiness },
+  { id: 'roadmap', label: 'Roadmap', shortLabel: 'Roadmap', icon: Route },
+  { id: 'portfolio', label: 'Portfolio', shortLabel: 'Wealth', icon: Landmark },
+  { id: 'decision-lab', label: 'Decision Lab', shortLabel: 'Lab', icon: FlaskConical },
   { id: 'cash-flow', label: 'Cash Flow', shortLabel: 'Cash Flow', icon: TrendingUp },
   { id: 'calendar', label: 'Calendar', shortLabel: 'Calendar', icon: CalendarDays },
   { id: 'analytics', label: 'Analytics', shortLabel: 'Analytics', icon: BarChart2 },
@@ -24,7 +28,7 @@ const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.F
   { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
 ];
 
-const quickTabIds: DashboardTab[] = ['overview', 'analytics', 'transactions', 'chat'];
+const quickTabIds: DashboardTab[] = ['overview', 'plan', 'portfolio', 'chat'];
 
 export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActiveTab }) => {
   const [isExpanded, setIsExpanded] = useState(false);

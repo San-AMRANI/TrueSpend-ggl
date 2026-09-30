@@ -6,14 +6,14 @@ export const initGoogleAuth = (
   onAuthSuccess?: (user: any, token: string) => void,
   onAuthFailure?: () => void
 ) => {
+  // Drive backup is optional. A local or self-hosted deployment without a
+  // Google client ID should keep the rest of the app quiet and usable.
+  const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
+  if (!clientId) return () => undefined;
+
   const checkInterval = setInterval(() => {
     if ((window as any).google && (window as any).google.accounts && (window as any).google.accounts.oauth2) {
       clearInterval(checkInterval);
-      const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
-      if (!clientId) {
-        console.error('VITE_GOOGLE_CLIENT_ID is not defined');
-        return;
-      }
       tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: clientId,
         scope: 'https://www.googleapis.com/auth/drive.file',

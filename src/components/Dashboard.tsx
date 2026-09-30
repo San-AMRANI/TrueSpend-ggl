@@ -16,6 +16,11 @@ import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { ReportsTab } from './dashboard/ReportsTab';
 import { ContextsTab } from './dashboard/ContextsTab';
+import { FinancialHomeTab } from './dashboard/FinancialHomeTab';
+import { SalaryPlanTab } from './dashboard/SalaryPlanTab';
+import { PortfolioTab } from './dashboard/PortfolioTab';
+import { FinancialRoadmapTab } from './dashboard/FinancialRoadmapTab';
+import { DecisionLabTab } from './dashboard/DecisionLabTab';
 import { AIChat } from './AIChat';
 import type { DashboardTab } from '../types';
 
@@ -83,6 +88,28 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleLinkTransactionsToContext,
     userSettings,
     notifications,
+    financialHome,
+    financialPlans,
+    portfolio,
+    investmentAccounts,
+    investmentAssets,
+    investmentEvents,
+    budgetCategoryPreferences,
+    handleUpdateFinancialProfile,
+    handleUpdateBudgetCategoryPreference,
+    handleCreateFinancialPlanDraft,
+    handleUpdateFinancialPlan,
+    handleApproveFinancialPlan,
+    handleReplanFinancialPlan,
+    handleCancelFinancialPlan,
+    handleRecommendationStatus,
+    handleCreateInvestmentAccount,
+    handleCreateInvestmentAsset,
+    handleCreateInvestmentEvent,
+    handleRecordManualPrice,
+    handleFundInvestmentAccount,
+    handleRefreshPortfolioPrices,
+    handleSearchCryptoAssets,
   } = useDashboardData(token);
 
   // Notify parent whenever tab changes (used to hide header on mobile chat)
@@ -123,7 +150,18 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
         </div>
       ) : (
         <>
-          {activeTab === 'overview' && (
+          {activeTab === 'overview' && financialHome && (
+        <FinancialHomeTab
+          home={financialHome}
+          goals={goals}
+          saving={isSaving}
+          onNavigate={setActiveTab}
+          onCheckup={(profile) => handleUpdateFinancialProfile(profile, true)}
+          onRecommendation={(id, action) => handleRecommendationStatus(id, action)}
+        />
+      )}
+
+          {activeTab === 'overview' && !financialHome && (
         <OverviewTab
           kpis={kpis}
           transactions={transactions}
@@ -140,6 +178,42 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           handleDeleteWallet={handleDeleteWallet}
         />
       )}
+
+      {activeTab === 'plan' && (
+        <SalaryPlanTab
+          home={financialHome}
+          plans={financialPlans}
+          wallets={kpis?.accounts || []}
+          accounts={investmentAccounts}
+          saving={isSaving}
+          onCreate={handleCreateFinancialPlanDraft}
+          onUpdate={handleUpdateFinancialPlan}
+          onApprove={handleApproveFinancialPlan}
+          onReplan={handleReplanFinancialPlan}
+          onCancel={handleCancelFinancialPlan}
+        />
+      )}
+
+      {activeTab === 'portfolio' && (
+        <PortfolioTab
+          portfolio={portfolio}
+          accounts={investmentAccounts}
+          assets={investmentAssets}
+          events={investmentEvents}
+          wallets={kpis?.accounts || []}
+          saving={isSaving}
+          onCreateAccount={handleCreateInvestmentAccount}
+          onCreateAsset={handleCreateInvestmentAsset}
+          onCreateEvent={handleCreateInvestmentEvent}
+          onFund={handleFundInvestmentAccount}
+          onManualPrice={handleRecordManualPrice}
+          onRefreshPrices={handleRefreshPortfolioPrices}
+          onSearchCrypto={handleSearchCryptoAssets}
+        />
+      )}
+
+      {activeTab === 'roadmap' && <FinancialRoadmapTab home={financialHome} goals={goals} debts={debts} portfolio={portfolio} />}
+      {activeTab === 'decision-lab' && <DecisionLabTab home={financialHome} portfolio={portfolio} />}
 
       {activeTab === 'cash-flow' && (
         <CashFlowTab 
@@ -182,6 +256,8 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onCopyPrevious={handleCopyPreviousMonthBudgets}
           onClearMonth={handleClearCategoryBudgetsMonth}
           onDeleteBudget={handleDeleteCategoryBudget}
+          budgetPreferences={budgetCategoryPreferences}
+          onUpdateBudgetPreference={handleUpdateBudgetCategoryPreference}
         />
       )}
 

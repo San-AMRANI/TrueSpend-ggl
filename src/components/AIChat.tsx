@@ -235,12 +235,14 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     budgets,
     payrolls,
     goals,
+    financialHome,
+    portfolio,
     fetchData,
   } = useDashboardData(token);
 
   const aiContext = useMemo(
-    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, payrolls, goals }),
-    [kpis, transactions, debts, budgets, payrolls, goals],
+    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, payrolls, goals, financialHome, portfolio }),
+    [kpis, transactions, debts, budgets, payrolls, goals, financialHome, portfolio],
   );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);

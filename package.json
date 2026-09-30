@@ -9,7 +9,7 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:financial": "tsx tests/financialEngine.test.ts && tsx tests/receiptExtraction.test.ts"
+    "test:financial": "tsx tests/financialEngine.test.ts && tsx tests/financialPlanningEngine.test.ts && tsx tests/receiptExtraction.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -23,10 +23,13 @@
     "express": "^4.21.2",
     "firebase": "^12.17.1",
     "firebase-admin": "^14.2.0",
+    "framer-motion": "12.23.24",
     "iconv-lite": "^0.7.3",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
+    "motion": "12.23.24",
+    "motion-dom": "12.23.23",
+    "motion-utils": "12.23.6",
     "node-cron": "^4.6.0",
     "pg": "^8.22.0",
     "pg-types": "^4.1.0",

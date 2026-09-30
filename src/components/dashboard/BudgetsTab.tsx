@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { CategoryBudget, Payroll, Transaction } from '../../types';
+import { BudgetCategoryPreference, BudgetClassification, CategoryBudget, Payroll, Transaction } from '../../types';
 import { expenseCategories } from '../../lib/categories';
 import {
   budgetFor,
@@ -113,6 +113,8 @@ interface BudgetsTabProps {
   onCopyPrevious: (year: number, month: number) => Promise<number>;
   onClearMonth: (year: number, month: number) => Promise<number>;
   onDeleteBudget: (id: string) => Promise<void>;
+  budgetPreferences: BudgetCategoryPreference[];
+  onUpdateBudgetPreference: (input: Pick<BudgetCategoryPreference, 'category' | 'classification' | 'isLocked' | 'neverAutoChange'>) => Promise<BudgetCategoryPreference | undefined>;
 }
 
 type BudgetModel = 'category' | '503020' | 'envelope';
@@ -557,7 +559,7 @@ function EnvelopeView({ budgets, transactions, year, month, payrolls, onSave, on
 import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, payrolls, onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onClearMonth, onDeleteBudget }) => {
+export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, payrolls, onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onClearMonth, onDeleteBudget, budgetPreferences, onUpdateBudgetPreference }) => {
   const [monthRef, setMonthRef] = useState(() => getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [budgetModel, setBudgetModel] = useState<BudgetModel>('category');
   const [newCategory, setNewCategory] = useState<string>(expenseCategories[0]);
@@ -661,6 +663,18 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
   };
 
   const overBudgetCount = categoryData.filter((c) => c.amount !== undefined && c.spent > c.amount).length;
+  const updateBudgetPolicy = async (category: string, patch: Partial<Pick<BudgetCategoryPreference, 'classification' | 'isLocked' | 'neverAutoChange'>>) => {
+    const existing = budgetPreferences.find((preference) => preference.category === category);
+    try {
+      await onUpdateBudgetPreference({
+        category,
+        classification: patch.classification || existing?.classification || 'flexible',
+        isLocked: patch.isLocked ?? existing?.isLocked ?? false,
+        neverAutoChange: patch.neverAutoChange ?? existing?.neverAutoChange ?? false,
+      });
+      showToast(`${category} planning policy saved.`);
+    } catch (error) { showToast(error instanceof Error ? error.message : 'Unable to save budget policy.', 'error'); }
+  };
 
   // ─── Income Calculation ───────────────────────────────────────────────────────
   // Source of truth: ALL Income-type transactions for the selected month.
@@ -816,6 +830,18 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
           </CardContent>
         </Card>
       )}
+
+      {budgetRows.length > 0 && <Card>
+        <CardHeader><CardTitle className="text-base">Adaptive budget policies</CardTitle><p className="text-sm text-gray-500">Policies guide salary-plan proposals. A locked or “never auto-change” category is never altered by the engine; you can still make an explicit manual edit.</p></CardHeader>
+        <CardContent className="space-y-3">{budgetRows.map((category) => {
+          const preference = budgetPreferences.find((item) => item.category === category);
+          return <div key={category} className="grid gap-2 rounded-lg border p-3 md:grid-cols-[1fr_150px_auto_auto] md:items-center"><span className="text-sm font-medium">{category}</span>
+            <select value={preference?.classification || 'flexible'} onChange={(event) => void updateBudgetPolicy(category, { classification: event.target.value as BudgetClassification })} className="rounded-md border bg-transparent p-2 text-sm"><option value="essential">Essential</option><option value="flexible">Flexible</option><option value="growth">Growth</option><option value="excluded">Excluded</option></select>
+            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={preference?.isLocked || false} onChange={(event) => void updateBudgetPolicy(category, { isLocked: event.target.checked })} />Lock</label>
+            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={preference?.neverAutoChange || false} onChange={(event) => void updateBudgetPolicy(category, { neverAutoChange: event.target.checked })} />Never auto-change</label>
+          </div>;
+        })}</CardContent>
+      </Card>}
 
       {/* ── Model Selector + Add Form ── */}
       <div className="grid gap-4 lg:grid-cols-3">

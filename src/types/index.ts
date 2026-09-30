@@ -222,6 +222,10 @@ export interface UserSettings {
 
 export type DashboardTab =
   | 'overview'
+  | 'plan'
+  | 'portfolio'
+  | 'roadmap'
+  | 'decision-lab'
   | 'calendar'
   | 'transactions'
   | 'budgets'
@@ -235,5 +239,257 @@ export type DashboardTab =
   | 'reports'
   | 'cash-flow'
   | 'contexts';
+
+export type RiskLevel = 'Low' | 'Medium' | 'High' | 'VeryHigh';
+export type FinancialStrategy = 'BufferFirst' | 'DebtFirst' | 'GoalFirst' | 'Balanced' | 'Custom';
+
+export interface FinancialProfile {
+  id?: string;
+  userId?: string;
+  baseCurrency: string;
+  incomeFrequency: 'monthly' | 'weekly' | 'irregular';
+  incomeStability: 'stable' | 'variable' | 'irregular';
+  strategy: FinancialStrategy;
+  riskPreference: RiskLevel;
+  investmentExperience: 'None' | 'Beginner' | 'Intermediate' | 'Experienced';
+  investmentHorizon: string;
+  emergencyTargetMonths: string;
+  minimumUnallocatedAmount: string;
+  minimumUnallocatedPercent: string;
+  allowCashEquivalentReserve: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface FinancialSnapshot {
+  asOf: string;
+  financialPeriod: { start: string | null; end: string | null; daysRemaining: number };
+  liquidCash: number;
+  protectedEmergencyCash: number;
+  reservedForCommitments: number;
+  reservedForGoals: number;
+  remainingRequiredBudgetReserve: number;
+  budgetPacing: Array<{
+    category: string;
+    budget: number;
+    spent: number;
+    remaining: number;
+    dailyAllowance: number;
+    classification: BudgetClassification;
+    isLocked: boolean;
+    neverAutoChange: boolean;
+    atRisk: boolean;
+  }>;
+  safeToSpend: number;
+  safeToSpendBreakdown: Array<{ label: string; amount: number; purpose: string }>;
+  investmentCapacity: number;
+  pendingPayables: number;
+  pendingReceivables: number;
+  investmentMarketValue: number;
+  netWorth: number;
+  forecast: { expected: number; best: number; worst: number };
+  buffer: { current: number; target: number; coverageMonths: number };
+  plan: { activePlanId?: string; unallocatedIncome: number; status?: string };
+  confidence: 'low' | 'medium' | 'high';
+  assumptions: string[];
+}
+
+export type BudgetClassification = 'essential' | 'flexible' | 'growth' | 'excluded';
+
+export interface BudgetCategoryPreference {
+  id: string;
+  userId: string;
+  category: string;
+  classification: BudgetClassification;
+  isLocked: boolean;
+  neverAutoChange: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type PlanStatus = 'Draft' | 'Active' | 'Superseded' | 'Completed' | 'Cancelled';
+export type PlanAllocationStatus = 'Planned' | 'Approved' | 'Executed' | 'Skipped' | 'Changed' | 'Failed';
+export type PlanAllocationType = 'Commitment' | 'Debt' | 'EmergencyBuffer' | 'Goal' | 'Budget' | 'Investment' | 'UnallocatedMargin';
+
+export interface PlanAllocation {
+  id: string;
+  planId: string;
+  userId: string;
+  type: PlanAllocationType;
+  name: string;
+  amount: string;
+  status: PlanAllocationStatus;
+  priority: number;
+  category?: string | null;
+  goalId?: string | null;
+  investmentAccountId?: string | null;
+  sourceWalletId?: string | null;
+  destinationWalletId?: string | null;
+  executedTransactionId?: string | null;
+  rationale: string;
+  evidenceJson: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  executedAt?: string | null;
+}
+
+export interface FinancialPlan {
+  id: string;
+  userId: string;
+  parentPlanId?: string | null;
+  payrollId?: string | null;
+  sourceTransactionId?: string | null;
+  status: PlanStatus;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  incomeAmount: string;
+  baseCurrency: string;
+  snapshotJson: FinancialSnapshot;
+  engineVersion: string;
+  allocations: PlanAllocation[];
+  createdAt: string;
+  updatedAt: string;
+  approvedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export type RecommendationType = 'SalaryPlanReady' | 'UnallocatedIncome' | 'EmergencyBufferGap' | 'BillReserveRequired' | 'BudgetPaceRisk' | 'GoalAtRisk' | 'DebtDueSoon' | 'InvestmentCapacityAvailable' | 'AllocationDrift' | 'UnusualSpending' | 'PlanReviewRequired';
+export type RecommendationStatus = 'Active' | 'Viewed' | 'Approved' | 'Dismissed' | 'Snoozed' | 'Expired';
+
+export interface Recommendation {
+  id: string;
+  userId: string;
+  type: RecommendationType;
+  status: RecommendationStatus;
+  priorityScore: string;
+  title: string;
+  summary: string;
+  rationale: string;
+  confidence: 'low' | 'medium' | 'high';
+  actionPayload: Record<string, unknown>;
+  evidenceJson: Record<string, unknown>;
+  dedupeKey: string;
+  availableFrom: string;
+  expiresAt?: string | null;
+  snoozedUntil?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  actedAt?: string | null;
+}
+
+export type InvestmentAccountType = 'Exchange' | 'Brokerage' | 'Retirement' | 'PreciousMetals' | 'Manual' | 'Other';
+export type AssetClass = 'Crypto' | 'Stock' | 'ETF' | 'MutualFund' | 'Bond' | 'PreciousMetal' | 'CashEquivalent' | 'Retirement' | 'Other';
+export type InvestmentEventType = 'Funding' | 'Withdrawal' | 'Buy' | 'Sell' | 'Dividend' | 'Interest' | 'Fee' | 'Adjustment';
+
+export interface InvestmentAccount {
+  id: string;
+  userId: string;
+  name: string;
+  institution?: string | null;
+  type: InvestmentAccountType;
+  baseCurrency: string;
+  liquidity: 'Liquid' | 'Restricted' | 'Illiquid';
+  includeInNetWorth: boolean;
+  includeInEmergencyReserve: boolean;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvestmentAsset {
+  id: string;
+  userId?: string | null;
+  symbol: string;
+  name: string;
+  assetClass: AssetClass;
+  coinGeckoCoinId?: string | null;
+  quoteCurrency: string;
+  unitsPrecision: number;
+  riskLevel: RiskLevel;
+  marketDataProvider?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvestmentEvent {
+  id: string;
+  userId: string;
+  investmentAccountId: string;
+  assetId?: string | null;
+  type: InvestmentEventType;
+  tradeDate: string;
+  units?: string | null;
+  unitPrice?: string | null;
+  quoteCurrency: string;
+  grossAmount: string;
+  feeAmount: string;
+  feeCurrency: string;
+  exchangeRateToBase: string;
+  baseAmount: string;
+  linkedTransactionId?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvestmentHolding {
+  accountId: string;
+  asset: InvestmentAsset;
+  units: number;
+  costBasis: number;
+  marketValue: number;
+  unrealizedGain: number;
+  latestPrice?: number;
+  priceAsOf?: string;
+}
+
+export interface PortfolioSummary {
+  baseCurrency: string;
+  marketValue: number;
+  /** Subset of portfolio value the user elected to include in net worth. */
+  includedInNetWorthValue: number;
+  totalContributions: number;
+  costBasis: number;
+  unrealizedGain: number;
+  realizedGain: number;
+  totalReturn: number;
+  totalReturnPercent: number;
+  holdings: InvestmentHolding[];
+  allocationByAssetClass: Array<{ name: string; value: number; percent: number }>;
+  allocationByAccount: Array<{ name: string; value: number; percent: number }>;
+  riskConcentration: Array<{ risk: RiskLevel; value: number; percent: number }>;
+  priceFreshness: 'fresh' | 'stale' | 'manual' | 'unavailable';
+}
+
+export interface PriceSnapshot {
+  id: string;
+  assetId: string;
+  userId?: string | null;
+  price: string;
+  currency: string;
+  exchangeRateToBase: string;
+  priceInBase: string;
+  source: 'Manual' | 'Provider' | 'Import';
+  provider?: string | null;
+  providerAssetId?: string | null;
+  providerPriceTimestamp?: string | null;
+  capturedAt: string;
+}
+
+export interface DecisionScenario {
+  type: 'one-time-purchase' | 'monthly-investment' | 'emergency-catch-up' | 'budget-change' | 'debt-change' | 'income-change' | 'goal-change' | 'asset-decline';
+  amount: number;
+  label?: string;
+  result?: Partial<FinancialSnapshot & { portfolioValue: number }>;
+}
+
+export interface FinancialHomeResponse {
+  snapshot: FinancialSnapshot;
+  profile: FinancialProfile;
+  activePlan: FinancialPlan | null;
+  recommendations: Recommendation[];
+  dataCompleteness: string[];
+}
 
 
