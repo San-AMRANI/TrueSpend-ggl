@@ -7,9 +7,10 @@ const app = express();
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 
-// Vercel rewrites /api/* requests to this function at /api. Mount the shared
-// router at the function root so /api/investments resolves to /investments.
+// Vercel may preserve or strip the /api prefix depending on the rewrite path.
+// Support both forms so every /api/* request reaches the shared router.
 app.use("/", apiRouter);
+app.use("/api", apiRouter);
 
 // Export the app for Vercel Serverless Functions
 export default app;
