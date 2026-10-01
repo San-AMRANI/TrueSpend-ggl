@@ -685,23 +685,13 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
       });
     });
 
-    // If no deposited income transactions found for this month, use the salary
-    // configured on the Financial Calendar
-    if (total === 0 && payrolls.length > 0) {
-      const monthPayroll = payrolls.find(p => {
-        const d = new Date(p.scheduledFor);
-        return d.getUTCFullYear() === monthRef.year && (d.getUTCMonth() + 1) === monthRef.month;
-      });
-      const currentFm = getCurrentFinancialMonth(payrolls, new Date(Date.UTC(monthRef.year, monthRef.month - 1, 15)));
-      const sortedPayrolls = [...payrolls].sort((a, b) => new Date(b.scheduledFor).getTime() - new Date(a.scheduledFor).getTime());
-      const selectedPayroll = monthPayroll || (currentFm ? currentFm.startPayroll : null) || sortedPayrolls[0];
-
-      const baseIncome = selectedPayroll ? parseFloat(selectedPayroll.amount as string) : 0;
-      if (baseIncome > 0) {
-        const paydayDate = new Date(selectedPayroll.scheduledFor).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-        items.push({ label: `Configured Calendar Salary (${paydayDate})`, amount: baseIncome });
-        total = baseIncome;
-      }
+    // If no income transactions found for this month, use the first configured payroll
+    // as a planning estimate
+    const currentFm = getCurrentFinancialMonth(payrolls, new Date(Date.UTC(monthRef.year, monthRef.month - 1, 15)));
+    const baseIncome = currentFm ? parseFloat(currentFm.startPayroll.amount as string) : 0;
+    if (total === 0 && baseIncome > 0) {
+      items.push({ label: 'Estimated Payroll (not yet deposited)', amount: baseIncome });
+      total = baseIncome;
     }
 
     return { items, total };
@@ -988,7 +978,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
               <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-4 space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Income this month</p>
                 {incomeBreakdown.items.length === 0 ? (
-                  <p className="text-sm text-gray-400 italic">No income transactions or salary configured on your Financial Calendar for this month.</p>
+                  <p className="text-sm text-gray-400 italic">No income found for this month and no salary configured in Settings.</p>
                 ) : (
                   incomeBreakdown.items.map((item, i) => (
                     <div key={i} className="flex justify-between text-sm">
@@ -1041,7 +1031,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
 
               {totalIncome === 0 && (
                 <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3 text-sm text-amber-700 dark:text-amber-300">
-                  ⚠️ No income detected. Please configure a payday in your <strong>Financial Calendar</strong> or add income transactions first.
+                  ⚠️ No income detected. Please configure your salary in <strong>Settings</strong> or add income transactions first.
                 </div>
               )}
 

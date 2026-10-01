@@ -16,10 +16,7 @@ import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { ReportsTab } from './dashboard/ReportsTab';
 import { ContextsTab } from './dashboard/ContextsTab';
-import { SalaryPlanTab } from './dashboard/SalaryPlanTab';
-import { PortfolioTab } from './dashboard/PortfolioTab';
-import { FinancialRoadmapTab } from './dashboard/FinancialRoadmapTab';
-import { DecisionLabTab } from './dashboard/DecisionLabTab';
+import { InvestmentsTab } from './dashboard/InvestmentsTab';
 import { AIChat } from './AIChat';
 import type { DashboardTab } from '../types';
 
@@ -85,27 +82,17 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleUpdateContext,
     handleDeleteContext,
     handleLinkTransactionsToContext,
+    investmentsData,
+    handleCreateHolding,
+    handleUpdateHolding,
+    handleDeleteHolding,
+    handleExecuteTrade,
+    handleCreateDcaPlan,
+    handleUpdateDcaPlan,
+    handleDeleteDcaPlan,
+    refreshInvestments,
     userSettings,
     notifications,
-    financialHome,
-    financialPlans,
-    portfolio,
-    investmentAccounts,
-    investmentAssets,
-    investmentEvents,
-    handleCreateFinancialPlanDraft,
-    handleUpdateFinancialPlan,
-    handleApproveFinancialPlan,
-    handleReplanFinancialPlan,
-    handleCancelFinancialPlan,
-    handleRefreshPortfolioPrices,
-    handleCreateInvestmentAccount,
-    handleCreateInvestmentAsset,
-    handleCreateInvestmentEvent,
-    handleRecordManualPrice,
-    handleFundInvestmentAccount,
-    handleWithdrawInvestmentAccount,
-    handleSearchCryptoAssets,
   } = useDashboardData(token);
 
   // Notify parent whenever tab changes (used to hide header on mobile chat)
@@ -154,6 +141,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           budgets={budgets}
           goals={goals}
           subscriptions={subscriptions}
+          investmentsData={investmentsData}
           setActiveTab={setActiveTab}
           openTransaction={openTransaction}
           handleSettle={handleSettleDebt}
@@ -306,53 +294,21 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           handleLinkTransactions={handleLinkTransactionsToContext}
         />
       )}
-      {activeTab === 'plan' && (
-        <SalaryPlanTab
-          home={financialHome}
-          plans={financialPlans}
+      {activeTab === 'investments' && (
+        <InvestmentsTab
+          data={investmentsData}
+          loading={loading}
           wallets={kpis?.accounts || []}
-          accounts={investmentAccounts}
-          payrolls={payrolls}
-          userSalary={userSettings?.salary}
-          saving={isSaving}
-          onCreate={handleCreateFinancialPlanDraft}
-          onUpdate={handleUpdateFinancialPlan}
-          onApprove={handleApproveFinancialPlan}
-          onReplan={handleReplanFinancialPlan}
-          onCancel={handleCancelFinancialPlan}
-        />
-      )}
-      {activeTab === 'portfolio' && (
-        <PortfolioTab
-          home={financialHome}
-          portfolio={portfolio}
-          accounts={investmentAccounts}
-          assets={investmentAssets}
-          events={investmentEvents}
-          wallets={kpis?.accounts || []}
-          saving={isSaving}
-          onRefreshPrices={handleRefreshPortfolioPrices}
-          onCreateAccount={handleCreateInvestmentAccount}
-          onCreateAsset={handleCreateInvestmentAsset}
-          onCreateEvent={handleCreateInvestmentEvent}
-          onRecordManualPrice={handleRecordManualPrice}
-          onFundAccount={handleFundInvestmentAccount}
-          onWithdrawAccount={handleWithdrawInvestmentAccount}
-          onSearchCrypto={handleSearchCryptoAssets}
-        />
-      )}
-      {activeTab === 'roadmap' && (
-        <FinancialRoadmapTab
-          home={financialHome}
-          goals={goals}
+          kpis={kpis}
           debts={debts}
-          portfolio={portfolio}
-        />
-      )}
-      {activeTab === 'decision-lab' && (
-        <DecisionLabTab
-          home={financialHome}
-          portfolio={portfolio}
+          onRefresh={refreshInvestments}
+          onCreateHolding={handleCreateHolding}
+          onUpdateHolding={handleUpdateHolding}
+          onDeleteHolding={handleDeleteHolding}
+          onExecuteTrade={handleExecuteTrade}
+          onCreateDcaPlan={handleCreateDcaPlan}
+          onUpdateDcaPlan={handleUpdateDcaPlan}
+          onDeleteDcaPlan={handleDeleteDcaPlan}
         />
       )}
       {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}

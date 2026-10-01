@@ -77,6 +77,67 @@ export const createPool = () => {
           "updated_at" timestamp NOT NULL DEFAULT now()
         );
         CREATE INDEX IF NOT EXISTS "subscriptions_user_id_idx" ON "subscriptions"("user_id");
+
+        DO $$ BEGIN
+          ALTER TYPE "wallet_type" ADD VALUE IF NOT EXISTS 'Investment';
+        EXCEPTION
+          WHEN duplicate_object THEN null;
+          WHEN undefined_object THEN null;
+        END $$;
+
+        CREATE TABLE IF NOT EXISTS "investment_holdings" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+          "symbol" text NOT NULL,
+          "name" text NOT NULL,
+          "asset_type" text NOT NULL,
+          "units" numeric NOT NULL DEFAULT 0,
+          "buy_price_avg" numeric NOT NULL DEFAULT 0,
+          "current_price" numeric NOT NULL DEFAULT 0,
+          "currency" text NOT NULL DEFAULT 'USD',
+          "target_allocation_percent" numeric DEFAULT 0,
+          "dividend_yield_percent" numeric DEFAULT 0,
+          "notes" text,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS "investment_holdings_user_id_idx" ON "investment_holdings"("user_id");
+
+        CREATE TABLE IF NOT EXISTS "investment_transactions" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "holding_id" uuid REFERENCES "investment_holdings"("id") ON DELETE CASCADE,
+          "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+          "type" text NOT NULL,
+          "units" numeric NOT NULL DEFAULT 0,
+          "price_per_unit" numeric NOT NULL DEFAULT 0,
+          "total_amount" numeric NOT NULL DEFAULT 0,
+          "currency" text NOT NULL DEFAULT 'USD',
+          "fees" numeric NOT NULL DEFAULT 0,
+          "realized_pnl" numeric DEFAULT 0,
+          "notes" text,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS "investment_tx_user_id_idx" ON "investment_transactions"("user_id");
+
+        CREATE TABLE IF NOT EXISTS "dca_plans" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "holding_id" uuid REFERENCES "investment_holdings"("id") ON DELETE SET NULL,
+          "symbol" text NOT NULL,
+          "asset_name" text NOT NULL,
+          "asset_type" text NOT NULL,
+          "target_amount" numeric NOT NULL,
+          "currency" text NOT NULL DEFAULT 'MAD',
+          "frequency" text NOT NULL DEFAULT 'post_payday',
+          "day_offset_after_payday" integer DEFAULT 2,
+          "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+          "status" text NOT NULL DEFAULT 'active',
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS "dca_plans_user_id_idx" ON "dca_plans"("user_id");
       `)
       .catch((err) => {
         console.warn('[DB Init] Schema columns ensure notice:', err?.message || err);

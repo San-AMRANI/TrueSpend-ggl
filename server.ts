@@ -5,15 +5,10 @@ import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
 import apiRouter from "./server/routes/index.js";
 import { NotificationScheduler } from './server/services/NotificationScheduler.js';
-import { FinancialOperatingSystemScheduler } from './server/services/FinancialOperatingSystemScheduler.js';
-import { runV2Migration } from './server/migrateV2.js';
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
-
-  // Run V2 schema ensure asynchronously in background so port 3000 binds immediately
-  runV2Migration().catch((err) => console.error('[Migration] Failed:', err));
 
   app.use(express.json({ limit: '10mb' }));
   app.use(cookieParser());
@@ -24,8 +19,6 @@ async function startServer() {
   // Notification Scheduler
   const scheduler = new NotificationScheduler();
   scheduler.start();
-  const financialOperatingSystemScheduler = new FinancialOperatingSystemScheduler();
-  financialOperatingSystemScheduler.start();
 
   // Vite middleware for development vs static fallback for production
   if (process.env.NODE_ENV !== "production") {

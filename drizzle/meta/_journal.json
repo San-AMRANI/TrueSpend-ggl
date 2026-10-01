@@ -8,27 +8,6 @@
       "when": 1788039239258,
       "tag": "0000_lumpy_the_spike",
       "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1790730000000,
-      "tag": "0001_financial_operating_system_v2",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1790730000001,
-      "tag": "0002_adaptive_budget_policies",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1790798937979,
-      "tag": "0003_open_lucky_pierre",
-      "breakpoints": true
     }
   ]
 }

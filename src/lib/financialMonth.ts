@@ -46,28 +46,6 @@ export function getFinancialPeriods(payrolls: PayrollLike[]): FinancialPeriod[] 
     .sort((left, right) => asDate(left.scheduledFor).getTime() - asDate(right.scheduledFor).getTime());
 
   const periods: FinancialPeriod[] = [];
-  if (sorted.length === 0) return periods;
-
-  if (sorted.length === 1) {
-    const startPayroll = sorted[0];
-    const startDate = startOfDay(startPayroll.scheduledFor);
-    const projectedEnd = new Date(startDate);
-    projectedEnd.setMonth(projectedEnd.getMonth() + 1);
-    periods.push({
-      startPayroll,
-      endPayroll: {
-        id: `projected-${startPayroll.id}`,
-        scheduledFor: projectedEnd.toISOString(),
-        amount: startPayroll.amount,
-      },
-      start: startDate,
-      end: endOfPreviousDay(projectedEnd),
-      year: projectedEnd.getFullYear(),
-      month: projectedEnd.getMonth() + 1,
-    });
-    return periods;
-  }
-
   for (let index = 0; index < sorted.length - 1; index += 1) {
     const startPayroll = sorted[index];
     const endPayroll = sorted[index + 1];
@@ -81,25 +59,6 @@ export function getFinancialPeriods(payrolls: PayrollLike[]): FinancialPeriod[] 
       month: endPayrollDate.getMonth() + 1,
     });
   }
-
-  // Include the active ongoing period after the latest configured payroll
-  const lastPayroll = sorted[sorted.length - 1];
-  const lastStart = startOfDay(lastPayroll.scheduledFor);
-  const nextMonth = new Date(lastStart);
-  nextMonth.setMonth(nextMonth.getMonth() + 1);
-  periods.push({
-    startPayroll: lastPayroll,
-    endPayroll: {
-      id: `projected-${lastPayroll.id}`,
-      scheduledFor: nextMonth.toISOString(),
-      amount: lastPayroll.amount,
-    },
-    start: lastStart,
-    end: endOfPreviousDay(nextMonth),
-    year: nextMonth.getFullYear(),
-    month: nextMonth.getMonth() + 1,
-  });
-
   return periods;
 }
 

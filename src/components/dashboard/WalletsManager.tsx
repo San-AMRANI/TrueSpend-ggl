@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Landmark, Banknote, Wallet as WalletIcon, Plus, Edit2, Trash2, Star, Check, AlertCircle, X } from 'lucide-react';
+import { Landmark, Banknote, Wallet as WalletIcon, Plus, Edit2, Trash2, Star, Check, AlertCircle, X, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -8,8 +8,8 @@ import { Wallet } from '../../types';
 
 interface WalletsManagerProps {
   wallets: Wallet[];
-  onCreateWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
-  onUpdateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
+  onCreateWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
+  onUpdateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   onDeleteWallet: (id: string, reassignToWalletId?: string) => Promise<any>;
   onClose?: () => void;
   isModal?: boolean;
@@ -31,7 +31,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   // Form states for create/edit
   const [formData, setFormData] = useState({
     name: '',
-    type: 'Bank' as 'Bank' | 'Cash' | 'Savings',
+    type: 'Bank' as 'Bank' | 'Cash' | 'Savings' | 'Investment',
     initialBalance: '',
     isMain: false,
   });
@@ -148,6 +148,8 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
         return <Banknote className="h-5 w-5 text-green-600 dark:text-green-400" />;
       case 'Savings':
         return <WalletIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />;
+      case 'Investment':
+        return <TrendingUp className="h-5 w-5 text-amber-500 dark:text-amber-400" />;
       default:
         return <WalletIcon className="h-5 w-5 text-gray-600 dark:text-gray-400" />;
     }
@@ -216,6 +218,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 <option value="Bank">Bank Account</option>
                 <option value="Cash">Physical Cash</option>
                 <option value="Savings">Savings / Emergency</option>
+                <option value="Investment">Brokerage / Investment / Crypto</option>
               </Select>
             </div>
 

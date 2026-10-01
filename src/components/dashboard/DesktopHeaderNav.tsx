@@ -38,9 +38,9 @@ interface NavTabItem {
 
 const mainTabs: NavTabItem[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'plan', label: 'Salary Plan', icon: Sparkles },
-  { id: 'calendar', label: 'Calendar', icon: CalendarDays },
+  { id: 'investments', label: 'Investments', icon: Coins },
   { id: 'analytics', label: 'Analytics', icon: BarChart2 },
+  { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'cash-flow', label: 'Cash Flow', icon: TrendingUp },
   { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
   { id: 'budgets', label: 'Budgets', icon: WalletCards },
@@ -49,9 +49,6 @@ const mainTabs: NavTabItem[] = [
 ];
 
 const moreTabs: NavTabItem[] = [
-  { id: 'portfolio', label: 'Investment Portfolio', icon: Coins },
-  { id: 'roadmap', label: 'Financial Roadmap', icon: TrendingUp },
-  { id: 'decision-lab', label: 'Decision Lab', icon: Calculator },
   { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
   { id: 'goals', label: 'Goals', icon: Target },
   { id: 'debts', label: 'Debts & Splits', icon: Users },

@@ -24,7 +24,7 @@ export interface Wallet {
   id: string;
   userId: string;
   name: string;
-  type: 'Bank' | 'Cash' | 'Savings';
+  type: 'Bank' | 'Cash' | 'Savings' | 'Investment';
   isMain: boolean;
   initialBalance: string;
   balance: number;
@@ -235,252 +235,123 @@ export type DashboardTab =
   | 'reports'
   | 'cash-flow'
   | 'contexts'
-  | 'plan'
-  | 'portfolio'
-  | 'roadmap'
-  | 'decision-lab';
+  | 'investments';
 
-export type RiskLevel = 'Low' | 'Medium' | 'High' | 'VeryHigh';
-export type BudgetClassification = 'essential' | 'flexible' | 'growth' | 'excluded';
-export type InvestmentAccountType = 'Exchange' | 'Brokerage' | 'Retirement' | 'PreciousMetals' | 'Manual' | 'Other';
-export type InvestmentEventType = 'Funding' | 'Withdrawal' | 'Buy' | 'Sell' | 'Dividend' | 'Interest' | 'Fee' | 'Adjustment';
-export type PlanStatus = 'Draft' | 'Active' | 'Superseded' | 'Completed' | 'Cancelled';
-export type PlanAllocationStatus = 'Planned' | 'Approved' | 'Executed' | 'Skipped' | 'Changed' | 'Failed';
-export type PlanAllocationType = 'Commitment' | 'Debt' | 'EmergencyBuffer' | 'Goal' | 'Budget' | 'Investment' | 'UnallocatedMargin';
-export type RecommendationStatus = 'Active' | 'Viewed' | 'Approved' | 'Dismissed' | 'Snoozed' | 'Expired';
-export type RecommendationType = 'SalaryPlanReady' | 'UnallocatedIncome' | 'EmergencyBufferGap' | 'BillReserveRequired' | 'BudgetPaceRisk' | 'GoalAtRisk' | 'DebtDueSoon' | 'InvestmentCapacityAvailable' | 'AllocationDrift' | 'UnusualSpending' | 'PlanReviewRequired';
+export type InvestmentAssetType =
+  | 'crypto'
+  | 'stock'
+  | 'etf'
+  | 'bourse_local'
+  | 'commodity'
+  | 'real_estate'
+  | 'custom';
 
-export interface FinancialProfile {
-  id?: string;
-  userId?: string;
-  baseCurrency: string;
-  incomeFrequency: 'monthly' | 'weekly' | 'irregular';
-  incomeStability: 'stable' | 'variable' | 'irregular';
-  strategy: 'BufferFirst' | 'DebtFirst' | 'GoalFirst' | 'Balanced' | 'Custom';
-  riskPreference: RiskLevel;
-  investmentExperience: 'None' | 'Beginner' | 'Intermediate' | 'Advanced';
-  investmentHorizon: string;
-  emergencyTargetMonths: string | number;
-  minimumUnallocatedAmount: string | number;
-  minimumUnallocatedPercent: string | number;
-  allowCashEquivalentReserve: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
+export type InvestmentTradeType =
+  | 'BUY'
+  | 'SELL'
+  | 'DIVIDEND'
+  | 'STAKING_REWARD';
 
-export interface BudgetCategoryPreference {
+export interface InvestmentHolding {
   id: string;
   userId: string;
-  category: string;
-  classification: BudgetClassification;
-  isLocked: boolean;
-  neverAutoChange: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface PlanAllocation {
-  id: string;
-  planId: string;
-  userId: string;
-  type: PlanAllocationType;
-  name: string;
-  amount: string | number;
-  status: PlanAllocationStatus;
-  priority: number;
-  category?: string | null;
-  goalId?: string | null;
-  investmentAccountId?: string | null;
-  sourceWalletId?: string | null;
-  destinationWalletId?: string | null;
-  executedTransactionId?: string | null;
-  rationale: string;
-  evidenceJson: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-  executedAt?: string | null;
-}
-
-export interface FinancialPlan {
-  id: string;
-  userId: string;
-  parentPlanId?: string | null;
-  payrollId?: string | null;
-  sourceTransactionId?: string | null;
-  status: PlanStatus;
-  periodStart?: string | null;
-  periodEnd?: string | null;
-  incomeAmount: string | number;
-  baseCurrency: string;
-  snapshotJson: Record<string, unknown>;
-  engineVersion: string;
-  createdAt: string;
-  updatedAt: string;
-  approvedAt?: string | null;
-  completedAt?: string | null;
-  allocations: PlanAllocation[];
-}
-
-export interface Recommendation {
-  id: string;
-  userId: string;
-  type: RecommendationType;
-  status: RecommendationStatus;
-  priorityScore: string | number;
-  title: string;
-  summary: string;
-  rationale: string;
-  confidence: string;
-  actionPayload: Record<string, unknown>;
-  evidenceJson: Record<string, unknown>;
-  dedupeKey: string;
-  availableFrom: string;
-  expiresAt?: string | null;
-  snoozedUntil?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  actedAt?: string | null;
-}
-
-export interface InvestmentAccount {
-  id: string;
-  userId: string;
-  name: string;
-  institution?: string | null;
-  type: InvestmentAccountType;
-  baseCurrency: string;
-  liquidity: 'Liquid' | 'Restricted' | 'Illiquid';
-  includeInNetWorth: boolean;
-  includeInEmergencyReserve: boolean;
-  isArchived: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface InvestmentAsset {
-  id: string;
-  userId?: string | null;
+  walletId?: string | null;
+  walletName?: string | null;
   symbol: string;
   name: string;
-  assetClass: 'Crypto' | 'Stock' | 'ETF' | 'MutualFund' | 'Bond' | 'PreciousMetal' | 'CashEquivalent' | 'Retirement' | 'Other';
-  coinGeckoCoinId?: string | null;
-  quoteCurrency: string;
-  unitsPrecision: number;
-  riskLevel: RiskLevel;
-  marketDataProvider?: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface InvestmentEvent {
-  id: string;
-  userId: string;
-  investmentAccountId: string;
-  assetId?: string | null;
-  type: InvestmentEventType;
-  tradeDate: string;
-  units?: string | number | null;
-  unitPrice?: string | number | null;
-  quoteCurrency: string;
-  grossAmount: string | number;
-  feeAmount: string | number;
-  feeCurrency: string;
-  exchangeRateToBase: string | number;
-  baseAmount: string | number;
-  linkedTransactionId?: string | null;
+  assetType: InvestmentAssetType;
+  units: string;
+  buyPriceAvg: string;
+  currentPrice: string;
+  currency: string;
+  targetAllocationPercent?: string | null;
+  dividendYieldPercent?: string | null;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
+  // Computed client/server fields
+  totalCostBasis?: number;
+  currentMarketValue?: number;
+  unrealizedPnl?: number;
+  unrealizedPnlPercent?: number;
+  change24h?: number;
 }
 
-export interface PortfolioHolding {
-  accountId: string;
-  asset: InvestmentAsset;
-  units: number;
-  costBasis: number;
-  marketValue: number;
-  unrealizedGain: number;
-  latestPrice?: number;
-  priceAsOf?: string;
+export interface InvestmentTransaction {
+  id: string;
+  userId: string;
+  holdingId: string;
+  walletId?: string | null;
+  walletName?: string | null;
+  holdingSymbol?: string;
+  holdingName?: string;
+  type: InvestmentTradeType;
+  units: string;
+  pricePerUnit: string;
+  totalAmount: string;
+  currency: string;
+  fees: string;
+  realizedPnl?: string | null;
+  notes?: string | null;
+  createdAt: string;
 }
 
-export interface PortfolioSummary {
-  baseCurrency: string;
-  marketValue: number;
-  includedInNetWorthValue: number;
-  totalContributions: number;
-  costBasis: number;
-  unrealizedGain: number;
-  realizedGain: number;
-  totalReturn: number;
-  totalReturnPercent: number;
-  holdings: PortfolioHolding[];
-  allocationByAssetClass: Array<{ name: string; value: number; percent: number }>;
-  allocationByAccount: Array<{ name: string; value: number; percent: number }>;
-  riskConcentration: Array<{ risk: RiskLevel; value: number; percent: number }>;
-  priceFreshness: 'fresh' | 'stale' | 'unavailable';
+export interface DcaPlan {
+  id: string;
+  userId: string;
+  holdingId?: string | null;
+  symbol: string;
+  assetName: string;
+  assetType: InvestmentAssetType;
+  targetAmount: string;
+  currency: string;
+  frequency: 'daily' | 'weekly' | 'monthly' | 'post_payday';
+  dayOffsetAfterPayday: number;
+  walletId?: string | null;
+  walletName?: string | null;
+  status: 'active' | 'paused';
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface FinancialSnapshotState {
-  asOf: string;
-  safeToSpend: number;
-  safeToSpendBreakdown: Array<{ label: string; amount: number; purpose?: string; impact?: 'positive' | 'negative' }>;
-  liquidCash: number;
-  reservedForCommitments: number;
-  reservedForGoals: number;
-  protectedEmergencyCash: number;
-  investmentCapacity: number;
-  investmentMarketValue: number;
-  totalDebt?: number;
-  pendingPayables?: number;
-  pendingReceivables?: number;
-  remainingRequiredBudgetReserve?: number;
-  budgetPacing?: Array<{
-    category: string;
-    budget: number;
-    spent: number;
-    remaining: number;
-    dailyAllowance: number;
-    classification: BudgetClassification;
-    isLocked: boolean;
-    neverAutoChange: boolean;
-    atRisk: boolean;
-  }>;
-  netWorth: number;
-  buffer: {
-    current: number;
-    target: number;
-    coverageMonths: number;
+export interface MarketQuote {
+  symbol: string;
+  price: number;
+  change24h?: number;
+  currency: string;
+  lastUpdated: string;
+}
+
+export interface SafeToInvestCalculation {
+  monthlyIncome: number;
+  fixedObligations: number;
+  variableSpendPace: number;
+  emergencyBufferDeficiency: number;
+  pendingPayables: number;
+  safeToInvestMonthly: number;
+  currentMonthlyDcaTarget: number;
+  surplusAfterDca: number;
+  recommendationText: string;
+  riskAppetiteMax: number;
+}
+
+export interface InvestmentsData {
+  holdings: InvestmentHolding[];
+  transactions: InvestmentTransaction[];
+  dcaPlans: DcaPlan[];
+  quotes: Record<string, MarketQuote>;
+  rates: {
+    USD_TO_MAD: number;
+    EUR_TO_MAD: number;
+    USD_TO_EUR: number;
   };
-  plan: {
-    activePlanId?: string;
-    unallocatedIncome: number;
-    status?: string;
-  };
-  forecast: {
-    expected: number;
-    best: number;
-    worst: number;
-  };
-  financialPeriod: {
-    start: string | null;
-    end: string | null;
-    daysRemaining: number;
-  };
-  confidence?: 'high' | 'medium' | 'low';
-  assumptions?: string[];
+  totalPortfolioValueMad: number;
+  totalCostBasisMad: number;
+  totalUnrealizedPnlMad: number;
+  totalUnrealizedPnlPercent: number;
+  annualPassiveIncomeMad: number;
+  fireCoveragePercent: number;
+  safeToInvest: SafeToInvestCalculation;
 }
-
-export type FinancialSnapshot = FinancialSnapshotState;
-
-export interface FinancialHomeResponse {
-  snapshot: FinancialSnapshotState;
-  profile: FinancialProfile;
-  activePlan: FinancialPlan | null;
-  recommendations: Recommendation[];
-  dataCompleteness: string[];
-}
-
 
 

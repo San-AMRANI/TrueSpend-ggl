@@ -11,15 +11,11 @@ import {
   Goal,
   Subscription,
   DetectedSubscription,
-  FinancialHomeResponse,
-  FinancialPlan,
-  FinancialProfile,
-  PortfolioSummary,
-  InvestmentAccount,
-  InvestmentAsset,
-  InvestmentEvent,
-  BudgetCategoryPreference,
-  Recommendation,
+  InvestmentsData,
+  InvestmentHolding,
+  InvestmentTransaction,
+  DcaPlan,
+  MarketQuote,
 } from '../../types';
 
 export const dashboardService = {
@@ -147,54 +143,22 @@ export const dashboardService = {
     apiClient.post<{ success: boolean; message: string; restored: Record<string, number> }>('/api/settings/import-sql', { sql }, token),
   seedData: (token: string | null) => apiClient.post<{ success: boolean }>('/api/seed', {}, token),
 
-  // V2 Financial Operating System Endpoints
-  getFinancialHome: (token: string | null) => apiClient.get<FinancialHomeResponse>('/api/financial-home', token),
-  getFinancialProfile: (token: string | null) => apiClient.get<{ profile: FinancialProfile; isComplete: boolean }>('/api/financial-profile', token),
-  updateFinancialProfile: (payload: Partial<FinancialProfile>, token: string | null) =>
-    apiClient.put<FinancialProfile>('/api/financial-profile', payload, token),
-  completeFinancialCheckup: (payload: Partial<FinancialProfile>, token: string | null) =>
-    apiClient.post<{ profile: FinancialProfile; completed: boolean }>('/api/financial-profile/checkup', payload, token),
-  getBudgetCategoryPreferences: (token: string | null) =>
-    apiClient.get<BudgetCategoryPreference[]>('/api/budget-category-preferences', token),
-  updateBudgetCategoryPreference: (payload: { category: string; classification: string; isLocked?: boolean; neverAutoChange?: boolean }, token: string | null) =>
-    apiClient.put<BudgetCategoryPreference>('/api/budget-category-preferences', payload, token),
-  getFinancialPlans: (token: string | null) => apiClient.get<FinancialPlan[]>('/api/financial-plans', token),
-  getFinancialPlan: (id: string, token: string | null) => apiClient.get<FinancialPlan>(`/api/financial-plans/${id}`, token),
-  createFinancialPlanDraft: (payload: { incomeAmount: number; payrollId?: string; sourceTransactionId?: string; periodStart?: string; periodEnd?: string }, token: string | null) =>
-    apiClient.post<FinancialPlan>('/api/financial-plans/draft', payload, token),
-  updateFinancialPlan: (id: string, allocations: Array<{ id: string; amount?: string; investmentAccountId?: string | null; destinationWalletId?: string | null }>, token: string | null) =>
-    apiClient.put<FinancialPlan>(`/api/financial-plans/${id}`, { allocations }, token),
-  approveFinancialPlan: (id: string, payload: { allocationIds: string[]; sourceWalletId?: string; confirmWarnings?: string[] }, token: string | null) =>
-    apiClient.post<FinancialPlan>(`/api/financial-plans/${id}/approve`, payload, token),
-  replanFinancialPlan: (id: string, token: string | null) =>
-    apiClient.post<FinancialPlan>(`/api/financial-plans/${id}/replan`, {}, token),
-  cancelFinancialPlan: (id: string, token: string | null) =>
-    apiClient.post<FinancialPlan>(`/api/financial-plans/${id}/cancel`, {}, token),
-  getRecommendations: (token: string | null) => apiClient.get<Recommendation[]>('/api/recommendations', token),
-  updateRecommendationStatus: (id: string, status: 'viewed' | 'dismiss' | 'snooze' | 'approve', payload: { until?: string; incomeAmount?: number; payrollId?: string; sourceTransactionId?: string } | undefined, token: string | null) =>
-    apiClient.post<Recommendation>(`/api/recommendations/${id}/${status}`, payload || {}, token),
-  getInvestmentAccounts: (token: string | null) => apiClient.get<InvestmentAccount[]>('/api/investment-accounts', token),
-  createInvestmentAccount: (payload: Omit<InvestmentAccount, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'isArchived'>, token: string | null) =>
-    apiClient.post<InvestmentAccount>('/api/investment-accounts', payload, token),
-  updateInvestmentAccount: (id: string, payload: Partial<InvestmentAccount>, token: string | null) =>
-    apiClient.put<InvestmentAccount>(`/api/investment-accounts/${id}`, payload, token),
-  deleteInvestmentAccount: (id: string, token: string | null) =>
-    apiClient.delete<InvestmentAccount>(`/api/investment-accounts/${id}`, token),
-  fundInvestmentAccount: (id: string, payload: { sourceWalletId: string; amount: number; date?: string; note?: string }, token: string | null) =>
-    apiClient.post<{ event: InvestmentEvent; transaction: Transaction }>(`/api/investment-accounts/${id}/fund`, payload, token),
-  withdrawInvestmentAccount: (id: string, payload: { destinationWalletId: string; amount: number; date?: string; note?: string }, token: string | null) =>
-    apiClient.post<{ event: InvestmentEvent; transaction: Transaction }>(`/api/investment-accounts/${id}/withdraw`, payload, token),
-  getInvestmentAssets: (token: string | null) => apiClient.get<InvestmentAsset[]>('/api/investment-assets', token),
-  createInvestmentAsset: (payload: Omit<InvestmentAsset, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'isActive'>, token: string | null) =>
-    apiClient.post<InvestmentAsset>('/api/investment-assets', payload, token),
-  getInvestmentEvents: (token: string | null) => apiClient.get<InvestmentEvent[]>('/api/investment-events', token),
-  createInvestmentEvent: (payload: { investmentAccountId: string; assetId?: string | null; type: InvestmentEvent['type']; tradeDate?: string; units?: number; unitPrice?: number; quoteCurrency?: string; grossAmount: number; feeAmount?: number; feeCurrency?: string; exchangeRateToBase?: number; notes?: string }, token: string | null) =>
-    apiClient.post<InvestmentEvent>('/api/investment-events', payload, token),
-  getPortfolio: (token: string | null) => apiClient.get<PortfolioSummary>('/api/portfolio', token),
-  recordManualPrice: (payload: { assetId: string; price: number; currency: string; capturedAt?: string }, token: string | null) =>
-    apiClient.post('/api/portfolio/prices', payload, token),
-  refreshPortfolioPrices: (token: string | null) =>
-    apiClient.post<{ refreshed: number; stale: boolean; message: string }>('/api/market-data/prices/refresh', {}, token),
-  searchCryptoAssets: (query: string, token: string | null) =>
-    apiClient.get<Array<{ id: string; name: string; symbol: string; marketCapRank: number | null; image: string | null }>>(`/api/market-data/assets/search?q=${encodeURIComponent(query)}`, token),
+  // Investment & Wealth APIs
+  getInvestmentsData: (token: string | null) => apiClient.get<InvestmentsData>('/api/investments', token),
+  createHolding: (payload: Partial<InvestmentHolding>, token: string | null) =>
+    apiClient.post<InvestmentHolding>('/api/investments/holdings', payload, token),
+  updateHolding: (id: string, payload: Partial<InvestmentHolding>, token: string | null) =>
+    apiClient.put<InvestmentHolding>(`/api/investments/holdings/${id}`, payload, token),
+  deleteHolding: (id: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/investments/holdings/${id}`, token),
+  executeTrade: (payload: { holdingId: string; type: string; units?: number; pricePerUnit?: number; totalAmount?: number; fees?: number; walletId?: string | null; notes?: string }, token: string | null) =>
+    apiClient.post<{ success: boolean; transaction: InvestmentTransaction }>('/api/investments/trades', payload, token),
+  createDcaPlan: (payload: Partial<DcaPlan>, token: string | null) =>
+    apiClient.post<DcaPlan>('/api/investments/dca-plans', payload, token),
+  updateDcaPlan: (id: string, payload: Partial<DcaPlan>, token: string | null) =>
+    apiClient.put<DcaPlan>(`/api/investments/dca-plans/${id}`, payload, token),
+  deleteDcaPlan: (id: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/investments/dca-plans/${id}`, token),
+  getMarketQuotes: (symbols: string[], token: string | null) =>
+    apiClient.get<Record<string, MarketQuote>>(`/api/investments/quotes?symbols=${encodeURIComponent(symbols.join(','))}`, token),
 };

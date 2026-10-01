@@ -1,223 +1,580 @@
-import { and, asc, eq } from 'drizzle-orm';
-import { db } from '../../src/db/index.js';
-import { investmentEvents, investmentLots, investmentLotDisposals, transactions } from '../../src/db/schema.js';
-import type { InvestmentAccount, InvestmentAsset, InvestmentEvent, PortfolioSummary, RiskLevel } from '../../src/types/index.js';
 import { investmentRepository } from '../repositories/InvestmentRepository.js';
 import { walletRepository } from '../repositories/WalletRepository.js';
+import { transactionRepository } from '../repositories/TransactionRepository.js';
+import { kpiService } from './KpiService.js';
+import { userRepository } from '../repositories/UserRepository.js';
+import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
+import { debtRepository } from '../repositories/DebtRepository.js';
 
-const number = (value: string | number | null | undefined) => Number(value ?? 0) || 0;
-const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-const riskLevels: RiskLevel[] = ['Low', 'Medium', 'High', 'VeryHigh'];
+// Ticker to CoinGecko ID mapping
+const COINGECKO_MAP: Record<string, string> = {
+  BTC: 'bitcoin',
+  BITCOIN: 'bitcoin',
+  ETH: 'ethereum',
+  ETHEREUM: 'ethereum',
+  SOL: 'solana',
+  SOLANA: 'solana',
+  BNB: 'binancecoin',
+  XRP: 'ripple',
+  ADA: 'cardano',
+  CARDANO: 'cardano',
+  DOGE: 'dogecoin',
+  AVAX: 'avalanche-2',
+  DOT: 'polkadot',
+  LINK: 'chainlink',
+  MATIC: 'matic-network',
+  POL: 'polygon-ecosystem-token',
+  USDT: 'tether',
+  USDC: 'usd-coin',
+  SUI: 'sui',
+  NEAR: 'near',
+  PEPE: 'pepe',
+  SHIB: 'shiba-inu',
+};
 
-export interface CreateInvestmentEventInput {
-  investmentAccountId: string;
-  assetId?: string | null;
-  type: InvestmentEvent['type'];
-  tradeDate?: string;
-  units?: number;
-  unitPrice?: number;
-  quoteCurrency?: string;
-  grossAmount: number;
-  feeAmount?: number;
-  feeCurrency?: string;
-  exchangeRateToBase?: number;
-  notes?: string;
-  linkedTransactionId?: string | null;
-}
+// Default exchange rates fallback
+let cachedRates = {
+  USD_TO_MAD: 10.05,
+  EUR_TO_MAD: 10.95,
+  USD_TO_EUR: 0.92,
+  lastFetched: 0,
+};
+
+// Cache for quotes
+const quotesCache: Record<string, { price: number; change24h: number; currency: string; lastUpdated: number }> = {};
 
 export class InvestmentService {
-  async listAccounts(userId: string) { return investmentRepository.accounts(userId); }
-  async listAssets(userId: string) { return investmentRepository.assets(userId); }
-  async listEvents(userId: string) { return investmentRepository.events(userId); }
-
-  async createAccount(userId: string, input: Omit<InvestmentAccount, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'isArchived'>) {
-    if (!input.name?.trim()) throw new Error('Investment account name is required.');
-    if (!['Exchange', 'Brokerage', 'Retirement', 'PreciousMetals', 'Manual', 'Other'].includes(input.type)) throw new Error('Invalid investment account type.');
-    if (!['Liquid', 'Restricted', 'Illiquid'].includes(input.liquidity)) throw new Error('Invalid liquidity profile.');
-    if (input.includeInEmergencyReserve && input.liquidity !== 'Liquid') throw new Error('Only a liquid, cash-like account can be included in the emergency reserve.');
-    return investmentRepository.createAccount({ userId, name: input.name.trim(), institution: input.institution?.trim() || null, type: input.type,
-      baseCurrency: input.baseCurrency.toUpperCase(), liquidity: input.liquidity, includeInNetWorth: input.includeInNetWorth,
-      includeInEmergencyReserve: input.includeInEmergencyReserve });
-  }
-
-  async updateAccount(userId: string, id: string, input: Partial<Omit<InvestmentAccount, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>) {
-    const existing = await investmentRepository.account(id, userId);
-    if (!existing) throw new Error('Investment account not found.');
-    const liquidity = input.liquidity ?? existing.liquidity;
-    const includeInEmergencyReserve = input.includeInEmergencyReserve ?? existing.includeInEmergencyReserve;
-    if (includeInEmergencyReserve && liquidity !== 'Liquid') throw new Error('Only a liquid, cash-like account can be included in the emergency reserve.');
-    return investmentRepository.updateAccount(id, userId, { ...input, baseCurrency: input.baseCurrency?.toUpperCase(), name: input.name?.trim(), institution: input.institution?.trim() || undefined });
-  }
-
-  async createAsset(userId: string, input: Omit<InvestmentAsset, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'isActive'>) {
-    if (!input.symbol?.trim() || !input.name?.trim()) throw new Error('Asset symbol and name are required.');
-    if (!['Crypto', 'Stock', 'ETF', 'MutualFund', 'Bond', 'PreciousMetal', 'CashEquivalent', 'Retirement', 'Other'].includes(input.assetClass)) throw new Error('Invalid asset class.');
-    if (!riskLevels.includes(input.riskLevel)) throw new Error('Invalid asset risk level.');
-    if (input.assetClass === 'Crypto' && input.coinGeckoCoinId && !/^[a-z0-9-]+$/i.test(input.coinGeckoCoinId)) throw new Error('Invalid CoinGecko asset identifier.');
-    return investmentRepository.createAsset({ userId, symbol: input.symbol.trim().toUpperCase(), name: input.name.trim(), assetClass: input.assetClass,
-      coinGeckoCoinId: input.coinGeckoCoinId || null, quoteCurrency: input.quoteCurrency.toUpperCase(), unitsPrecision: input.unitsPrecision,
-      riskLevel: input.riskLevel, marketDataProvider: input.coinGeckoCoinId ? 'CoinGecko' : null });
-  }
-
-  async createEvent(userId: string, input: CreateInvestmentEventInput) {
-    const account = await investmentRepository.account(input.investmentAccountId, userId);
-    if (!account) throw new Error('Investment account not found.');
-    const type = input.type;
-    const validTypes = ['Funding', 'Withdrawal', 'Buy', 'Sell', 'Dividend', 'Interest', 'Fee', 'Adjustment'];
-    if (!validTypes.includes(type)) throw new Error('Invalid investment event type.');
-    const grossAmount = number(input.grossAmount);
-    const feeAmount = number(input.feeAmount);
-    const units = input.units === undefined ? null : number(input.units);
-    const unitPrice = input.unitPrice === undefined ? null : number(input.unitPrice);
-    if (grossAmount < 0 || feeAmount < 0) throw new Error('Amounts cannot be negative.');
-    const assetRequired = ['Buy', 'Sell'].includes(type);
-    const asset = input.assetId ? await investmentRepository.asset(input.assetId, userId) : null;
-    if (assetRequired && !asset) throw new Error('Buy and sell events require an asset you own.');
-    if (assetRequired && (!units || units <= 0 || unitPrice === null || unitPrice < 0 || grossAmount <= 0)) throw new Error('Buy and sell events require positive units and gross amount, plus a non-negative execution price.');
-    if (type === 'Fee' && grossAmount <= 0 && feeAmount <= 0) throw new Error('A fee event must have a positive amount.');
-    if (['Funding', 'Withdrawal'].includes(type) && grossAmount <= 0) throw new Error('Funding and withdrawal amounts must be positive.');
-    const rate = number(input.exchangeRateToBase || 1) || 1;
-    // Buy fees are capitalized into cost basis. Account-level fees are a cash
-    // outflow in their own right, so a fee-only event keeps its actual amount.
-    const baseAmount = money((type === 'Fee' ? Math.max(grossAmount, feeAmount) : grossAmount + (type === 'Buy' ? feeAmount : 0)) * rate);
-
-    const eventValues = { userId, investmentAccountId: account.id, assetId: asset?.id || null, type,
-      tradeDate: input.tradeDate ? new Date(input.tradeDate) : new Date(), units: units === null ? null : String(units),
-      unitPrice: unitPrice === null ? null : String(unitPrice), quoteCurrency: (input.quoteCurrency || account.baseCurrency).toUpperCase(),
-      grossAmount: String(grossAmount), feeAmount: String(feeAmount), feeCurrency: (input.feeCurrency || account.baseCurrency).toUpperCase(),
-      exchangeRateToBase: String(rate), baseAmount: String(baseAmount), linkedTransactionId: input.linkedTransactionId || null, notes: input.notes?.trim() || null };
-    if (type === 'Sell' && asset && units) return this.createSellWithFifoDisposals(userId, account.id, asset.id, units, grossAmount, feeAmount, rate, eventValues);
-    const result = await investmentRepository.createEvent(eventValues, type === 'Buy' && asset && units ? { userId, investmentAccountId: account.id, assetId: asset.id, acquiredAt: input.tradeDate ? new Date(input.tradeDate) : new Date(),
-      originalUnits: String(units), remainingUnits: String(units), costBasisBase: String(baseAmount) } : undefined);
-    return result.event;
-  }
-
-  private async createSellWithFifoDisposals(
-    userId: string, accountId: string, assetId: string, unitsToSell: number, grossAmount: number, feeAmount: number, rate: number,
-    eventValues: typeof investmentEvents.$inferInsert,
-  ) {
-    return db.transaction(async (tx) => {
-      const lots = await tx.select().from(investmentLots).where(and(eq(investmentLots.userId, userId), eq(investmentLots.investmentAccountId, accountId), eq(investmentLots.assetId, assetId))).orderBy(asc(investmentLots.acquiredAt));
-    const available = lots.reduce((sum, lot) => sum + number(lot.remainingUnits), 0);
-    if (available + 1e-8 < unitsToSell) throw new Error('Cannot sell more units than are held in this account.');
-      const event = (await tx.insert(investmentEvents).values(eventValues).returning())[0];
-      const netProceeds = money((grossAmount - feeAmount) * rate);
-    let remaining = unitsToSell;
-    for (const lot of lots) {
-      if (remaining <= 0) break;
-      const used = Math.min(remaining, number(lot.remainingUnits));
-        const costBasis = money(number(lot.costBasisBase) * used / number(lot.originalUnits));
-        const proceeds = money(netProceeds * used / unitsToSell);
-        await tx.update(investmentLots).set({ remainingUnits: String(number(lot.remainingUnits) - used), updatedAt: new Date() }).where(eq(investmentLots.id, lot.id));
-        await tx.insert(investmentLotDisposals).values({ userId, investmentEventId: event.id, investmentLotId: lot.id, units: String(used), costBasisBase: String(costBasis), proceedsBase: String(proceeds) });
-      remaining -= used;
+  /** Fetch or return cached currency conversion rates */
+  async getExchangeRates(): Promise<{ USD_TO_MAD: number; EUR_TO_MAD: number; USD_TO_EUR: number }> {
+    const now = Date.now();
+    if (now - cachedRates.lastFetched < 30 * 60 * 1000) {
+      return {
+        USD_TO_MAD: cachedRates.USD_TO_MAD,
+        EUR_TO_MAD: cachedRates.EUR_TO_MAD,
+        USD_TO_EUR: cachedRates.USD_TO_EUR,
+      };
     }
-      return event;
+
+    try {
+      const res = await fetch('https://open.er-api.com/v6/latest/USD', { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.rates) {
+          const mad = parseFloat(data.rates.MAD) || 10.05;
+          const eur = parseFloat(data.rates.EUR) || 0.92;
+          cachedRates = {
+            USD_TO_MAD: mad,
+            EUR_TO_MAD: mad / eur,
+            USD_TO_EUR: eur,
+            lastFetched: now,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[InvestmentService] Failed to fetch live currency rates, using fallback:', (e as any)?.message);
+    }
+
+    return {
+      USD_TO_MAD: cachedRates.USD_TO_MAD,
+      EUR_TO_MAD: cachedRates.EUR_TO_MAD,
+      USD_TO_EUR: cachedRates.USD_TO_EUR,
+    };
+  }
+
+  /** Convert an amount from given currency to MAD */
+  toMad(amount: number, currency: string, rates: { USD_TO_MAD: number; EUR_TO_MAD: number }): number {
+    const c = (currency || 'USD').toUpperCase();
+    if (c === 'MAD') return amount;
+    if (c === 'EUR') return amount * rates.EUR_TO_MAD;
+    return amount * rates.USD_TO_MAD; // Default USD
+  }
+
+  /** Fetch live quotes for a list of symbols */
+  async fetchLiveQuotes(symbols: string[]): Promise<Record<string, { symbol: string; price: number; change24h: number; currency: string; lastUpdated: string }>> {
+    const result: Record<string, { symbol: string; price: number; change24h: number; currency: string; lastUpdated: string }> = {};
+    if (!symbols || symbols.length === 0) return result;
+
+    const uniqueSymbols = Array.from(new Set(symbols.map(s => s.toUpperCase().trim())));
+    const now = Date.now();
+
+    // 1. Group crypto symbols that have coingecko mapping
+    const cryptoSymbolsToFetch: string[] = [];
+    const coingeckoIds: string[] = [];
+
+    for (const sym of uniqueSymbols) {
+      const cached = quotesCache[sym];
+      if (cached && now - cached.lastUpdated < 60 * 1000) {
+        result[sym] = {
+          symbol: sym,
+          price: cached.price,
+          change24h: cached.change24h,
+          currency: cached.currency,
+          lastUpdated: new Date(cached.lastUpdated).toISOString(),
+        };
+        continue;
+      }
+
+      const cgId = COINGECKO_MAP[sym];
+      if (cgId) {
+        cryptoSymbolsToFetch.push(sym);
+        if (!coingeckoIds.includes(cgId)) coingeckoIds.push(cgId);
+      }
+    }
+
+    // Fetch crypto from CoinGecko
+    if (coingeckoIds.length > 0) {
+      try {
+        const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoIds.join(',')}&vs_currencies=usd&include_24hr_change=true`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+        if (res.ok) {
+          const data = await res.json();
+          for (const sym of cryptoSymbolsToFetch) {
+            const cgId = COINGECKO_MAP[sym];
+            if (data[cgId]) {
+              const price = parseFloat(data[cgId].usd) || 0;
+              const change24h = parseFloat(data[cgId].usd_24h_change) || 0;
+              quotesCache[sym] = { price, change24h, currency: 'USD', lastUpdated: now };
+              result[sym] = {
+                symbol: sym,
+                price,
+                change24h,
+                currency: 'USD',
+                lastUpdated: new Date(now).toISOString(),
+              };
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[InvestmentService] CoinGecko fetch notice:', (e as any)?.message);
+      }
+    }
+
+    // Fallback/Simulated or Yahoo finance for stock symbols (e.g. AAPL, MSFT, VOO, SPY)
+    for (const sym of uniqueSymbols) {
+      if (!result[sym]) {
+        // Try Yahoo finance quote chart
+        try {
+          const yhUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d`;
+          const res = await fetch(yhUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+            signal: AbortSignal.timeout(4000),
+          });
+          if (res.ok) {
+            const ydata = await res.json();
+            const meta = ydata?.chart?.result?.[0]?.meta;
+            if (meta && meta.regularMarketPrice) {
+              const price = parseFloat(meta.regularMarketPrice) || 0;
+              const prev = parseFloat(meta.previousClose || meta.chartPreviousClose) || price;
+              const change24h = prev > 0 ? ((price - prev) / prev) * 100 : 0;
+              const currency = meta.currency || 'USD';
+              quotesCache[sym] = { price, change24h, currency, lastUpdated: now };
+              result[sym] = {
+                symbol: sym,
+                price,
+                change24h,
+                currency,
+                lastUpdated: new Date(now).toISOString(),
+              };
+            }
+          }
+        } catch {
+          // Ignore Yahoo errors
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /** Complete investments data package for the client */
+  async getInvestmentsData(userId: string) {
+    const [holdings, txs, dcaList, rates, dbUser] = await Promise.all([
+      investmentRepository.findAllHoldingsByUserId(userId),
+      investmentRepository.findAllTransactionsByUserId(userId),
+      investmentRepository.findAllDcaPlansByUserId(userId),
+      this.getExchangeRates(),
+      userRepository.findById(userId),
+    ]);
+
+    // Fetch live market quotes for all held symbols
+    const symbols = Array.from(new Set(holdings.map(h => h.symbol)));
+    const liveQuotes = await this.fetchLiveQuotes(symbols);
+
+    // Compute holdings values
+    let totalPortfolioValueMad = 0;
+    let totalCostBasisMad = 0;
+    let annualPassiveIncomeMad = 0;
+
+    const enrichedHoldings = holdings.map(h => {
+      const units = parseFloat(h.units || '0') || 0;
+      const buyPriceAvg = parseFloat(h.buyPriceAvg || '0') || 0;
+      const quote = liveQuotes[h.symbol.toUpperCase()];
+      const currentPrice = quote?.price || parseFloat(h.currentPrice || '0') || buyPriceAvg;
+      const change24h = quote?.change24h || 0;
+
+      const currency = h.currency || quote?.currency || 'USD';
+      const costBasisLocal = units * buyPriceAvg;
+      const marketValLocal = units * currentPrice;
+      const unrealizedPnlLocal = marketValLocal - costBasisLocal;
+      const unrealizedPnlPercent = costBasisLocal > 0 ? (unrealizedPnlLocal / costBasisLocal) * 100 : 0;
+
+      const marketValMad = this.toMad(marketValLocal, currency, rates);
+      const costBasisMad = this.toMad(costBasisLocal, currency, rates);
+      const unrealizedPnlMad = marketValMad - costBasisMad;
+
+      totalPortfolioValueMad += marketValMad;
+      totalCostBasisMad += costBasisMad;
+
+      // Yield & Passive Income
+      const yieldPct = parseFloat(h.dividendYieldPercent || '0') || 0;
+      if (yieldPct > 0) {
+        annualPassiveIncomeMad += (marketValMad * yieldPct) / 100;
+      }
+
+      return {
+        ...h,
+        currentPrice: currentPrice.toString(),
+        totalCostBasis: costBasisLocal,
+        currentMarketValue: marketValLocal,
+        unrealizedPnl: unrealizedPnlLocal,
+        unrealizedPnlPercent,
+        change24h,
+      };
+    });
+
+    const totalUnrealizedPnlMad = totalPortfolioValueMad - totalCostBasisMad;
+    const totalUnrealizedPnlPercent = totalCostBasisMad > 0 ? (totalUnrealizedPnlMad / totalCostBasisMad) * 100 : 0;
+
+    // Calculate Safe-To-Invest and FIRE metrics
+    let safeToInvest = {
+      monthlyIncome: 0,
+      fixedObligations: 0,
+      variableSpendPace: 0,
+      emergencyBufferDeficiency: 0,
+      pendingPayables: 0,
+      safeToInvestMonthly: 0,
+      currentMonthlyDcaTarget: 0,
+      surplusAfterDca: 0,
+      recommendationText: '',
+      riskAppetiteMax: 0,
+    };
+
+    let monthlyLivingExpenses = 3000; // baseline fallback
+
+    if (dbUser) {
+      try {
+        const kpis = await kpiService.getKpisForUser(dbUser);
+        const salary = parseFloat((dbUser.salary as any) || '0') || kpis.monthlyIncome || 0;
+        const fixedBudget = kpis.remainingFixedBudget || 0;
+        const avgDailySpend = kpis.avgDailySpend || 0;
+        const variableProjected = avgDailySpend * 30;
+        const totalEmergencyTarget = parseFloat((dbUser.emergencyBuffer as any) || '0');
+        const emergencyDeficit = Math.max(0, totalEmergencyTarget - kpis.emergencyBuffer);
+        const payables = kpis.pendingPayables || 0;
+
+        monthlyLivingExpenses = Math.max(1000, fixedBudget + variableProjected);
+
+        // Safe to Invest Formula:
+        // Monthly Income - Fixed Expenses - Buffer Deficit (need to rebuild buffer first) - Payables
+        const investableSurplus = Math.max(0, salary - fixedBudget - (avgDailySpend * 25) - emergencyDeficit - payables);
+
+        // Active DCA commitments in MAD
+        let currentMonthlyDcaTarget = 0;
+        for (const plan of dcaList) {
+          if (plan.status === 'active') {
+            const planAmt = parseFloat(plan.targetAmount || '0') || 0;
+            let monthlyMultiplier = 1;
+            if (plan.frequency === 'daily') monthlyMultiplier = 30;
+            else if (plan.frequency === 'weekly') monthlyMultiplier = 4.33;
+            currentMonthlyDcaTarget += this.toMad(planAmt * monthlyMultiplier, plan.currency, rates);
+          }
+        }
+
+        const surplusAfterDca = investableSurplus - currentMonthlyDcaTarget;
+
+        let recommendationText = '';
+        if (emergencyDeficit > 0) {
+          recommendationText = `⚠️ Your emergency buffer is short by ${emergencyDeficit.toLocaleString()} MAD. TrueSpend recommends topping up your buffer before aggressive investing.`;
+        } else if (surplusAfterDca > 0) {
+          recommendationText = `✅ You have ${surplusAfterDca.toLocaleString()} MAD in safe investable surplus this month after funding all bills and active DCA plans.`;
+        } else if (currentMonthlyDcaTarget > investableSurplus) {
+          recommendationText = `⚠️ Your planned monthly DCA (${currentMonthlyDcaTarget.toLocaleString()} MAD) exceeds this month's safe investable surplus (${investableSurplus.toLocaleString()} MAD). Consider pausing or trimming some DCA orders.`;
+        } else {
+          recommendationText = `All active DCA targets are comfortably covered by this month's cash flow surplus.`;
+        }
+
+        safeToInvest = {
+          monthlyIncome: salary,
+          fixedObligations: fixedBudget,
+          variableSpendPace: variableProjected,
+          emergencyBufferDeficiency: emergencyDeficit,
+          pendingPayables: payables,
+          safeToInvestMonthly: Math.round(investableSurplus),
+          currentMonthlyDcaTarget: Math.round(currentMonthlyDcaTarget),
+          surplusAfterDca: Math.round(surplusAfterDca),
+          recommendationText,
+          riskAppetiteMax: Math.round(investableSurplus * 0.7), // max recommended for volatile assets like crypto
+        };
+      } catch (err) {
+        console.warn('[InvestmentService] KPI computation notice:', (err as any)?.message);
+      }
+    }
+
+    const monthlyPassiveIncome = annualPassiveIncomeMad / 12;
+    const fireCoveragePercent = monthlyLivingExpenses > 0 ? (monthlyPassiveIncome / monthlyLivingExpenses) * 100 : 0;
+
+    return {
+      holdings: enrichedHoldings,
+      transactions: txs,
+      dcaPlans: dcaList,
+      quotes: liveQuotes,
+      rates,
+      totalPortfolioValueMad: Math.round(totalPortfolioValueMad * 100) / 100,
+      totalCostBasisMad: Math.round(totalCostBasisMad * 100) / 100,
+      totalUnrealizedPnlMad: Math.round(totalUnrealizedPnlMad * 100) / 100,
+      totalUnrealizedPnlPercent: Math.round(totalUnrealizedPnlPercent * 100) / 100,
+      annualPassiveIncomeMad: Math.round(annualPassiveIncomeMad * 100) / 100,
+      fireCoveragePercent: Math.round(fireCoveragePercent * 10) / 10,
+      safeToInvest,
+    };
+  }
+
+  /** Create or add a holding */
+  async createHolding(userId: string, data: any) {
+    const symbol = (data.symbol || '').toUpperCase().trim();
+    if (!symbol) throw new Error('Symbol is required (e.g. BTC, AAPL, VOO)');
+    const name = (data.name || symbol).trim();
+    const assetType = data.assetType || 'crypto';
+    const units = String(data.units ?? 0);
+    const buyPriceAvg = String(data.buyPriceAvg ?? data.currentPrice ?? 0);
+    const currentPrice = String(data.currentPrice ?? buyPriceAvg);
+    const currency = (data.currency || 'USD').toUpperCase();
+
+    return await investmentRepository.createHolding({
+      userId,
+      walletId: data.walletId || null,
+      symbol,
+      name,
+      assetType,
+      units,
+      buyPriceAvg,
+      currentPrice,
+      currency,
+      targetAllocationPercent: String(data.targetAllocationPercent || 0),
+      dividendYieldPercent: String(data.dividendYieldPercent || 0),
+      notes: data.notes || null,
     });
   }
 
-  async recordManualPrice(userId: string, assetId: string, price: number, currency: string, capturedAt?: string) {
-    const asset = await investmentRepository.asset(assetId, userId);
-    if (!asset) throw new Error('Investment asset not found.');
-    if (!Number.isFinite(price) || price < 0) throw new Error('Price must be zero or greater.');
-    return investmentRepository.createPrice({ assetId, userId, price: String(price), currency: currency.toUpperCase(), exchangeRateToBase: '1',
-      priceInBase: String(price), source: 'Manual', capturedAt: capturedAt ? new Date(capturedAt) : new Date() });
+  /** Update an existing holding */
+  async updateHolding(userId: string, id: string, data: any) {
+    const holding = await investmentRepository.findHoldingById(id, userId);
+    if (!holding) throw new Error('Holding not found');
+
+    const updateData: any = {};
+    if (data.symbol) updateData.symbol = data.symbol.toUpperCase().trim();
+    if (data.name) updateData.name = data.name.trim();
+    if (data.assetType) updateData.assetType = data.assetType;
+    if (data.units !== undefined) updateData.units = String(data.units);
+    if (data.buyPriceAvg !== undefined) updateData.buyPriceAvg = String(data.buyPriceAvg);
+    if (data.currentPrice !== undefined) updateData.currentPrice = String(data.currentPrice);
+    if (data.currency) updateData.currency = data.currency.toUpperCase();
+    if (data.walletId !== undefined) updateData.walletId = data.walletId;
+    if (data.targetAllocationPercent !== undefined) updateData.targetAllocationPercent = String(data.targetAllocationPercent);
+    if (data.dividendYieldPercent !== undefined) updateData.dividendYieldPercent = String(data.dividendYieldPercent);
+    if (data.notes !== undefined) updateData.notes = data.notes;
+
+    return await investmentRepository.updateHolding(id, userId, updateData);
   }
 
-  async fundAccount(userId: string, accountId: string, sourceWalletId: string, amount: number, date?: string, note?: string) {
-    const account = await investmentRepository.account(accountId, userId);
-    const wallet = await walletRepository.findById(sourceWalletId, userId);
-    if (!account || !wallet) throw new Error('Investment account or source wallet was not found.');
-    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Funding amount must be greater than zero.');
-    return db.transaction(async (tx) => {
-      const cashTransfer = (await tx.insert(transactions).values({ userId, walletId: wallet.id, amount: String(amount), type: 'Transfer',
-        category: 'Investment Funding', notes: `[Investment funding] ${account.name}`, createdAt: date ? new Date(date) : new Date() }).returning())[0];
-      const event = (await tx.insert(investmentEvents).values({ userId, investmentAccountId: account.id, type: 'Funding', tradeDate: date ? new Date(date) : new Date(),
-        quoteCurrency: account.baseCurrency, grossAmount: String(amount), feeAmount: '0', feeCurrency: account.baseCurrency,
-        exchangeRateToBase: '1', baseAmount: String(amount), linkedTransactionId: cashTransfer.id, notes: note?.trim() || null }).returning())[0];
-      return { event, transaction: cashTransfer };
+  /** Delete holding */
+  async deleteHolding(userId: string, id: string) {
+    await investmentRepository.deleteHolding(id, userId);
+    return { success: true };
+  }
+
+  /** Execute a Trade: BUY, SELL, DIVIDEND, STAKING_REWARD */
+  async executeTrade(userId: string, payload: {
+    holdingId: string;
+    type: 'BUY' | 'SELL' | 'DIVIDEND' | 'STAKING_REWARD';
+    units?: number;
+    pricePerUnit?: number;
+    totalAmount?: number;
+    fees?: number;
+    walletId?: string | null;
+    notes?: string;
+  }) {
+    const holding = await investmentRepository.findHoldingById(payload.holdingId, userId);
+    if (!holding) throw new Error('Target holding not found');
+
+    const type = payload.type;
+    const fees = payload.fees || 0;
+    const currentUnits = parseFloat(holding.units || '0') || 0;
+    const currentBuyPrice = parseFloat(holding.buyPriceAvg || '0') || 0;
+
+    let units = payload.units || 0;
+    let pricePerUnit = payload.pricePerUnit || 0;
+    let totalAmount = payload.totalAmount || 0;
+
+    if (!totalAmount && units > 0 && pricePerUnit > 0) {
+      totalAmount = units * pricePerUnit;
+    } else if (!pricePerUnit && units > 0 && totalAmount > 0) {
+      pricePerUnit = totalAmount / units;
+    }
+
+    let realizedPnl = 0;
+
+    if (type === 'BUY') {
+      if (units <= 0 || totalAmount <= 0) throw new Error('BUY order requires valid units and total amount');
+      const newTotalUnits = currentUnits + units;
+      // Weighted average buy cost
+      const newBuyPriceAvg = newTotalUnits > 0
+        ? (currentUnits * currentBuyPrice + units * pricePerUnit) / newTotalUnits
+        : pricePerUnit;
+
+      await investmentRepository.updateHolding(holding.id, userId, {
+        units: newTotalUnits.toString(),
+        buyPriceAvg: newBuyPriceAvg.toString(),
+        currentPrice: pricePerUnit.toString(),
+      });
+
+      // Deduct cash from settlement wallet if specified
+      if (payload.walletId) {
+        const wallet = await walletRepository.findById(payload.walletId, userId);
+        if (wallet) {
+          const rates = await this.getExchangeRates();
+          const madAmount = this.toMad(totalAmount + fees, holding.currency || 'USD', rates);
+          await transactionRepository.create({
+            userId,
+            walletId: wallet.id,
+            amount: madAmount.toFixed(2),
+            type: 'Expense',
+            category: 'Investments & Brokerage',
+            notes: `Bought ${units} ${holding.symbol} @ ${pricePerUnit} ${holding.currency}`,
+          });
+        }
+      }
+    } else if (type === 'SELL') {
+      if (units <= 0) throw new Error('SELL order requires units > 0');
+      if (units > currentUnits + 0.00000001) {
+        throw new Error(`Insufficient units to sell. You have ${currentUnits} ${holding.symbol}, requested ${units}`);
+      }
+
+      realizedPnl = (pricePerUnit - currentBuyPrice) * units - fees;
+      const remainingUnits = Math.max(0, currentUnits - units);
+
+      await investmentRepository.updateHolding(holding.id, userId, {
+        units: remainingUnits.toString(),
+        currentPrice: pricePerUnit.toString(),
+      });
+
+      // Credit cash to settlement wallet if specified
+      if (payload.walletId) {
+        const wallet = await walletRepository.findById(payload.walletId, userId);
+        if (wallet) {
+          const rates = await this.getExchangeRates();
+          const netProceeds = Math.max(0, totalAmount - fees);
+          const madAmount = this.toMad(netProceeds, holding.currency || 'USD', rates);
+          await transactionRepository.create({
+            userId,
+            walletId: wallet.id,
+            amount: madAmount.toFixed(2),
+            type: 'Income',
+            category: 'Investment Returns & Capital Gains',
+            notes: `Sold ${units} ${holding.symbol} @ ${pricePerUnit} ${holding.currency} (P&L: ${realizedPnl.toFixed(2)})`,
+          });
+        }
+      }
+    } else if (type === 'DIVIDEND' || type === 'STAKING_REWARD') {
+      if (totalAmount <= 0) throw new Error('Dividend / Staking reward requires positive total amount');
+      // Credit cash to settlement wallet if specified
+      if (payload.walletId) {
+        const wallet = await walletRepository.findById(payload.walletId, userId);
+        if (wallet) {
+          const rates = await this.getExchangeRates();
+          const netYield = Math.max(0, totalAmount - fees);
+          const madAmount = this.toMad(netYield, holding.currency || 'USD', rates);
+          await transactionRepository.create({
+            userId,
+            walletId: wallet.id,
+            amount: madAmount.toFixed(2),
+            type: 'Income',
+            category: '📈 Investment Returns / Dividends',
+            notes: `${type === 'DIVIDEND' ? 'Dividend' : 'Staking Reward'} from ${holding.symbol}`,
+          });
+        }
+      }
+    }
+
+    // Record the trade in investment_transactions
+    const createdTx = await investmentRepository.createTransaction({
+      userId,
+      holdingId: holding.id,
+      walletId: payload.walletId || null,
+      type,
+      units: units.toString(),
+      pricePerUnit: pricePerUnit.toString(),
+      totalAmount: totalAmount.toString(),
+      currency: holding.currency || 'USD',
+      fees: fees.toString(),
+      realizedPnl: realizedPnl.toString(),
+      notes: payload.notes || null,
+    });
+
+    return {
+      success: true,
+      transaction: createdTx,
+    };
+  }
+
+  /** Create a DCA Plan */
+  async createDcaPlan(userId: string, data: any) {
+    const symbol = (data.symbol || '').toUpperCase().trim();
+    if (!symbol) throw new Error('Symbol is required');
+    const assetName = (data.assetName || symbol).trim();
+    const assetType = data.assetType || 'crypto';
+    const targetAmount = String(data.targetAmount || 0);
+    const currency = (data.currency || 'MAD').toUpperCase();
+    const frequency = data.frequency || 'post_payday';
+    const dayOffsetAfterPayday = parseInt(data.dayOffsetAfterPayday || '2', 10);
+
+    return await investmentRepository.createDcaPlan({
+      userId,
+      holdingId: data.holdingId || null,
+      symbol,
+      assetName,
+      assetType,
+      targetAmount,
+      currency,
+      frequency,
+      dayOffsetAfterPayday,
+      walletId: data.walletId || null,
+      status: 'active',
     });
   }
 
-  async withdrawAccount(userId: string, accountId: string, destinationWalletId: string, amount: number, date?: string, note?: string) {
-    const account = await investmentRepository.account(accountId, userId);
-    const wallet = await walletRepository.findById(destinationWalletId, userId);
-    if (!account || !wallet) throw new Error('Investment account or destination wallet was not found.');
-    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Withdrawal amount must be greater than zero.');
-    const accountEvents = (await this.listEvents(userId)).filter((event) => event.investmentAccountId === account.id);
-    const availableCash = money(accountEvents.reduce((cash, event) => {
-      const amountInBase = number(event.baseAmount);
-      const feeInBase = number(event.feeAmount) * number(event.exchangeRateToBase || '1');
-      if (event.type === 'Funding' || event.type === 'Sell' || event.type === 'Dividend' || event.type === 'Interest') return cash + amountInBase - (event.type === 'Sell' || event.type === 'Dividend' || event.type === 'Interest' ? feeInBase : 0);
-      if (event.type === 'Withdrawal' || event.type === 'Buy' || event.type === 'Fee') return cash - amountInBase;
-      return cash;
-    }, 0));
-    if (amount > availableCash + 0.01) throw new Error(`Withdrawal exceeds available investment-account cash (${availableCash.toFixed(2)} ${account.baseCurrency}). Record a sale or funding first.`);
-    return db.transaction(async (tx) => {
-      const cashTransfer = (await tx.insert(transactions).values({ userId, walletId: wallet.id, amount: String(amount), type: 'Transfer',
-        category: 'Investment Withdrawal', notes: `[Investment withdrawal] ${account.name}`, createdAt: date ? new Date(date) : new Date() }).returning())[0];
-      const event = (await tx.insert(investmentEvents).values({ userId, investmentAccountId: account.id, type: 'Withdrawal', tradeDate: date ? new Date(date) : new Date(),
-        quoteCurrency: account.baseCurrency, grossAmount: String(amount), feeAmount: '0', feeCurrency: account.baseCurrency,
-        exchangeRateToBase: '1', baseAmount: String(amount), linkedTransactionId: cashTransfer.id, notes: note?.trim() || null }).returning())[0];
-      return { event, transaction: cashTransfer };
-    });
+  /** Update DCA Plan */
+  async updateDcaPlan(userId: string, id: string, data: any) {
+    const plan = await investmentRepository.findDcaPlanById(id, userId);
+    if (!plan) throw new Error('DCA plan not found');
+
+    const updateData: any = {};
+    if (data.symbol) updateData.symbol = data.symbol.toUpperCase().trim();
+    if (data.assetName) updateData.assetName = data.assetName.trim();
+    if (data.targetAmount !== undefined) updateData.targetAmount = String(data.targetAmount);
+    if (data.currency) updateData.currency = data.currency.toUpperCase();
+    if (data.frequency) updateData.frequency = data.frequency;
+    if (data.dayOffsetAfterPayday !== undefined) updateData.dayOffsetAfterPayday = parseInt(data.dayOffsetAfterPayday, 10);
+    if (data.walletId !== undefined) updateData.walletId = data.walletId;
+    if (data.status) updateData.status = data.status;
+
+    return await investmentRepository.updateDcaPlan(id, userId, updateData);
   }
 
-  async portfolio(userId: string, baseCurrency = 'MAD'): Promise<PortfolioSummary> {
-    const [accounts, assets, events, lots, disposals] = await Promise.all([this.listAccounts(userId), this.listAssets(userId), this.listEvents(userId), investmentRepository.lots(userId), investmentRepository.disposals(userId)]);
-    const activeAccounts = accounts.filter((account) => !account.isArchived);
-    const assetMap = new Map(assets.map((asset) => [asset.id, asset]));
-    const accountMap = new Map(activeAccounts.map((account) => [account.id, account]));
-    const activeLots = lots.filter((lot) => accountMap.has(lot.investmentAccountId) && number(lot.remainingUnits) > 0);
-    const prices = new Map((await investmentRepository.latestPrices([...new Set(activeLots.map((lot) => lot.assetId))])).map((price) => [price.assetId, price]));
-    const grouped = new Map<string, { units: number; costBasis: number; accountId: string }>();
-    for (const lot of activeLots) {
-      const key = `${lot.investmentAccountId}:${lot.assetId}`;
-      const prior = grouped.get(key) || { units: 0, costBasis: 0, accountId: lot.investmentAccountId };
-      const fraction = number(lot.originalUnits) ? number(lot.remainingUnits) / number(lot.originalUnits) : 0;
-      grouped.set(key, { ...prior, units: prior.units + number(lot.remainingUnits), costBasis: prior.costBasis + number(lot.costBasisBase) * fraction });
-    }
-    const holdings = [...grouped.entries()].flatMap(([key, holding]) => {
-      const assetId = key.split(':')[1]; const asset = assetMap.get(assetId); if (!asset) return [];
-      const latest = prices.get(assetId); const latestPrice = latest ? number(latest.priceInBase) : undefined;
-      const marketValue = latestPrice === undefined ? holding.costBasis : holding.units * latestPrice;
-      return [{ accountId: holding.accountId, asset: { ...asset, createdAt: asset.createdAt.toISOString(), updatedAt: asset.updatedAt.toISOString() }, units: holding.units,
-        costBasis: money(holding.costBasis), marketValue: money(marketValue), unrealizedGain: money(marketValue - holding.costBasis),
-        latestPrice, priceAsOf: latest?.capturedAt?.toISOString() }];
-    });
-    const accountCash = new Map(activeAccounts.map((account) => [account.id, 0]));
-    let totalContributions = 0;
-    for (const event of events.filter((event) => accountMap.has(event.investmentAccountId))) {
-      const eventAmount = number(event.baseAmount); const fee = number(event.feeAmount) * number(event.exchangeRateToBase || '1');
-      const prior = accountCash.get(event.investmentAccountId) || 0;
-      if (event.type === 'Funding') { accountCash.set(event.investmentAccountId, prior + eventAmount); totalContributions += eventAmount; }
-      if (event.type === 'Withdrawal') { accountCash.set(event.investmentAccountId, prior - eventAmount); totalContributions -= eventAmount; }
-      if (event.type === 'Buy' || event.type === 'Fee') accountCash.set(event.investmentAccountId, prior - eventAmount);
-      if (event.type === 'Sell' || event.type === 'Dividend' || event.type === 'Interest') accountCash.set(event.investmentAccountId, prior + eventAmount - fee);
-    }
-    const holdingValue = holdings.reduce((sum, holding) => sum + holding.marketValue, 0);
-    const cashValue = [...accountCash.values()].reduce((sum, value) => sum + value, 0);
-    const marketValue = money(holdingValue + cashValue);
-    const includedHoldingValue = holdings.filter((holding) => accountMap.get(holding.accountId)?.includeInNetWorth).reduce((sum, holding) => sum + holding.marketValue, 0);
-    const includedCashValue = [...accountCash.entries()].filter(([accountId]) => accountMap.get(accountId)?.includeInNetWorth).reduce((sum, [, cash]) => sum + cash, 0);
-    const includedInNetWorthValue = money(includedHoldingValue + includedCashValue);
-    const costBasis = money(holdings.reduce((sum, holding) => sum + holding.costBasis, 0));
-    const byClass = new Map<string, number>(); const byAccount = new Map<string, number>(); const byRisk = new Map<RiskLevel, number>();
-    for (const holding of holdings) {
-      byClass.set(holding.asset.assetClass, (byClass.get(holding.asset.assetClass) || 0) + holding.marketValue);
-      byAccount.set(accountMap.get(holding.accountId)?.name || 'Unknown', (byAccount.get(accountMap.get(holding.accountId)?.name || 'Unknown') || 0) + holding.marketValue);
-      byRisk.set(holding.asset.riskLevel, (byRisk.get(holding.asset.riskLevel) || 0) + holding.marketValue);
-    }
-    for (const [accountId, value] of accountCash) if (value) byAccount.set(accountMap.get(accountId)?.name || 'Unknown', (byAccount.get(accountMap.get(accountId)?.name || 'Unknown') || 0) + value);
-    const distribution = (values: Map<string, number>) => [...values.entries()].map(([name, value]) => ({ name, value: money(value), percent: marketValue ? money(value * 100 / marketValue) : 0 }));
-    const dates = [...prices.values()].map((price) => price.capturedAt.getTime());
-    const age = dates.length ? Date.now() - Math.max(...dates) : Infinity;
-    const realizedGain = money(disposals.reduce((sum, disposal) => sum + number(disposal.proceedsBase) - number(disposal.costBasisBase), 0));
-    return { baseCurrency, marketValue, includedInNetWorthValue, totalContributions: money(totalContributions), costBasis, unrealizedGain: money(holdingValue - costBasis),
-      realizedGain, totalReturn: money(marketValue - totalContributions), totalReturnPercent: totalContributions ? money((marketValue - totalContributions) * 100 / totalContributions) : 0,
-      holdings, allocationByAssetClass: distribution(byClass), allocationByAccount: distribution(byAccount),
-      riskConcentration: [...byRisk.entries()].map(([risk, value]) => ({ risk, value: money(value), percent: marketValue ? money(value * 100 / marketValue) : 0 })),
-      priceFreshness: prices.size === 0 ? 'unavailable' : age > 15 * 60_000 ? 'stale' : 'fresh' };
+  /** Delete DCA Plan */
+  async deleteDcaPlan(userId: string, id: string) {
+    await investmentRepository.deleteDcaPlan(id, userId);
+    return { success: true };
   }
 }
 
