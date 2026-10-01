@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, uuid, text, timestamp, decimal, pgEnum, integer, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, decimal, pgEnum, integer, boolean, uniqueIndex, index, jsonb, date } from 'drizzle-orm/pg-core';
 
 export const transactionTypeEnum = pgEnum('transaction_type', ['Income', 'Expense', 'Transfer', 'Debt Repayment']);
 export const walletTypeEnum = pgEnum('wallet_type', ['Bank', 'Cash', 'Savings', 'Investment']);
@@ -464,5 +464,224 @@ export const investmentWatchlistRelations = relations(investmentWatchlist, ({ on
     references: [users.id],
   }),
 }));
+
+// V2 Financial Operating System Tables
+export const financialProfiles = pgTable('financial_profiles', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+  baseCurrency: text('base_currency').default('MAD').notNull(),
+  incomeFrequency: text('income_frequency').default('monthly').notNull(),
+  incomeStability: text('income_stability').default('stable').notNull(),
+  strategy: text('strategy').default('Balanced').notNull(),
+  riskPreference: text('risk_preference').default('Medium').notNull(),
+  investmentExperience: text('investment_experience').default('None').notNull(),
+  investmentHorizon: text('investment_horizon').default('Not set').notNull(),
+  emergencyTargetMonths: decimal('emergency_target_months').default('3').notNull(),
+  minimumUnallocatedAmount: decimal('minimum_unallocated_amount').default('0').notNull(),
+  minimumUnallocatedPercent: decimal('minimum_unallocated_percent').default('0').notNull(),
+  allowCashEquivalentReserve: boolean('allow_cash_equivalent_reserve').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const budgetCategoryPreferences = pgTable('budget_category_preferences', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  category: text('category').notNull(),
+  classification: text('classification').default('flexible').notNull(), // 'essential' | 'flexible' | 'growth' | 'excluded'
+  isLocked: boolean('is_locked').default(false).notNull(),
+  neverAutoChange: boolean('never_auto_change').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('budget_category_preferences_user_category_unique').on(table.userId, table.category),
+]);
+
+export const financialPlans = pgTable('financial_plans', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  parentPlanId: uuid('parent_plan_id'),
+  payrollId: uuid('payroll_id').references(() => payrolls.id, { onDelete: 'set null' }),
+  sourceTransactionId: uuid('source_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  status: text('status').default('Draft').notNull(), // 'Draft' | 'Active' | 'Superseded' | 'Completed' | 'Cancelled'
+  periodStart: timestamp('period_start'),
+  periodEnd: timestamp('period_end'),
+  incomeAmount: decimal('income_amount').notNull(),
+  baseCurrency: text('base_currency').default('MAD').notNull(),
+  snapshotJson: jsonb('snapshot_json').notNull(),
+  engineVersion: text('engine_version').default('v2.0').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  approvedAt: timestamp('approved_at'),
+  completedAt: timestamp('completed_at'),
+}, (table) => [
+  index('financial_plans_user_status_idx').on(table.userId, table.status),
+  index('financial_plans_user_period_idx').on(table.userId, table.periodStart),
+]);
+
+export const investmentAccounts = pgTable('investment_accounts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  institution: text('institution'),
+  type: text('type').notNull(), // 'Exchange' | 'Brokerage' | 'Retirement' | 'PreciousMetals' | 'Manual' | 'Other'
+  baseCurrency: text('base_currency').default('MAD').notNull(),
+  liquidity: text('liquidity').default('Restricted').notNull(),
+  includeInNetWorth: boolean('include_in_net_worth').default(true).notNull(),
+  includeInEmergencyReserve: boolean('include_in_emergency_reserve').default(false).notNull(),
+  isArchived: boolean('is_archived').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('investment_accounts_user_name_unique').on(table.userId, table.name),
+]);
+
+export const investmentAssets = pgTable('investment_assets', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  symbol: text('symbol').notNull(),
+  name: text('name').notNull(),
+  assetClass: text('asset_class').notNull(), // 'Crypto' | 'Stock' | 'ETF' | 'MutualFund' | 'Bond' | 'PreciousMetal' | 'CashEquivalent' | 'Retirement' | 'Other'
+  coingeckoCoinId: text('coingecko_coin_id'),
+  quoteCurrency: text('quote_currency').default('MAD').notNull(),
+  unitsPrecision: integer('units_precision').default(8).notNull(),
+  riskLevel: text('risk_level').default('Medium').notNull(),
+  marketDataProvider: text('market_data_provider'),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('investment_assets_user_symbol_quote_unique').on(table.userId, table.symbol, table.quoteCurrency),
+]);
+
+export const investmentEvents = pgTable('investment_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  investmentAccountId: uuid('investment_account_id').references(() => investmentAccounts.id, { onDelete: 'cascade' }).notNull(),
+  assetId: uuid('asset_id').references(() => investmentAssets.id, { onDelete: 'set null' }),
+  type: text('type').notNull(), // 'Funding' | 'Withdrawal' | 'Buy' | 'Sell' | 'Dividend' | 'Interest' | 'Fee' | 'Adjustment'
+  tradeDate: timestamp('trade_date').notNull(),
+  units: decimal('units'),
+  unitPrice: decimal('unit_price'),
+  quoteCurrency: text('quote_currency').default('MAD').notNull(),
+  grossAmount: decimal('gross_amount').notNull(),
+  feeAmount: decimal('fee_amount').default('0').notNull(),
+  feeCurrency: text('fee_currency').default('MAD').notNull(),
+  exchangeRateToBase: decimal('exchange_rate_to_base').default('1').notNull(),
+  baseAmount: decimal('base_amount').notNull(),
+  linkedTransactionId: uuid('linked_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const investmentLots = pgTable('investment_lots', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  investmentEventId: uuid('investment_event_id').references(() => investmentEvents.id, { onDelete: 'cascade' }).notNull(),
+  investmentAccountId: uuid('investment_account_id').references(() => investmentAccounts.id, { onDelete: 'cascade' }).notNull(),
+  assetId: uuid('asset_id').references(() => investmentAssets.id, { onDelete: 'cascade' }).notNull(),
+  acquiredAt: timestamp('acquired_at').notNull(),
+  originalUnits: decimal('original_units').notNull(),
+  remainingUnits: decimal('remaining_units').notNull(),
+  costBasisBase: decimal('cost_basis_base').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const investmentLotDisposals = pgTable('investment_lot_disposals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  investmentEventId: uuid('investment_event_id').references(() => investmentEvents.id, { onDelete: 'cascade' }).notNull(),
+  investmentLotId: uuid('investment_lot_id').references(() => investmentLots.id, { onDelete: 'cascade' }).notNull(),
+  units: decimal('units').notNull(),
+  costBasisBase: decimal('cost_basis_base').notNull(),
+  proceedsBase: decimal('proceeds_base').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const priceSnapshots = pgTable('price_snapshots', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  assetId: uuid('asset_id').references(() => investmentAssets.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  price: decimal('price').notNull(),
+  currency: text('currency').notNull(),
+  exchangeRateToBase: decimal('exchange_rate_to_base').default('1').notNull(),
+  priceInBase: decimal('price_in_base').notNull(),
+  source: text('source').notNull(), // 'Manual' | 'Provider' | 'Import'
+  provider: text('provider'),
+  providerAssetId: text('provider_asset_id'),
+  providerPriceTimestamp: timestamp('provider_price_timestamp'),
+  capturedAt: timestamp('captured_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('price_snapshots_asset_captured_source_unique').on(table.assetId, table.capturedAt, table.source),
+]);
+
+export const planAllocations = pgTable('plan_allocations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  planId: uuid('plan_id').references(() => financialPlans.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  type: text('type').notNull(), // 'Commitment' | 'Debt' | 'EmergencyBuffer' | 'Goal' | 'Budget' | 'Investment' | 'UnallocatedMargin'
+  name: text('name').notNull(),
+  amount: decimal('amount').notNull(),
+  status: text('status').default('Planned').notNull(), // 'Planned' | 'Approved' | 'Executed' | 'Skipped' | 'Changed' | 'Failed'
+  priority: integer('priority').notNull(),
+  category: text('category'),
+  goalId: uuid('goal_id').references(() => goals.id, { onDelete: 'set null' }),
+  investmentAccountId: uuid('investment_account_id').references(() => investmentAccounts.id, { onDelete: 'set null' }),
+  sourceWalletId: uuid('source_wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+  destinationWalletId: uuid('destination_wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+  executedTransactionId: uuid('executed_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  rationale: text('rationale').notNull(),
+  evidenceJson: jsonb('evidence_json').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  executedAt: timestamp('executed_at'),
+}, (table) => [
+  index('plan_allocations_plan_idx').on(table.planId),
+  index('plan_allocations_user_idx').on(table.userId),
+]);
+
+export const recommendations = pgTable('recommendations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  type: text('type').notNull(), // 'SalaryPlanReady' | 'UnallocatedIncome' | 'EmergencyBufferGap' | 'BillReserveRequired' | 'BudgetPaceRisk' | 'GoalAtRisk' | 'DebtDueSoon' | 'InvestmentCapacityAvailable' | 'AllocationDrift' | 'UnusualSpending' | 'PlanReviewRequired'
+  status: text('status').default('Active').notNull(), // 'Active' | 'Viewed' | 'Approved' | 'Dismissed' | 'Snoozed' | 'Expired'
+  priorityScore: decimal('priority_score').notNull(),
+  title: text('title').notNull(),
+  summary: text('summary').notNull(),
+  rationale: text('rationale').notNull(),
+  confidence: text('confidence').notNull(),
+  actionPayload: jsonb('action_payload').notNull(),
+  evidenceJson: jsonb('evidence_json').notNull(),
+  dedupeKey: text('dedupe_key').notNull(),
+  availableFrom: timestamp('available_from').defaultNow().notNull(),
+  expiresAt: timestamp('expires_at'),
+  snoozedUntil: timestamp('snoozed_until'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  actedAt: timestamp('acted_at'),
+}, (table) => [
+  index('recommendations_user_status_idx').on(table.userId, table.status),
+  uniqueIndex('recommendations_user_dedupe_unique').on(table.userId, table.dedupeKey),
+]);
+
+export const financialSnapshots = pgTable('financial_snapshots', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  snapshotDate: date('snapshot_date').notNull(),
+  liquidCash: decimal('liquid_cash').notNull(),
+  reservedCash: decimal('reserved_cash').notNull(),
+  safeToSpend: decimal('safe_to_spend').notNull(),
+  investmentValue: decimal('investment_value').notNull(),
+  totalDebt: decimal('total_debt').notNull(),
+  netWorth: decimal('net_worth').notNull(),
+  emergencyCoverageMonths: decimal('emergency_coverage_months').notNull(),
+  dataJson: jsonb('data_json').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('financial_snapshots_user_date_unique').on(table.userId, table.snapshotDate),
+]);
+
 
 
