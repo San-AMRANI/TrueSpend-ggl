@@ -14,6 +14,7 @@ import contextRoutes from './contextRoutes.js';
 import goalRoutes from './goalRoutes.js';
 import subscriptionRoutes from './subscriptionRoutes.js';
 import financialOperatingSystemRoutes from './financialOperatingSystemRoutes.js';
+import investmentRoutes from './investmentRoutes.js';
 import { NotificationController } from '../controllers/NotificationController.js';
 import { requireAuth } from '../../src/middleware/auth.js';
 
@@ -39,6 +40,7 @@ apiRouter.use('/', contextRoutes);
 apiRouter.use('/', goalRoutes);
 apiRouter.use('/', subscriptionRoutes);
 apiRouter.use('/', financialOperatingSystemRoutes);
+apiRouter.use('/', investmentRoutes);
 
 // Push Notifications v2
 apiRouter.get('/notifications/vapid-public-key', notificationController.getPublicKey);
@@ -46,5 +48,10 @@ apiRouter.post('/notifications/subscribe', requireAuth, notificationController.s
 apiRouter.post('/notifications/unsubscribe', requireAuth, notificationController.unsubscribe);
 apiRouter.get('/notifications/preferences', requireAuth, notificationController.getPreferences);
 apiRouter.put('/notifications/preferences', requireAuth, notificationController.updatePreferences);
+
+// 404 fallback for any unhandled /api/* routes so they never fall through to Vite SPA html
+apiRouter.use((req, res) => {
+  res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
+});
 
 export default apiRouter;

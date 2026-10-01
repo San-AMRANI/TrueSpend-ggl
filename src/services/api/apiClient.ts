@@ -18,11 +18,31 @@ async function request<T>(url: string, options: RequestInit = {}, token?: string
       // Token is invalid or expired
       window.dispatchEvent(new Event('auth:unauthorized'));
     }
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `Request failed with status ${response.status}`);
+    const contentType = response.headers.get('content-type') || '';
+    let errorMessage = `Request to ${url} failed with status ${response.status}`;
+    if (contentType.includes('application/json')) {
+      const errorData = await response.json().catch(() => ({}));
+      errorMessage = errorData.error || errorMessage;
+    } else {
+      const text = await response.text().catch(() => '');
+      if (text && !text.includes('<!doctype') && !text.includes('<html')) {
+        errorMessage = text;
+      }
+    }
+    throw new Error(errorMessage);
   }
 
-  return response.json();
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Unexpected non-JSON response from ${url} (${response.status})`);
+  }
 }
 
 export const apiClient = {

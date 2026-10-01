@@ -66,7 +66,71 @@ export async function runV2Migration() {
       ALTER TYPE "wallet_type" ADD VALUE IF NOT EXISTS 'Savings';
     EXCEPTION WHEN duplicate_object THEN null; WHEN undefined_object THEN null; END $$;`,
 
+    `DO $$ BEGIN
+      ALTER TYPE "wallet_type" ADD VALUE IF NOT EXISTS 'Investment';
+    EXCEPTION WHEN duplicate_object THEN null; WHEN undefined_object THEN null; END $$;`,
+
     // Tables
+    `CREATE TABLE IF NOT EXISTS "investment_holdings" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+      "symbol" text NOT NULL,
+      "name" text NOT NULL,
+      "asset_type" text NOT NULL,
+      "units" numeric DEFAULT '0' NOT NULL,
+      "buy_price_avg" numeric DEFAULT '0' NOT NULL,
+      "current_price" numeric DEFAULT '0' NOT NULL,
+      "currency" text DEFAULT 'USD' NOT NULL,
+      "target_allocation_percent" numeric DEFAULT '0',
+      "dividend_yield_percent" numeric DEFAULT '0',
+      "notes" text,
+      "created_at" timestamp DEFAULT now() NOT NULL,
+      "updated_at" timestamp DEFAULT now() NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS "investment_transactions" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "holding_id" uuid NOT NULL REFERENCES "investment_holdings"("id") ON DELETE CASCADE,
+      "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+      "type" text NOT NULL,
+      "units" numeric NOT NULL,
+      "price_per_unit" numeric NOT NULL,
+      "total_amount" numeric NOT NULL,
+      "currency" text DEFAULT 'USD' NOT NULL,
+      "fees" numeric DEFAULT '0' NOT NULL,
+      "realized_pnl" numeric DEFAULT '0',
+      "notes" text,
+      "created_at" timestamp DEFAULT now() NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS "dca_plans" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "holding_id" uuid REFERENCES "investment_holdings"("id") ON DELETE SET NULL,
+      "symbol" text NOT NULL,
+      "asset_name" text NOT NULL,
+      "asset_type" text NOT NULL,
+      "target_amount" numeric NOT NULL,
+      "currency" text DEFAULT 'MAD' NOT NULL,
+      "frequency" text DEFAULT 'post_payday' NOT NULL,
+      "day_offset_after_payday" integer DEFAULT 2,
+      "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+      "status" text DEFAULT 'active' NOT NULL,
+      "created_at" timestamp DEFAULT now() NOT NULL,
+      "updated_at" timestamp DEFAULT now() NOT NULL
+    );`,
+
+    `CREATE TABLE IF NOT EXISTS "investment_watchlist" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "coin_id" text NOT NULL,
+      "symbol" text NOT NULL,
+      "name" text NOT NULL,
+      "created_at" timestamp DEFAULT now() NOT NULL
+    );`,
+
     `CREATE TABLE IF NOT EXISTS "financial_profiles" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "user_id" uuid NOT NULL UNIQUE REFERENCES "users"("id") ON DELETE CASCADE,
