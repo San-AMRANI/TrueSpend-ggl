@@ -1668,14 +1668,14 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
 
                 <div className="p-3.5 rounded-xl border border-purple-200 dark:border-purple-900/40 bg-purple-50/20 dark:bg-purple-950/10 space-y-1 relative group">
                   <div className="flex items-center justify-between text-[11px] text-purple-800 dark:text-purple-400 font-medium">
-                    <span>- Buffer Deficit</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300">Reserve</span>
+                    <span>- Savings Reserve</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300">Savings Wallets</span>
                   </div>
                   <div className="text-base font-bold text-purple-600 dark:text-purple-400">
                     {formatAmount(data?.safeToInvest?.emergencyBufferDeficiency || 0)}
                   </div>
                   <span className="text-[10px] text-gray-500 dark:text-gray-400 block leading-tight">
-                    Emergency vault top-up
+                    Protected in Savings Wallets
                   </span>
                 </div>
 
@@ -2598,7 +2598,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                       <strong>Zero Forced Selling:</strong> If the market drops 40%, you will never be forced to sell at a loss to pay your rent or groceries.
                     </li>
                     <li>
-                      <strong>Automatic Liquidity Shield:</strong> Your minimum emergency buffer ({formatAmount(kpis?.emergencyBuffer || 0)}) is always ring-fenced before any investment recommendation is made.
+                      <strong>Savings Wallets Shield:</strong> Your Savings Wallets balance ({formatAmount(kpis?.emergencyBuffer || 0)}) is always ring-fenced and isolated so it is never depleted by investment purchases.
                     </li>
                     <li>
                       <strong>DCA Budget Check:</strong> TrueSpend verifies whether your scheduled DCA plans fit comfortably inside your monthly safe surplus.
