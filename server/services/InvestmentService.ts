@@ -495,18 +495,28 @@ export class InvestmentService {
       try {
         const kpis = await kpiService.getKpisForUser(dbUser);
         const salary = parseFloat((dbUser.salary as any) || '0') || kpis.monthlyIncome || 0;
-        const fixedBudget = kpis.remainingFixedBudget || 0;
+        const fixedBudget = Math.round((kpis.remainingFixedBudget || 0) * 100) / 100;
         const avgDailySpend = kpis.avgDailySpend || 0;
-        const variableProjected = avgDailySpend * 30;
+        const avgDailyVariable = kpis.avgDailyVariableSpend || avgDailySpend;
+        const daysRemaining = kpis.daysRemaining || 0;
+        const totalDaysInMonth = kpis.totalDaysInMonth || 30;
+
+        // Variable living expense projection:
+        // Projected variable cost for the remainder of this cycle based on actual daily burn rate
+        const variableProjected = daysRemaining > 0 
+          ? Math.round(avgDailyVariable * daysRemaining * 100) / 100 
+          : Math.round(avgDailyVariable * totalDaysInMonth * 100) / 100;
+
         const totalEmergencyTarget = parseFloat((dbUser.emergencyBuffer as any) || '0');
-        const emergencyDeficit = Math.max(0, totalEmergencyTarget - kpis.emergencyBuffer);
-        const payables = kpis.pendingPayables || 0;
+        const emergencyDeficit = Math.max(0, Math.round((totalEmergencyTarget - kpis.emergencyBuffer) * 100) / 100);
+        const payables = Math.round((kpis.pendingPayables || 0) * 100) / 100;
 
         monthlyLivingExpenses = Math.max(1000, fixedBudget + variableProjected);
 
-        // Safe to Invest Formula:
-        // Monthly Income - Fixed Expenses - Variable Spend Allowance - Buffer Deficit - Pending Payables
-        const investableSurplus = Math.max(0, salary - fixedBudget - (avgDailySpend * 25) - emergencyDeficit - payables);
+        // Safe to Invest Formula (100% exact & transparent):
+        // Monthly Income - Fixed Obligations - Variable Spend Buffer - Emergency Buffer Deficit - Pending Payables
+        const rawSurplus = salary - fixedBudget - variableProjected - emergencyDeficit - payables;
+        const investableSurplus = Math.max(0, Math.round(rawSurplus * 100) / 100);
 
         // Active DCA commitments in MAD
         let currentMonthlyDcaTarget = 0;
@@ -519,31 +529,32 @@ export class InvestmentService {
             currentMonthlyDcaTarget += this.toMad(planAmt * monthlyMultiplier, plan.currency, rates);
           }
         }
+        currentMonthlyDcaTarget = Math.round(currentMonthlyDcaTarget * 100) / 100;
 
-        const surplusAfterDca = investableSurplus - currentMonthlyDcaTarget;
+        const surplusAfterDca = Math.round((investableSurplus - currentMonthlyDcaTarget) * 100) / 100;
 
         let recommendationText = '';
         if (emergencyDeficit > 0) {
           recommendationText = `⚠️ Your emergency buffer is short by ${emergencyDeficit.toLocaleString()} MAD. TrueSpend recommends topping up your safety vault before deploying aggressive capital into investments.`;
         } else if (surplusAfterDca > 0) {
-          recommendationText = `✅ You have ${surplusAfterDca.toLocaleString()} MAD in safe investable surplus this month after funding all bills and active DCA plans.`;
+          recommendationText = `✅ You have ${surplusAfterDca.toLocaleString()} MAD in safe investable surplus this month after funding all bills, living buffer, and active DCA plans.`;
         } else if (currentMonthlyDcaTarget > investableSurplus) {
           recommendationText = `⚠️ Your planned monthly DCA (${currentMonthlyDcaTarget.toLocaleString()} MAD) exceeds this month's safe investable surplus (${investableSurplus.toLocaleString()} MAD). Consider pausing or trimming some DCA orders.`;
         } else {
-          recommendationText = `All active DCA targets are comfortably covered by this month's cash flow surplus.`;
+          recommendationText = `All active DCA targets are comfortably covered by this month's cash flow surplus with zero risk to your living expenses.`;
         }
 
         safeToInvest = {
-          monthlyIncome: salary,
+          monthlyIncome: Math.round(salary * 100) / 100,
           fixedObligations: fixedBudget,
           variableSpendPace: variableProjected,
           emergencyBufferDeficiency: emergencyDeficit,
           pendingPayables: payables,
-          safeToInvestMonthly: Math.round(investableSurplus),
-          currentMonthlyDcaTarget: Math.round(currentMonthlyDcaTarget),
-          surplusAfterDca: Math.round(surplusAfterDca),
+          safeToInvestMonthly: investableSurplus,
+          currentMonthlyDcaTarget,
+          surplusAfterDca,
           recommendationText,
-          riskAppetiteMax: Math.round(investableSurplus * 0.7),
+          riskAppetiteMax: Math.round(investableSurplus * 0.7 * 100) / 100,
         };
       } catch (err) {
         console.warn('[InvestmentService] KPI computation notice:', (err as any)?.message);

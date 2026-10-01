@@ -1627,44 +1627,69 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
 
               {/* Step-by-Step Cash Flow Watermark */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
-                <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400 block">Monthly Income</span>
-                  <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 space-y-1 relative group">
+                  <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                    <span>Monthly Income</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Base</span>
+                  </div>
+                  <div className="text-base font-bold text-gray-900 dark:text-gray-100">
                     {formatAmount(data?.safeToInvest?.monthlyIncome || 0)}
+                  </div>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 block leading-tight">
+                    Salary & verified inflows
                   </span>
-                  <span className="text-[10px] text-gray-400 block">Salary & Cash In</span>
                 </div>
 
-                <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400 block">- Fixed Budgets</span>
-                  <span className="text-sm font-bold text-red-600 dark:text-red-400">
+                <div className="p-3.5 rounded-xl border border-red-200 dark:border-red-900/40 bg-red-50/20 dark:bg-red-950/10 space-y-1 relative group">
+                  <div className="flex items-center justify-between text-[11px] text-red-700 dark:text-red-400 font-medium">
+                    <span>- Fixed Budgets</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300">Committed</span>
+                  </div>
+                  <div className="text-base font-bold text-red-600 dark:text-red-400">
                     {formatAmount(data?.safeToInvest?.fixedObligations || 0)}
+                  </div>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 block leading-tight">
+                    Remaining rent, bills & utilities
                   </span>
-                  <span className="text-[10px] text-gray-400 block">Rent, bills & utilities</span>
                 </div>
 
-                <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400 block">- Variable Spend</span>
-                  <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                <div className="p-3.5 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/20 dark:bg-amber-950/10 space-y-1 relative group">
+                  <div className="flex items-center justify-between text-[11px] text-amber-800 dark:text-amber-400 font-medium">
+                    <span>- Variable Spend</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">Living Pace</span>
+                  </div>
+                  <div className="text-base font-bold text-amber-600 dark:text-amber-400">
                     {formatAmount(data?.safeToInvest?.variableSpendPace || 0)}
+                  </div>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 block leading-tight">
+                    Groceries & daily living buffer
                   </span>
-                  <span className="text-[10px] text-gray-400 block">Daily groceries & living</span>
                 </div>
 
-                <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400 block">- Buffer Deficiency</span>
-                  <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                <div className="p-3.5 rounded-xl border border-purple-200 dark:border-purple-900/40 bg-purple-50/20 dark:bg-purple-950/10 space-y-1 relative group">
+                  <div className="flex items-center justify-between text-[11px] text-purple-800 dark:text-purple-400 font-medium">
+                    <span>- Buffer Deficit</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300">Reserve</span>
+                  </div>
+                  <div className="text-base font-bold text-purple-600 dark:text-purple-400">
                     {formatAmount(data?.safeToInvest?.emergencyBufferDeficiency || 0)}
+                  </div>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 block leading-tight">
+                    Emergency vault top-up
                   </span>
-                  <span className="text-[10px] text-gray-400 block">Emergency fund top-up</span>
                 </div>
 
-                <div className="p-3 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20">
-                  <span className="text-[11px] text-emerald-800 dark:text-emerald-300 font-semibold block">= Safe Surplus</span>
-                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                <div className="p-3.5 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30 space-y-1 relative shadow-2xs">
+                  <div className="flex items-center justify-between text-[11px] text-emerald-800 dark:text-emerald-300 font-bold">
+                    <span>= Safe Surplus</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-200/80 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200">Surplus</span>
+                  </div>
+                  <div className="text-base font-extrabold text-emerald-700 dark:text-emerald-300">
                     {formatAmount(data?.safeToInvest?.safeToInvestMonthly || 0)}
+                  </div>
+                  <span className="text-[10px] text-emerald-700/80 dark:text-emerald-400 block leading-tight">
+                    100% safe deployable capital
                   </span>
-                  <span className="text-[10px] text-emerald-600/80 block">Zero risk to liquidity</span>
                 </div>
               </div>
             </CardContent>
