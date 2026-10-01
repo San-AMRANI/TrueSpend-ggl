@@ -90,6 +90,8 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleCreateDcaPlan,
     handleUpdateDcaPlan,
     handleDeleteDcaPlan,
+    handleAddToWatchlist,
+    handleRemoveFromWatchlist,
     refreshInvestments,
     userSettings,
     notifications,
@@ -309,6 +311,8 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onCreateDcaPlan={handleCreateDcaPlan}
           onUpdateDcaPlan={handleUpdateDcaPlan}
           onDeleteDcaPlan={handleDeleteDcaPlan}
+          onAddToWatchlist={handleAddToWatchlist}
+          onRemoveFromWatchlist={handleRemoveFromWatchlist}
         />
       )}
       {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}

@@ -662,6 +662,18 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleAddToWatchlist = async (payload: { coinId: string; symbol: string; name: string }) => {
+    const created = await dashboardService.addToWatchlist(payload, token);
+    await refreshInvestments();
+    return created;
+  };
+
+  const handleRemoveFromWatchlist = async (coinId: string) => {
+    const res = await dashboardService.removeFromWatchlist(coinId, token);
+    await refreshInvestments();
+    return res;
+  };
+
   return {
     kpis,
     transactions,
@@ -726,6 +738,8 @@ export function useDashboardData(token: string | null) {
     handleCreateDcaPlan,
     handleUpdateDcaPlan,
     handleDeleteDcaPlan,
+    handleAddToWatchlist,
+    handleRemoveFromWatchlist,
     refreshInvestments,
     notifications,
   };

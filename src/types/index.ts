@@ -322,6 +322,44 @@ export interface MarketQuote {
   lastUpdated: string;
 }
 
+export interface CoinGeckoMarketCoin {
+  id: string;
+  symbol: string;
+  name: string;
+  image: string;
+  current_price: number;
+  market_cap: number;
+  market_cap_rank: number;
+  total_volume: number;
+  high_24h: number;
+  low_24h: number;
+  price_change_24h: number;
+  price_change_percentage_24h: number;
+  circulating_supply: number;
+  total_supply: number | null;
+  sparkline_in_7d?: { price: number[] };
+  isWatched?: boolean;
+}
+
+export interface WatchlistItem {
+  id: string;
+  userId: string;
+  coinId: string;
+  symbol: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface CoinSearchResult {
+  id: string;
+  name: string;
+  api_symbol?: string;
+  symbol: string;
+  market_cap_rank?: number;
+  thumb?: string;
+  large?: string;
+}
+
 export interface SafeToInvestCalculation {
   monthlyIncome: number;
   fixedObligations: number;
@@ -339,6 +377,8 @@ export interface InvestmentsData {
   holdings: InvestmentHolding[];
   transactions: InvestmentTransaction[];
   dcaPlans: DcaPlan[];
+  watchlist: WatchlistItem[];
+  marketCoins: CoinGeckoMarketCoin[];
   quotes: Record<string, MarketQuote>;
   rates: {
     USD_TO_MAD: number;

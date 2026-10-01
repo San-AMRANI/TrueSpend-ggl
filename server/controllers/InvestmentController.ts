@@ -94,6 +94,73 @@ export class InvestmentController {
       res.status(500).json({ error: e.message || 'Failed to fetch quotes' });
     }
   }
+
+  async getMarketCoins(req: AuthRequest, res: Response) {
+    try {
+      const vsCurrency = (req.query.vs_currency as string) || 'usd';
+      const perPage = parseInt((req.query.per_page as string) || '50', 10);
+      const forceRefresh = req.query.refresh === 'true';
+      const coins = await investmentService.getMarketCoins(vsCurrency, perPage, forceRefresh);
+      res.json(coins);
+    } catch (e: any) {
+      console.error('InvestmentController.getMarketCoins error:', e);
+      res.status(500).json({ error: e.message || 'Failed to fetch market coins' });
+    }
+  }
+
+  async searchCoins(req: AuthRequest, res: Response) {
+    try {
+      const query = (req.query.q as string) || '';
+      const results = await investmentService.searchCoins(query);
+      res.json(results);
+    } catch (e: any) {
+      console.error('InvestmentController.searchCoins error:', e);
+      res.status(500).json({ error: e.message || 'Failed to search coins' });
+    }
+  }
+
+  async getSpotPrice(req: AuthRequest, res: Response) {
+    try {
+      const symbol = (req.query.symbol as string) || '';
+      const coinId = (req.query.coin_id as string) || undefined;
+      const spot = await investmentService.getSpotPrice(symbol, coinId);
+      res.json(spot);
+    } catch (e: any) {
+      console.error('InvestmentController.getSpotPrice error:', e);
+      res.status(500).json({ error: e.message || 'Failed to fetch spot price' });
+    }
+  }
+
+  async getWatchlist(req: AuthRequest, res: Response) {
+    try {
+      const list = await investmentService.getWatchlist(req.dbUser.id);
+      res.json(list);
+    } catch (e: any) {
+      console.error('InvestmentController.getWatchlist error:', e);
+      res.status(500).json({ error: e.message || 'Failed to fetch watchlist' });
+    }
+  }
+
+  async addToWatchlist(req: AuthRequest, res: Response) {
+    try {
+      const item = await investmentService.addToWatchlist(req.dbUser.id, req.body);
+      res.status(201).json(item);
+    } catch (e: any) {
+      console.error('InvestmentController.addToWatchlist error:', e);
+      res.status(400).json({ error: e.message || 'Failed to add to watchlist' });
+    }
+  }
+
+  async removeFromWatchlist(req: AuthRequest, res: Response) {
+    try {
+      const coinId = req.params.coinId;
+      const result = await investmentService.removeFromWatchlist(req.dbUser.id, coinId);
+      res.json(result);
+    } catch (e: any) {
+      console.error('InvestmentController.removeFromWatchlist error:', e);
+      res.status(400).json({ error: e.message || 'Failed to remove from watchlist' });
+    }
+  }
 }
 
 export const investmentController = new InvestmentController();

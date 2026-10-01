@@ -138,6 +138,16 @@ export const createPool = () => {
           "updated_at" timestamp NOT NULL DEFAULT now()
         );
         CREATE INDEX IF NOT EXISTS "dca_plans_user_id_idx" ON "dca_plans"("user_id");
+
+        CREATE TABLE IF NOT EXISTS "investment_watchlist" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "coin_id" text NOT NULL,
+          "symbol" text NOT NULL,
+          "name" text NOT NULL,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS "investment_watchlist_user_id_idx" ON "investment_watchlist"("user_id");
       `)
       .catch((err) => {
         console.warn('[DB Init] Schema columns ensure notice:', err?.message || err);

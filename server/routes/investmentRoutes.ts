@@ -8,6 +8,14 @@ router.use(requireAuth);
 
 router.get('/investments', (req, res) => investmentController.getData(req as any, res));
 router.get('/investments/quotes', (req, res) => investmentController.getQuotes(req as any, res));
+router.get('/investments/market-coins', (req, res) => investmentController.getMarketCoins(req as any, res));
+router.get('/investments/search-coins', (req, res) => investmentController.searchCoins(req as any, res));
+router.get('/investments/spot-price', (req, res) => investmentController.getSpotPrice(req as any, res));
+
+// Watchlist
+router.get('/investments/watchlist', (req, res) => investmentController.getWatchlist(req as any, res));
+router.post('/investments/watchlist', (req, res) => investmentController.addToWatchlist(req as any, res));
+router.delete('/investments/watchlist/:coinId', (req, res) => investmentController.removeFromWatchlist(req as any, res));
 
 // Holdings
 router.post('/investments/holdings', (req, res) => investmentController.createHolding(req as any, res));

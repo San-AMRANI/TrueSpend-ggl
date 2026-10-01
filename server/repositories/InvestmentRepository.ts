@@ -1,5 +1,5 @@
 import { db } from '../../src/db/index.js';
-import { investmentHoldings, investmentTransactions, dcaPlans, wallets } from '../../src/db/schema.js';
+import { investmentHoldings, investmentTransactions, dcaPlans, investmentWatchlist, wallets } from '../../src/db/schema.js';
 import { eq, desc, and } from 'drizzle-orm';
 
 export interface CreateHoldingParams {
@@ -167,6 +167,38 @@ export class InvestmentRepository {
     await db
       .delete(dcaPlans)
       .where(and(eq(dcaPlans.id, id), eq(dcaPlans.userId, userId)));
+  }
+
+  async findAllWatchlistByUserId(userId: string) {
+    return await db
+      .select()
+      .from(investmentWatchlist)
+      .where(eq(investmentWatchlist.userId, userId))
+      .orderBy(desc(investmentWatchlist.createdAt));
+  }
+
+  async addToWatchlist(data: { userId: string; coinId: string; symbol: string; name: string }) {
+    // Check if already in watchlist
+    const existing = await db
+      .select()
+      .from(investmentWatchlist)
+      .where(and(eq(investmentWatchlist.userId, data.userId), eq(investmentWatchlist.coinId, data.coinId)));
+    if (existing.length > 0) return existing[0];
+
+    const inserted = await db.insert(investmentWatchlist).values(data).returning();
+    return inserted[0];
+  }
+
+  async removeFromWatchlist(id: string, userId: string) {
+    await db
+      .delete(investmentWatchlist)
+      .where(and(eq(investmentWatchlist.id, id), eq(investmentWatchlist.userId, userId)));
+  }
+
+  async removeFromWatchlistByCoinId(coinId: string, userId: string) {
+    await db
+      .delete(investmentWatchlist)
+      .where(and(eq(investmentWatchlist.coinId, coinId), eq(investmentWatchlist.userId, userId)));
   }
 }
 

@@ -6,7 +6,10 @@ import { userRepository } from '../repositories/UserRepository.js';
 import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
 
-// Ticker to CoinGecko ID mapping
+const COINGECKO_BASE_URL = process.env.COINGECKO_API_URL || 'https://api.coingecko.com/api/v3';
+const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY || 'CG-QQPesHFebtNf7UhaejrhmGsn';
+
+// Comprehensive Ticker to CoinGecko ID mapping
 const COINGECKO_MAP: Record<string, string> = {
   BTC: 'bitcoin',
   BITCOIN: 'bitcoin',
@@ -30,6 +33,23 @@ const COINGECKO_MAP: Record<string, string> = {
   NEAR: 'near',
   PEPE: 'pepe',
   SHIB: 'shiba-inu',
+  TRX: 'tron',
+  TON: 'the-open-network',
+  XLM: 'stellar',
+  BCH: 'bitcoin-cash',
+  LTC: 'litecoin',
+  UNI: 'uniswap',
+  APT: 'aptos',
+  ICP: 'internet-computer',
+  FET: 'fetch-ai',
+  RENDER: 'render-token',
+  TAO: 'bittensor',
+  KAS: 'kaspa',
+  ARB: 'arbitrum',
+  OP: 'optimism',
+  INJ: 'injective-protocol',
+  STX: 'blockstack',
+  XMR: 'monero',
 };
 
 // Default exchange rates fallback
@@ -41,13 +61,70 @@ let cachedRates = {
 };
 
 // Cache for quotes
-const quotesCache: Record<string, { price: number; change24h: number; currency: string; lastUpdated: number }> = {};
+const quotesCache: Record<string, { price: number; change24h: number; currency: string; lastUpdated: number; pricesByCurrency?: { USD: number; EUR: number; MAD: number } }> = {};
+
+// Cache for market coins
+let cachedMarketCoins: { data: any[]; lastFetched: number; vsCurrency: string } = {
+  data: [],
+  lastFetched: 0,
+  vsCurrency: 'usd',
+};
 
 export class InvestmentService {
-  /** Fetch or return cached currency conversion rates */
+  /**
+   * Helper to build and execute CoinGecko requests with authentication and rate handling
+   */
+  private async fetchFromCoinGecko(endpoint: string, params: Record<string, string | number | boolean | undefined> = {}) {
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const url = new URL(`${COINGECKO_BASE_URL.replace(/\/+$/, '')}${cleanEndpoint}`);
+    
+    if (COINGECKO_API_KEY) {
+      url.searchParams.set('x_cg_demo_api_key', COINGECKO_API_KEY);
+    }
+    
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.set(key, String(value));
+      }
+    }
+
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+      'User-Agent': 'TrueSpend-Wealth/1.0',
+    };
+    if (COINGECKO_API_KEY) {
+      headers['x-cg-demo-api-key'] = COINGECKO_API_KEY;
+    }
+
+    try {
+      const res = await fetch(url.toString(), {
+        headers,
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!res.ok) {
+        if (res.status === 429) {
+          console.warn('[CoinGecko] Rate limited (429), serving fallback/cached data');
+        } else {
+          console.warn(`[CoinGecko] API responded with HTTP ${res.status} for ${cleanEndpoint}`);
+        }
+        return null;
+      }
+
+      return await res.json();
+    } catch (err: any) {
+      console.warn(`[CoinGecko] Request error on ${cleanEndpoint}:`, err?.message || err);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch live daily exchange rates for MAD, USD, and EUR directly from CoinGecko real-time market data
+   */
   async getExchangeRates(): Promise<{ USD_TO_MAD: number; EUR_TO_MAD: number; USD_TO_EUR: number }> {
     const now = Date.now();
-    if (now - cachedRates.lastFetched < 30 * 60 * 1000) {
+    // Cache for 10 minutes
+    if (now - cachedRates.lastFetched < 10 * 60 * 1000) {
       return {
         USD_TO_MAD: cachedRates.USD_TO_MAD,
         EUR_TO_MAD: cachedRates.EUR_TO_MAD,
@@ -55,6 +132,48 @@ export class InvestmentService {
       };
     }
 
+    try {
+      // 1. Fetch live multi-currency quotes from CoinGecko for USDT and USDC
+      const data = await this.fetchFromCoinGecko('/simple/price', {
+        ids: 'tether,usd-coin,bitcoin',
+        vs_currencies: 'usd,eur,mad',
+        include_24hr_change: 'true',
+      });
+
+      if (data && (data.tether || data['usd-coin'] || data.bitcoin)) {
+        const stablecoin = data.tether || data['usd-coin'];
+        if (stablecoin && stablecoin.mad && stablecoin.usd) {
+          const usdToMad = parseFloat(stablecoin.mad) / parseFloat(stablecoin.usd);
+          const eurRate = stablecoin.eur ? parseFloat(stablecoin.eur) : 0.92;
+          const eurToMad = stablecoin.mad / eurRate;
+          const usdToEur = eurRate / parseFloat(stablecoin.usd);
+
+          cachedRates = {
+            USD_TO_MAD: Math.round(usdToMad * 10000) / 10000,
+            EUR_TO_MAD: Math.round(eurToMad * 10000) / 10000,
+            USD_TO_EUR: Math.round(usdToEur * 10000) / 10000,
+            lastFetched: now,
+          };
+          return cachedRates;
+        } else if (data.bitcoin && data.bitcoin.mad && data.bitcoin.usd) {
+          const btcMad = parseFloat(data.bitcoin.mad);
+          const btcUsd = parseFloat(data.bitcoin.usd);
+          const btcEur = parseFloat(data.bitcoin.eur) || btcUsd * 0.92;
+          
+          cachedRates = {
+            USD_TO_MAD: Math.round((btcMad / btcUsd) * 10000) / 10000,
+            EUR_TO_MAD: Math.round((btcMad / btcEur) * 10000) / 10000,
+            USD_TO_EUR: Math.round((btcEur / btcUsd) * 10000) / 10000,
+            lastFetched: now,
+          };
+          return cachedRates;
+        }
+      }
+    } catch (e: any) {
+      console.warn('[InvestmentService] CoinGecko exchange rate query notice:', e?.message);
+    }
+
+    // 2. Secondary fallback via open exchange rate API
     try {
       const res = await fetch('https://open.er-api.com/v6/latest/USD', { signal: AbortSignal.timeout(5000) });
       if (res.ok) {
@@ -71,7 +190,7 @@ export class InvestmentService {
         }
       }
     } catch (e) {
-      console.warn('[InvestmentService] Failed to fetch live currency rates, using fallback:', (e as any)?.message);
+      // Keep cached rates
     }
 
     return {
@@ -89,7 +208,95 @@ export class InvestmentService {
     return amount * rates.USD_TO_MAD; // Default USD
   }
 
-  /** Fetch live quotes for a list of symbols */
+  /**
+   * Fetch top market coins from CoinGecko with 24h change, sparklines, and volume
+   */
+  async getMarketCoins(vsCurrency = 'usd', perPage = 50, forceRefresh = false): Promise<any[]> {
+    const now = Date.now();
+    const curr = vsCurrency.toLowerCase();
+
+    if (!forceRefresh && cachedMarketCoins.data.length > 0 && cachedMarketCoins.vsCurrency === curr && now - cachedMarketCoins.lastFetched < 60 * 1000) {
+      return cachedMarketCoins.data;
+    }
+
+    const data = await this.fetchFromCoinGecko('/coins/markets', {
+      vs_currency: curr,
+      order: 'market_cap_desc',
+      per_page: perPage,
+      page: 1,
+      sparkline: 'true',
+      price_change_percentage: '24h',
+    });
+
+    if (Array.isArray(data) && data.length > 0) {
+      cachedMarketCoins = {
+        data,
+        lastFetched: now,
+        vsCurrency: curr,
+      };
+      return data;
+    }
+
+    return cachedMarketCoins.data || [];
+  }
+
+  /**
+   * Search CoinGecko for any coin or token
+   */
+  async searchCoins(query: string): Promise<any[]> {
+    if (!query || query.trim().length < 1) return [];
+    const data = await this.fetchFromCoinGecko('/search', { query: query.trim() });
+    if (data && Array.isArray(data.coins)) {
+      return data.coins.slice(0, 15);
+    }
+    return [];
+  }
+
+  /**
+   * Get real-time spot price in USD, EUR, and MAD for trade prefilling
+   */
+  async getSpotPrice(symbol: string, coinId?: string): Promise<{ symbol: string; priceUsd: number; priceEur: number; priceMad: number; change24h: number }> {
+    const sym = symbol.toUpperCase().trim();
+    const id = coinId || COINGECKO_MAP[sym];
+    const rates = await this.getExchangeRates();
+
+    if (id) {
+      const data = await this.fetchFromCoinGecko('/simple/price', {
+        ids: id,
+        vs_currencies: 'usd,eur,mad',
+        include_24hr_change: 'true',
+      });
+
+      if (data && data[id]) {
+        const coin = data[id];
+        const priceUsd = parseFloat(coin.usd) || 0;
+        const priceEur = parseFloat(coin.eur) || priceUsd * rates.USD_TO_EUR;
+        const priceMad = parseFloat(coin.mad) || priceUsd * rates.USD_TO_MAD;
+        const change24h = parseFloat(coin.usd_24h_change) || 0;
+
+        return {
+          symbol: sym,
+          priceUsd,
+          priceEur,
+          priceMad,
+          change24h,
+        };
+      }
+    }
+
+    // Check memory cache or fallback quotes
+    const cached = quotesCache[sym];
+    const basePrice = cached?.price || 0;
+    return {
+      symbol: sym,
+      priceUsd: basePrice,
+      priceEur: basePrice * rates.USD_TO_EUR,
+      priceMad: basePrice * rates.USD_TO_MAD,
+      change24h: cached?.change24h || 0,
+    };
+  }
+
+  /** Fetch live quotes for a list of symbols across CoinGecko and global tickers */
   async fetchLiveQuotes(symbols: string[]): Promise<Record<string, { symbol: string; price: number; change24h: number; currency: string; lastUpdated: string }>> {
     const result: Record<string, { symbol: string; price: number; change24h: number; currency: string; lastUpdated: string }> = {};
     if (!symbols || symbols.length === 0) return result;
@@ -124,16 +331,29 @@ export class InvestmentService {
     // Fetch crypto from CoinGecko
     if (coingeckoIds.length > 0) {
       try {
-        const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoIds.join(',')}&vs_currencies=usd&include_24hr_change=true`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
-        if (res.ok) {
-          const data = await res.json();
+        const data = await this.fetchFromCoinGecko('/simple/price', {
+          ids: coingeckoIds.join(','),
+          vs_currencies: 'usd,eur,mad',
+          include_24hr_change: 'true',
+        });
+
+        if (data) {
           for (const sym of cryptoSymbolsToFetch) {
             const cgId = COINGECKO_MAP[sym];
             if (data[cgId]) {
               const price = parseFloat(data[cgId].usd) || 0;
               const change24h = parseFloat(data[cgId].usd_24h_change) || 0;
-              quotesCache[sym] = { price, change24h, currency: 'USD', lastUpdated: now };
+              quotesCache[sym] = {
+                price,
+                change24h,
+                currency: 'USD',
+                lastUpdated: now,
+                pricesByCurrency: {
+                  USD: price,
+                  EUR: parseFloat(data[cgId].eur) || 0,
+                  MAD: parseFloat(data[cgId].mad) || 0,
+                },
+              };
               result[sym] = {
                 symbol: sym,
                 price,
@@ -144,15 +364,14 @@ export class InvestmentService {
             }
           }
         }
-      } catch (e) {
-        console.warn('[InvestmentService] CoinGecko fetch notice:', (e as any)?.message);
+      } catch (e: any) {
+        console.warn('[InvestmentService] CoinGecko fetch notice:', e?.message);
       }
     }
 
-    // Fallback/Simulated or Yahoo finance for stock symbols (e.g. AAPL, MSFT, VOO, SPY)
+    // 2. Fetch stock and ETF symbols via Yahoo Finance
     for (const sym of uniqueSymbols) {
       if (!result[sym]) {
-        // Try Yahoo finance quote chart
         try {
           const yhUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d`;
           const res = await fetch(yhUrl, {
@@ -188,17 +407,28 @@ export class InvestmentService {
 
   /** Complete investments data package for the client */
   async getInvestmentsData(userId: string) {
-    const [holdings, txs, dcaList, rates, dbUser] = await Promise.all([
+    const [holdings, txs, dcaList, watchlist, rates, dbUser, marketCoinsRaw] = await Promise.all([
       investmentRepository.findAllHoldingsByUserId(userId),
       investmentRepository.findAllTransactionsByUserId(userId),
       investmentRepository.findAllDcaPlansByUserId(userId),
+      investmentRepository.findAllWatchlistByUserId(userId),
       this.getExchangeRates(),
       userRepository.findById(userId),
+      this.getMarketCoins('usd', 50),
     ]);
 
-    // Fetch live market quotes for all held symbols
-    const symbols = Array.from(new Set(holdings.map(h => h.symbol)));
-    const liveQuotes = await this.fetchLiveQuotes(symbols);
+    // Fetch live market quotes for all held symbols + watchlist symbols
+    const heldSymbols = holdings.map(h => h.symbol);
+    const watchedSymbols = watchlist.map(w => w.symbol);
+    const allSymbols = Array.from(new Set([...heldSymbols, ...watchedSymbols]));
+    const liveQuotes = await this.fetchLiveQuotes(allSymbols);
+
+    // Enrich market coins with isWatched flag
+    const watchedCoinIds = new Set(watchlist.map(w => w.coinId.toLowerCase()));
+    const marketCoins = marketCoinsRaw.map((coin: any) => ({
+      ...coin,
+      isWatched: watchedCoinIds.has(coin.id.toLowerCase()) || watchedCoinIds.has(coin.symbol.toLowerCase()),
+    }));
 
     // Compute holdings values
     let totalPortfolioValueMad = 0;
@@ -275,7 +505,7 @@ export class InvestmentService {
         monthlyLivingExpenses = Math.max(1000, fixedBudget + variableProjected);
 
         // Safe to Invest Formula:
-        // Monthly Income - Fixed Expenses - Buffer Deficit (need to rebuild buffer first) - Payables
+        // Monthly Income - Fixed Expenses - Variable Spend Allowance - Buffer Deficit - Pending Payables
         const investableSurplus = Math.max(0, salary - fixedBudget - (avgDailySpend * 25) - emergencyDeficit - payables);
 
         // Active DCA commitments in MAD
@@ -294,7 +524,7 @@ export class InvestmentService {
 
         let recommendationText = '';
         if (emergencyDeficit > 0) {
-          recommendationText = `⚠️ Your emergency buffer is short by ${emergencyDeficit.toLocaleString()} MAD. TrueSpend recommends topping up your buffer before aggressive investing.`;
+          recommendationText = `⚠️ Your emergency buffer is short by ${emergencyDeficit.toLocaleString()} MAD. TrueSpend recommends topping up your safety vault before deploying aggressive capital into investments.`;
         } else if (surplusAfterDca > 0) {
           recommendationText = `✅ You have ${surplusAfterDca.toLocaleString()} MAD in safe investable surplus this month after funding all bills and active DCA plans.`;
         } else if (currentMonthlyDcaTarget > investableSurplus) {
@@ -313,7 +543,7 @@ export class InvestmentService {
           currentMonthlyDcaTarget: Math.round(currentMonthlyDcaTarget),
           surplusAfterDca: Math.round(surplusAfterDca),
           recommendationText,
-          riskAppetiteMax: Math.round(investableSurplus * 0.7), // max recommended for volatile assets like crypto
+          riskAppetiteMax: Math.round(investableSurplus * 0.7),
         };
       } catch (err) {
         console.warn('[InvestmentService] KPI computation notice:', (err as any)?.message);
@@ -327,6 +557,8 @@ export class InvestmentService {
       holdings: enrichedHoldings,
       transactions: txs,
       dcaPlans: dcaList,
+      watchlist,
+      marketCoins,
       quotes: liveQuotes,
       rates,
       totalPortfolioValueMad: Math.round(totalPortfolioValueMad * 100) / 100,
@@ -574,6 +806,30 @@ export class InvestmentService {
   /** Delete DCA Plan */
   async deleteDcaPlan(userId: string, id: string) {
     await investmentRepository.deleteDcaPlan(id, userId);
+    return { success: true };
+  }
+
+  /** Watchlist APIs */
+  async getWatchlist(userId: string) {
+    return await investmentRepository.findAllWatchlistByUserId(userId);
+  }
+
+  async addToWatchlist(userId: string, data: { coinId: string; symbol: string; name: string }) {
+    const coinId = (data.coinId || '').toLowerCase().trim();
+    const symbol = (data.symbol || '').toUpperCase().trim();
+    const name = (data.name || symbol).trim();
+    if (!coinId) throw new Error('Coin ID is required');
+
+    return await investmentRepository.addToWatchlist({
+      userId,
+      coinId,
+      symbol,
+      name,
+    });
+  }
+
+  async removeFromWatchlist(userId: string, coinIdOrId: string) {
+    await investmentRepository.removeFromWatchlistByCoinId(coinIdOrId, userId);
     return { success: true };
   }
 }

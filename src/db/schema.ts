@@ -76,6 +76,15 @@ export const dcaPlans = pgTable('dca_plans', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+export const investmentWatchlist = pgTable('investment_watchlist', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  coinId: text('coin_id').notNull(), // e.g. 'bitcoin', 'ethereum', 'solana'
+  symbol: text('symbol').notNull(),
+  name: text('name').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   uid: text('uid').notNull().unique(), // Firebase Auth UID
@@ -446,6 +455,13 @@ export const dcaPlansRelations = relations(dcaPlans, ({ one }) => ({
   wallet: one(wallets, {
     fields: [dcaPlans.walletId],
     references: [wallets.id],
+  }),
+}));
+
+export const investmentWatchlistRelations = relations(investmentWatchlist, ({ one }) => ({
+  user: one(users, {
+    fields: [investmentWatchlist.userId],
+    references: [users.id],
   }),
 }));
 

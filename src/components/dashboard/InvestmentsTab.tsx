@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -27,6 +27,14 @@ import {
   ArrowRightLeft,
   ChevronRight,
   Sparkles,
+  Star,
+  Search,
+  HelpCircle,
+  Info,
+  ExternalLink,
+  Flame,
+  Globe,
+  CircleAlert,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -40,9 +48,12 @@ import {
   Wallet,
   InvestmentAssetType,
   InvestmentTradeType,
+  CoinGeckoMarketCoin,
+  WatchlistItem,
   KPI,
   Debt,
 } from '../../types';
+import { dashboardService } from '../../services/api/dashboardService';
 
 interface InvestmentsTabProps {
   data: InvestmentsData | null;
@@ -67,9 +78,12 @@ interface InvestmentsTabProps {
   onCreateDcaPlan: (payload: Partial<DcaPlan>) => Promise<any>;
   onUpdateDcaPlan: (id: string, payload: Partial<DcaPlan>) => Promise<any>;
   onDeleteDcaPlan: (id: string) => Promise<any>;
+  onAddToWatchlist?: (payload: { coinId: string; symbol: string; name: string }) => Promise<any>;
+  onRemoveFromWatchlist?: (coinId: string) => Promise<any>;
 }
 
-type SubTab = 'holdings' | 'safe-to-invest' | 'allocation' | 'stress-test' | 'ledger';
+type SubTab = 'holdings' | 'market' | 'safe-to-invest' | 'allocation' | 'stress-test' | 'ledger';
+type InfoModalType = 'safe-to-invest' | 'dca' | 'fire' | null;
 
 const POPULAR_ASSETS = [
   { symbol: 'BTC', name: 'Bitcoin', assetType: 'crypto', currency: 'USD' },
@@ -108,6 +122,8 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   onCreateDcaPlan,
   onUpdateDcaPlan,
   onDeleteDcaPlan,
+  onAddToWatchlist,
+  onRemoveFromWatchlist,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('holdings');
   const [displayCurrency, setDisplayCurrency] = useState<'MAD' | 'USD' | 'EUR'>('MAD');
@@ -115,12 +131,27 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
+  // Info modal state
+  const [infoModal, setInfoModal] = useState<InfoModalType>(null);
+
+  // Market coins & Watchlist state
+  const [marketCoins, setMarketCoins] = useState<CoinGeckoMarketCoin[]>([]);
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [marketCategory, setMarketCategory] = useState<'all' | 'watchlist' | 'gainers' | 'l1' | 'defi' | 'memes'>('all');
+  const [marketSearch, setMarketSearch] = useState('');
+  const [marketSearchResults, setMarketSearchResults] = useState<any[]>([]);
+  const [isSearchingMarket, setIsSearchingMarket] = useState(false);
+
   // Modals state
   const [showAddHoldingModal, setShowAddHoldingModal] = useState(false);
   const [editingHolding, setEditingHolding] = useState<InvestmentHolding | null>(null);
   const [tradeModalHolding, setTradeModalHolding] = useState<InvestmentHolding | null>(null);
   const [tradeType, setTradeType] = useState<InvestmentTradeType>('BUY');
   const [showDcaModal, setShowDcaModal] = useState(false);
+
+  // Live Spot Price fetching for forms
+  const [fetchingSpotPrice, setFetchingSpotPrice] = useState(false);
+  const [liveSpotQuote, setLiveSpotQuote] = useState<{ symbol: string; priceUsd: number; priceEur: number; priceMad: number; change24h: number } | null>(null);
 
   // Trade form state
   const [tradeUnits, setTradeUnits] = useState('');
@@ -320,8 +351,109 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
     };
   }, [data?.holdings, cryptoDrop, equitiesDrop, rates, totalLiquidCash, pendingReceivables, pendingPayables, kpis?.emergencyBuffer]);
 
+  // Fetch Market Coins from CoinGecko
+  const fetchMarketCoins = async (forceRefresh = false) => {
+    setMarketLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+      const vsCurr = displayCurrency === 'MAD' ? 'mad' : displayCurrency === 'EUR' ? 'eur' : 'usd';
+      const coins = await dashboardService.getMarketCoins(vsCurr, 60, forceRefresh, token);
+      if (Array.isArray(coins)) {
+        setMarketCoins(coins);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch CoinGecko market coins:', e);
+    } finally {
+      setMarketLoading(false);
+    }
+  };
+
+  // Trigger market fetch when market tab is active or display currency changes
+  useEffect(() => {
+    if (activeSubTab === 'market') {
+      fetchMarketCoins();
+    }
+  }, [activeSubTab, displayCurrency]);
+
+  // Coin search with CoinGecko
+  useEffect(() => {
+    if (!marketSearch.trim()) {
+      setMarketSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingMarket(true);
+      try {
+        const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+        const results = await dashboardService.searchCoins(marketSearch.trim(), token);
+        setMarketSearchResults(results || []);
+      } catch (err) {
+        console.warn('Search coins error:', err);
+      } finally {
+        setIsSearchingMarket(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [marketSearch]);
+
+  // Fetch live spot price helper
+  const fetchSpotPriceQuote = async (symbol: string, coinId?: string) => {
+    if (!symbol) return null;
+    setFetchingSpotPrice(true);
+    try {
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+      const quote = await dashboardService.getSpotPrice(symbol, coinId, token);
+      if (quote) {
+        setLiveSpotQuote(quote);
+        return quote;
+      }
+    } catch (e) {
+      console.warn('Spot price query error:', e);
+    } finally {
+      setFetchingSpotPrice(false);
+    }
+    return null;
+  };
+
+  // Watchlist set
+  const watchlistSet = useMemo(() => {
+    const set = new Set<string>();
+    if (data?.watchlist) {
+      for (const w of data.watchlist) {
+        set.add(w.coinId);
+        set.add(w.symbol.toUpperCase());
+      }
+    }
+    return set;
+  }, [data?.watchlist]);
+
+  const handleToggleWatchlist = async (coin: { id: string; symbol: string; name: string }) => {
+    const isWatched = watchlistSet.has(coin.id) || watchlistSet.has(coin.symbol.toUpperCase());
+    try {
+      if (isWatched) {
+        if (onRemoveFromWatchlist) {
+          await onRemoveFromWatchlist(coin.id);
+        }
+      } else {
+        if (onAddToWatchlist) {
+          await onAddToWatchlist({
+            coinId: coin.id,
+            symbol: coin.symbol.toUpperCase(),
+            name: coin.name,
+          });
+        }
+      }
+      // Update local state if needed
+      setMarketCoins((prev) =>
+        prev.map((c) => (c.id === coin.id ? { ...c, isWatched: !isWatched } : c))
+      );
+    } catch (e: any) {
+      console.error('Watchlist toggle error:', e);
+    }
+  };
+
   // Open Trade Modal
-  const openTradeModal = (holding: InvestmentHolding, type: InvestmentTradeType = 'BUY') => {
+  const openTradeModal = async (holding: InvestmentHolding, type: InvestmentTradeType = 'BUY') => {
     setTradeModalHolding(holding);
     setTradeType(type);
     const currPrice = parseFloat(holding.currentPrice || '0') || 0;
@@ -332,6 +464,55 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
     setTradeWalletId(holding.walletId || wallets[0]?.id || '');
     setTradeNotes('');
     setTradeError(null);
+
+    // Fetch freshest live price from CoinGecko in background to prefill
+    const spot = await fetchSpotPriceQuote(holding.symbol);
+    if (spot) {
+      let targetPrice = spot.priceUsd;
+      if (holding.currency === 'MAD') targetPrice = spot.priceMad;
+      else if (holding.currency === 'EUR') targetPrice = spot.priceEur;
+      if (targetPrice > 0) {
+        setTradePrice(targetPrice.toString());
+      }
+    }
+  };
+
+  // Open Add Holding Modal from Market Coin
+  const openAddHoldingForCoin = (coin: { symbol: string; name: string; current_price?: number; id?: string }) => {
+    setEditingHolding(null);
+    let currPrice = coin.current_price?.toString() || '';
+    setHoldingForm({
+      symbol: coin.symbol.toUpperCase(),
+      name: coin.name,
+      assetType: 'crypto',
+      units: '',
+      buyPriceAvg: currPrice,
+      currentPrice: currPrice,
+      currency: displayCurrency === 'MAD' ? 'MAD' : displayCurrency === 'EUR' ? 'EUR' : 'USD',
+      walletId: wallets[0]?.id || '',
+      targetAllocationPercent: '0',
+      dividendYieldPercent: '0',
+      notes: '',
+    });
+    setHoldingError(null);
+    setShowAddHoldingModal(true);
+    fetchSpotPriceQuote(coin.symbol, coin.id);
+  };
+
+  // Open DCA for Coin
+  const openDcaForCoin = (coin: { symbol: string; name: string }) => {
+    setDcaForm({
+      symbol: coin.symbol.toUpperCase(),
+      assetName: coin.name,
+      assetType: 'crypto',
+      targetAmount: '500',
+      currency: displayCurrency,
+      frequency: 'post_payday',
+      dayOffsetAfterPayday: 2,
+      walletId: wallets[0]?.id || '',
+    });
+    setDcaError(null);
+    setShowDcaModal(true);
   };
 
   // Open Add Holding Modal
@@ -635,28 +816,57 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
         </Card>
 
         {/* Safe-to-Invest Monthly Surplus */}
-        <Card className="border-emerald-200 dark:border-emerald-900/40 bg-gradient-to-br from-emerald-50/40 to-transparent dark:from-emerald-950/20 shadow-sm">
+        <Card className="border-emerald-200 dark:border-emerald-900/40 bg-gradient-to-br from-emerald-50/40 to-transparent dark:from-emerald-950/20 shadow-sm relative group">
           <CardContent className="p-5">
             <div className="flex items-center justify-between text-emerald-800 dark:text-emerald-300 text-xs font-semibold uppercase tracking-wider mb-2">
-              <span>Safe-to-Invest (This Month)</span>
+              <div className="flex items-center gap-1.5">
+                <span>Safe-to-Invest (This Month)</span>
+                <button
+                  type="button"
+                  onClick={() => setInfoModal('safe-to-invest')}
+                  className="text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-200 transition-colors"
+                  title="What is Safe-to-Invest? Click for explanation"
+                >
+                  <CircleAlert className="h-3.5 w-3.5" />
+                </button>
+              </div>
               <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
               {formatAmount(data?.safeToInvest?.safeToInvestMonthly || 0)}
             </div>
-            <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 truncate">
-              {data?.safeToInvest?.surplusAfterDca !== undefined && (
-                <>Surplus after DCA: {formatAmount(data.safeToInvest.surplusAfterDca)}</>
-              )}
+            <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 truncate flex items-center justify-between">
+              <span>
+                {data?.safeToInvest?.surplusAfterDca !== undefined && (
+                  <>Surplus after DCA: {formatAmount(data.safeToInvest.surplusAfterDca)}</>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setInfoModal('safe-to-invest')}
+                className="text-[11px] underline font-medium hover:text-emerald-800 dark:hover:text-emerald-200"
+              >
+                Why Safe?
+              </button>
             </p>
           </CardContent>
         </Card>
 
         {/* Passive Income & FIRE Progress */}
-        <Card className="border-gray-200 dark:border-gray-800 shadow-sm">
+        <Card className="border-gray-200 dark:border-gray-800 shadow-sm relative group">
           <CardContent className="p-5">
             <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 text-xs font-medium uppercase tracking-wider mb-2">
-              <span>Passive Yield & FIRE</span>
+              <div className="flex items-center gap-1.5">
+                <span>Passive Yield & FIRE</span>
+                <button
+                  type="button"
+                  onClick={() => setInfoModal('fire')}
+                  className="text-amber-500 hover:text-amber-700 dark:text-amber-400 transition-colors"
+                  title="What is Passive Yield & FIRE? Click for explanation"
+                >
+                  <CircleAlert className="h-3.5 w-3.5" />
+                </button>
+              </div>
               <Sparkles className="h-4 w-4 text-amber-500" />
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
@@ -763,6 +973,24 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
         >
           <Coins className="h-4 w-4" />
           Holdings & Positions ({data?.holdings?.length || 0})
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('market')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all shrink-0 ${
+            activeSubTab === 'market'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+          }`}
+        >
+          <Globe className="h-4 w-4" />
+          Markets & Watchlist (CoinGecko Live)
+          {data?.watchlist && data.watchlist.length > 0 && (
+            <span className="ml-1 text-[11px] px-1.5 py-0.2 bg-amber-400 text-gray-900 font-bold rounded-full">
+              {data.watchlist.length}
+            </span>
+          )}
         </button>
 
         <button
@@ -1062,6 +1290,297 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
         </div>
       )}
 
+      {/* SUB-TAB: MARKETS & COIN WATCHLIST (COINGECKO LIVE) */}
+      {activeSubTab === 'market' && (
+        <div className="space-y-6">
+          {/* Header & Category Filters */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <Globe className="h-5 w-5 text-indigo-500" />
+                Live Crypto Markets & Personal Watchlist
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Powered by CoinGecko API. Live spot quotes converted in real-time to {displayCurrency}.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchMarketCoins(true)}
+                disabled={marketLoading}
+                className="text-xs flex items-center gap-1.5"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${marketLoading ? 'animate-spin' : ''}`} />
+                <span>Refresh Quotes</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Search and Category Bar */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { id: 'all', label: '🔥 Top 50 Global' },
+                { id: 'watchlist', label: `⭐ My Watchlist (${data?.watchlist?.length || 0})` },
+                { id: 'gainers', label: '🚀 Top Gainers (24h)' },
+                { id: 'l1', label: '⛓️ Layer 1 / Major' },
+                { id: 'defi', label: '🏦 DeFi' },
+                { id: 'memes', label: '🐶 Memes' },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setMarketCategory(c.id as any)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    marketCategory === c.id
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Search CoinGecko Input */}
+            <div className="relative w-full md:w-72">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search any token (e.g. SUI, PEPE, SOL)..."
+                value={marketSearch}
+                onChange={(e) => setMarketSearch(e.target.value)}
+                className="pl-8 text-xs h-9 bg-white dark:bg-gray-800"
+              />
+              {isSearchingMarket && (
+                <RefreshCw className="absolute right-2.5 top-2.5 h-4 w-4 text-gray-400 animate-spin" />
+              )}
+            </div>
+          </div>
+
+          {/* Search Results Dropdown/Box if user is searching */}
+          {marketSearch.trim() && marketSearchResults.length > 0 && (
+            <Card className="border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/30 dark:bg-indigo-950/20 shadow-sm">
+              <CardHeader className="py-3 px-4 border-b border-indigo-100 dark:border-indigo-900/30">
+                <CardTitle className="text-xs font-bold text-indigo-900 dark:text-indigo-200 flex items-center justify-between">
+                  <span>CoinGecko Search Results for "{marketSearch}"</span>
+                  <span className="text-[11px] font-normal text-gray-500">{marketSearchResults.length} found</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {marketSearchResults.map((coin) => {
+                    const isWatched = watchlistSet.has(coin.id) || watchlistSet.has(coin.symbol.toUpperCase());
+                    return (
+                      <div
+                        key={coin.id}
+                        className="p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between gap-2 shadow-2xs hover:border-indigo-400 transition-all"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {coin.thumb && (
+                            <img src={coin.thumb} alt={coin.name} className="w-6 h-6 rounded-full" />
+                          )}
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold text-gray-900 dark:text-gray-100 block truncate">
+                              {coin.symbol.toUpperCase()}
+                            </span>
+                            <span className="text-[10px] text-gray-500 dark:text-gray-400 block truncate">
+                              {coin.name} {coin.market_cap_rank ? `#${coin.market_cap_rank}` : ''}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleWatchlist(coin)}
+                            className={`p-1.5 rounded-md text-xs transition-colors ${
+                              isWatched
+                                ? 'text-amber-500 hover:text-amber-600 bg-amber-50 dark:bg-amber-950/40'
+                                : 'text-gray-400 hover:text-amber-500'
+                            }`}
+                            title={isWatched ? 'Remove from Watchlist' : 'Add to Watchlist'}
+                          >
+                            <Star className={`h-4 w-4 ${isWatched ? 'fill-amber-500' : ''}`} />
+                          </button>
+                          <Button
+                            size="sm"
+                            onClick={() => openAddHoldingForCoin(coin)}
+                            className="h-7 px-2 text-[11px] bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            + Hold
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Market Coins Table */}
+          <Card className="border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+            <CardContent className="p-0">
+              {marketLoading && marketCoins.length === 0 ? (
+                <div className="p-12 text-center text-xs text-gray-500 flex flex-col items-center gap-2">
+                  <RefreshCw className="h-6 w-6 animate-spin text-indigo-500" />
+                  <span>Connecting to CoinGecko Real-Time Market Feeds...</span>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-gray-50 dark:bg-gray-800/80 text-gray-500 uppercase tracking-wider text-[10px] border-b border-gray-200 dark:border-gray-800">
+                      <tr>
+                        <th className="px-3 py-3 w-8 text-center">⭐</th>
+                        <th className="px-3 py-3">#</th>
+                        <th className="px-4 py-3">Coin / Asset</th>
+                        <th className="px-4 py-3">Price ({displayCurrency})</th>
+                        <th className="px-4 py-3">24h Change</th>
+                        <th className="px-4 py-3 hidden sm:table-cell">24h High / Low</th>
+                        <th className="px-4 py-3 hidden md:table-cell">Market Cap</th>
+                        <th className="px-4 py-3 hidden lg:table-cell">24h Volume</th>
+                        <th className="px-4 py-3 text-right">Quick Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {marketCoins
+                        .filter((coin) => {
+                          if (marketCategory === 'watchlist') {
+                            return watchlistSet.has(coin.id) || watchlistSet.has(coin.symbol.toUpperCase());
+                          }
+                          if (marketCategory === 'gainers') {
+                            return (coin.price_change_percentage_24h || 0) > 0;
+                          }
+                          if (marketCategory === 'l1') {
+                            return ['bitcoin', 'ethereum', 'solana', 'binancecoin', 'cardano', 'avalanche-2', 'sui', 'near', 'polkadot', 'tron', 'the-open-network'].includes(coin.id);
+                          }
+                          if (marketCategory === 'defi') {
+                            return ['uniswap', 'chainlink', 'aave', 'maker', 'injective-protocol', 'render-token', 'fetch-ai'].includes(coin.id);
+                          }
+                          if (marketCategory === 'memes') {
+                            return ['dogecoin', 'shiba-inu', 'pepe', 'bonk', 'dogwifcoin', 'floki'].includes(coin.id);
+                          }
+                          return true;
+                        })
+                        .sort((a, b) => {
+                          if (marketCategory === 'gainers') {
+                            return (b.price_change_percentage_24h || 0) - (a.price_change_percentage_24h || 0);
+                          }
+                          return (a.market_cap_rank || 999) - (b.market_cap_rank || 999);
+                        })
+                        .map((coin) => {
+                          const isWatched = watchlistSet.has(coin.id) || watchlistSet.has(coin.symbol.toUpperCase());
+                          const change = coin.price_change_percentage_24h || 0;
+                          let priceFormatted = `${coin.current_price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} ${displayCurrency}`;
+                          if (displayCurrency === 'USD') {
+                            priceFormatted = `$${coin.current_price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`;
+                          } else if (displayCurrency === 'EUR') {
+                            priceFormatted = `€${coin.current_price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`;
+                          } else if (displayCurrency === 'MAD') {
+                            priceFormatted = `${coin.current_price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} MAD`;
+                          }
+
+                          return (
+                            <tr
+                              key={coin.id}
+                              className="hover:bg-gray-50 dark:hover:bg-gray-850/60 transition-colors group"
+                            >
+                              <td className="px-3 py-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleWatchlist(coin)}
+                                  className={`transition-colors ${
+                                    isWatched
+                                      ? 'text-amber-500'
+                                      : 'text-gray-300 dark:text-gray-600 hover:text-amber-500'
+                                  }`}
+                                  title={isWatched ? 'Remove from Watchlist' : 'Add to Watchlist'}
+                                >
+                                  <Star className={`h-4 w-4 ${isWatched ? 'fill-amber-500' : ''}`} />
+                                </button>
+                              </td>
+                              <td className="px-3 py-3 text-gray-400 font-medium">
+                                #{coin.market_cap_rank || '—'}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2.5">
+                                  {coin.image && (
+                                    <img src={coin.image} alt={coin.name} className="w-6 h-6 rounded-full" />
+                                  )}
+                                  <div>
+                                    <div className="font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                                      <span>{coin.name}</span>
+                                      <span className="text-[10px] uppercase font-semibold text-gray-400 px-1.5 py-0.2 rounded bg-gray-100 dark:bg-gray-800">
+                                        {coin.symbol}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 font-bold text-gray-900 dark:text-gray-100">
+                                {priceFormatted}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span
+                                  className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md font-semibold text-[11px] ${
+                                    change >= 0
+                                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                      : 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'
+                                  }`}
+                                >
+                                  {change >= 0 ? '+' : ''}
+                                  {change.toFixed(2)}%
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden sm:table-cell">
+                                <div className="text-[11px]">
+                                  <span className="text-emerald-600">H: {coin.high_24h?.toLocaleString()}</span>
+                                  <span className="mx-1 text-gray-300">/</span>
+                                  <span className="text-red-600">L: {coin.low_24h?.toLocaleString()}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-gray-600 dark:text-gray-300 font-medium hidden md:table-cell">
+                                {coin.market_cap ? `${(coin.market_cap / 1e9).toFixed(2)}B ${displayCurrency}` : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">
+                                {coin.total_volume ? `${(coin.total_volume / 1e6).toFixed(1)}M ${displayCurrency}` : '—'}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => openAddHoldingForCoin(coin)}
+                                    className="h-7 px-2.5 text-[11px] bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-xs"
+                                  >
+                                    + Hold
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openDcaForCoin(coin)}
+                                    className="h-7 px-2 text-[11px] text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+                                    title="Automate DCA plan"
+                                  >
+                                    DCA
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* SUB-TAB 2: SAFE-TO-INVEST & DCA PLANNER */}
       {activeSubTab === 'safe-to-invest' && (
         <div className="space-y-6">
@@ -1073,6 +1592,14 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                   <CardTitle className="text-lg font-bold flex items-center gap-2 text-emerald-900 dark:text-emerald-100">
                     <ShieldCheck className="h-5 w-5 text-emerald-600" />
                     TrueSpend "Safe-to-Invest" Runway Engine
+                    <button
+                      type="button"
+                      onClick={() => setInfoModal('safe-to-invest')}
+                      className="text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 transition-colors ml-1"
+                      title="Learn how Safe-to-Invest protects your cash flow"
+                    >
+                      <CircleAlert className="h-4 w-4" />
+                    </button>
                   </CardTitle>
                   <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
                     Calculates how much money you can invest this cycle without risking your rent, groceries, debt obligations, or emergency buffer.
@@ -1149,6 +1676,14 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
               <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                 <Calendar className="h-5 w-5 text-indigo-500" />
                 Dollar-Cost Averaging (DCA) Automation Planner
+                <button
+                  type="button"
+                  onClick={() => setInfoModal('dca')}
+                  className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 transition-colors ml-1"
+                  title="What is Dollar-Cost Averaging? Click for explanation"
+                >
+                  <CircleAlert className="h-4 w-4" />
+                </button>
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Schedule recurring investments linked to your Financial Calendar and Payday cycles.
@@ -1611,7 +2146,34 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Current Price</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Current Price</label>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!holdingForm.symbol) return;
+                        const quote = await fetchSpotPriceQuote(holdingForm.symbol);
+                        if (quote) {
+                          let p = quote.priceUsd;
+                          if (holdingForm.currency === 'MAD') p = quote.priceMad;
+                          else if (holdingForm.currency === 'EUR') p = quote.priceEur;
+                          if (p > 0) {
+                            setHoldingForm((prev) => ({
+                              ...prev,
+                              currentPrice: p.toString(),
+                              buyPriceAvg: prev.buyPriceAvg || p.toString(),
+                            }));
+                          }
+                        }
+                      }}
+                      disabled={fetchingSpotPrice || !holdingForm.symbol}
+                      className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold hover:underline flex items-center gap-0.5"
+                      title="Fetch live market price from CoinGecko"
+                    >
+                      <Zap className={`h-2.5 w-2.5 ${fetchingSpotPrice ? 'animate-spin' : ''}`} />
+                      Sync Live
+                    </button>
+                  </div>
                   <Input
                     type="number"
                     step="any"
@@ -1952,6 +2514,143 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: RICH EXPLANATION & METHODOLOGY MODAL */}
+      {infoModal !== null && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-lg w-full p-6 space-y-4 border border-gray-200 dark:border-gray-800 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
+                  <Info className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                    {infoModal === 'safe-to-invest' && 'What is "Safe-to-Invest"?'}
+                    {infoModal === 'dca' && 'What is Dollar-Cost Averaging (DCA)?'}
+                    {infoModal === 'fire' && 'Passive Yield & FIRE Explained'}
+                  </h3>
+                  <p className="text-xs text-gray-500">TrueSpend Predictive Wealth Intelligence</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInfoModal(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* SAFE TO INVEST EXPLANATION */}
+            {infoModal === 'safe-to-invest' && (
+              <div className="space-y-4 text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                <div className="p-3.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/40 text-emerald-950 dark:text-emerald-200 space-y-1.5">
+                  <span className="font-bold block text-sm">💡 The TrueSpend Principle:</span>
+                  <p>
+                    Never invest money you will need in the next 30 to 90 days. Standalone crypto and stock apps encourage depositing blindly. TrueSpend connects directly to your cash flow, ensuring you only deploy truly surplus capital.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="font-bold text-gray-900 dark:text-gray-100 text-xs block">
+                    Mathematical Formula:
+                  </span>
+                  <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/80 font-mono text-[11px] border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200">
+                    Safe-to-Invest = Total Liquid Cash - Fixed Bills - Daily Living Buffer - Emergency Reserve - Debt Obligations
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="font-bold text-gray-900 dark:text-gray-100 text-xs block">
+                    Why this protects you:
+                  </span>
+                  <ul className="space-y-1.5 list-disc list-inside">
+                    <li>
+                      <strong>Zero Forced Selling:</strong> If the market drops 40%, you will never be forced to sell at a loss to pay your rent or groceries.
+                    </li>
+                    <li>
+                      <strong>Automatic Liquidity Shield:</strong> Your minimum emergency buffer ({formatAmount(kpis?.emergencyBuffer || 0)}) is always ring-fenced before any investment recommendation is made.
+                    </li>
+                    <li>
+                      <strong>DCA Budget Check:</strong> TrueSpend verifies whether your scheduled DCA plans fit comfortably inside your monthly safe surplus.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* DCA EXPLANATION */}
+            {infoModal === 'dca' && (
+              <div className="space-y-4 text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                <div className="p-3.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/40 text-indigo-950 dark:text-indigo-200 space-y-1.5">
+                  <span className="font-bold block text-sm">⏱️ Timing the Market vs. Time IN the Market:</span>
+                  <p>
+                    <strong>Dollar-Cost Averaging (DCA)</strong> is the proven investment strategy of investing fixed amounts of money at regular intervals, regardless of whether the asset price goes up or down.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="font-bold text-gray-900 dark:text-gray-100 text-xs block">
+                    Key Advantages:
+                  </span>
+                  <ul className="space-y-1.5 list-disc list-inside">
+                    <li>
+                      <strong>Smooths Volatility:</strong> When prices are high you purchase fewer units; when prices drop, you automatically buy more units at a discount.
+                    </li>
+                    <li>
+                      <strong>Post-Payday Automation:</strong> TrueSpend schedules your DCA rules 2-3 days after your salary arrives, capturing cash before it leaks into discretionary spending.
+                    </li>
+                    <li>
+                      <strong>Eliminates Emotion & FOMO:</strong> You never have to guess the top or bottom of a crypto or stock chart.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* FIRE & PASSIVE YIELD EXPLANATION */}
+            {infoModal === 'fire' && (
+              <div className="space-y-4 text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                <div className="p-3.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-amber-950 dark:text-amber-200 space-y-1.5">
+                  <span className="font-bold block text-sm">🔥 FIRE: Financial Independence, Retire Early</span>
+                  <p>
+                    FIRE is achieved when the annual passive yield from your investments (stock dividends, real estate cash flow, and crypto staking rewards) equals or exceeds your annual living expenses.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="font-bold text-gray-900 dark:text-gray-100 text-xs block">
+                    How TrueSpend Tracks Your FIRE Journey:
+                  </span>
+                  <ul className="space-y-1.5 list-disc list-inside">
+                    <li>
+                      <strong>Passive Yield Projection:</strong> Multiplies your dividend yields and staking rates across your portfolio to calculate annual passive cash flow ({formatAmount(data?.annualPassiveIncomeMad || 0)}/yr).
+                    </li>
+                    <li>
+                      <strong>Living Costs Coverage:</strong> Measures what percentage of your basic monthly living obligations is completely paid for by investment yield without you having to work.
+                    </li>
+                    <li>
+                      <strong>The 4% Safe Withdrawal Rule:</strong> When your Net Worth reaches 25x your annual expenses, you have achieved permanent Financial Independence.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            <div className="pt-2 flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setInfoModal(null)}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+              >
+                Got It, Thanks!
+              </Button>
+            </div>
           </div>
         </div>
       )}

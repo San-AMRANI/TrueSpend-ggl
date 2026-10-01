@@ -16,6 +16,9 @@ import {
   InvestmentTransaction,
   DcaPlan,
   MarketQuote,
+  CoinGeckoMarketCoin,
+  WatchlistItem,
+  CoinSearchResult,
 } from '../../types';
 
 export const dashboardService = {
@@ -161,4 +164,19 @@ export const dashboardService = {
     apiClient.delete<{ success: boolean }>(`/api/investments/dca-plans/${id}`, token),
   getMarketQuotes: (symbols: string[], token: string | null) =>
     apiClient.get<Record<string, MarketQuote>>(`/api/investments/quotes?symbols=${encodeURIComponent(symbols.join(','))}`, token),
+  getMarketCoins: (vsCurrency = 'usd', perPage = 50, refresh = false, token: string | null) =>
+    apiClient.get<CoinGeckoMarketCoin[]>(`/api/investments/market-coins?vs_currency=${vsCurrency}&per_page=${perPage}&refresh=${refresh}`, token),
+  searchCoins: (q: string, token: string | null) =>
+    apiClient.get<CoinSearchResult[]>(`/api/investments/search-coins?q=${encodeURIComponent(q)}`, token),
+  getSpotPrice: (symbol: string, coinId?: string, token?: string | null) =>
+    apiClient.get<{ symbol: string; priceUsd: number; priceEur: number; priceMad: number; change24h: number }>(
+      `/api/investments/spot-price?symbol=${encodeURIComponent(symbol)}${coinId ? `&coin_id=${encodeURIComponent(coinId)}` : ''}`,
+      token || null
+    ),
+  getWatchlist: (token: string | null) =>
+    apiClient.get<WatchlistItem[]>('/api/investments/watchlist', token),
+  addToWatchlist: (payload: { coinId: string; symbol: string; name: string }, token: string | null) =>
+    apiClient.post<WatchlistItem>('/api/investments/watchlist', payload, token),
+  removeFromWatchlist: (coinId: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/investments/watchlist/${encodeURIComponent(coinId)}`, token),
 };
