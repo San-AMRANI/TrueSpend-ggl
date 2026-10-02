@@ -1,0 +1,399 @@
+export interface User {
+  email: string;
+  uid: string;
+}
+
+export interface HealthFactor {
+  name: string;
+  score: number;
+  maxPoints: number;
+  label: string;
+}
+
+export interface Forecast {
+  expected: number;
+  best: number;
+  worst: number;
+  daysRemaining: number;
+  totalDays: number;
+  elapsedDays: number;
+  spendingPacePercent: number;
+}
+
+export interface Wallet {
+  id: string;
+  userId: string;
+  name: string;
+  type: 'Bank' | 'Cash' | 'Savings' | 'Investment';
+  isMain: boolean;
+  initialBalance: string;
+  balance: number;
+}
+
+export interface KPI {
+  accounts: Wallet[];
+  totalLiquidity: number;
+  bankBalance: number;
+  cashOnHand: number;
+  monthlyExpenses: number;
+  monthlyIncome: number;
+  adjustedTrueSpend: number;
+  daysUntilPayday: number;
+  dailyAllowance: number;
+  dailySpent: number;
+  dailyRemaining: number;
+  dailyUsagePercent: number;
+  dailyStatus: 'on_track' | 'warning' | 'critical';
+  payday: number | null;
+  emergencyBuffer: number;
+  investmentReserve?: number;
+  salary?: number;
+  automatedDriveBackups?: boolean;
+  lastDriveBackupDate?: string;
+  driveBackupFrequency?: 'daily' | '3days' | 'weekly';
+  currentFinancialAmount: number;
+  financialPeriodStart: string | null;
+  financialPeriodEnd: string | null;
+  nextPayrollDate: string | null;
+  financialMonthReady: boolean;
+  financialMonthMessage: string | null;
+  // Phase 1 Intelligence
+  safeToSpend: number;
+  pendingPayables: number;
+  pendingReceivables: number;
+  runwayDays: number;
+  avgDailySpend: number;
+  avgDailyVariableSpend?: number;
+  remainingFixedBudget?: number;
+  forecast: Forecast;
+  walletBalances: {
+    [key: string]: number;
+    Bank?: number;
+    Cash?: number;
+    Savings?: number;
+    Investment?: number;
+  };
+  healthScore: number;
+  healthFactors: HealthFactor[];
+}
+
+export type FinancialContextType = 'Trip' | 'Work / Mission' | 'Project' | 'Life Event' | 'Other';
+export type FinancialContextStatus = 'Planned' | 'Active' | 'Completed';
+
+export interface FinancialContext {
+  id: string;
+  userId: string;
+  name: string;
+  type: FinancialContextType;
+  startDate: string | null;
+  endDate: string | null;
+  budget: string | null;
+  status: FinancialContextStatus;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransactionSplit {
+  id?: string;
+  reimbursableAmount: string;
+  linkedContactId?: string | null;
+  linkedContactName?: string | null;
+  linkedDebtType?: 'Receivable' | 'Payable' | null;
+  remainingBalance?: string | null;
+  status?: 'Pending' | 'Cleared' | null;
+}
+
+export interface Transaction {
+  id: string;
+  userId: string;
+  createdAt: string;
+  amount: string;
+  type: 'Income' | 'Expense' | 'Transfer' | 'Debt Repayment';
+  walletId?: string | null;
+  sourceWallet?: string | null;
+  destinationWalletId?: string | null;
+  toWalletId?: string | null;
+  category: string;
+  notes?: string;
+  payrollId?: string | null;
+  reimbursableAmount?: string;
+  linkedContactId?: string | null;
+  linkedContactName?: string | null;
+  linkedDebtType?: 'Receivable' | 'Payable' | null;
+  splits?: TransactionSplit[];
+  contextId?: string | null;
+}
+
+export interface Goal {
+  id: string;
+  userId: string;
+  walletId?: string | null;
+  name: string;
+  targetAmount: string;
+  currentAmount: string;
+  autoSyncBalance?: boolean;
+  deadline?: string | null;
+  category: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SubscriptionBillingCycle = 'monthly' | 'yearly' | 'quarterly' | 'weekly';
+export type SubscriptionStatus = 'active' | 'paused' | 'reviewing' | 'cancelled';
+
+export interface Subscription {
+  id: string;
+  userId: string;
+  name: string;
+  amount: string;
+  currency: string;
+  billingCycle: SubscriptionBillingCycle;
+  category: string;
+  walletId?: string | null;
+  walletName?: string | null;
+  nextBillingDate?: string | null;
+  status: SubscriptionStatus;
+  notes?: string | null;
+  icon?: string | null;
+  websiteUrl?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DetectedSubscription {
+  name: string;
+  suggestedAmount: number;
+  suggestedCycle: SubscriptionBillingCycle;
+  suggestedCategory: string;
+  frequencyCount: number;
+  lastSeenDate: string;
+  sampleTransactionNotes?: string;
+  confidence: 'high' | 'medium';
+}
+
+export interface CategoryBudget {
+  id: string;
+  userId: string;
+  category: string;
+  year: number;
+  /** 1-based calendar month. */
+  month: number;
+  amount: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Payroll {
+  id: string;
+  userId: string;
+  scheduledFor: string;
+  amount: string;
+  createdAt: string;
+}
+
+export interface DebtSettlement {
+  id: string;
+  amount: string;
+  createdAt: string;
+}
+
+export interface Debt {
+  id: string;
+  userId: string;
+  contactName: string;
+  type: 'Receivable' | 'Payable';
+  originalAmount: string;
+  remainingBalance: string;
+  status: 'Pending' | 'Cleared';
+  createdAt: string;
+  dueDate?: string | null;
+  settlements?: DebtSettlement[];
+}
+
+export interface UserSettings {
+  emergencyBuffer: number;
+  payday?: number;
+  salary?: number;
+  automatedDriveBackups?: boolean;
+  lastDriveBackupDate?: string;
+  driveBackupFrequency?: 'daily' | '3days' | 'weekly';
+  googleDriveToken?: string;
+}
+
+export type DashboardTab =
+  | 'overview'
+  | 'calendar'
+  | 'transactions'
+  | 'budgets'
+  | 'goals'
+  | 'subscriptions'
+  | 'what-if'
+  | 'debts'
+  | 'analytics'
+  | 'settings'
+  | 'chat'
+  | 'reports'
+  | 'cash-flow'
+  | 'contexts'
+  | 'investments';
+
+export type InvestmentAssetType =
+  | 'crypto'
+  | 'stock'
+  | 'etf'
+  | 'bourse_local'
+  | 'commodity'
+  | 'real_estate'
+  | 'custom';
+
+export type InvestmentTradeType =
+  | 'BUY'
+  | 'SELL'
+  | 'DIVIDEND'
+  | 'STAKING_REWARD';
+
+export interface InvestmentHolding {
+  id: string;
+  userId: string;
+  walletId?: string | null;
+  walletName?: string | null;
+  symbol: string;
+  name: string;
+  assetType: InvestmentAssetType;
+  units: string;
+  buyPriceAvg: string;
+  currentPrice: string;
+  currency: string;
+  targetAllocationPercent?: string | null;
+  dividendYieldPercent?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Computed client/server fields
+  totalCostBasis?: number;
+  currentMarketValue?: number;
+  unrealizedPnl?: number;
+  unrealizedPnlPercent?: number;
+  change24h?: number;
+}
+
+export interface InvestmentTransaction {
+  id: string;
+  userId: string;
+  holdingId: string;
+  walletId?: string | null;
+  walletName?: string | null;
+  holdingSymbol?: string;
+  holdingName?: string;
+  type: InvestmentTradeType;
+  units: string;
+  pricePerUnit: string;
+  totalAmount: string;
+  currency: string;
+  fees: string;
+  realizedPnl?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface DcaPlan {
+  id: string;
+  userId: string;
+  holdingId?: string | null;
+  symbol: string;
+  assetName: string;
+  assetType: InvestmentAssetType;
+  targetAmount: string;
+  currency: string;
+  frequency: 'daily' | 'weekly' | 'monthly' | 'post_payday';
+  dayOffsetAfterPayday: number;
+  walletId?: string | null;
+  walletName?: string | null;
+  status: 'active' | 'paused';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketQuote {
+  symbol: string;
+  price: number;
+  change24h?: number;
+  currency: string;
+  lastUpdated: string;
+}
+
+export interface CoinGeckoMarketCoin {
+  id: string;
+  symbol: string;
+  name: string;
+  image: string;
+  current_price: number;
+  market_cap: number;
+  market_cap_rank: number;
+  total_volume: number;
+  high_24h: number;
+  low_24h: number;
+  price_change_24h: number;
+  price_change_percentage_24h: number;
+  circulating_supply: number;
+  total_supply: number | null;
+  sparkline_in_7d?: { price: number[] };
+  isWatched?: boolean;
+}
+
+export interface WatchlistItem {
+  id: string;
+  userId: string;
+  coinId: string;
+  symbol: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface CoinSearchResult {
+  id: string;
+  name: string;
+  api_symbol?: string;
+  symbol: string;
+  market_cap_rank?: number;
+  thumb?: string;
+  large?: string;
+}
+
+export interface SafeToInvestCalculation {
+  monthlyIncome: number;
+  fixedObligations: number;
+  variableSpendPace: number;
+  emergencyBufferDeficiency: number;
+  pendingPayables: number;
+  safeToInvestMonthly: number;
+  currentMonthlyDcaTarget: number;
+  surplusAfterDca: number;
+  recommendationText: string;
+  riskAppetiteMax: number;
+}
+
+export interface InvestmentsData {
+  holdings: InvestmentHolding[];
+  transactions: InvestmentTransaction[];
+  dcaPlans: DcaPlan[];
+  watchlist: WatchlistItem[];
+  marketCoins: CoinGeckoMarketCoin[];
+  quotes: Record<string, MarketQuote>;
+  rates: {
+    USD_TO_MAD: number;
+    EUR_TO_MAD: number;
+    USD_TO_EUR: number;
+  };
+  totalPortfolioValueMad: number;
+  totalCostBasisMad: number;
+  totalUnrealizedPnlMad: number;
+  totalUnrealizedPnlPercent: number;
+  annualPassiveIncomeMad: number;
+  fireCoveragePercent: number;
+  safeToInvest: SafeToInvestCalculation;
+}
+
+
