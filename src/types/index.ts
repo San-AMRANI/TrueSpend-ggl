@@ -368,9 +368,14 @@ export interface SafeToInvestCalculation {
   variableSpendPace: number;
   emergencyBufferDeficiency: number;
   pendingPayables: number;
+  totalInvestmentBudget?: number;
+  investedThisMonth?: number;
+  remainingInvestmentBudget?: number;
   safeToInvestMonthly: number;
   currentMonthlyDcaTarget: number;
   surplusAfterDca: number;
+  dcaBudgetStatus?: 'fully_budgeted' | 'over_budget' | 'covered_by_surplus' | 'exceeds_capacity';
+  dcaBudgetCoveragePercent?: number | null;
   recommendationText: string;
   riskAppetiteMax: number;
 }

@@ -10,6 +10,7 @@ import {
   getExpensesForMonth,
   netExpenseOf,
   amountOf,
+  isInMonth,
 } from '../../lib/finance';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -111,6 +112,7 @@ interface BudgetsTabProps {
   budgets: CategoryBudget[];
   transactions: Transaction[];
   payrolls: Payroll[];
+  wallets?: Array<{ id: string; name: string; type?: string }>;
   onSaveBudget: (category: string, year: number, month: number, amount: number) => Promise<void>;
   onSaveBudgetsBatch: (budgets: { category: string; year: number; month: number; amount: number }[]) => Promise<void>;
   onCopyPrevious: (year: number, month: number) => Promise<number>;
@@ -421,7 +423,7 @@ const SAVINGS_CATEGORIES = [
   '💳 Debt & Obligations',
 ];
 
-function Rule503020View({ budgets, transactions, totalBudget, year, month, payrolls }: { budgets: CategoryBudget[]; transactions: Transaction[]; totalBudget: number; year: number; month: number; payrolls: Payroll[] }) {
+function Rule503020View({ budgets, transactions, totalBudget, year, month, payrolls, wallets }: { budgets: CategoryBudget[]; transactions: Transaction[]; totalBudget: number; year: number; month: number; payrolls: Payroll[]; wallets?: Array<{ id: string; type?: string }> }) {
   const [needsPct, setNeedsPct] = useState(50);
   const [wantsPct, setWantsPct] = useState(30);
   const [savingsPct, setSavingsPct] = useState(20);
@@ -439,13 +441,22 @@ function Rule503020View({ budgets, transactions, totalBudget, year, month, payro
   };
 
   const totalSpent = useMemo(() => {
-    return getExpensesForMonth(transactions, year, month, payrolls, { includeBudgetTransfers: true }).reduce((s, tx) => s + netExpenseOf(tx), 0);
-  }, [transactions, year, month, payrolls]);
+    return getExpensesForMonth(transactions, year, month, payrolls, { includeBudgetTransfers: true, wallets }).reduce((s, tx) => s + netExpenseOf(tx), 0);
+  }, [transactions, year, month, payrolls, wallets]);
 
   const getGroupSpent = (cats: string[]) => {
     const normalizedCats = cats.map(normalizeCategory);
-    return getExpensesForMonth(transactions, year, month, payrolls, { includeBudgetTransfers: true })
-      .filter((tx) => normalizedCats.includes(normalizeCategory(tx.category ?? '')))
+    return getExpensesForMonth(transactions, year, month, payrolls, { includeBudgetTransfers: true, wallets })
+      .filter((tx) => {
+        let cat = normalizeCategory(tx.category ?? '');
+        if (tx.type === 'Transfer' && wallets && tx.destinationWalletId) {
+          const dest = wallets.find(w => w.id === tx.destinationWalletId);
+          const destType = dest?.type?.toLowerCase();
+          if (destType === 'investment') cat = '📈 Investments';
+          else if (destType === 'savings') cat = '🛟 Emergency & goals Fund';
+        }
+        return normalizedCats.includes(cat);
+      })
       .reduce((s, tx) => s + netExpenseOf(tx), 0);
   };
 
@@ -509,18 +520,19 @@ function Rule503020View({ budgets, transactions, totalBudget, year, month, payro
 }
 
 // ─── Envelope View ────────────────────────────────────────────────────────────
-function EnvelopeView({ budgets, transactions, year, month, payrolls, onSave, onDelete }: {
+function EnvelopeView({ budgets, transactions, year, month, payrolls, wallets, onSave, onDelete }: {
   budgets: CategoryBudget[];
   transactions: Transaction[];
   year: number;
   month: number;
   payrolls: Payroll[];
+  wallets?: Array<{ id: string; type?: string }>;
   onSave: (cat: string, amount: number) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
   const monthBudgets = budgets.filter((b) => b.year === year && b.month === month);
   const totalEnvelope = monthBudgets.reduce((s, b) => s + parseFloat(b.amount), 0);
-  const totalSpent = monthBudgets.reduce((s, b) => s + getCategorySpending(transactions, b.category, year, month, payrolls), 0);
+  const totalSpent = monthBudgets.reduce((s, b) => s + getCategorySpending(transactions, b.category, year, month, payrolls, wallets), 0);
   const totalLeft = totalEnvelope - totalSpent;
 
   return (
@@ -544,7 +556,7 @@ function EnvelopeView({ budgets, transactions, year, month, payrolls, onSave, on
           <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">No envelopes for this month. Add category budgets above.</p>
         )}
         {monthBudgets.map((b) => {
-          const spent = getCategorySpending(transactions, b.category, year, month, payrolls);
+          const spent = getCategorySpending(transactions, b.category, year, month, payrolls, wallets);
           const amount = parseFloat(b.amount);
           const left = amount - spent;
           const pct = amount > 0 ? Math.min(100, (spent / amount) * 100) : 0;
@@ -584,7 +596,7 @@ function EnvelopeView({ budgets, transactions, year, month, payrolls, onSave, on
 import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, payrolls, onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onClearMonth, onDeleteBudget }) => {
+export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, payrolls, wallets = [], onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onClearMonth, onDeleteBudget }) => {
   const [monthRef, setMonthRef] = useState(() => getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [budgetModel, setBudgetModel] = useState<BudgetModel>('category');
   const [newCategory, setNewCategory] = useState<string>(expenseCategories[0]);
@@ -617,21 +629,32 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
     budgets.filter((b) => b.year === monthRef.year && b.month === monthRef.month).forEach((b) => active.add(b.category));
     transactions
       .filter((tx) => {
+        if (!isInMonth(tx, monthRef.year, monthRef.month, payrolls)) return false;
         if (tx.type === 'Expense') return true;
-        if (tx.type === 'Transfer' && tx.category) {
-          const norm = normalizeCategory(tx.category);
+        if (tx.type === 'Transfer') {
+          let norm = normalizeCategory(tx.category);
+          if (wallets && tx.destinationWalletId) {
+            const dest = wallets.find((w) => w.id === tx.destinationWalletId);
+            const destType = dest?.type?.toLowerCase();
+            if (destType === 'investment') norm = '📈 Investments';
+            else if (destType === 'savings') norm = '🛟 Emergency & goals Fund';
+          }
           return Boolean(norm && norm !== '🔄 Transfer' && norm !== 'Transfer');
         }
         return false;
       })
       .forEach((tx) => {
-        const d = new Date(tx.createdAt);
-        if (d.getUTCFullYear() === monthRef.year && d.getUTCMonth() + 1 === monthRef.month) {
-          active.add(normalizeCategory(tx.category) || 'Uncategorized');
+        let cat = normalizeCategory(tx.category);
+        if (tx.type === 'Transfer' && wallets && tx.destinationWalletId) {
+          const dest = wallets.find((w) => w.id === tx.destinationWalletId);
+          const destType = dest?.type?.toLowerCase();
+          if (destType === 'investment') cat = '📈 Investments';
+          else if (destType === 'savings') cat = '🛟 Emergency & goals Fund';
         }
+        active.add(cat || 'Uncategorized');
       });
     return Array.from(active).sort((a, b) => a.localeCompare(b));
-  }, [budgets, monthRef, transactions]);
+  }, [budgets, monthRef, transactions, payrolls, wallets]);
 
   // Summary stats
   const totalBudget = useMemo(() =>
@@ -639,16 +662,16 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
     [budgets, monthRef]);
 
   const totalSpent = useMemo(() =>
-    budgetRows.reduce((s, cat) => s + getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payrolls), 0),
-    [budgetRows, transactions, monthRef, payrolls]);
+    budgetRows.reduce((s, cat) => s + getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payrolls, wallets), 0),
+    [budgetRows, transactions, monthRef, payrolls, wallets]);
 
   const pace = useMemo(() => getSpendingPace(totalSpent, totalBudget, monthRef.year, monthRef.month, payrolls), [totalSpent, totalBudget, monthRef, payrolls]);
 
   const categoryData = useMemo(() => budgetRows.map((cat) => {
     const budget = budgetFor(budgets, cat, monthRef.year, monthRef.month);
-    const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payrolls);
+    const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payrolls, wallets);
     return { label: cat, spent, color: categoryColor(cat), amount: budget ? parseFloat(budget.amount) : undefined };
-  }), [budgets, transactions, budgetRows, monthRef, payrolls]);
+  }), [budgets, transactions, budgetRows, monthRef, payrolls, wallets]);
 
   const healthScore = useMemo(() => computeBudgetHealthScore(categoryData), [categoryData]);
   const { grade, color: gradeColor } = gradeFromScore(healthScore);
@@ -1174,6 +1197,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
           year={monthRef.year}
           month={monthRef.month}
           payrolls={payrolls}
+          wallets={wallets}
         />
       )}
 
@@ -1184,6 +1208,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
           year={monthRef.year}
           month={monthRef.month}
           payrolls={payrolls}
+          wallets={wallets}
           onSave={(cat, amount) => onSaveBudget(cat, monthRef.year, monthRef.month, amount)}
           onDelete={onDeleteBudget}
         />

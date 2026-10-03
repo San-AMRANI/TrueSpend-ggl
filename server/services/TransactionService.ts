@@ -177,11 +177,12 @@ export class TransactionService {
       try {
         const wallets = await walletService.getWallets(userId);
         const destWallet = wallets.find((w) => w.id === resolvedDestWalletId);
-        if (destWallet?.type === 'Investment') {
+        const destType = destWallet?.type?.toLowerCase();
+        if (destType === 'investment') {
           assignedCategory = '📈 Investments';
-        } else if (destWallet?.type === 'Savings') {
+        } else if (destType === 'savings') {
           assignedCategory = '🛟 Emergency & goals Fund';
-        } else if (!assignedCategory) {
+        } else if (!assignedCategory || assignedCategory === '📈 Investments' || assignedCategory === '🛟 Emergency & goals Fund') {
           assignedCategory = '🔄 Transfer';
         }
       } catch {
@@ -391,11 +392,12 @@ export class TransactionService {
         try {
           const wallets = await walletService.getWallets(userId);
           const destWallet = wallets.find((w) => w.id === targetDestId);
-          if (destWallet?.type === 'Investment') {
+          const destType = destWallet?.type?.toLowerCase();
+          if (destType === 'investment') {
             assignedCategory = '📈 Investments';
-          } else if (destWallet?.type === 'Savings') {
+          } else if (destType === 'savings') {
             assignedCategory = '🛟 Emergency & goals Fund';
-          } else if (!assignedCategory) {
+          } else if (!assignedCategory || assignedCategory === '📈 Investments' || assignedCategory === '🛟 Emergency & goals Fund') {
             assignedCategory = '🔄 Transfer';
           }
         } catch {

@@ -161,6 +161,30 @@ export class InvestmentController {
       res.status(400).json({ error: e.message || 'Failed to remove from watchlist' });
     }
   }
+
+  async getTrending(req: AuthRequest, res: Response) {
+    try {
+      const trending = await investmentService.getTrendingCoins();
+      res.json(trending);
+    } catch (e: any) {
+      console.error('InvestmentController.getTrending error:', e);
+      res.status(500).json({ error: e.message || 'Failed to fetch trending coins' });
+    }
+  }
+
+  async getCoinDetails(req: AuthRequest, res: Response) {
+    try {
+      const coinId = req.params.id;
+      const details = await investmentService.getCoinDetails(coinId);
+      if (!details) {
+        return res.status(404).json({ error: 'Coin details not found' });
+      }
+      res.json(details);
+    } catch (e: any) {
+      console.error('InvestmentController.getCoinDetails error:', e);
+      res.status(500).json({ error: e.message || 'Failed to fetch coin details' });
+    }
+  }
 }
 
 export const investmentController = new InvestmentController();

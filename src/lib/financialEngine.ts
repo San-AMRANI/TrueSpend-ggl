@@ -1,5 +1,6 @@
 import { Transaction, Payroll, Debt, CategoryBudget } from '../types/index.js';
 import { getCurrentFinancialMonth, getNextPayroll, isInFinancialMonth,  FinancialMonthBounds } from './financialMonth.js';
+import { normalizeCategory } from './categories.js';
 
 export interface FinancialEngineWalletInput {
   id: string;
@@ -55,6 +56,8 @@ export function computeFinancialState(input: FinancialEngineInput) {
   let monthlyVariableExpenses = 0;
   let monthlyFixedExpenses = 0;
   let monthlyIncome = 0;
+  let monthlyInvestmentFunded = 0;
+  let monthlySavingsFunded = 0;
   let dailySpent = 0;
   let todaysIncome = 0;
   let debtRepayments = 0;
@@ -163,10 +166,25 @@ export function computeFinancialState(input: FinancialEngineInput) {
       applyTransaction(tx, walletBalances);
     }
 
-    if (currentFm && transactionDay <= today && isInFinancialMonth(txDate, input.payrolls, currentFm.year, currentFm.month)) {
-      if (tx.type === 'Expense') {
-        // Investment capital & savings allocations are asset conversions, excluded from everyday spending amounts
-        if (!isCapitalReserveOutflow) {
+    const inCurrentMonth = currentFm
+      ? isInFinancialMonth(txDate, input.payrolls, currentFm.year, currentFm.month)
+      : (txDate.getUTCFullYear() === today.getFullYear() && txDate.getUTCMonth() === today.getMonth());
+
+    if (inCurrentMonth && transactionDay <= today) {
+      if (tx.type === 'Transfer') {
+        const destWallet = userWallets.find((w) => w.id === (tx as any).destinationWalletId || w.id === (tx as any).toWalletId);
+        const destType = destWallet?.type?.toLowerCase();
+        if (destType === 'investment' || isInvestmentCategory) {
+          monthlyInvestmentFunded += txAmount;
+        } else if (destType === 'savings' || isSavingsCategory) {
+          monthlySavingsFunded += txAmount;
+        }
+      } else if (tx.type === 'Expense') {
+        if (isInvestmentCategory || isInvestmentWalletTx) {
+          monthlyInvestmentFunded += netExpense;
+        } else if (isSavingsCategory || isSavingsWalletTx) {
+          monthlySavingsFunded += netExpense;
+        } else {
           monthlyExpenses += netExpense;
           if (variableCategories.includes(tx.category || '')) {
             monthlyVariableExpenses += netExpense;
@@ -176,6 +194,8 @@ export function computeFinancialState(input: FinancialEngineInput) {
         }
       }
       if (tx.type === 'Income') monthlyIncome += txAmount;
+      if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) debtRepayments += txAmount;
+      if (tx.type === 'Expense' && !isPayableTx && tx.reimbursableAmount) reimbursements += reimbursableAmt;
     }
     if (transactionDay.getTime() === today.getTime()) {
       if (tx.type === 'Expense') {
@@ -188,11 +208,6 @@ export function computeFinancialState(input: FinancialEngineInput) {
         }
       }
       if (tx.type === 'Income') todaysIncome += txAmount;
-    }
-
-    if (currentFm && transactionDay <= today && isInFinancialMonth(txDate, input.payrolls, currentFm.year, currentFm.month)) {
-      if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) debtRepayments += txAmount;
-      if (tx.type === 'Expense' && !isPayableTx && tx.reimbursableAmount) reimbursements += reimbursableAmt;
     }
   }
 
@@ -243,22 +258,25 @@ export function computeFinancialState(input: FinancialEngineInput) {
   let worstEndBalance = 0;
   let spendingPacePercent = 0;
 
+  const fallbackYear = today.getFullYear();
+  const fallbackMonth = today.getMonth() + 1;
+  const activeYear = currentFm ? currentFm.year : fallbackYear;
+  const activeMonth = currentFm ? currentFm.month : fallbackMonth;
+
   const isInvestmentBudgetCategory = (cat: string) => [
     '📈 Investments',
     'Investments & Brokerage',
     'Investments',
     'Investment',
     'Stocks & Crypto',
-  ].includes(cat);
+  ].includes(cat) || normalizeCategory(cat) === '📈 Investments';
 
   const isSavingsBudgetCategory = (cat: string) => [
     '🛟 Emergency & goals Fund',
     '💰 Savings & Goals',
-  ].includes(cat);
+  ].includes(cat) || normalizeCategory(cat) === '🛟 Emergency & goals Fund';
 
-  const currentMonthBudgets = currentFm 
-    ? input.budgets.filter(b => b.year === currentFm.year && b.month === currentFm.month) 
-    : [];
+  const currentMonthBudgets = input.budgets.filter(b => b.year === activeYear && b.month === activeMonth);
   const totalBudget = currentMonthBudgets.reduce((sum, b) => sum + (parseFloat(b.amount as string) || 0), 0);
   const totalInvestmentBudget = currentMonthBudgets.filter(b => isInvestmentBudgetCategory(b.category)).reduce((sum, b) => sum + (parseFloat(b.amount as string) || 0), 0);
   const totalSavingsBudget = currentMonthBudgets.filter(b => isSavingsBudgetCategory(b.category)).reduce((sum, b) => sum + (parseFloat(b.amount as string) || 0), 0);
@@ -379,6 +397,8 @@ export function computeFinancialState(input: FinancialEngineInput) {
     totalLivingBudget: Math.round(totalLivingBudget * 100) / 100,
     totalSavingsBudget: Math.round(totalSavingsBudget * 100) / 100,
     totalInvestmentBudget: Math.round(totalInvestmentBudget * 100) / 100,
+    monthlyInvestmentFunded: Math.round(monthlyInvestmentFunded * 100) / 100,
+    monthlySavingsFunded: Math.round(monthlySavingsFunded * 100) / 100,
     monthlyFixedExpenses: Math.round(monthlyFixedExpenses * 100) / 100,
     monthlyVariableExpenses: Math.round(monthlyVariableExpenses * 100) / 100,
     forecast: {

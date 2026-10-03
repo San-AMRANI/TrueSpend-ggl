@@ -70,6 +70,12 @@ let cachedMarketCoins: { data: any[]; lastFetched: number; vsCurrency: string } 
   vsCurrency: 'usd',
 };
 
+// Cache for trending coins
+let cachedTrendingCoins: { data: any[]; lastFetched: number } = {
+  data: [],
+  lastFetched: 0,
+};
+
 export class InvestmentService {
   /**
    * Helper to build and execute CoinGecko requests with authentication and rate handling
@@ -241,13 +247,128 @@ export class InvestmentService {
   }
 
   /**
-   * Search CoinGecko for any coin or token
+   * Fetch top trending coins on CoinGecko with real-time price and change
+   */
+  async getTrendingCoins(): Promise<any[]> {
+    const now = Date.now();
+    if (cachedTrendingCoins.data.length > 0 && now - cachedTrendingCoins.lastFetched < 2 * 60 * 1000) {
+      return cachedTrendingCoins.data;
+    }
+
+    try {
+      const data = await this.fetchFromCoinGecko('/search/trending');
+      if (data && Array.isArray(data.coins)) {
+        const rates = await this.getExchangeRates();
+        const trending = data.coins.slice(0, 15).map((c: any) => {
+          const item = c.item || {};
+          if (item.symbol && item.id) {
+            COINGECKO_MAP[item.symbol.toUpperCase()] = item.id;
+          }
+          const rawUsdPrice = item.data?.price;
+          const priceChange24h = item.data?.price_change_percentage_24h?.usd || 0;
+          let parsedPriceUsd = 0;
+          if (typeof rawUsdPrice === 'number') {
+            parsedPriceUsd = rawUsdPrice;
+          } else if (typeof rawUsdPrice === 'string') {
+            parsedPriceUsd = parseFloat(rawUsdPrice.replace(/[^0-9.-]+/g, '')) || 0;
+          }
+          const priceMad = parsedPriceUsd * rates.USD_TO_MAD;
+
+          return {
+            id: item.id,
+            coinId: item.id,
+            name: item.name,
+            symbol: (item.symbol || '').toUpperCase(),
+            marketCapRank: item.market_cap_rank,
+            thumb: item.thumb,
+            large: item.large,
+            priceUsd: Math.round(parsedPriceUsd * 10000) / 10000,
+            priceMad: Math.round(priceMad * 100) / 100,
+            change24h: Math.round(priceChange24h * 100) / 100,
+            sparkline: item.data?.sparkline,
+          };
+        });
+
+        cachedTrendingCoins = {
+          data: trending,
+          lastFetched: now,
+        };
+        return trending;
+      }
+    } catch (e: any) {
+      console.warn('[InvestmentService] Trending fetch notice:', e?.message);
+    }
+    return cachedTrendingCoins.data || [];
+  }
+
+  /**
+   * Get detailed market data, 24h stats, ATH, and 7d sparkline for a coin
+   */
+  async getCoinDetails(coinId: string): Promise<any> {
+    if (!coinId) return null;
+    const cleanId = coinId.toLowerCase().trim();
+    try {
+      const data = await this.fetchFromCoinGecko('/coins/markets', {
+        vs_currency: 'usd',
+        ids: cleanId,
+        sparkline: 'true',
+        price_change_percentage: '24h,7d',
+      });
+
+      if (Array.isArray(data) && data[0]) {
+        const coin = data[0];
+        const rates = await this.getExchangeRates();
+        const priceUsd = parseFloat(coin.current_price) || 0;
+        const priceMad = priceUsd * rates.USD_TO_MAD;
+        if (coin.symbol && coin.id) {
+          COINGECKO_MAP[coin.symbol.toUpperCase()] = coin.id;
+        }
+
+        return {
+          id: coin.id,
+          symbol: (coin.symbol || '').toUpperCase(),
+          name: coin.name,
+          image: coin.image,
+          currentPriceUsd: priceUsd,
+          currentPriceMad: Math.round(priceMad * 100) / 100,
+          marketCap: coin.market_cap,
+          marketCapRank: coin.market_cap_rank,
+          totalVolume: coin.total_volume,
+          high24h: coin.high_24h,
+          low24h: coin.low_24h,
+          priceChange24h: coin.price_change_24h,
+          priceChangePercentage24h: coin.price_change_percentage_24h,
+          priceChangePercentage7d: coin.price_change_percentage_7d_in_currency,
+          ath: coin.ath,
+          athChangePercentage: coin.ath_change_percentage,
+          atl: coin.atl,
+          sparkline7d: coin.sparkline_in_7d?.price || [],
+        };
+      }
+    } catch (e: any) {
+      console.warn(`[InvestmentService] Details fetch notice for ${cleanId}:`, e?.message);
+    }
+    return null;
+  }
+
+  /**
+   * Search CoinGecko for any coin or token and map symbols dynamically
    */
   async searchCoins(query: string): Promise<any[]> {
     if (!query || query.trim().length < 1) return [];
     const data = await this.fetchFromCoinGecko('/search', { query: query.trim() });
     if (data && Array.isArray(data.coins)) {
-      return data.coins.slice(0, 15);
+      const rates = await this.getExchangeRates();
+      // Register symbols in COINGECKO_MAP dynamically
+      data.coins.forEach((c: any) => {
+        if (c.symbol && c.id) {
+          COINGECKO_MAP[c.symbol.toUpperCase()] = c.id;
+        }
+      });
+      return data.coins.slice(0, 15).map((c: any) => ({
+        ...c,
+        rates,
+      }));
     }
     return [];
   }
@@ -482,9 +603,14 @@ export class InvestmentService {
       variableSpendPace: 0,
       emergencyBufferDeficiency: 0,
       pendingPayables: 0,
+      totalInvestmentBudget: 0,
+      investedThisMonth: 0,
+      remainingInvestmentBudget: 0,
       safeToInvestMonthly: 0,
       currentMonthlyDcaTarget: 0,
       surplusAfterDca: 0,
+      dcaBudgetStatus: 'covered_by_surplus' as 'fully_budgeted' | 'over_budget' | 'covered_by_surplus' | 'exceeds_capacity',
+      dcaBudgetCoveragePercent: 0,
       recommendationText: '',
       riskAppetiteMax: 0,
     };
@@ -582,15 +708,35 @@ export class InvestmentService {
           recommendationText = `All active DCA targets are comfortably covered by your budget-based surplus with zero risk to your living expenses.`;
         }
 
+        const investedThisMonth = Math.round(((kpis as any).monthlyInvestmentFunded || 0) * 100) / 100;
+        const targetInvestmentBase = totalInvestmentBudget > 0 ? totalInvestmentBudget : effectiveSafeToInvest;
+        const remainingInvestmentBudget = Math.max(0, Math.round((targetInvestmentBase - investedThisMonth) * 100) / 100);
+
+        let dcaBudgetStatus: 'fully_budgeted' | 'over_budget' | 'covered_by_surplus' | 'exceeds_capacity' = 'covered_by_surplus';
+        if (totalInvestmentBudget > 0) {
+          dcaBudgetStatus = currentMonthlyDcaTarget <= totalInvestmentBudget ? 'fully_budgeted' : 'over_budget';
+        } else {
+          dcaBudgetStatus = currentMonthlyDcaTarget <= effectiveSafeToInvest ? 'covered_by_surplus' : 'exceeds_capacity';
+        }
+
+        const dcaBudgetCoveragePercent = totalInvestmentBudget > 0
+          ? Math.round((currentMonthlyDcaTarget / totalInvestmentBudget) * 100)
+          : (effectiveSafeToInvest > 0 ? Math.round((currentMonthlyDcaTarget / effectiveSafeToInvest) * 100) : 0);
+
         safeToInvest = {
           monthlyIncome: Math.round(salary * 100) / 100,
           fixedObligations: fixedObligations,
           variableSpendPace: variableSpendAllowance,
           emergencyBufferDeficiency: savingsReserveAllocation,
           pendingPayables: payables,
+          totalInvestmentBudget: Math.round(totalInvestmentBudget * 100) / 100,
+          investedThisMonth,
+          remainingInvestmentBudget,
           safeToInvestMonthly: effectiveSafeToInvest,
           currentMonthlyDcaTarget,
           surplusAfterDca,
+          dcaBudgetStatus,
+          dcaBudgetCoveragePercent,
           recommendationText,
           riskAppetiteMax: Math.round(investableSurplus * 0.7 * 100) / 100,
         };
@@ -631,7 +777,7 @@ export class InvestmentService {
     const currentPrice = String(data.currentPrice ?? buyPriceAvg);
     const currency = (data.currency || 'USD').toUpperCase();
 
-    return await investmentRepository.createHolding({
+    const holding = await investmentRepository.createHolding({
       userId,
       walletId: data.walletId || null,
       symbol,
@@ -645,6 +791,31 @@ export class InvestmentService {
       dividendYieldPercent: String(data.dividendYieldPercent || 0),
       notes: data.notes || null,
     });
+
+    if (data.deductFromWallet && data.walletId) {
+      try {
+        const wallet = await walletRepository.findById(data.walletId, userId);
+        const unitsNum = parseFloat(units) || 0;
+        const buyPriceNum = parseFloat(buyPriceAvg) || 0;
+        const totalCost = unitsNum * buyPriceNum;
+        if (wallet && totalCost > 0) {
+          const rates = await this.getExchangeRates();
+          const madAmount = this.toMad(totalCost, currency, rates);
+          await transactionRepository.create({
+            userId,
+            walletId: wallet.id,
+            amount: madAmount.toFixed(2),
+            type: 'Expense',
+            category: '📈 Investments',
+            notes: `Initial purchase of ${unitsNum} ${symbol} @ ${buyPriceNum} ${currency}`,
+          });
+        }
+      } catch (err) {
+        console.warn('[InvestmentService] Failed to auto-deduct initial holding cost:', err);
+      }
+    }
+
+    return holding;
   }
 
   /** Update an existing holding */
@@ -730,7 +901,7 @@ export class InvestmentService {
             walletId: wallet.id,
             amount: madAmount.toFixed(2),
             type: 'Expense',
-            category: 'Investments & Brokerage',
+            category: '📈 Investments',
             notes: `Bought ${units} ${holding.symbol} @ ${pricePerUnit} ${holding.currency}`,
           });
         }

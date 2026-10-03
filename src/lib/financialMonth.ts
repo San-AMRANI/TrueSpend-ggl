@@ -92,7 +92,13 @@ export function getNextPayroll(payrolls: PayrollLike[], now = new Date()): Payro
 
 export function isInFinancialMonth(date: Date, payrolls: PayrollLike[], year: number, month: number): boolean {
   const bounds = getFinancialMonthBounds(payrolls, year, month);
-  return Boolean(bounds && date >= bounds.start && date <= bounds.end);
+  if (!bounds) {
+    return (
+      (date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month) ||
+      (date.getFullYear() === year && date.getMonth() + 1 === month)
+    );
+  }
+  return date >= bounds.start && date <= bounds.end;
 }
 
 export function financialMonthLabel(year: number, month: number): string {

@@ -191,6 +191,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           budgets={budgets}
           transactions={transactions}
           payrolls={payrolls}
+          wallets={kpis?.accounts || []}
           onSaveBudget={handleSaveCategoryBudget}
           onSaveBudgetsBatch={handleSaveCategoryBudgetsBatch}
           onCopyPrevious={handleCopyPreviousMonthBudgets}
@@ -315,6 +316,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onAddToWatchlist={handleAddToWatchlist}
           onRemoveFromWatchlist={handleRemoveFromWatchlist}
           onCreateWallet={handleCreateWallet}
+          setActiveTab={setActiveTab}
         />
       )}
       {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}

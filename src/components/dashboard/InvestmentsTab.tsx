@@ -82,6 +82,7 @@ interface InvestmentsTabProps {
   onAddToWatchlist?: (payload: { coinId: string; symbol: string; name: string }) => Promise<any>;
   onRemoveFromWatchlist?: (coinId: string) => Promise<any>;
   onCreateWallet?: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
+  setActiveTab?: (tab: string) => void;
 }
 
 type SubTab = 'holdings' | 'market' | 'safe-to-invest' | 'allocation' | 'stress-test' | 'ledger';
@@ -137,6 +138,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   onAddToWatchlist,
   onRemoveFromWatchlist,
   onCreateWallet,
+  setActiveTab,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('holdings');
   const [displayCurrency, setDisplayCurrency] = useState<'MAD' | 'USD' | 'EUR'>('MAD');
@@ -170,6 +172,14 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   const [marketSearch, setMarketSearch] = useState('');
   const [marketSearchResults, setMarketSearchResults] = useState<any[]>([]);
   const [isSearchingMarket, setIsSearchingMarket] = useState(false);
+
+  // CoinGecko Trending Coins state
+  const [trendingCoins, setTrendingCoins] = useState<any[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(false);
+
+  // CoinGecko Deep Details Modal state
+  const [selectedCoinDetail, setSelectedCoinDetail] = useState<any | null>(null);
+  const [loadingCoinDetail, setLoadingCoinDetail] = useState(false);
 
   // Modals state
   const [showAddHoldingModal, setShowAddHoldingModal] = useState(false);
@@ -521,6 +531,61 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
     return null;
   };
 
+  // Fetch Trending Coins from CoinGecko
+  const fetchTrendingCoins = async () => {
+    setTrendingLoading(true);
+    try {
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+      const coins = await dashboardService.getTrendingCoins(token);
+      if (Array.isArray(coins)) {
+        setTrendingCoins(coins);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch CoinGecko trending coins:', e);
+    } finally {
+      setTrendingLoading(false);
+    }
+  };
+
+  // Fetch deep coin market details
+  const openCoinDetails = async (coinId: string) => {
+    if (!coinId) return;
+    setLoadingCoinDetail(true);
+    setSelectedCoinDetail(null);
+    try {
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+      const details = await dashboardService.getCoinDetails(coinId, token);
+      if (details) {
+        setSelectedCoinDetail(details);
+      }
+    } catch (e) {
+      console.warn('Failed to fetch coin details:', e);
+    } finally {
+      setLoadingCoinDetail(false);
+    }
+  };
+
+  // Quick Buy helper for any coin from CoinGecko
+  const handleQuickBuy = (coin: { symbol: string; name: string; id?: string; current_price?: number; priceMad?: number; priceUsd?: number }) => {
+    const sym = (coin.symbol || '').toUpperCase();
+    const existingHolding = (data?.holdings || []).find((h) => h.symbol.toUpperCase() === sym);
+    if (existingHolding) {
+      openTradeModal(existingHolding, 'BUY');
+    } else {
+      openAddHoldingForCoin({
+        symbol: sym,
+        name: coin.name,
+        current_price: coin.current_price || coin.priceUsd,
+        id: coin.id,
+      });
+    }
+  };
+
+  // Initial fetch of trending coins
+  useEffect(() => {
+    fetchTrendingCoins();
+  }, []);
+
   // Watchlist set
   const watchlistSet = useMemo(() => {
     const set = new Set<string>();
@@ -734,7 +799,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   };
 
   // Open DCA for Coin
-  const openDcaForCoin = (coin: { symbol: string; name: string }) => {
+  const openDcaForCoin = (coin: { symbol: string; name: string; id?: string; current_price?: number }) => {
     setDcaForm({
       symbol: coin.symbol.toUpperCase(),
       assetName: coin.name,
@@ -1122,6 +1187,85 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           </CardContent>
         </Card>
       </div>
+
+      {/* COINGECKO LIVE TRENDING TICKER & QUICK LAUNCH */}
+      {trendingCoins && trendingCoins.length > 0 && (
+        <div className="rounded-2xl border border-orange-200/70 dark:border-orange-950/40 bg-gradient-to-r from-orange-50/40 via-white to-amber-50/30 dark:from-gray-900 dark:via-gray-900 dark:to-orange-950/20 p-4 shadow-xs">
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 text-xs font-extrabold text-orange-950 dark:text-orange-200 tracking-tight">
+                <Flame className="h-4 w-4 text-orange-500 fill-orange-500 animate-pulse" />
+                CoinGecko Live Trending Ticker
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 dark:bg-orange-950/70 dark:text-orange-300 font-bold border border-orange-200 dark:border-orange-900/40">
+                Top {trendingCoins.length} Real-Time
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={fetchTrendingCoins}
+              disabled={trendingLoading}
+              className="text-[11px] text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1 font-medium transition-colors"
+            >
+              <RefreshCw className={`h-3 w-3 ${trendingLoading ? 'animate-spin' : ''}`} />
+              <span>{trendingLoading ? 'Updating...' : 'Sync Ticker'}</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-thin">
+            {trendingCoins.map((coin) => (
+              <div
+                key={coin.id}
+                onClick={() => openCoinDetails(coin.coinId || coin.id)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200/90 dark:border-gray-800 bg-white/90 dark:bg-gray-800/80 shrink-0 hover:border-indigo-400 dark:hover:border-indigo-500 transition-all cursor-pointer group shadow-2xs hover:shadow-xs"
+                title={`Click for deep real-time CoinGecko analytics on ${coin.name}`}
+              >
+                {coin.thumb ? (
+                  <img src={coin.thumb} alt={coin.name} className="w-5 h-5 rounded-full shrink-0" />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center text-[10px] font-bold text-indigo-700">
+                    {coin.symbol?.slice(0, 2)}
+                  </div>
+                )}
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-gray-900 dark:text-gray-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                      {coin.symbol}
+                    </span>
+                    {coin.marketCapRank && (
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 font-semibold">
+                        #{coin.marketCapRank}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">
+                      {displayCurrency === 'USD' ? `$${coin.priceUsd}` : `${coin.priceMad?.toFixed(2)} MAD`}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold ${
+                        coin.change24h >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                      }`}
+                    >
+                      {coin.change24h >= 0 ? '+' : ''}{coin.change24h}%
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleQuickBuy(coin);
+                  }}
+                  className="ml-1 px-2 py-1 rounded-md text-[10px] font-bold bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white dark:bg-indigo-950/60 dark:hover:bg-indigo-600 dark:text-indigo-300 transition-colors shadow-2xs"
+                  title="Quick Log / Buy Position"
+                >
+                  + Hold
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ADVISORY BANNER: NO INVESTMENT WALLET FOUND */}
       {investmentWallets.length === 0 && (
@@ -1990,6 +2134,16 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                                 <div className="flex items-center justify-end gap-1.5">
                                   <Button
                                     size="sm"
+                                    variant="ghost"
+                                    onClick={() => openCoinDetails(coin.id)}
+                                    className="h-7 px-2 text-[11px] text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+                                    title="View Real-Time CoinGecko Stats & Sparkline"
+                                  >
+                                    <Activity className="h-3.5 w-3.5 mr-0.5" />
+                                    Stats
+                                  </Button>
+                                  <Button
+                                    size="sm"
                                     onClick={() => openAddHoldingForCoin(coin)}
                                     className="h-7 px-2.5 text-[11px] bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-xs"
                                   >
@@ -2128,6 +2282,116 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                     100% safe deployable capital
                   </span>
                 </div>
+              </div>
+
+              {/* BUDGET INTEGRATION CARD: Link between BudgetsTab and Investments */}
+              <div className="p-4 rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-r from-indigo-50/60 via-blue-50/30 to-purple-50/40 dark:from-indigo-950/30 dark:via-gray-900 dark:to-purple-950/20 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-indigo-600 text-white shadow-xs">
+                      <PieChart className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-indigo-950 dark:text-indigo-100 flex items-center gap-1.5">
+                        Budget-Connected Investment Runway
+                        {(data?.safeToInvest?.totalInvestmentBudget || 0) > 0 ? (
+                          <span className="text-[10px] px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-semibold">
+                            Budget Configured
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-2 py-0.2 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-semibold">
+                            Dynamic Surplus
+                          </span>
+                        )}
+                      </h4>
+                      <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                        Investments are directly synchronized with your <strong>📈 Investments</strong> budget and automated wallet transfers.
+                      </p>
+                    </div>
+                  </div>
+                  {setActiveTab && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveTab('budgets')}
+                      className="text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 shrink-0"
+                    >
+                      Configure in Budgets Tab →
+                    </Button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                  <div className="p-3 rounded-lg bg-white/90 dark:bg-gray-800/90 border border-indigo-100 dark:border-gray-700">
+                    <span className="text-[10px] uppercase font-semibold text-gray-500 dark:text-gray-400 block">
+                      Monthly Investment Budget
+                    </span>
+                    <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
+                      {formatAmount(data?.safeToInvest?.totalInvestmentBudget || 0)}
+                    </span>
+                    <span className="text-[10px] text-gray-500 block">
+                      {(data?.safeToInvest?.totalInvestmentBudget || 0) > 0
+                        ? 'Set in Monthly Budgets'
+                        : 'Uncapped (uses cash surplus)'}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-white/90 dark:bg-gray-800/90 border border-indigo-100 dark:border-gray-700">
+                    <span className="text-[10px] uppercase font-semibold text-gray-500 dark:text-gray-400 block">
+                      Funded This Month
+                    </span>
+                    <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                      {formatAmount(data?.safeToInvest?.investedThisMonth || 0)}
+                    </span>
+                    <span className="text-[10px] text-gray-500 block">
+                      Transfers to Inv. Wallets + Trades
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-white/90 dark:bg-gray-800/90 border border-indigo-100 dark:border-gray-700">
+                    <span className="text-[10px] uppercase font-semibold text-gray-500 dark:text-gray-400 block">
+                      Remaining Safe Room
+                    </span>
+                    <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                      {formatAmount(data?.safeToInvest?.remainingInvestmentBudget || 0)}
+                    </span>
+                    <span className="text-[10px] text-gray-500 block">
+                      Available to deploy this cycle
+                    </span>
+                  </div>
+                </div>
+
+                {/* DCA Budget Status Pill */}
+                {data?.safeToInvest?.dcaBudgetStatus && (
+                  <div className="pt-1 flex items-center justify-between text-xs border-t border-indigo-100/60 dark:border-gray-800 text-gray-600 dark:text-gray-300">
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-indigo-500" />
+                      Monthly DCA Commitments ({formatAmount(data.safeToInvest.currentMonthlyDcaTarget)}):
+                    </span>
+                    <span className="font-bold flex items-center gap-1">
+                      {data.safeToInvest.dcaBudgetStatus === 'fully_budgeted' && (
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                          🛡️ Fully Covered by Investments Budget ({data.safeToInvest.dcaBudgetCoveragePercent}% allocation)
+                        </span>
+                      )}
+                      {data.safeToInvest.dcaBudgetStatus === 'covered_by_surplus' && (
+                        <span className="text-blue-600 dark:text-blue-400">
+                          ✅ Covered by Safe Cash Flow Surplus
+                        </span>
+                      )}
+                      {data.safeToInvest.dcaBudgetStatus === 'over_budget' && (
+                        <span className="text-amber-600 dark:text-amber-400">
+                          ⚠️ Exceeds Monthly Investments Budget
+                        </span>
+                      )}
+                      {data.safeToInvest.dcaBudgetStatus === 'exceeds_capacity' && (
+                        <span className="text-red-600 dark:text-red-400">
+                          🚨 Exceeds Available Cash Capacity
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -3752,6 +4016,213 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* COINGECKO DEEP DETAILS & ANALYTICS MODAL */}
+      {(selectedCoinDetail || loadingCoinDetail) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="relative w-full max-w-xl rounded-2xl bg-white dark:bg-gray-900 shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden my-8">
+            {loadingCoinDetail ? (
+              <div className="p-12 text-center text-xs text-gray-500 flex flex-col items-center gap-3">
+                <RefreshCw className="h-8 w-8 animate-spin text-indigo-500" />
+                <span className="font-semibold text-gray-700 dark:text-gray-300">
+                  Fetching Real-Time CoinGecko Market Data...
+                </span>
+              </div>
+            ) : selectedCoinDetail ? (
+              <div>
+                {/* Header */}
+                <div className="p-6 bg-gradient-to-r from-gray-50 via-indigo-50/30 to-blue-50/20 dark:from-gray-800 dark:to-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    {selectedCoinDetail.image && (
+                      <img
+                        src={selectedCoinDetail.image}
+                        alt={selectedCoinDetail.name}
+                        className="w-10 h-10 rounded-full shadow-xs"
+                      />
+                    )}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                          {selectedCoinDetail.name}
+                        </h3>
+                        <span className="text-xs px-2 py-0.5 rounded-md font-extrabold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                          {selectedCoinDetail.symbol}
+                        </span>
+                        {selectedCoinDetail.marketCapRank && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 font-bold">
+                            Rank #{selectedCoinDetail.marketCapRank}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-baseline gap-2 mt-1">
+                        <span className="text-2xl font-extrabold text-gray-900 dark:text-gray-100">
+                          {displayCurrency === 'USD'
+                            ? `$${selectedCoinDetail.currentPriceUsd?.toLocaleString()}`
+                            : `${selectedCoinDetail.currentPriceMad?.toLocaleString()} MAD`}
+                        </span>
+                        <span
+                          className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                            (selectedCoinDetail.priceChangePercentage24h || 0) >= 0
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                          }`}
+                        >
+                          {(selectedCoinDetail.priceChangePercentage24h || 0) >= 0 ? '+' : ''}
+                          {(selectedCoinDetail.priceChangePercentage24h || 0).toFixed(2)}% (24h)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCoinDetail(null)}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Key Statistics Grid */}
+                <div className="p-6 space-y-5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40">
+                      <span className="text-[10px] text-gray-500 uppercase font-semibold block">24h High</span>
+                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                        ${selectedCoinDetail.high24h?.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40">
+                      <span className="text-[10px] text-gray-500 uppercase font-semibold block">24h Low</span>
+                      <span className="text-xs font-bold text-red-600 dark:text-red-400">
+                        ${selectedCoinDetail.low24h?.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40">
+                      <span className="text-[10px] text-gray-500 uppercase font-semibold block">All-Time High</span>
+                      <span className="text-xs font-bold text-gray-800 dark:text-gray-200">
+                        ${selectedCoinDetail.ath?.toLocaleString()}
+                      </span>
+                      <span className="text-[9px] text-red-500 block font-semibold">
+                        {selectedCoinDetail.athChangePercentage?.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40">
+                      <span className="text-[10px] text-gray-500 uppercase font-semibold block">7d Change</span>
+                      <span
+                        className={`text-xs font-bold ${
+                          (selectedCoinDetail.priceChangePercentage7d || 0) >= 0
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400'
+                        }`}
+                      >
+                        {(selectedCoinDetail.priceChangePercentage7d || 0) >= 0 ? '+' : ''}
+                        {(selectedCoinDetail.priceChangePercentage7d || 0).toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 7-Day Sparkline SVG */}
+                  {selectedCoinDetail.sparkline7d && selectedCoinDetail.sparkline7d.length > 5 && (
+                    <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-800/20 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                          <Activity className="h-3.5 w-3.5 text-indigo-500" />
+                          7-Day Price Trajectory (CoinGecko)
+                        </span>
+                        <span className="text-[11px] text-gray-500">Live Tick Data</span>
+                      </div>
+                      <div className="h-20 w-full flex items-end">
+                        {(() => {
+                          const pts: number[] = selectedCoinDetail.sparkline7d;
+                          const min = Math.min(...pts);
+                          const max = Math.max(...pts);
+                          const range = max - min || 1;
+                          const isUp = pts[pts.length - 1] >= pts[0];
+                          const strokeColor = isUp ? '#10b981' : '#ef4444';
+                          const width = 500;
+                          const height = 70;
+                          const polylinePoints = pts
+                            .map((p, idx) => {
+                              const x = (idx / (pts.length - 1)) * width;
+                              const y = height - ((p - min) / range) * (height - 10) - 5;
+                              return `${x.toFixed(1)},${y.toFixed(1)}`;
+                            })
+                            .join(' ');
+                          return (
+                            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+                              <polyline
+                                fill="none"
+                                stroke={strokeColor}
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                points={polylinePoints}
+                              />
+                            </svg>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center justify-between gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleToggleWatchlist({
+                          id: selectedCoinDetail.id,
+                          symbol: selectedCoinDetail.symbol,
+                          name: selectedCoinDetail.name,
+                        });
+                      }}
+                      className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center gap-1.5"
+                    >
+                      <Star className="h-4 w-4 text-amber-500" />
+                      Watchlist
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const c = selectedCoinDetail;
+                          setSelectedCoinDetail(null);
+                          openDcaForCoin({
+                            id: c.id,
+                            symbol: c.symbol,
+                            name: c.name,
+                            current_price: c.currentPriceUsd,
+                          });
+                        }}
+                        className="text-indigo-600 border-indigo-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 text-xs"
+                      >
+                        Automate DCA
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const c = selectedCoinDetail;
+                          setSelectedCoinDetail(null);
+                          openAddHoldingForCoin({
+                            id: c.id,
+                            symbol: c.symbol,
+                            name: c.name,
+                            current_price: c.currentPriceUsd,
+                          });
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs"
+                      >
+                        + Add to Portfolio
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

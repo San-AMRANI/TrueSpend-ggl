@@ -9,6 +9,8 @@ router.use(requireAuth);
 router.get('/investments', (req, res) => investmentController.getData(req as any, res));
 router.get('/investments/quotes', (req, res) => investmentController.getQuotes(req as any, res));
 router.get('/investments/market-coins', (req, res) => investmentController.getMarketCoins(req as any, res));
+router.get('/investments/trending', (req, res) => investmentController.getTrending(req as any, res));
+router.get('/investments/coin/:id', (req, res) => investmentController.getCoinDetails(req as any, res));
 router.get('/investments/search-coins', (req, res) => investmentController.searchCoins(req as any, res));
 router.get('/investments/spot-price', (req, res) => investmentController.getSpotPrice(req as any, res));
 

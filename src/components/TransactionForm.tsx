@@ -221,15 +221,16 @@ export default function TransactionForm({ onSuccess, transaction, onCancel, wall
     setLoading(true);
     try {
       const destWallet = wallets.find(w => w.id === formData.toWalletId);
+      const destType = destWallet?.type?.toLowerCase();
       let assignedCategory = formData.category;
       if (formData.type === 'Loan Received') {
         assignedCategory = '🤝 Loan Received';
       } else if (formData.type === 'Transfer') {
-        if (destWallet?.type === 'Investment') {
+        if (destType === 'investment') {
           assignedCategory = '📈 Investments';
-        } else if (destWallet?.type === 'Savings') {
+        } else if (destType === 'savings') {
           assignedCategory = '🛟 Emergency & goals Fund';
-        } else if (!assignedCategory) {
+        } else if (!assignedCategory || assignedCategory === '📈 Investments' || assignedCategory === '🛟 Emergency & goals Fund') {
           assignedCategory = '🔄 Transfer';
         }
       }
@@ -312,7 +313,44 @@ export default function TransactionForm({ onSuccess, transaction, onCancel, wall
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2"><label className="text-sm font-medium">{formData.type === 'Transfer' ? 'From Wallet' : 'Wallet'}</label><Select disabled={!isEditable || isPayroll} value={formData.walletId} onChange={(event) => { const walletId = event.target.value as FormData['walletId']; setFormData({ ...formData, walletId }); }}><option value="" disabled>Select wallet</option>{(wallets || []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></div>
                 {formData.type === 'Transfer' ? (
-                  <div className="space-y-2"><label className="text-sm font-medium">To Wallet</label><Select disabled={!isEditable || isPayroll} value={formData.toWalletId} onChange={(event) => setFormData({ ...formData, toWalletId: event.target.value })}><option value="" disabled>Select destination wallet</option>{(wallets || []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</Select></div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">To Wallet</label>
+                    <Select
+                      disabled={!isEditable || isPayroll}
+                      value={formData.toWalletId}
+                      onChange={(event) => {
+                        const nextToId = event.target.value;
+                        const dest = (wallets || []).find(w => w.id === nextToId);
+                        const destType = dest?.type?.toLowerCase();
+                        let autoCat = '🔄 Transfer';
+                        if (destType === 'investment') autoCat = '📈 Investments';
+                        else if (destType === 'savings') autoCat = '🛟 Emergency & goals Fund';
+                        setFormData({ ...formData, toWalletId: nextToId, category: autoCat });
+                      }}
+                    >
+                      <option value="" disabled>Select destination wallet</option>
+                      {(wallets || []).map(w => <option key={w.id} value={w.id}>{w.name} {w.type ? `(${w.type})` : ''}</option>)}
+                    </Select>
+                    {(() => {
+                      const dest = (wallets || []).find(w => w.id === formData.toWalletId);
+                      const destType = dest?.type?.toLowerCase();
+                      if (destType === 'investment') {
+                        return (
+                          <div className="rounded-lg bg-blue-50 dark:bg-blue-950/40 p-2 text-xs text-blue-700 dark:text-blue-300 flex items-center gap-1.5 border border-blue-200/60 dark:border-blue-800/40">
+                            <span>📈 Auto-categorized as <strong>Investments</strong> (updates your Investments budget & tracking)</span>
+                          </div>
+                        );
+                      }
+                      if (destType === 'savings') {
+                        return (
+                          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 p-2 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 border border-emerald-200/60 dark:border-emerald-800/40">
+                            <span>🛟 Auto-categorized as <strong>Emergency & goals Fund</strong> (updates your Savings/Emergency budget)</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                 ) : (
                   <div className="space-y-2"><label className="text-sm font-medium">Category</label><Select required disabled={!isEditable || isPayroll || isLoanReceived} value={formData.category} onChange={(event) => setFormData({ ...formData, category: event.target.value })}><option value="" disabled>Select category</option>{hasLegacyCategory && <option value={formData.category}>Legacy category: {formData.category}</option>}<optgroup label="Expenses">{expenseCategories.map((category) => <option key={category} value={category}>{category}</option>)}</optgroup><optgroup label="Income & Transfers">{incomeAndTransferCategories.map((category) => <option key={category} value={category}>{category}</option>)}</optgroup></Select>{hasLegacyCategory && <p className="text-xs text-amber-600 dark:text-amber-400">This is a legacy category. Choose one of the fixed categories when you are ready to recategorize it.</p>}</div>
                 )}

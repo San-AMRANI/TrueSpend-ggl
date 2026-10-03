@@ -12,7 +12,7 @@ import { format } from 'date-fns';
 
 interface TransactionsTabProps {
   transactions: Transaction[];
-  wallets: { id: string; name: string }[];
+  wallets: { id: string; name: string; type?: string }[];
   contexts?: any[];
   handleDeleteTx: (id: string) => Promise<void> | void;
   fetchData: () => void;

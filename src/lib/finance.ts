@@ -59,7 +59,7 @@ export const isInvestmentCategory = (category?: string) => [
 
 export const isInvestmentTransaction = (
   transaction: Pick<Transaction, 'category' | 'walletId'>,
-  wallets?: Array<{ id: string; type: string }>,
+  wallets?: Array<{ id: string; type?: string }>,
 ) => {
   if (isInvestmentCategory(transaction.category)) return true;
   if (wallets && transaction.walletId) {
@@ -71,7 +71,7 @@ export const isInvestmentTransaction = (
 
 export const isLivingExpense = (
   transaction: Pick<Transaction, 'type' | 'category' | 'walletId'>,
-  wallets?: Array<{ id: string; type: string }>,
+  wallets?: Array<{ id: string; type?: string }>,
 ) => {
   if (transaction.type !== 'Expense') return false;
   if (isInvestmentTransaction(transaction, wallets)) return false;
@@ -86,7 +86,7 @@ export const getExpensesForMonth = (
   options?: {
     excludeInvestments?: boolean;
     includeBudgetTransfers?: boolean;
-    wallets?: Array<{ id: string; type: string }>;
+    wallets?: Array<{ id: string; type?: string }>;
   },
 ) =>
   transactions.filter((transaction) => {
@@ -96,7 +96,13 @@ export const getExpensesForMonth = (
       return true;
     }
     if (options?.includeBudgetTransfers && transaction.type === 'Transfer') {
-      const norm = normalizeCategory(transaction.category);
+      let norm = normalizeCategory(transaction.category);
+      if (options?.wallets && transaction.destinationWalletId) {
+        const dest = options.wallets.find((w) => w.id === transaction.destinationWalletId);
+        const destType = dest?.type?.toLowerCase();
+        if (destType === 'investment') norm = '📈 Investments';
+        else if (destType === 'savings') norm = '🛟 Emergency & goals Fund';
+      }
       return Boolean(norm && norm !== '🔄 Transfer' && norm !== 'Transfer');
     }
     return false;
@@ -108,12 +114,24 @@ export const getCategorySpending = (
   year: number,
   month: number,
   payrolls: PayrollLike[],
+  wallets?: Array<{ id: string; type?: string }>,
 ) => {
   const normCategory = normalizeCategory(category);
   return transactions
     .filter((transaction) => {
       if (!isInMonth(transaction, year, month, payrolls)) return false;
-      const txCategory = normalizeCategory(transaction.category);
+
+      let txCategory = normalizeCategory(transaction.category);
+      if (transaction.type === 'Transfer' && wallets && transaction.destinationWalletId) {
+        const dest = wallets.find((w) => w.id === transaction.destinationWalletId);
+        const destType = dest?.type?.toLowerCase();
+        if (destType === 'investment') {
+          txCategory = '📈 Investments';
+        } else if (destType === 'savings') {
+          txCategory = '🛟 Emergency & goals Fund';
+        }
+      }
+
       if (txCategory !== normCategory) return false;
       if (transaction.type === 'Expense') return true;
       if (transaction.type === 'Transfer') {

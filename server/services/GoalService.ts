@@ -140,7 +140,7 @@ export class GoalService {
         type: 'Transfer',
         walletId: dto.walletId,
         destinationWalletId: targetWalletId,
-        category: '🔄 Transfer',
+        category: '🛟 Emergency & goals Fund',
         notes: dto.note?.trim() || `Deposit to Goal: ${goal.name}`,
         transaction_date: dto.date || new Date().toISOString().slice(0, 10),
       });
@@ -150,7 +150,7 @@ export class GoalService {
         amount,
         type: 'Expense',
         walletId: dto.walletId,
-        category: '💰 Savings & Goals',
+        category: '🛟 Emergency & goals Fund',
         notes: dto.note?.trim() || `Contributed to goal: ${goal.name}`,
         transaction_date: dto.date || new Date().toISOString().slice(0, 10),
       });

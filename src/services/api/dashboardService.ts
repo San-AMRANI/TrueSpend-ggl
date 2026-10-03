@@ -166,6 +166,10 @@ export const dashboardService = {
     apiClient.get<Record<string, MarketQuote>>(`/api/investments/quotes?symbols=${encodeURIComponent(symbols.join(','))}`, token),
   getMarketCoins: (vsCurrency = 'usd', perPage = 50, refresh = false, token: string | null) =>
     apiClient.get<CoinGeckoMarketCoin[]>(`/api/investments/market-coins?vs_currency=${vsCurrency}&per_page=${perPage}&refresh=${refresh}`, token),
+  getTrendingCoins: (token: string | null) =>
+    apiClient.get<any[]>('/api/investments/trending', token),
+  getCoinDetails: (coinId: string, token: string | null) =>
+    apiClient.get<any>(`/api/investments/coin/${encodeURIComponent(coinId)}`, token),
   searchCoins: (q: string, token: string | null) =>
     apiClient.get<CoinSearchResult[]>(`/api/investments/search-coins?q=${encodeURIComponent(q)}`, token),
   getSpotPrice: (symbol: string, coinId?: string, token?: string | null) =>
