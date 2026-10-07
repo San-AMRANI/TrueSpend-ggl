@@ -227,11 +227,11 @@ export function computeFinancialState(input: FinancialEngineInput) {
     : openingWalletBalances.Investment || 0;
 
   const totalLiquidity = userWallets.length > 0
-    ? userWallets.reduce((sum, w) => sum + (walletBalances[w.id] || 0), 0)
-    : (walletBalances.Bank || 0) + (walletBalances.Cash || 0) + (walletBalances.Savings || 0) + (walletBalances.Investment || 0);
+    ? userWallets.filter(w => w.type !== 'Investment').reduce((sum, w) => sum + (walletBalances[w.id] || 0), 0)
+    : (walletBalances.Bank || 0) + (walletBalances.Cash || 0) + (walletBalances.Savings || 0);
   const openingLiquidity = userWallets.length > 0
-    ? userWallets.reduce((sum, w) => sum + (openingWalletBalances[w.id] || 0), 0)
-    : (openingWalletBalances.Bank || 0) + (openingWalletBalances.Cash || 0) + (openingWalletBalances.Savings || 0) + (openingWalletBalances.Investment || 0);
+    ? userWallets.filter(w => w.type !== 'Investment').reduce((sum, w) => sum + (openingWalletBalances[w.id] || 0), 0)
+    : (openingWalletBalances.Bank || 0) + (openingWalletBalances.Cash || 0) + (openingWalletBalances.Savings || 0);
   const nextPayroll = getNextPayroll(input.payrolls, now);
   const nextPayday = nextPayroll ? new Date(nextPayroll.scheduledFor) : null;
   const daysUntilPayday = nextPayday ? Math.max(0, Math.ceil((nextPayday.getTime() - today.getTime()) / 86_400_000)) : 0;
@@ -245,8 +245,9 @@ export function computeFinancialState(input: FinancialEngineInput) {
     .filter(d => d.type === 'Receivable' && d.status === 'Pending')
     .reduce((sum, d) => sum + (parseFloat(d.remainingBalance as string) || 0), 0);
 
-  // Both Savings (Emergency Buffer) and Investment capital are protected and excluded from Safe to Spend
-  const safeToSpend = totalLiquidity - emergencyBuffer - investmentReserve - pendingPayables;
+  // Savings (Emergency Buffer) is protected and excluded from Safe to Spend
+  // (Investment capital is already excluded from totalLiquidity)
+  const safeToSpend = totalLiquidity - emergencyBuffer - pendingPayables;
 
   let avgDailySpend = 0;
   let avgDailyVariableSpend = 0;
@@ -313,9 +314,10 @@ export function computeFinancialState(input: FinancialEngineInput) {
 
   const runwayDays = avgDailySpend > 0 ? Math.floor(safeToSpend / avgDailySpend) : safeToSpend > 0 ? 999 : 0;
 
-  // Spendable opening liquidity excludes both emergency buffer and investment capital reserves
-  const spendableOpening = Math.max(0, openingLiquidity - emergencyBuffer - openingInvestmentReserve);
-  const dailyAllowance = daysUntilPayday > 0 ? (spendableOpening + todaysIncome) / daysUntilPayday : 0;
+  // Spendable opening liquidity excludes emergency buffer (Investment is already excluded from openingLiquidity)
+  const spendableOpening = Math.max(0, openingLiquidity - emergencyBuffer);
+  const allowanceDays = daysUntilPayday > 0 ? daysUntilPayday : Math.max(1, daysRemaining);
+  const dailyAllowance = (spendableOpening + todaysIncome) / allowanceDays;
   const dailyRemaining = dailyAllowance - dailySpent;
   const dailyUsagePercent = dailyAllowance > 0 ? (dailySpent / dailyAllowance) * 100 : dailySpent > 0 ? 100 : 0;
   const dailyStatus = dailyRemaining < 0 || dailyUsagePercent >= 100 ? 'critical' : dailyUsagePercent >= 80 ? 'warning' : 'on_track';

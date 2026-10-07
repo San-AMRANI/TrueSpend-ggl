@@ -45,17 +45,14 @@ export function useDashboardData(token: string | null) {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData, investData] = await Promise.all([
+      // PHASE 1: Fast core data required for Overview tab
+      const [kpiData, txData, debtData, settingsData, budgetData, payrollData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
         dashboardService.getSettings(token),
         dashboardService.getCategoryBudgets(token),
         dashboardService.getPayrolls(token),
-        dashboardService.getContexts(token),
-        dashboardService.getGoals(token),
-        dashboardService.getSubscriptions(token),
-        dashboardService.getInvestmentsData(token),
       ]);
 
       setKpis(kpiData || null);
@@ -64,14 +61,27 @@ export function useDashboardData(token: string | null) {
       setUserSettings(settingsData);
       setBudgets(budgetData || []);
       setPayrolls(payrollData || []);
+    } catch (e) {
+      console.error('Error fetching core dashboard data:', e);
+    } finally {
+      // Release loading state early so the user can interact with the overview
+      setLoading(false);
+    }
+
+    // PHASE 2: Slower secondary data (Investments hits CoinGecko API) loaded in background
+    try {
+      const [contextData, goalData, subData, investData] = await Promise.all([
+        dashboardService.getContexts(token),
+        dashboardService.getGoals(token),
+        dashboardService.getSubscriptions(token),
+        dashboardService.getInvestmentsData(token),
+      ]);
       setContexts(contextData || []);
       setGoals(goalData || []);
       setSubscriptions(subData || []);
       setInvestmentsData(investData || null);
     } catch (e) {
-      console.error('Error fetching dashboard data:', e);
-    } finally {
-      setLoading(false);
+      console.error('Error fetching secondary dashboard data:', e);
     }
   }, [token]);
 
