@@ -24,7 +24,7 @@ export interface Wallet {
   id: string;
   userId: string;
   name: string;
-  type: 'Bank' | 'Cash' | 'Savings' | 'Investment';
+  type: 'Bank' | 'Cash' | 'Savings' | 'Investment' | 'Brokerage' | 'Exchange';
   isMain: boolean;
   initialBalance: string;
   balance: number;
@@ -46,6 +46,7 @@ export interface KPI {
   dailyStatus: 'on_track' | 'warning' | 'critical';
   payday: number | null;
   emergencyBuffer: number;
+  futureCommitments?: number;
   investmentReserve?: number;
   salary?: number;
   automatedDriveBackups?: boolean;
@@ -57,6 +58,7 @@ export interface KPI {
   nextPayrollDate: string | null;
   financialMonthReady: boolean;
   financialMonthMessage: string | null;
+  paycheckProposal?: any;
   // Phase 1 Intelligence
   safeToSpend: number;
   pendingPayables: number;
@@ -402,3 +404,22 @@ export interface InvestmentsData {
 }
 
 
+
+export interface Commitment {
+  id: string;
+  userId: string;
+  name: string;
+  amount: number;
+  frequency: 'monthly' | 'yearly' | 'one-time' | 'weekly';
+  exactDate?: string;
+  startDate?: string;
+  endDate?: string;
+  category: string;
+  sourceSystem: 'subscriptions' | 'debts' | 'goals' | 'manual';
+  priority: 'high' | 'medium' | 'low';
+  classification: 'required' | 'optional';
+  status: 'active' | 'inactive';
+  sourceId?: string;
+  createdAt: string;
+  updatedAt: string;
+}

@@ -2,7 +2,7 @@ import { relations } from 'drizzle-orm';
 import { pgTable, uuid, text, timestamp, decimal, pgEnum, integer, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const transactionTypeEnum = pgEnum('transaction_type', ['Income', 'Expense', 'Transfer', 'Debt Repayment']);
-export const walletTypeEnum = pgEnum('wallet_type', ['Bank', 'Cash', 'Savings', 'Investment']);
+export const walletTypeEnum = pgEnum('wallet_type', ['Bank', 'Cash', 'Savings', 'Investment', 'Brokerage', 'Exchange']);
 
 export const wallets = pgTable('wallets', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -288,6 +288,7 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   pushSubscriptions: many(pushSubscriptions),
   notificationPreferences: one(notificationPreferences),
   notificationDeliveries: many(notificationDeliveries),
+  commitments: many(commitments),
 }));
 
 export const financialContextsRelations = relations(financialContexts, ({ one, many }) => ({
@@ -466,3 +467,29 @@ export const investmentWatchlistRelations = relations(investmentWatchlist, ({ on
 }));
 
 
+
+export const commitments = pgTable('commitments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  amount: decimal('amount').notNull(),
+  frequency: text('frequency').notNull(), // 'monthly', 'yearly', 'one-time', 'weekly'
+  exactDate: timestamp('exact_date'),
+  startDate: timestamp('start_date'),
+  endDate: timestamp('end_date'),
+  category: text('category').notNull(),
+  sourceSystem: text('source_system').notNull(), // 'subscriptions', 'debts', 'goals', 'manual'
+  priority: text('priority').notNull(), // 'high', 'medium', 'low'
+  classification: text('classification').default('required').notNull(), // 'required', 'optional'
+  status: text('status').default('active').notNull(), // 'active', 'inactive'
+  sourceId: uuid('source_id'), // To link back to subscription/debt/goal
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const commitmentsRelations = relations(commitments, ({ one }) => ({
+  user: one(users, {
+    fields: [commitments.userId],
+    references: [users.id],
+  }),
+}));

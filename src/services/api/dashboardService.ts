@@ -183,4 +183,12 @@ export const dashboardService = {
     apiClient.post<WatchlistItem>('/api/investments/watchlist', payload, token),
   removeFromWatchlist: (coinId: string, token: string | null) =>
     apiClient.delete<{ success: boolean }>(`/api/investments/watchlist/${encodeURIComponent(coinId)}`, token),
+  getCommitments: (token: string | null) =>
+    apiClient.get<any[]>('/api/commitments', token),
+  createCommitment: (payload: any, token: string | null) =>
+    apiClient.post<any>('/api/commitments', payload, token),
+  updateCommitment: (id: string, payload: any, token: string | null) =>
+    apiClient.put<any>(`/api/commitments/${id}`, payload, token),
+  deleteCommitment: (id: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/commitments/${id}`, token),
 };

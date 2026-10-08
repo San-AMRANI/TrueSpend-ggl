@@ -3,6 +3,7 @@ import { transactionService } from './TransactionService.js';
 import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
 import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
+import { CommitmentRepository } from '../repositories/CommitmentRepository.js';
 import { walletRepository } from '../repositories/WalletRepository.js';
 import { walletService } from './WalletService.js';
 import { payrollService } from './PayrollService.js';
@@ -21,11 +22,13 @@ export class KpiService {
     const mainBank = userWallets.find(w => w.type === 'Bank' && w.isMain) || userWallets.find(w => w.type === 'Bank') || userWallets[0];
     const defaultCash = userWallets.find(w => w.type === 'Cash') || mainBank;
 
-    const [allTx, payrolls, allDebts, allBudgets] = await Promise.all([
+    const commitmentRepo = new CommitmentRepository();
+    const [allTx, payrolls, allDebts, allBudgets, allCommitments] = await Promise.all([
       transactionService.getTransactionsForUser(userId),
       payrollRepository.findAllByUserId(userId),
       debtRepository.findAllByUserId(userId),
       categoryBudgetRepository.findAllByUserId(userId),
+      commitmentRepo.getByUserId(userId),
     ]);
     
     // Fix legacy transactions without walletId or with text 'Bank'/'Cash'
@@ -44,6 +47,7 @@ export class KpiService {
       payrolls: payrolls as any,
       debts: allDebts as any,
       budgets: allBudgets as any,
+      commitments: allCommitments as any,
       wallets: userWallets.map(w => ({
         id: w.id,
         name: w.name,

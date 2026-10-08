@@ -1,3 +1,4 @@
+import { generatePaycheckProposal } from './paycheckPlanner.js';
 import { Transaction, Payroll, Debt, CategoryBudget } from '../types/index.js';
 import { getCurrentFinancialMonth, getNextPayroll, isInFinancialMonth,  FinancialMonthBounds } from './financialMonth.js';
 import { normalizeCategory } from './categories.js';
@@ -15,6 +16,7 @@ export interface FinancialEngineInput {
   payrolls: Payroll[];
   debts: Debt[];
   budgets: CategoryBudget[];
+  commitments?: any[];
   userSettings: {
     emergencyBuffer: number;
     salary: number;
@@ -153,7 +155,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
       '💰 Savings & Goals',
     ].includes(tx.category || '');
     const txSourceWallet = userWallets.find((w) => w.id === tx.walletId || (tx.sourceWallet && (w.name === tx.sourceWallet || w.type === tx.sourceWallet)));
-    const isInvestmentWalletTx = txSourceWallet?.type === 'Investment';
+    const isInvestmentWalletTx = txSourceWallet?.type === 'Investment' || txSourceWallet?.type === 'Brokerage' || txSourceWallet?.type === 'Exchange';
     const isSavingsWalletTx = txSourceWallet?.type === 'Savings';
     const isCapitalReserveOutflow = isInvestmentCategory || isInvestmentWalletTx || (isSavingsCategory && tx.type === 'Expense') || isSavingsWalletTx;
     const reimbursableAmt = (!isPayableTx && tx.reimbursableAmount) ? Math.max(0, parseFloat(tx.reimbursableAmount as string) || 0) : 0;
@@ -245,8 +247,13 @@ export function computeFinancialState(input: FinancialEngineInput) {
     .filter(d => d.type === 'Receivable' && d.status === 'Pending')
     .reduce((sum, d) => sum + (parseFloat(d.remainingBalance as string) || 0), 0);
 
+  // Calculate active future commitments
+  const futureCommitments = (input.commitments || [])
+    .filter(c => c.status === 'active')
+    .reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+
   // Both Savings (Emergency Buffer) and Investment capital are protected and excluded from Safe to Spend
-  const safeToSpend = totalLiquidity - emergencyBuffer - investmentReserve - pendingPayables;
+  const safeToSpend = totalLiquidity - emergencyBuffer - investmentReserve - pendingPayables - futureCommitments;
 
   let avgDailySpend = 0;
   let avgDailyVariableSpend = 0;
@@ -384,6 +391,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
     financialMonthReady: Boolean(currentFm),
     financialMonthMessage: currentFm ? null : 'Add a payroll for this month and the next month in Financial Calendar to define your financial period.',
     emergencyBuffer,
+    futureCommitments,
     safeToSpend,
     pendingPayables,
     pendingReceivables,
@@ -412,6 +420,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
     },
     healthScore: health.total,
     healthFactors: health.factors,
+    paycheckProposal: generatePaycheckProposal(input, salary),
   };
 }
 

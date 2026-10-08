@@ -144,6 +144,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <span>Liquidity {(kpis?.totalLiquidity ?? 0).toFixed(0)}</span>
               <span>· Buffer −{(kpis?.emergencyBuffer ?? 0).toFixed(0)}</span>
               {(kpis?.pendingPayables ?? 0) > 0 && <span>· Payables −{(kpis?.pendingPayables ?? 0).toFixed(0)}</span>}
+              {(kpis?.futureCommitments ?? 0) > 0 && <span>· Commitments −{(kpis?.futureCommitments ?? 0).toFixed(0)}</span>}
             </div>
             {/* Net Worth Badge */}
             <div className="mt-4 pt-3 border-t border-gray-800">
@@ -184,6 +185,25 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CardContent>
         </Card>
       </div>
+
+      {/* Paycheck Planner */}
+      {kpis?.paycheckProposal && kpis.paycheckProposal.expectedSalary > 0 && (
+        <Card className="min-w-0 border-indigo-100 bg-indigo-50/50 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-indigo-900 dark:text-indigo-200">
+              Paycheck Plan (Expected: {kpis.paycheckProposal.expectedSalary.toFixed(0)} MAD)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mt-2">
+              <div className="text-sm"><span className="text-gray-500 block">Commitments</span><span className="font-medium text-gray-900 dark:text-gray-100">{kpis.paycheckProposal.allocations.commitments.toFixed(0)} MAD</span></div>
+              <div className="text-sm"><span className="text-gray-500 block">Living Costs</span><span className="font-medium text-gray-900 dark:text-gray-100">{kpis.paycheckProposal.allocations.livingCosts.toFixed(0)} MAD</span></div>
+              <div className="text-sm"><span className="text-gray-500 block">Goals & Invest</span><span className="font-medium text-gray-900 dark:text-gray-100">{(kpis.paycheckProposal.allocations.goals + kpis.paycheckProposal.allocations.investments).toFixed(0)} MAD</span></div>
+              <div className="text-sm"><span className="text-gray-500 block">Flexible</span><span className="font-medium text-indigo-600 dark:text-indigo-400">{kpis.paycheckProposal.allocations.flexible.toFixed(0)} MAD</span></div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Row 3 – Financial Facts Carousel + Spending Pace */}
       <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-3">
