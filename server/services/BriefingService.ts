@@ -1,0 +1,59 @@
+import { generateFinancialBriefing } from '../../src/lib/financialBriefing.js';
+import { behavioralService } from './BehavioralService.js';
+import { transactionService } from './TransactionService.js';
+import { walletService } from './WalletService.js';
+import { payrollRepository } from '../repositories/PayrollRepository.js';
+import { debtRepository } from '../repositories/DebtRepository.js';
+import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
+import { CommitmentRepository } from '../repositories/CommitmentRepository.js';
+
+export class BriefingService {
+  async getBriefing(userId: string, dbUser: any) {
+    const userWallets = await walletService.getWallets(userId);
+    const mainBank = userWallets.find(w => w.type === 'Bank' && w.isMain) || userWallets.find(w => w.type === 'Bank') || userWallets[0];
+    const defaultCash = userWallets.find(w => w.type === 'Cash') || mainBank;
+
+    const commitmentRepo = new CommitmentRepository();
+    const [allTx, payrolls, allDebts, allBudgets, allCommitments] = await Promise.all([
+      transactionService.getTransactionsForUser(userId),
+      payrollRepository.findAllByUserId(userId),
+      debtRepository.findAllByUserId(userId),
+      categoryBudgetRepository.findAllByUserId(userId),
+      commitmentRepo.getByUserId(userId),
+    ]);
+    
+    const transactions = allTx.map(tx => {
+      let wid = tx.walletId as any;
+      if (!wid || wid === 'Bank') {
+        wid = (tx as any).sourceWallet === 'Cash' ? defaultCash.id : mainBank.id;
+      } else if (wid === 'Cash') {
+        wid = defaultCash.id;
+      }
+      return { ...tx, walletId: wid };
+    });
+
+    const engineInput = {
+      transactions: transactions as any,
+      payrolls: payrolls as any,
+      debts: allDebts as any,
+      budgets: allBudgets as any,
+      commitments: allCommitments as any,
+      wallets: userWallets.map(w => ({
+        id: w.id,
+        name: w.name,
+        type: w.type,
+        isMain: w.isMain,
+        initialBalance: w.initialBalance,
+      })),
+      userSettings: {
+        emergencyBuffer: parseFloat(dbUser.emergencyBuffer as unknown as string) || 0,
+        salary: parseFloat(dbUser.salary as unknown as string) || 0,
+      }
+    };
+
+    const insights = await behavioralService.getInsights(userId);
+    return generateFinancialBriefing(engineInput, insights.financialMemory, insights.securityAlerts);
+  }
+}
+
+export const briefingService = new BriefingService();

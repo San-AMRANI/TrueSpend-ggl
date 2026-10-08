@@ -15,6 +15,10 @@ import goalRoutes from './goalRoutes.js';
 import subscriptionRoutes from './subscriptionRoutes.js';
 import investmentRoutes from './investmentRoutes.js';
 import commitmentRoutes from './commitmentRoutes.js';
+import decisionRoutes from './decisionRoutes.js';
+import behavioralRoutes from './behavioralRoutes.js';
+import monthlyCloseRoutes from './monthlyCloseRoutes.js';
+import briefingRoutes from './briefingRoutes.js';
 import { NotificationController } from '../controllers/NotificationController.js';
 import { requireAuth } from '../../src/middleware/auth.js';
 
@@ -41,6 +45,10 @@ apiRouter.use('/', goalRoutes);
 apiRouter.use('/', subscriptionRoutes);
 apiRouter.use('/', investmentRoutes);
 apiRouter.use('/', commitmentRoutes);
+apiRouter.use('/', decisionRoutes);
+apiRouter.use('/', behavioralRoutes);
+apiRouter.use('/', monthlyCloseRoutes);
+apiRouter.use('/', briefingRoutes);
 
 // Push Notifications v2
 apiRouter.get('/notifications/vapid-public-key', notificationController.getPublicKey);

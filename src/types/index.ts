@@ -33,6 +33,9 @@ export interface Wallet {
 export interface KPI {
   accounts: Wallet[];
   totalLiquidity: number;
+  totalLiabilities?: number;
+  netWorth?: number;
+  safeToInvest?: number;
   bankBalance: number;
   cashOnHand: number;
   monthlyExpenses: number;

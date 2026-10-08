@@ -355,7 +355,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
       const bal = walletBalances[w.id] || 0;
       if (w.type === 'Bank') bankBalance += bal;
       else if (w.type === 'Cash') cashOnHand += bal;
-      else if (w.type === 'Investment') investmentBalance += bal;
+      else if (w.type === 'Investment' || w.type === 'Brokerage' || w.type === 'Exchange') investmentBalance += bal;
       else if (w.type === 'Savings') savingsBalanceSum += bal;
     }
     walletBalances.Bank = bankBalance;
@@ -368,8 +368,17 @@ export function computeFinancialState(input: FinancialEngineInput) {
     investmentBalance = walletBalances.Investment || 0;
   }
 
+  const totalLiabilities = input.debts
+    .filter(d => d.type === 'Payable')
+    .reduce((sum, d) => sum + (parseFloat(d.remainingBalance as string) || 0), 0);
+  const netWorth = totalLiquidity - totalLiabilities;
+  const safeToInvest = Math.max(0, expectedEndBalance - (totalLivingBudget * 0.1)); // Simple heuristic
+
   return {
     totalLiquidity,
+    totalLiabilities,
+    netWorth,
+    safeToInvest,
     walletBalances,
     bankBalance,
     cashOnHand,
