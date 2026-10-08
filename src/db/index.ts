@@ -80,10 +80,32 @@ export const createPool = () => {
 
         DO $$ BEGIN
           ALTER TYPE "wallet_type" ADD VALUE IF NOT EXISTS 'Investment';
+          ALTER TYPE "wallet_type" ADD VALUE IF NOT EXISTS 'Brokerage';
+          ALTER TYPE "wallet_type" ADD VALUE IF NOT EXISTS 'Exchange';
         EXCEPTION
           WHEN duplicate_object THEN null;
           WHEN undefined_object THEN null;
         END $$;
+
+        CREATE TABLE IF NOT EXISTS "commitments" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "name" text NOT NULL,
+          "amount" numeric NOT NULL,
+          "frequency" text NOT NULL,
+          "exact_date" timestamp,
+          "start_date" timestamp,
+          "end_date" timestamp,
+          "category" text NOT NULL,
+          "source_system" text NOT NULL,
+          "source_id" uuid,
+          "priority" text NOT NULL DEFAULT 'medium',
+          "classification" text NOT NULL DEFAULT 'required',
+          "status" text NOT NULL DEFAULT 'active',
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS "commitments_user_id_idx" ON "commitments"("user_id");
 
         CREATE TABLE IF NOT EXISTS "investment_holdings" (
           "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
