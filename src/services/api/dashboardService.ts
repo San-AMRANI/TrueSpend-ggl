@@ -55,9 +55,9 @@ export const dashboardService = {
     apiClient.post<{ success: boolean; count: number }>('/api/contexts/link-transactions', { transactionIds, contextId }, token),
   getKpis: (token: string | null) => apiClient.get<KPI>('/api/kpis', token),
   getWallets: (token: string | null) => apiClient.get<Wallet[]>('/api/wallets', token),
-  createWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
+  createWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment' | 'Brokerage' | 'Exchange'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
     apiClient.post<Wallet>('/api/wallets', payload, token),
-  updateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
+  updateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment' | 'Brokerage' | 'Exchange'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
     apiClient.put<Wallet>(`/api/wallets/${id}`, payload, token),
   deleteWallet: (id: string, reassignToWalletId: string | undefined, token: string | null) =>
     apiClient.delete<{ success: boolean; message: string }>(`/api/wallets/${id}${reassignToWalletId ? `?reassignTo=${reassignToWalletId}` : ''}`, token),

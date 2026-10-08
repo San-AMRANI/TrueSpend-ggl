@@ -8,8 +8,8 @@ import { Wallet } from '../../types';
 
 interface WalletsManagerProps {
   wallets: Wallet[];
-  onCreateWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
-  onUpdateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
+  onCreateWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment' | 'Brokerage' | 'Exchange'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
+  onUpdateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment' | 'Brokerage' | 'Exchange'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   onDeleteWallet: (id: string, reassignToWalletId?: string) => Promise<any>;
   onClose?: () => void;
   isModal?: boolean;
@@ -31,7 +31,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   // Form states for create/edit
   const [formData, setFormData] = useState({
     name: '',
-    type: 'Bank' as 'Bank' | 'Cash' | 'Savings' | 'Investment',
+    type: 'Bank' as 'Bank' | 'Cash' | 'Savings' | 'Investment' | 'Brokerage' | 'Exchange',
     initialBalance: '',
     isMain: false,
   });

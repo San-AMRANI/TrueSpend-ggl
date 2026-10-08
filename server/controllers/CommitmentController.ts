@@ -1,10 +1,11 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
+import { AuthRequest } from '../../src/middleware/auth.js';
 import { CommitmentRepository } from '../repositories/CommitmentRepository.js';
 
 const commitmentRepo = new CommitmentRepository();
 
 export class CommitmentController {
-  async getCommitments(req: Request, res: Response) {
+  async getCommitments(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -15,7 +16,7 @@ export class CommitmentController {
     }
   }
 
-  async createCommitment(req: Request, res: Response) {
+  async createCommitment(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -26,7 +27,7 @@ export class CommitmentController {
     }
   }
 
-  async updateCommitment(req: Request, res: Response) {
+  async updateCommitment(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ error: 'Unauthorized' });
@@ -38,7 +39,7 @@ export class CommitmentController {
     }
   }
 
-  async deleteCommitment(req: Request, res: Response) {
+  async deleteCommitment(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.id;
       if (!userId) return res.status(401).json({ error: 'Unauthorized' });

@@ -1,7 +1,7 @@
 import { db } from '../../src/db/index.js';
 import { commitments } from '../../src/db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 
 export class CommitmentRepository {
   async getByUserId(userId: string) {
@@ -9,7 +9,7 @@ export class CommitmentRepository {
   }
 
   async create(userId: string, payload: any) {
-    const id = uuidv4();
+    const id = crypto.randomUUID();
     const result = await db.insert(commitments).values({
       id,
       userId,
