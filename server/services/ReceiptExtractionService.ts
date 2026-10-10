@@ -1,4 +1,11 @@
-import { gemini, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL } from './GeminiClient.js';
+import {
+  gemini,
+  PRIMARY_GEMINI_MODEL,
+  FALLBACK_GEMINI_MODEL,
+  MODEL_FLASH_LATEST,
+  isModelQuotaExhausted,
+  markModelQuotaExhausted,
+} from './GeminiClient.js';
 
 export interface ReceiptProposal {
   amount: number | null;
@@ -125,7 +132,9 @@ Notes on rules:
 
   parts.push({ text: promptText });
 
-  const models = [PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL];
+  const models = isModelQuotaExhausted(PRIMARY_GEMINI_MODEL)
+    ? [FALLBACK_GEMINI_MODEL, MODEL_FLASH_LATEST]
+    : [PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL, MODEL_FLASH_LATEST];
 
   for (const model of models) {
     try {
@@ -164,6 +173,9 @@ Notes on rules:
       };
     } catch (err: any) {
       console.warn(`[ReceiptGemini] Error with model ${model}:`, err?.message || err);
+      if (err?.status === 429 || String(err?.message || '').includes('429') || String(err?.message || '').toLowerCase().includes('quota')) {
+        markModelQuotaExhausted(model, 1000 * 60 * 30);
+      }
       // Try next model
     }
   }
