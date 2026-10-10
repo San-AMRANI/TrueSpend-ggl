@@ -9,6 +9,7 @@ import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 import { generateFacts, selectFacts } from '../../lib/financialFacts';
 import { FinancialFactsCarousel } from './FinancialFactsCarousel';
 import { FinancialInsightModal } from './FinancialInsightModal';
+import { SpexAiPulseBanner } from './SpexAiPulseBanner';
 import {
   AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
   Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap,
@@ -107,6 +108,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   return (
     <div className="min-w-0 overflow-x-hidden space-y-4 sm:space-y-6">
       {!currentFm && <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">Your financial period is not set yet. Add the current and next payroll in Financial Calendar so balances, budgets, and reports use the right period.</div>}
+
+      {/* Spex Daily AI Pulse Banner */}
+      <SpexAiPulseBanner kpis={kpis} setActiveTab={setActiveTab} />
 
       {/* Row 1 – Safe to Spend Hero + Daily Allowance + Runway */}
       <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">

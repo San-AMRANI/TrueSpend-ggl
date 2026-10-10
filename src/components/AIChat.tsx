@@ -1,5 +1,28 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Loader2, Trash2, Mic, MicOff, Copy, Check, ChevronDown, Sparkles, Bot, Menu, Camera, Image as ImageIcon, X } from 'lucide-react';
+import {
+  Send,
+  Loader2,
+  Trash2,
+  Mic,
+  MicOff,
+  Copy,
+  Check,
+  ChevronDown,
+  Sparkles,
+  Bot,
+  Menu,
+  Camera,
+  Image as ImageIcon,
+  X,
+  Volume2,
+  VolumeX,
+  Download,
+  CheckCheck,
+  TrendingUp,
+  ShieldCheck,
+  Zap,
+  Share2,
+} from 'lucide-react';
 import Markdown from 'react-markdown';
 
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
@@ -9,19 +32,54 @@ import { useDashboardData } from '../hooks/useDashboardData';
 import { buildAiContextSnapshot } from '../lib/aiContext';
 
 const CHAT_SESSION_STORAGE_KEY = 'truespend_chat_session';
-const QUICK_PROMPTS = [
-  '💰 What can I safely spend today?',
-  '📊 How am I doing this month?',
-  '🎯 How are my savings goals tracking?',
-  '🎯 Where can I cut spending?',
-  '📅 When is my next payday?',
+
+const PROMPT_TOPICS = [
+  {
+    id: 'daily',
+    label: 'Daily Burn',
+    icon: Zap,
+    prompts: [
+      '💰 What can I safely spend today?',
+      '📊 How is my daily allowance tracking?',
+      '📅 Days left until next payday?',
+    ],
+  },
+  {
+    id: 'audit',
+    label: 'Health Audit',
+    icon: ShieldCheck,
+    prompts: [
+      '📊 Run a complete financial health audit',
+      '📈 Calculate my current runway and buffer',
+      '💡 Where can I cut spending this cycle?',
+    ],
+  },
+  {
+    id: 'whatif',
+    label: 'What-If Simulation',
+    icon: Sparkles,
+    prompts: [
+      '🔮 What if I make an unplanned 800 MAD purchase?',
+      '📱 Can I afford an unexpected 1,500 MAD expense?',
+      '🎯 What if I boost my savings goal by 500 MAD?',
+    ],
+  },
+  {
+    id: 'receipt',
+    label: 'Receipts & Multi-Log',
+    icon: Camera,
+    prompts: [
+      '🧾 I have a receipt to scan and log',
+      '☕ Log coffee: 30 MAD Cash at Starbucks',
+      '🛒 Log groceries: 450 MAD Bank at Marjane',
+    ],
+  },
 ];
 
-// Contextual fallback suggestions when AI doesn't provide them
 const FALLBACK_SUGGESTIONS = [
-  'How am I doing this month?',
+  'How am I doing this financial cycle?',
   'What are my biggest expenses?',
-  'Show me my daily allowance',
+  'Show me my daily allowance breakdown',
 ];
 
 function getChatSessionId() {
@@ -44,7 +102,12 @@ function formatRelativeTime(timestamp: number): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-interface AiAction { type: string; summary: string; parameters: Record<string, unknown>; }
+interface AiAction {
+  type: string;
+  summary: string;
+  parameters: Record<string, unknown>;
+}
+
 interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -81,10 +144,16 @@ function MessageBubble({
   msg,
   idx,
   onAction,
+  onSpeak,
+  isPlayingAudio,
+  isAudioLoading,
 }: {
   msg: Message;
   idx: number;
   onAction: (index: number, approve: boolean) => void;
+  onSpeak?: (text: string, index: number) => void;
+  isPlayingAudio?: boolean;
+  isAudioLoading?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const [relTime, setRelTime] = useState(() => formatRelativeTime(msg.timestamp));
@@ -128,7 +197,7 @@ function MessageBubble({
         </div>
       )}
 
-      <div className={cn('flex gap-2 max-w-[88%]', isUser ? 'flex-row-reverse' : 'flex-row')}>
+      <div className={cn('flex gap-2 max-w-[90%]', isUser ? 'flex-row-reverse' : 'flex-row')}>
         <div
           className={cn(
             'relative rounded-2xl px-4 py-3 shadow-sm text-sm leading-relaxed',
@@ -155,44 +224,90 @@ function MessageBubble({
             </div>
           )}
 
-          {/* Copy button — assistant messages */}
+          {/* Action buttons — assistant messages */}
           {!isUser && (
-            <button
-              onClick={handleCopy}
-              title="Copy message"
-              className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600"
-            >
-              {copied ? (
-                <Check className="w-3 h-3 text-green-500" />
-              ) : (
-                <Copy className="w-3 h-3 text-gray-400 dark:text-gray-300" />
-              )}
-            </button>
+            <div className="absolute -top-2.5 -right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+              {/* TTS Listen Button */}
+              <button
+                type="button"
+                onClick={() => onSpeak?.(msg.content, idx)}
+                title={isPlayingAudio ? 'Stop speech' : 'Listen with Gemini Speech (TTS)'}
+                className={cn(
+                  'rounded-full p-1 border shadow-xs transition-colors',
+                  isPlayingAudio
+                    ? 'bg-indigo-600 text-white border-indigo-600 animate-pulse'
+                    : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 hover:text-indigo-600',
+                )}
+              >
+                {isAudioLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : isPlayingAudio ? (
+                  <VolumeX className="w-3.5 h-3.5" />
+                ) : (
+                  <Volume2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+
+              {/* Copy button */}
+              <button
+                type="button"
+                onClick={handleCopy}
+                title="Copy message"
+                className="bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-xs hover:bg-gray-50 dark:hover:bg-gray-600 hover:text-indigo-600 transition-colors"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
           )}
         </div>
       </div>
 
       {/* Action proposal panel */}
       {!isUser && msg.actions && msg.actions.length > 0 && (
-        <div className="ml-7 mt-1 rounded-xl border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50 dark:bg-indigo-950/40 p-3 max-w-[88%] animate-fadeIn">
-          <p className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-400 mb-1.5 flex items-center gap-1">
-            <Sparkles className="w-3 h-3" />
-            Proposed action{msg.actions.length > 1 ? 's' : ''}
-          </p>
-          {msg.actions.map((action, actionIndex) => (
-            <p key={actionIndex} className="text-[11px] text-indigo-800 dark:text-indigo-200 mb-0.5">
-              • {action.summary}
-            </p>
-          ))}
-          {!msg.actionStatus ? (
-            <div className="mt-2.5 flex gap-2">
+        <div className="ml-7 mt-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/90 dark:bg-indigo-950/40 p-3 max-w-[90%] animate-fadeIn shadow-xs">
+          <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-indigo-200/60 dark:border-indigo-800/60">
+            <span className="text-[11px] font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              {msg.actions.length === 1 ? 'Proposed Financial Action' : `${msg.actions.length} Proposed Actions`}
+            </span>
+            {msg.actions.length > 1 && !msg.actionStatus && (
               <button
+                type="button"
                 onClick={() => onAction(idx, true)}
-                className="rounded-lg bg-indigo-600 dark:bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 dark:hover:bg-indigo-500 transition-colors"
+                className="rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-indigo-700 transition-colors shadow-xs flex items-center gap-1"
               >
-                ✅ Approve
+                <CheckCheck className="w-3 h-3" />
+                Approve All
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            {msg.actions.map((action, actionIndex) => (
+              <div
+                key={actionIndex}
+                className="flex items-start gap-2 bg-white/70 dark:bg-gray-800/60 border border-indigo-100 dark:border-indigo-900/40 rounded-lg p-2 text-[11px] text-gray-800 dark:text-gray-200"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 mt-1.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{action.summary}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {!msg.actionStatus ? (
+            <div className="mt-2.5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onAction(idx, true)}
+                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 transition-colors shadow-xs flex items-center gap-1"
+              >
+                <Check className="w-3 h-3" />
+                Approve
               </button>
               <button
+                type="button"
                 onClick={() => onAction(idx, false)}
                 className="rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-indigo-950 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 transition-colors"
               >
@@ -200,8 +315,13 @@ function MessageBubble({
               </button>
             </div>
           ) : (
-            <p className={cn('mt-2 text-[11px] font-semibold', msg.actionStatus === 'approved' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400')}>
-              {msg.actionStatus === 'approved' ? '✅ Approved and applied.' : '✕ Rejected — no changes made.'}
+            <p
+              className={cn(
+                'mt-2 text-[11px] font-semibold flex items-center gap-1',
+                msg.actionStatus === 'approved' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400',
+              )}
+            >
+              {msg.actionStatus === 'approved' ? '✅ Approved and applied to your account.' : '✕ Rejected — no changes made.'}
             </p>
           )}
         </div>
@@ -229,22 +349,30 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     return [
       {
         role: 'assistant',
-        content: "Hey there! 👋 I'm **Spex**, your TrueSpend financial assistant.\n\nI know your finances inside out — ask me anything, from checking your daily allowance to logging a transaction or analyzing your spending patterns. What can I help you with?",
+        content:
+          "Hey there! 👋 I'm **Spex**, your TrueSpend financial co-pilot powered by **Google Gemini**.\n\nI have complete visibility into your balances, cycles, category burn rates, and savings goals. Ask me anything, dictate your expenses, simulate purchases, or tap a topic below to get started!",
         timestamp: Date.now(),
-        suggestions: QUICK_PROMPTS.map(p => p.replace(/^[^\s]+\s/, '')),
+        suggestions: PROMPT_TOPICS[0].prompts,
       },
     ];
   });
+
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chatSessionId] = useState(getChatSessionId);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [activeTopic, setActiveTopic] = useState<'daily' | 'audit' | 'whatif' | 'receipt'>('daily');
+  const [playingAudioIndex, setPlayingAudioIndex] = useState<number | null>(null);
+  const [audioLoadingIndex, setAudioLoadingIndex] = useState<number | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+
   const [selectedImage, setSelectedImage] = useState<{
     data: string;
     mimeType: string;
     previewUrl: string;
   } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [voiceSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const { token } = useAuth();
@@ -294,102 +422,216 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   }, []);
 
   const handleReset = () => {
-    if (confirm('Clear the chat history?')) {
-      setMessages([{
-        role: 'assistant',
-        content: "Hey there! 👋 I'm **Spex**, your TrueSpend financial assistant. Fresh start — what can I help you with?",
-        timestamp: Date.now(),
-        suggestions: QUICK_PROMPTS.map(p => p.replace(/^[^\s]+\s/, '')),
-      }]);
+    if (confirm('Clear the chat history and start a fresh session?')) {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      setPlayingAudioIndex(null);
+      setMessages([
+        {
+          role: 'assistant',
+          content: "Fresh session started! 👋 What would you like to review or plan today?",
+          timestamp: Date.now(),
+          suggestions: PROMPT_TOPICS[0].prompts,
+        },
+      ]);
     }
   };
 
-  const handleSend = async (draft = input) => {
-    const content = draft.trim();
-    if ((!content && !selectedImage) || isLoading) return;
+  const handleExportChat = () => {
+    const exportText = messages
+      .filter((m) => m.role !== 'system')
+      .map(
+        (m) =>
+          `### ${m.role === 'user' ? '👤 You' : '🤖 Spex (Google Gemini AI)'} — ${new Date(
+            m.timestamp,
+          ).toLocaleTimeString()}\n\n${m.content}\n`,
+      )
+      .join('\n---\n\n');
 
-    const currentImage = selectedImage;
-    const userMsg: Message = {
-      role: 'user',
-      content: content || 'Please analyze this receipt and propose a transaction.',
-      imageUrl: currentImage?.previewUrl,
-      timestamp: Date.now(),
-    };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setSelectedImage(null);
-    setIsLoading(true);
+    const blob = new Blob(
+      [
+        `# TrueSpend AI Financial Advisory Report\nDate: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n\n---\n\n${exportText}`,
+      ],
+      { type: 'text/markdown' },
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `truespend-ai-report-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
-    // Reset textarea height
-    if (inputRef.current) {
-      inputRef.current.style.height = 'auto';
+  const handleSpeak = async (text: string, index: number) => {
+    if (playingAudioIndex === index) {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      setPlayingAudioIndex(null);
+      return;
     }
 
-    try {
-      const apiMessages = [...messages, userMsg]
-        .filter(m => m.role !== 'system')
-        .slice(-10)
-        .map(({ role, content: messageContent }) => ({ role, content: messageContent.slice(0, 1400) }));
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
 
-      const response = await fetch('/api/chat', {
+    setAudioLoadingIndex(index);
+    try {
+      const res = await fetch('/api/chat/tts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          messages: apiMessages,
-          contextData: aiContext,
-          sessionId: chatSessionId,
-          image: currentImage ? { data: currentImage.data, mimeType: currentImage.mimeType } : undefined,
-        }),
+        body: JSON.stringify({ text }),
       });
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          window.dispatchEvent(new Event('auth:unauthorized'));
-        }
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to get response');
-      }
+      if (!res.ok) throw new Error('TTS request failed');
 
-      const data = await response.json();
-      if (data.reply) {
-        setMessages(prev => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: data.reply,
-            actions: data.actions || [],
-            suggestions: data.suggestions?.length ? data.suggestions : FALLBACK_SUGGESTIONS,
-            modelUsed: data.modelUsed,
-            responseTimeMs: data.responseTimeMs,
-            timestamp: Date.now(),
-          },
-        ]);
-      } else {
-        setMessages(prev => [
-          ...prev,
-          { role: 'assistant', content: "I'm sorry, I didn't get a proper response. Please try again.", timestamp: Date.now() },
-        ]);
+      const { audio, mimeType } = await res.json();
+      if (!audio) throw new Error('No audio in response');
+
+      const audioEl = new Audio(`data:${mimeType || 'audio/wav'};base64,${audio}`);
+      currentAudioRef.current = audioEl;
+
+      audioEl.onended = () => {
+        setPlayingAudioIndex(null);
+        currentAudioRef.current = null;
+      };
+      audioEl.onerror = () => {
+        setPlayingAudioIndex(null);
+        currentAudioRef.current = null;
+      };
+
+      setPlayingAudioIndex(index);
+      await audioEl.play();
+    } catch (err) {
+      console.warn('Gemini TTS failed, falling back to browser SpeechSynthesis:', err);
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const clean = text.replace(/[*#_~`>]/g, '').trim();
+        const utterance = new SpeechSynthesisUtterance(clean);
+        utterance.onend = () => setPlayingAudioIndex(null);
+        utterance.onerror = () => setPlayingAudioIndex(null);
+        setPlayingAudioIndex(index);
+        window.speechSynthesis.speak(utterance);
       }
-    } catch (error: any) {
-      console.error('Chat error:', error);
-      const errorMessage =
-        error.message && error.message !== 'Failed to fetch'
-          ? `⚠️ ${error.message}`
-          : '⚠️ Sorry, I ran into an error. Please try again.';
-      setMessages(prev => [...prev, { role: 'assistant', content: errorMessage, timestamp: Date.now() }]);
     } finally {
-      setIsLoading(false);
+      setAudioLoadingIndex(null);
     }
   };
+
+  const handleSend = useCallback(
+    async (draft = input) => {
+      const content = draft.trim();
+      if ((!content && !selectedImage) || isLoading) return;
+
+      const currentImage = selectedImage;
+      const userMsg: Message = {
+        role: 'user',
+        content: content || 'Please analyze this receipt and propose a transaction.',
+        imageUrl: currentImage?.previewUrl,
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      setInput('');
+      setSelectedImage(null);
+      setIsLoading(true);
+
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+      }
+
+      try {
+        const apiMessages = [...messages, userMsg]
+          .filter((m) => m.role !== 'system')
+          .slice(-10)
+          .map(({ role, content: messageContent }) => ({
+            role,
+            content: messageContent.slice(0, 1400),
+          }));
+
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            messages: apiMessages,
+            contextData: aiContext,
+            sessionId: chatSessionId,
+            image: currentImage ? { data: currentImage.data, mimeType: currentImage.mimeType } : undefined,
+          }),
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.dispatchEvent(new Event('auth:unauthorized'));
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to get response');
+        }
+
+        const data = await response.json();
+        if (data.reply) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: data.reply,
+              actions: data.actions || [],
+              suggestions: data.suggestions?.length ? data.suggestions : FALLBACK_SUGGESTIONS,
+              modelUsed: data.modelUsed,
+              responseTimeMs: data.responseTimeMs,
+              timestamp: Date.now(),
+            },
+          ]);
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: "I've analyzed your financial situation. Let me know if you need any adjustments.",
+              timestamp: Date.now(),
+            },
+          ]);
+        }
+      } catch (error: any) {
+        console.error('Chat error:', error);
+        const errorMessage =
+          error.message && error.message !== 'Failed to fetch'
+            ? `⚠️ ${error.message}`
+            : '⚠️ Sorry, I ran into an error communicating with Gemini. Please try again.';
+        setMessages((prev) => [...prev, { role: 'assistant', content: errorMessage, timestamp: Date.now() }]);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [input, selectedImage, isLoading, messages, token, aiContext, chatSessionId],
+  );
+
+  // Listen for custom prompts dispatched from elsewhere in the app (e.g. Overview banner)
+  useEffect(() => {
+    const handler = (e: any) => {
+      const prompt = e.detail?.prompt;
+      if (prompt && typeof prompt === 'string') {
+        handleSend(prompt);
+      }
+    };
+    window.addEventListener('truespend:sendChatPrompt', handler);
+    return () => window.removeEventListener('truespend:sendChatPrompt', handler);
+  }, [handleSend]);
 
   const handleAction = async (index: number, approve: boolean) => {
     const message = messages[index];
     if (!message.actions?.length) return;
     if (!approve) {
-      setMessages(prev => prev.map((item, i) => (i === index ? { ...item, actionStatus: 'rejected' } : item)));
+      setMessages((prev) => prev.map((item, i) => (i === index ? { ...item, actionStatus: 'rejected' } : item)));
       return;
     }
     try {
@@ -407,7 +649,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       }
       await fetchData();
       onDataChange?.();
-      setMessages(prev => prev.map((item, i) => (i === index ? { ...item, actionStatus: 'approved' } : item)));
+      setMessages((prev) => prev.map((item, i) => (i === index ? { ...item, actionStatus: 'approved' } : item)));
     } catch (error: any) {
       console.error(error);
       alert(error.message || 'The action could not be completed.');
@@ -423,13 +665,11 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
   const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    // Auto-grow textarea up to 5 lines
     const ta = e.target;
     ta.style.height = 'auto';
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
   };
 
-  // Receipt image upload handler for Gemini multimodal vision
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -446,7 +686,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     reader.readAsDataURL(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
-
 
   const handleVoice = useCallback(() => {
     if (!voiceSupported) return;
@@ -465,7 +704,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
-      setInput(prev => prev + (prev ? ' ' : '') + transcript);
+      setInput((prev) => prev + (prev ? ' ' : '') + transcript);
     };
     recognition.onend = () => setIsListening(false);
     recognition.onerror = () => setIsListening(false);
@@ -475,18 +714,17 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     setIsListening(true);
   }, [isListening, voiceSupported]);
 
-  // Get the last assistant message for suggestions
-  const lastAssistantMsg = [...messages].reverse().find(m => m.role === 'assistant');
-  const activeSuggestions = messages.length <= 1
-    ? QUICK_PROMPTS
-    : (lastAssistantMsg?.suggestions ?? []);
+  // Suggestions for the current active topic
+  const currentTopicData = PROMPT_TOPICS.find((t) => t.id === activeTopic) || PROMPT_TOPICS[0];
+  const lastAssistantMsg = [...messages].reverse().find((m) => m.role === 'assistant');
+  const activeSuggestions =
+    messages.length <= 1 ? currentTopicData.prompts : lastAssistantMsg?.suggestions ?? currentTopicData.prompts;
 
   const charLimit = 500;
   const charsLeft = charLimit - input.length;
 
   return (
     <>
-      {/* Inject keyframe animations */}
       <style>{`
         @keyframes typingBounce {
           0%, 80%, 100% { transform: translateY(0); opacity: 0.6; }
@@ -504,85 +742,143 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
       `}</style>
 
-      {/*
-        On mobile: fixed full-screen overlay covering everything (header + nav).
-        On desktop (sm+): normal flow card.
-      */}
-      <div className={cn(
-        // Mobile: fixed full-screen overlay
-        'fixed inset-0 z-[60] flex flex-col bg-gray-50 dark:bg-gray-950',
-        // Desktop: normal contained layout
-        'sm:static sm:z-auto sm:rounded-xl sm:shadow-sm sm:border sm:border-gray-200 sm:dark:border-gray-700/60 sm:overflow-hidden sm:h-[calc(100vh-10rem)] sm:min-h-[500px]',
-      )}>
-
+      <div
+        className={cn(
+          'fixed inset-0 z-[60] flex flex-col bg-gray-50 dark:bg-gray-950',
+          'sm:static sm:z-auto sm:rounded-2xl sm:shadow-sm sm:border sm:border-gray-200 sm:dark:border-gray-800 sm:overflow-hidden sm:h-[calc(100vh-10rem)] sm:min-h-[520px]',
+        )}
+      >
         {/* ─── Mobile compact header ─────────────────────────────── */}
-        <div className="sm:hidden flex items-center justify-between px-4 py-3 bg-white/80 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+        <div className="sm:hidden flex items-center justify-between px-4 py-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('truespend:openSidebar'))}
               title="Open menu"
               className="p-1.5 -ml-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:text-white dark:hover:bg-gray-800 transition-colors"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm p-1.5">
-              <img src={appIconSrc} alt="Spex" className="w-full h-full object-contain drop-shadow-sm" />
+            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-xs p-1.5">
+              <img src={appIconSrc} alt="Spex" className="w-full h-full object-contain drop-shadow-xs" />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
                 <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">Spex</p>
                 <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/80 px-1.5 py-0.5 text-[9px] font-medium text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
                   <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
-                  Gemini AI
+                  Gemini
                 </span>
               </div>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">TrueSpend Financial Intelligence</p>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">TrueSpend AI Co-Pilot</p>
             </div>
           </div>
-          <button
-            onClick={handleReset}
-            title="Clear chat"
-            className="p-2 rounded-full text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handleExportChat}
+              title="Export report"
+              className="p-2 rounded-full text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleReset}
+              title="Clear chat"
+              className="p-2 rounded-full text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* ─── Desktop header ────────────────────────────────────── */}
-        <div className="hidden sm:flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-800 dark:to-purple-900 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center p-1.5 shadow-sm">
+        <div className="hidden sm:flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 dark:from-indigo-900 dark:via-indigo-950 dark:to-purple-950 flex-shrink-0 text-white">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center p-1.5 shadow-sm">
               <img src={appIconSrc} alt="Spex" className="w-full h-full object-contain drop-shadow-sm" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-white leading-tight">Spex</p>
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/20 backdrop-blur-xs px-2 py-0.5 text-[10px] font-medium text-white shadow-xs">
+                <p className="text-sm font-bold text-white leading-tight">Spex Financial Intelligence</p>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/20 backdrop-blur-xs px-2 py-0.5 text-[10px] font-semibold text-white shadow-xs">
                   <Sparkles className="w-3 h-3 text-indigo-200" />
-                  Google Gemini AI
+                  Google Gemini 3.8 Flash
                 </span>
               </div>
-              <p className="text-[10px] text-indigo-200 leading-tight">Autonomous Financial Reasoning & Action Engine</p>
+              <p className="text-[11px] text-indigo-200/90 leading-tight">
+                Autonomous Financial Cycles, What-If Simulation & Multimodal Vision
+              </p>
             </div>
           </div>
-          <button
-            onClick={handleReset}
-            title="Clear chat"
-            className="p-1.5 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleExportChat}
+              title="Export financial report (Markdown)"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-2.5 py-1.5 text-xs font-medium text-white transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export
+            </button>
+            <button
+              type="button"
+              onClick={handleReset}
+              title="Clear chat"
+              className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* ─── Topic Selector Bar ─────────────────────────────────── */}
+        <div className="flex items-center gap-1.5 px-3 sm:px-5 py-2 bg-white/90 dark:bg-gray-900/90 border-b border-gray-100 dark:border-gray-800 overflow-x-auto no-scrollbar flex-shrink-0">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1 hidden sm:inline">
+            Modes:
+          </span>
+          {PROMPT_TOPICS.map((topic) => {
+            const Icon = topic.icon;
+            const isActive = activeTopic === topic.id;
+            return (
+              <button
+                key={topic.id}
+                type="button"
+                onClick={() => setActiveTopic(topic.id as any)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all whitespace-nowrap',
+                  isActive
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200',
+                )}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {topic.label}
+              </button>
+            );
+          })}
         </div>
 
         {/* ─── Messages ──────────────────────────────────────────── */}
         <div
           ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 space-y-3 scroll-smooth"
+          className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 space-y-3.5 scroll-smooth"
           style={{ overscrollBehavior: 'contain' }}
         >
-          {messages.filter(m => m.role !== 'system').map((msg, idx) => (
-            <MessageBubble key={idx} msg={msg} idx={idx} onAction={handleAction} />
-          ))}
+          {messages
+            .filter((m) => m.role !== 'system')
+            .map((msg, idx) => (
+              <MessageBubble
+                key={idx}
+                msg={msg}
+                idx={idx}
+                onAction={handleAction}
+                onSpeak={handleSpeak}
+                isPlayingAudio={playingAudioIndex === idx}
+                isAudioLoading={audioLoadingIndex === idx}
+              />
+            ))}
 
           {isLoading && (
             <div className="flex items-start gap-2 animate-slideIn">
@@ -600,8 +896,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         {/* ─── Scroll to bottom button ───────────────────────────── */}
         {showScrollBtn && (
           <button
+            type="button"
             onClick={() => scrollToBottom()}
-            className="absolute bottom-24 right-4 sm:bottom-24 z-10 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white p-2 shadow-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-all animate-fadeIn"
+            className="absolute bottom-28 right-4 sm:bottom-28 z-10 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white p-2 shadow-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-all animate-fadeIn"
             title="Scroll to latest"
           >
             <ChevronDown className="w-4 h-4" />
@@ -617,7 +914,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 type="button"
                 disabled={isLoading}
                 onClick={() => void handleSend(prompt)}
-                className="whitespace-nowrap rounded-full border border-indigo-200 dark:border-indigo-700/60 bg-white dark:bg-gray-800/80 px-3 py-1.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 transition-colors disabled:opacity-50 flex-shrink-0 shadow-sm"
+                className="whitespace-nowrap rounded-full border border-indigo-200/80 dark:border-indigo-800/60 bg-white dark:bg-gray-800/90 px-3 py-1.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors disabled:opacity-50 flex-shrink-0 shadow-xs"
               >
                 {prompt}
               </button>
@@ -626,20 +923,22 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         )}
 
         {/* ─── Input bar ─────────────────────────────────────────── */}
-        <div className="flex-shrink-0 px-3 sm:px-5 pb-3 pt-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-t border-gray-100 dark:border-gray-800">
+        <div className="flex-shrink-0 px-3 sm:px-5 pb-3 pt-2 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-t border-gray-100 dark:border-gray-800">
           {selectedImage && (
-            <div className="mb-2 inline-flex items-center gap-2 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 p-1.5 pr-3 text-xs animate-fadeIn shadow-xs">
+            <div className="mb-2 inline-flex items-center gap-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 p-1.5 pr-3 text-xs animate-fadeIn shadow-xs">
               <img
                 src={selectedImage.previewUrl}
                 alt="Receipt preview"
-                className="h-10 w-10 rounded-lg object-cover border border-indigo-200 dark:border-indigo-700"
+                className="h-11 w-11 rounded-lg object-cover border border-indigo-200 dark:border-indigo-700"
               />
               <div className="flex flex-col">
                 <span className="text-[11px] font-semibold text-indigo-900 dark:text-indigo-200 flex items-center gap-1">
                   <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                  Receipt attached
+                  Receipt Attached
                 </span>
-                <span className="text-[10px] text-indigo-600 dark:text-indigo-400">Gemini Vision will parse & propose transaction</span>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400">
+                  Gemini Vision will extract store, amount, and items
+                </span>
               </div>
               <button
                 type="button"
@@ -652,52 +951,50 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             </div>
           )}
 
-          <div className="relative flex items-end gap-2 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-indigo-400 dark:focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-400/20 transition-all shadow-sm">
+          <div className="relative flex items-end gap-2 bg-gray-50 dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-indigo-400 dark:focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-400/20 transition-all shadow-xs">
             <textarea
               ref={inputRef}
               rows={1}
               value={input}
               onChange={handleTextareaInput}
               onKeyDown={handleKeyDown}
-              placeholder={selectedImage ? "Add an optional note (e.g. Lunch with Karim)…" : "Ask about your finances or record a spend…"}
+              placeholder={
+                selectedImage
+                  ? 'Add an optional note (e.g. Lunch with team)…'
+                  : 'Ask Spex or type multiple expenses (e.g. 120 MAD lunch, 30 MAD taxi)…'
+              }
               maxLength={charLimit}
               className="flex-1 resize-none bg-transparent pl-4 pr-2 py-3 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none leading-relaxed"
               disabled={isLoading}
               style={{ minHeight: '44px', maxHeight: '120px' }}
             />
-            {/* Character counter — shows when approaching limit */}
             {charsLeft < 100 && (
-              <span className={cn(
-                'absolute bottom-3 right-[88px] text-[10px] select-none',
-                charsLeft < 20 ? 'text-red-400' : 'text-gray-300 dark:text-gray-600',
-              )}>
+              <span
+                className={cn(
+                  'absolute bottom-3 right-[88px] text-[10px] select-none',
+                  charsLeft < 20 ? 'text-red-400' : 'text-gray-300 dark:text-gray-600',
+                )}
+              >
                 {charsLeft}
               </span>
             )}
             <div className="flex items-center gap-1 pr-2 pb-2">
-              <input 
-                type="file" 
-                accept="image/*" 
-                ref={fileInputRef} 
-                className="hidden" 
-                onChange={handleFileUpload} 
-              />
+              <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isLoading}
-                title="Scan receipt or document with Gemini Vision"
+                title="Scan receipt or invoice (Gemini Multimodal Vision)"
                 className="p-2 rounded-full transition-all text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 <Camera className="w-4 h-4" />
               </button>
-              
-              {/* Voice button */}
+
               {voiceSupported && (
                 <button
                   type="button"
                   onClick={handleVoice}
-                  title={isListening ? 'Stop listening' : 'Voice input'}
+                  title={isListening ? 'Stop listening' : 'Voice dictation'}
                   className={cn(
                     'p-2 rounded-full transition-all',
                     isListening
@@ -708,23 +1005,19 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                   {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                 </button>
               )}
-              {/* Send button */}
+
               <button
                 type="button"
                 onClick={() => handleSend()}
                 disabled={(!input.trim() && !selectedImage) || isLoading}
-                className="p-2 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
+                className="p-2 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs"
               >
-                {isLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </button>
             </div>
           </div>
           <p className="text-center text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 select-none">
-            Powered by Google Gemini • Spex can make mistakes, always verify figures.
+            Powered by Google Gemini • Spex can make mistakes, always verify numbers.
           </p>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getChatCompletion } from '../services/ChatService.js';
+import { getChatCompletion, generateSpeechFromText } from '../services/ChatService.js';
 
 export const chatWithAi = async (req: Request, res: Response) => {
   try {
@@ -32,5 +32,20 @@ export const chatWithAi = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Chat error:', error);
     res.status(500).json({ error: error.message || 'Failed to communicate with AI' });
+  }
+};
+
+export const speakAiText = async (req: Request, res: Response) => {
+  try {
+    const { text } = req.body;
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ error: 'Text string is required for speech synthesis' });
+    }
+
+    const audioResult = await generateSpeechFromText(text);
+    res.json(audioResult);
+  } catch (error: any) {
+    console.error('TTS error:', error);
+    res.status(500).json({ error: error.message || 'Failed to synthesize speech' });
   }
 };
