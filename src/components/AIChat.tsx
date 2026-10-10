@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Send, Loader2, Trash2, Mic, MicOff, Copy, Check, ChevronDown, Sparkles, Bot, Menu, Camera, Image as ImageIcon } from 'lucide-react';
+import { Send, Loader2, Trash2, Mic, MicOff, Copy, Check, ChevronDown, Sparkles, Bot, Menu, Camera, Image as ImageIcon, X } from 'lucide-react';
 import Markdown from 'react-markdown';
 
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
 import { useAuth } from '../context/AuthContext';
-import Tesseract from 'tesseract.js';
 import { cn } from '../lib/utils';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { buildAiContextSnapshot } from '../lib/aiContext';
@@ -49,6 +48,9 @@ interface AiAction { type: string; summary: string; parameters: Record<string, u
 interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  imageUrl?: string;
+  modelUsed?: string;
+  responseTimeMs?: number;
   actions?: AiAction[];
   actionStatus?: 'approved' | 'rejected';
   suggestions?: string[];
@@ -114,10 +116,15 @@ function MessageBubble({
       {/* Avatar row for assistant */}
       {!isUser && (
         <div className="flex items-center gap-1.5 ml-1 mb-0.5">
-          <div className="h-5 w-5 rounded-full bg-indigo-600 dark:bg-indigo-700 flex items-center justify-center flex-shrink-0 overflow-hidden">
+          <div className="h-5 w-5 rounded-full bg-indigo-600 dark:bg-indigo-700 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-xs">
             <img src={appIconSrc} alt="Spex" className="w-3.5 h-3.5 object-contain" />
           </div>
-          <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">Spex</span>
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">Spex</span>
+          {msg.responseTimeMs ? (
+            <span className="text-[9px] text-indigo-600 dark:text-indigo-400 font-mono bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.2 rounded-full border border-indigo-100 dark:border-indigo-900/40">
+              ⚡ {(msg.responseTimeMs / 1000).toFixed(1)}s • Gemini
+            </span>
+          ) : null}
         </div>
       )}
 
@@ -130,6 +137,16 @@ function MessageBubble({
               : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-700/60 rounded-bl-none',
           )}
         >
+          {msg.imageUrl && (
+            <div className="mb-2.5 overflow-hidden rounded-xl border border-white/20 bg-black/10">
+              <img
+                src={msg.imageUrl}
+                alt="Uploaded receipt or document"
+                className="max-h-56 w-auto object-contain rounded-lg"
+              />
+            </div>
+          )}
+
           {isUser ? (
             <span className="whitespace-pre-wrap">{msg.content}</span>
           ) : (
@@ -223,7 +240,11 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const [chatSessionId] = useState(getChatSessionId);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [isOcrLoading, setIsOcrLoading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{
+    data: string;
+    mimeType: string;
+    previewUrl: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [voiceSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
   const { token } = useAuth();
@@ -285,11 +306,18 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
   const handleSend = async (draft = input) => {
     const content = draft.trim();
-    if (!content || isLoading) return;
+    if ((!content && !selectedImage) || isLoading) return;
 
-    const userMsg: Message = { role: 'user', content, timestamp: Date.now() };
+    const currentImage = selectedImage;
+    const userMsg: Message = {
+      role: 'user',
+      content: content || 'Please analyze this receipt and propose a transaction.',
+      imageUrl: currentImage?.previewUrl,
+      timestamp: Date.now(),
+    };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setSelectedImage(null);
     setIsLoading(true);
 
     // Reset textarea height
@@ -313,6 +341,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           messages: apiMessages,
           contextData: aiContext,
           sessionId: chatSessionId,
+          image: currentImage ? { data: currentImage.data, mimeType: currentImage.mimeType } : undefined,
         }),
       });
 
@@ -333,6 +362,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             content: data.reply,
             actions: data.actions || [],
             suggestions: data.suggestions?.length ? data.suggestions : FALLBACK_SUGGESTIONS,
+            modelUsed: data.modelUsed,
+            responseTimeMs: data.responseTimeMs,
             timestamp: Date.now(),
           },
         ]);
@@ -398,33 +429,22 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
   };
 
-  // Voice input
-  
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Receipt image upload handler for Gemini multimodal vision
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
-    setIsOcrLoading(true);
-    try {
-      const result = await Tesseract.recognize(file, 'eng+fra', {
-        logger: m => console.log(m)
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setSelectedImage({
+        data: dataUrl,
+        mimeType: file.type || 'image/jpeg',
+        previewUrl: dataUrl,
       });
-      const text = result.data.text.trim();
-      
-      const ocrPrompt = `I am uploading a receipt/ticket. Please parse it and propose a transaction. Here is the extracted text:\n\n${text}`;
-      
-      if (input.trim()) {
-        setInput(prev => prev + '\n\n' + ocrPrompt);
-      } else {
-        handleSend(ocrPrompt);
-      }
-    } catch (err: any) {
-      console.error('OCR Error:', err);
-      alert('Failed to extract text from image.');
-    } finally {
-      setIsOcrLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+    };
+    reader.readAsDataURL(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
 
@@ -509,8 +529,14 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               <img src={appIconSrc} alt="Spex" className="w-full h-full object-contain drop-shadow-sm" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">Spex</p>
-              <p className="text-[10px] text-indigo-500 dark:text-indigo-400 leading-tight">TrueSpend AI</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">Spex</p>
+                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/80 px-1.5 py-0.5 text-[9px] font-medium text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60">
+                  <Sparkles className="w-2.5 h-2.5 text-indigo-500" />
+                  Gemini AI
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">TrueSpend Financial Intelligence</p>
             </div>
           </div>
           <button
@@ -525,12 +551,18 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         {/* ─── Desktop header ────────────────────────────────────── */}
         <div className="hidden sm:flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-800 dark:to-purple-900 flex-shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center p-1.5">
+            <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center p-1.5 shadow-sm">
               <img src={appIconSrc} alt="Spex" className="w-full h-full object-contain drop-shadow-sm" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-white leading-tight">Spex</p>
-              <p className="text-[10px] text-indigo-200 leading-tight">TrueSpend AI Assistant</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-white leading-tight">Spex</p>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/20 backdrop-blur-xs px-2 py-0.5 text-[10px] font-medium text-white shadow-xs">
+                  <Sparkles className="w-3 h-3 text-indigo-200" />
+                  Google Gemini AI
+                </span>
+              </div>
+              <p className="text-[10px] text-indigo-200 leading-tight">Autonomous Financial Reasoning & Action Engine</p>
             </div>
           </div>
           <button
@@ -554,7 +586,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
           {isLoading && (
             <div className="flex items-start gap-2 animate-slideIn">
-              <div className="h-5 w-5 rounded-full bg-indigo-600 dark:bg-indigo-700 flex items-center justify-center flex-shrink-0 mt-1 overflow-hidden">
+              <div className="h-5 w-5 rounded-full bg-indigo-600 dark:bg-indigo-700 flex items-center justify-center flex-shrink-0 mt-1 overflow-hidden shadow-xs">
                 <img src={appIconSrc} alt="Spex" className="w-3.5 h-3.5 object-contain" />
               </div>
               <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700/60 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm">
@@ -595,6 +627,31 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
         {/* ─── Input bar ─────────────────────────────────────────── */}
         <div className="flex-shrink-0 px-3 sm:px-5 pb-3 pt-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-t border-gray-100 dark:border-gray-800">
+          {selectedImage && (
+            <div className="mb-2 inline-flex items-center gap-2 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 p-1.5 pr-3 text-xs animate-fadeIn shadow-xs">
+              <img
+                src={selectedImage.previewUrl}
+                alt="Receipt preview"
+                className="h-10 w-10 rounded-lg object-cover border border-indigo-200 dark:border-indigo-700"
+              />
+              <div className="flex flex-col">
+                <span className="text-[11px] font-semibold text-indigo-900 dark:text-indigo-200 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                  Receipt attached
+                </span>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400">Gemini Vision will parse & propose transaction</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedImage(null)}
+                className="ml-2 rounded-full p-1 text-gray-400 hover:bg-white hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200 transition-colors"
+                title="Remove image"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           <div className="relative flex items-end gap-2 bg-gray-50 dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-indigo-400 dark:focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-400/20 transition-all shadow-sm">
             <textarea
               ref={inputRef}
@@ -602,7 +659,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               value={input}
               onChange={handleTextareaInput}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about your finances…"
+              placeholder={selectedImage ? "Add an optional note (e.g. Lunch with Karim)…" : "Ask about your finances or record a spend…"}
               maxLength={charLimit}
               className="flex-1 resize-none bg-transparent pl-4 pr-2 py-3 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none leading-relaxed"
               disabled={isLoading}
@@ -618,7 +675,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               </span>
             )}
             <div className="flex items-center gap-1 pr-2 pb-2">
-              
               <input 
                 type="file" 
                 accept="image/*" 
@@ -627,21 +683,19 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 onChange={handleFileUpload} 
               />
               <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={isOcrLoading || isLoading}
-                title="Scan receipt (OCR)"
-                className={cn(
-                  'p-2 rounded-full transition-all text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700',
-                  isOcrLoading && 'opacity-50 animate-pulse'
-                )}
+                disabled={isLoading}
+                title="Scan receipt or document with Gemini Vision"
+                className="p-2 rounded-full transition-all text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
-                {isOcrLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                <Camera className="w-4 h-4" />
               </button>
               
               {/* Voice button */}
-
               {voiceSupported && (
                 <button
+                  type="button"
                   onClick={handleVoice}
                   title={isListening ? 'Stop listening' : 'Voice input'}
                   className={cn(
@@ -656,8 +710,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               )}
               {/* Send button */}
               <button
+                type="button"
                 onClick={() => handleSend()}
-                disabled={!input.trim() || isLoading}
+                disabled={(!input.trim() && !selectedImage) || isLoading}
                 className="p-2 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
               >
                 {isLoading ? (
@@ -668,8 +723,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               </button>
             </div>
           </div>
-          <p className="text-center text-[10px] text-gray-300 dark:text-gray-600 mt-1.5 select-none">
-            Spex can make mistakes — always verify important figures.
+          <p className="text-center text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 select-none">
+            Powered by Google Gemini • Spex can make mistakes, always verify figures.
           </p>
         </div>
       </div>

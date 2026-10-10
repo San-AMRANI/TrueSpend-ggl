@@ -1,73 +1,20 @@
 import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
+import { gemini, PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL } from './GeminiClient.js';
 
 dotenv.config();
 
-const WORKING_MODEL_CACHE_FILE = path.join(process.cwd(), '.last_working_model');
-
 const MAX_HISTORY_MESSAGES = 16;
-const MAX_MESSAGE_CHARS = 2_000;
-const MAX_CONTEXT_CHARS = 18_000;
-const REQUEST_TIMEOUT_MS = 30_000;
-const MAX_RETRIES = 2;
+const MAX_MESSAGE_CHARS = 4_000;
+const MAX_CONTEXT_CHARS = 24_000;
 
-// ── Dynamic Model Caching ──────────────────────────────────────────────────
-let cachedFreeModels: string[] = [];
-let lastModelFetchTime = 0;
-
-async function getAvailableFreeModels(): Promise<string[]> {
-  const now = Date.now();
-  // Cache for 1 hour to avoid spamming the endpoint
-  if (cachedFreeModels.length > 0 && now - lastModelFetchTime < 1000 * 60 * 60) {
-    return cachedFreeModels;
-  }
-
-  try {
-    const res = await fetch('https://openrouter.ai/api/v1/models');
-    if (res.ok) {
-      const data = await res.json();
-      const free = data.data
-        .filter((m: any) => m.pricing && m.pricing.prompt === "0" && m.pricing.completion === "0")
-        .map((m: any) => m.id);
-      
-      if (free.length > 0) {
-        cachedFreeModels = free;
-        lastModelFetchTime = now;
-        return free;
-      }
-    }
-  } catch (error) {
-    console.error('Failed to fetch dynamic free models from OpenRouter:', error);
-  }
-
-  // Absolute minimum fallbacks if fetch fails
-  return ['google/gemini-2.0-flash-exp:free', 'openrouter/free'];
-}
-
-type ChatMessage = {
-  role: 'user' | 'assistant';
+export type ChatMessage = {
+  role: 'user' | 'assistant' | 'system';
   content: string;
+  image?: {
+    data: string; // base64
+    mimeType: string;
+  };
 };
-
-function getLastWorkingModel(): string | null {
-  try {
-    if (fs.existsSync(WORKING_MODEL_CACHE_FILE)) {
-      const model = fs.readFileSync(WORKING_MODEL_CACHE_FILE, 'utf-8').trim();
-      if (model && model !== 'openrouter/free') return model;
-    }
-  } catch (error) {
-    console.error('Failed to read working model cache:', error);
-  }
-  return null;
-}
-
-function setLastWorkingModel(modelId: string) {
-  if (!modelId || modelId === 'openrouter/free') return;
-  void fs.promises.writeFile(WORKING_MODEL_CACHE_FILE, modelId, 'utf-8').catch((error) => {
-    console.error('Failed to write working model cache:', error);
-  });
-}
 
 function normalizeMessages(messages: unknown): ChatMessage[] {
   if (!Array.isArray(messages)) return [];
@@ -76,14 +23,19 @@ function normalizeMessages(messages: unknown): ChatMessage[] {
     .filter(
       (message: any) =>
         message &&
-        (message.role === 'user' || message.role === 'assistant') &&
-        typeof message.content === 'string' &&
-        message.content.trim().length > 0,
+        (message.role === 'user' || message.role === 'assistant' || message.role === 'system') &&
+        (typeof message.content === 'string' || message.image),
     )
     .slice(-MAX_HISTORY_MESSAGES)
     .map((message: any) => ({
-      role: message.role,
-      content: message.content.trim().slice(0, MAX_MESSAGE_CHARS),
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: typeof message.content === 'string' ? message.content.trim().slice(0, MAX_MESSAGE_CHARS) : '',
+      image: message.image && typeof message.image.data === 'string' && typeof message.image.mimeType === 'string'
+        ? {
+            data: message.image.data.replace(/^data:[^;]+;base64,/, ''),
+            mimeType: message.image.mimeType,
+          }
+        : undefined,
     }));
 }
 
@@ -91,332 +43,260 @@ function serializeContext(contextData: unknown): string {
   if (!contextData) return 'No financial data is available yet.';
 
   try {
-    const context = JSON.stringify(contextData, null, 0);
+    const context = JSON.stringify(contextData, null, 2);
     return context.length > MAX_CONTEXT_CHARS ? `${context.slice(0, MAX_CONTEXT_CHARS)}…[truncated]` : context;
   } catch {
     return 'No financial data is available yet.';
   }
 }
 
-function createSystemInstruction(contextData?: unknown) {
+function createSystemInstruction(contextData?: unknown): string {
   const context = serializeContext(contextData);
 
-  return `You are Spex — TrueSpend's intelligent financial AI assistant. TrueSpend is a personal finance app using the "liquidity" concept (bank + cash - emergency buffer = true spendable wealth).
+  return `You are Spex — TrueSpend's premier intelligent financial AI assistant powered by Google Gemini. TrueSpend is an advanced personal finance operating system centered around true liquidity (Bank + Cash - Emergency Buffer = Spendable Wealth).
 
-## CRITICAL OUTPUT FORMAT
-Return ONLY a raw JSON object — no markdown fences, no backticks, no preamble.
-Required schema:
-{"reply":"your message","actions":[],"suggestions":["q1","q2","q3"]}
-- "reply": markdown-formatted string (\\n for newlines, **bold**, bullet lists OK)
-- "actions": array of proposed mutations (empty [] if none)  
-- "suggestions": exactly 3 short follow-up questions relevant to your reply
+## CRITICAL OUTPUT REQUIREMENT
+You MUST return ONLY a valid JSON object matching this exact schema:
+{
+  "reply": "markdown-formatted response string",
+  "actions": [],
+  "suggestions": ["suggested query 1", "suggested query 2", "suggested query 3"]
+}
+- "reply": Rich markdown string (use bolding, bullet points, numbered lists, emojis, clean line breaks).
+- "actions": Array of concrete proposed mutations (empty [] if none).
+- "suggestions": Exactly 3 engaging, highly relevant follow-up questions or actions the user can click next.
 
-## YOUR PERSONALITY
-Warm, sharp, direct — like a trusted CFO friend. Use tasteful emoji (💰 📊 ✅ ⚠️ 🎯). Keep replies concise unless asked for detail. Celebrate wins, flag risks proactively.
+## PERSONALITY & TONE
+Warm, sharp, direct, empathetic, and financially astute — like a trusted executive CFO and personal wealth advisor. Use tasteful emojis (💰 📊 🎯 ⚠️ 💡 ✅ 📈). Celebrate savings milestones, warn about impending deficits early, and offer actionable optimizations.
 
-## CURRENCY
-All amounts in MAD (Moroccan Dirhams). Always write "MAD" after amounts.
+## CURRENCY CONVENTION
+All monetary figures are in Moroccan Dirham (MAD). Always format amounts clearly with "MAD" (e.g., "450.00 MAD").
 
-## FINANCIAL MONTH CONCEPT (CRITICAL)
-TrueSpend uses FINANCIAL months, NOT calendar months. A financial month starts on payday (e.g. the 25th) and ends the day before the next payday (e.g. the 24th). Example with payday=25: "August 2026" financial month = Jul 25 → Aug 24. The context snapshot already uses financial months — always reference data using this concept, not "August" or "September" as calendar months.
+## FINANCIAL MONTH CYCLE (CRITICAL PRINCIPLE)
+TrueSpend tracks time in FINANCIAL MONTHS, NOT standard calendar months. A financial cycle begins on the user's payday (e.g. 25th) and runs until the day prior to the next payday (e.g. 24th).
+- Refer strictly to the active cycle as indicated in the live snapshot (e.g. "Cycle Aug 25 - Sep 24").
+- Never confuse calendar months with financial cycles.
+- When evaluating expenses, budgets, or burn rate, always scope calculations to the current financial period.
 
-## APP KNOWLEDGE
-- **Overview**: KPI cards — Total Liquidity (bank+cash-buffer), Bank Balance, Cash, Daily Allowance (liquidity÷days until payday), Daily Spent, Daily Remaining, Days Until Payday.
-- **Transactions**: All financial movements. Types: Income, Expense, Transfer (Bank↔Cash), Debt Repayment. Each has category, wallet (Bank/Cash), amount, date, optional notes.
-- **Budgets**: Monthly category spending limits. Tracks spent vs limit. Supports auto-budget plans (50/30/20 etc).
-- **Debts & Splits**: Money owed to others (Payable) or owed to user (Receivable). Settled via partial/full payments that create Debt Repayment transactions.
-- **Analytics**: Charts — spending trends, category breakdowns, month comparisons, and period executive digest. Uses FINANCIAL months.
-- **Calendar**: Transactions, income, debt due dates by day.
-- **What-If**: "What if I spend X today?" scenario simulator and smart calculator.
-- **Settings**: Payday day (1-31), emergency buffer amount, salary amount.
-- **AI Chat (you)**: Natural language interface for queries, logging transactions, budgets, debts, advice.
+## FINANCIAL METRICS & CONCEPTS
+1. **Total Liquidity**: (Bank Balance + Cash on Hand - Emergency Buffer). This is actual unencumbered cash.
+2. **Daily Allowance**: Total remaining safe liquidity divided by days remaining until next payday.
+3. **Daily Spent & Remaining**: Today's spend compared to today's calculated daily allowance.
+4. **Runway**: How many days the current liquidity lasts at the user's current average variable burn rate.
+5. **Safe to Invest**: Surplus liquid wealth beyond emergency buffer and upcoming committed cycle obligations.
 
-## TRANSACTION PARSING
-- "bought/spent/paid for/purchased" → Expense
-- "received/got paid/earned/salary/income" → Income
-- "moved/transferred to bank/cash" → Transfer  
-- "paid back/repaid/settled a debt" → Debt Repayment
-- "lent/gave money to [person]/[person] owes me" → Receivable debt
-- "borrowed from/[person] lent me" → Payable debt
+## TRANSACTION & SPENDING INTELLIGENCE
+When a user logs a transaction or asks to record spending:
+- "bought / spent / paid for / ordered / ticket" → Expense
+- "received / got paid / salary / bonus / deposit / client payment" → Income
+- "transferred / moved money from bank to cash / withdrew cash" → Transfer (source wallet to destination wallet)
+- "repaid / settled debt / paid back" → Debt Repayment
+- "lent money / [friend] owes me" → Receivable debt
+- "borrowed from / I owe [friend]" → Payable debt
 
-## SMART CATEGORY INFERENCE
-Do NOT ask the user for a category if you can infer it:
-- food/restaurant/café/coffee/snack → "🍔 Dining & Takeaway" or "☕ Coffee & Quick Food"
-- grocery/supermarket/market/Carrefour/Marjane → "🛒 Groceries"
-- taxi/Uber/Careem/transport/gas/fuel → "🚗 Transportation"
-- phone/internet/wifi/Maroc Telecom/Inwi/Orange → "📱 Telecom & Subscriptions"
-- doctor/pharmacy/medicine/hospital/health → "🩺 Health & Medical"
-- clothes/shoes/fashion/clothing → "👕 Personal & Clothing"
-- cinema/game/movie/sport/concert/Netflix → "🎬 Entertainment"
-- friend/social/outing/party → "👥 Social"
-- family/kids/gift/birthday → "👨‍👩‍👦 Family & Gifts"
-- school/course/book/training → "📚 Education & Development"
-- rent/electricity/water/internet bill/housing → "🏠 Housing & Utilities"
-- salary/income/bonus → "📥 Income"
-- transfer between Bank and Cash → "🔄 Transfer"
-- debt payment → "💳 Debt & Obligations"
-- savings/investment/goal → "💰 Savings & Goals"
+## SMART CATEGORY MAPPING
+Automatically infer the exact category name and emoji. Do NOT ask unless completely impossible to deduce:
+- 🍔 Dining & Takeaway (restaurants, dinner, lunch, fast food, snacks)
+- ☕ Coffee & Quick Food (cafes, Starbucks, pastries, breakfast)
+- 🛒 Groceries (Carrefour, Marjane, Bim, supermarket, butcher, market)
+- 🚗 Transportation (taxi, Careem, Uber, gas, fuel, parking, tram, train)
+- 📱 Telecom & Subscriptions (Maroc Telecom, Inwi, Orange, Netflix, Spotify, cloud)
+- 🩺 Health & Medical (pharmacy, doctor, dental, medicines, clinic)
+- 👕 Personal & Clothing (Zara, clothes, shoes, haircut, grooming)
+- 🎬 Entertainment (movies, games, outings, hobbies, events)
+- 👥 Social (gatherings, friend gifts, rounds)
+- 👨‍👩‍👦 Family & Gifts (family support, kids expenses, celebrations)
+- 📚 Education & Development (courses, books, certifications, tuition)
+- 🏠 Housing & Utilities (rent, electricity, water, home repairs)
+- 💳 Debt & Obligations (loan repayments, installments)
+- 💰 Savings & Goals (deposits to savings goals, emergency fund)
+- 🚨 Unexpected (emergency repairs, unforeseen costs)
+- 📥 Income (salary, freelance, dividends)
+- 🔄 Transfer (internal wallet moves)
 
-## SMART WALLET INFERENCE
-- You MUST specify the exact walletId from the provided context data.
-- Do NOT output "Bank" or "Cash" as strings. Look up the corresponding wallet ID.
-- Online purchases, transfers, card payments → typically the "Bank" type wallet.
-- Cash purchases, street vendors, markets, petty cash → typically the "Cash" type wallet.
-- Salary/income → typically the main Bank wallet (default, but confirm if ambiguous).
+## SMART WALLET RESOLUTION
+Look at the 'wallets' array in the live financial data snapshot:
+- Pick the exact UUID of the appropriate wallet:
+  - Online cards, banking apps, direct debits, salary deposits → Bank wallet (type "Bank")
+  - Cash payments, cash on hand, street purchases → Cash wallet (type "Cash")
+  - Savings deposits, long-term reserves → Savings wallet (type "Savings")
+- For transfers: set 'walletId' to the source wallet ID and 'destinationWalletId' to the target wallet ID.
 
-## REPLY GUIDELINES
-- **Simple questions** → 1-3 sentence answers. No padding.
-- **Complex analysis** → Use markdown headers (##), bullets, bold key numbers.
-- **Transaction logging** → Infer category AND wallet from context. Only ask ONE focused question if BOTH are genuinely unclear. NEVER ask for information you can reasonably infer.
-- **Budget/spending questions** → Reference FINANCIAL month data, not calendar months.
-- **Action proposals** → Say what WILL happen. Never confirm it's done until user approves.
-- Keep replies under 250 words unless the user asks for detail or a full breakdown.
+## PROPOSABLE ACTIONS IN "actions" ARRAY
+When the user states an intent to log a transaction, set a budget, update a goal, or pay a debt:
+Emit the structured action object inside the "actions" array so TrueSpend renders an interactive approval card:
 
-## ALLOWED ACTIONS
-CRITICAL: If the user provides enough detail for a transaction/setting/budget, include the action in "actions" array. The UI shows an approval card — without the action object there is nothing to approve.
+1. **create_transaction**:
+   {"type":"create_transaction","summary":"Add 120 MAD lunch in 🍔 Dining & Takeaway via Bank","parameters":{"amount":120,"type":"Expense","walletId":"<wallet-uuid>","category":"🍔 Dining & Takeaway","notes":"Lunch","transaction_date":"YYYY-MM-DD"}}
+   (For transfers, include destinationWalletId: "<destination-wallet-uuid>")
 
-Every action: {"type":"...","summary":"clear plain-English description","parameters":{...}}
+2. **create_debt**:
+   {"type":"create_debt","summary":"Record 500 MAD owed by Karim","parameters":{"amount":500,"contact":"Karim","type":"Receivable","due_date":"YYYY-MM-DD","notes":"Trip split"}}
 
-### create_transaction
-Parameters: {amount:number, type:"Income"|"Expense"|"Transfer"|"Debt Repayment", walletId:string, destinationWalletId?:string, category:string, notes?:string, transaction_date?:"YYYY-MM-DD"}
-*Note: For transfers, walletId is the source and destinationWalletId is the target. Use exact UUIDs from the wallets array in context.*
-Expense categories: 🏠 Housing & Utilities, 🛒 Groceries, 🍔 Dining & Takeaway, ☕ Coffee & Quick Food, 🚗 Transportation, 📱 Telecom & Subscriptions, 🩺 Health & Medical, 👕 Personal & Clothing, 🎬 Entertainment, 👥 Social, 👨‍👩‍👦 Family & Gifts, 📚 Education & Development, 💳 Debt & Obligations, 💰 Savings & Goals, 🚨 Unexpected
-System categories: 📥 Income (income/salary), 🔄 Transfer (wallet transfers)
+3. **update_settings**:
+   {"type":"update_settings","summary":"Update payday to 28th and salary to 15,000 MAD","parameters":{"payday":28,"salary":15000}}
 
-### create_debt
-Parameters: {amount:number, contact:string, type:"Receivable"|"Payable", due_date?:"YYYY-MM-DD", notes?:string}
+4. **upsert_budget**:
+   {"type":"upsert_budget","summary":"Set Groceries budget to 2,500 MAD","parameters":{"category":"🛒 Groceries","amount":2500,"year":2026,"month":9}}
 
-### update_settings
-Parameters: {payday?:number(1-31), salary?:number}
+5. **create_goal**:
+   {"type":"create_goal","summary":"Create emergency car repair goal for 5,000 MAD","parameters":{"name":"Car Repair Fund","targetAmount":5000,"currentAmount":0,"walletId":"<wallet-uuid>","category":"Savings"}}
 
-### upsert_budget
-Parameters: {category:string, amount:number, year:number, month:number}
+6. **contribute_goal**:
+   {"type":"contribute_goal","summary":"Contribute 1,000 MAD to Japan Trip goal","parameters":{"goalId":"<goal-uuid>","amount":1000,"walletId":"<source-wallet-uuid>","destinationWalletId":"<savings-wallet-uuid>"}}
 
-### create_goal
-Parameters: {name:string, targetAmount:number, currentAmount?:number, walletId?:string, autoSyncBalance?:boolean, category?:string, deadline?:"YYYY-MM-DD", notes?:string}
-*Note: If the user wants to link this goal to a savings wallet (type "Savings" from wallets array), specify walletId. Set autoSyncBalance: true if they want the goal progress to automatically mirror the savings wallet balance.*
+7. **settle_debt**:
+   {"type":"settle_debt","summary":"Settle 300 MAD of debt to Omar","parameters":{"debtId":"<debt-uuid>","amount":300,"walletId":"<wallet-uuid>"}}
 
-### contribute_goal
-Parameters: {goalId:string, amount:number, walletId?:string, destinationWalletId?:string, note?:string}
-*Note: Look up the goalId from live context data under goals. If contributing from a bank/cash wallet into a linked savings goal, walletId is the source and destinationWalletId is the target savings wallet.*
+## WHAT-IF & SCENARIO SIMULATION
+If the user asks "Can I afford to buy X for 1,500 MAD?", "What if I purchase an iPhone this weekend?", or "How does this affect my runway?":
+- DO NOT emit a create_transaction action (since it is hypothetical).
+- Compute the real impact on Total Liquidity, Daily Allowance, and Runway days.
+- Provide a clear, transparent verdict (e.g. "Safe to spend", "Tightens your daily allowance from 240 MAD/day to 160 MAD/day", or "⚠️ Danger: Puts you below emergency buffer").
 
-### settle_debt
-Parameters: {debtId:string, amount:number, walletId:string}
-*Note: Look up the debtId from the provided live context data under debts.*
-
-### What-If Reasoning
-If the user asks "What if I buy X" or "What happens if I spend Y", do not emit a create_transaction action. Instead, mathematically calculate the impact using the current context (e.g. subtract from safeToSpend, runwayDays) and explain the outcome clearly.
-
-
-## LIVE FINANCIAL DATA (financial-month scoped)
+## LIVE FINANCIAL DATA SNAPSHOT
 ${context}`;
 }
 
-function extractJson(raw: string): string {
-  // Strip markdown code fences if present
-  let clean = raw.replace(/```[a-zA-Z]*\s*/g, '').replace(/```\s*/g, '').trim();
-
-  // Try parsing as-is first
-  try {
-    JSON.parse(clean);
-    return clean;
-  } catch {
-    // Extract first valid JSON object
-    const first = clean.indexOf('{');
-    const last = clean.lastIndexOf('}');
-    if (first !== -1 && last !== -1 && last > first) {
-      const candidate = clean.substring(first, last + 1);
-      try {
-        JSON.parse(candidate);
-        return candidate;
-      } catch {
-        // fall through
-      }
-    }
-    throw new Error('Could not extract valid JSON from AI response');
-  }
-}
-
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit,
-  timeoutMs: number,
-): Promise<Response> {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(id);
-  }
-}
-
-/**
- * Calls OpenRouter with automatic model fallback and retry logic.
- * Uses a priority list of capable free models, remembers the last working one,
- * and retries up to MAX_RETRIES times on transient failures.
- */
 export async function getChatCompletion(
   messages: unknown,
   contextData?: unknown,
   sessionId?: unknown,
-): Promise<any> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error('OPENROUTER_API_KEY environment variable is not set');
-
+  imageInput?: { data: string; mimeType: string },
+): Promise<{
+  choices: Array<{ message: { content: string } }>;
+  modelUsed: string;
+  responseTimeMs: number;
+}> {
   const chatMessages = normalizeMessages(messages);
-  if (!chatMessages.length) throw new Error('At least one chat message is required');
-
-  // Inject a strict reminder on the final user message to prevent the model from copying the assistant's plain text history
-  const lastMsg = chatMessages[chatMessages.length - 1];
-  if (lastMsg && lastMsg.role === 'user') {
-    lastMsg.content += '\n\n[CRITICAL REMINDER: Your response MUST be ONLY a raw JSON object matching the required schema. Do not output markdown fences, plain text, or any preamble. Just the raw JSON.]';
+  if (!chatMessages.length && !imageInput) {
+    throw new Error('At least one chat message or image is required');
   }
 
-  const systemMessage = createSystemInstruction(contextData);
-  const validSessionId =
-    typeof sessionId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(sessionId)
-      ? sessionId
-      : undefined;
+  const systemInstruction = createSystemInstruction(contextData);
 
-  // Dynamically fetch free models and pick the top 3
-  const freeModels = await getAvailableFreeModels();
-  
-  // Prefer these top-tier families if they have free models available right now
-  const preferredKeywords = ['gemini', 'llama', 'deepseek'];
-  const candidates: string[] = [];
-  
-  for (const kw of preferredKeywords) {
-    const found = freeModels.find(m => m.toLowerCase().includes(kw));
-    if (found && !candidates.includes(found)) {
-      candidates.push(found);
-    }
-  }
-  
-  // Fill the rest with any other available free models
-  for (const m of freeModels) {
-    if (candidates.length >= 3) break;
-    if (!candidates.includes(m) && m !== 'openrouter/free') {
-      candidates.push(m);
-    }
-  }
-  
-  // Ensure openrouter/free is in the list as the final fallback
-  if (!candidates.includes('openrouter/free')) {
-    candidates.push('openrouter/free');
-  }
+  // Build the conversation contents for Gemini
+  // Gemini expects history in role 'user' and 'model'
+  const contents: any[] = [];
 
-  const lastWorking = getLastWorkingModel();
-  
-  // Build final array: Last working (if still free) -> Top candidates
-  let models = lastWorking && freeModels.includes(lastWorking)
-    ? [lastWorking, ...candidates.filter(m => m !== lastWorking)]
-    : candidates;
-    
-  // OpenRouter supports a maximum of 3 models in the fallback array
-  const openRouterModels = models.slice(0, 3);
+  for (let i = 0; i < chatMessages.length; i++) {
+    const msg = chatMessages[i];
+    const isModel = msg.role === 'assistant';
+    const isLast = i === chatMessages.length - 1;
 
-  const requestStartedAt = Date.now();
-  let lastError: Error = new Error('Unknown error');
+    const parts: any[] = [];
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const response = await fetchWithTimeout(
-        'https://openrouter.ai/api/v1/chat/completions',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'HTTP-Referer': 'https://truespend.app',
-            'X-OpenRouter-Title': 'TrueSpend AI Chat',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            models: openRouterModels,
-            messages: [{ role: 'system', content: systemMessage }, ...chatMessages],
-            max_completion_tokens: 3000,
-            temperature: 0.7,
-            stream: false,
-            ...(validSessionId ? { session_id: validSessionId } : {}),
-            provider: {
-              // Among free providers, prefer lowest latency
-              sort: { by: 'latency', partition: 'none' },
-              max_price: { prompt: 0, completion: 0 },
-              // Allow fallback across all free providers
-              allow_fallbacks: true,
-            },
-          }),
+    // Attach image if present on this message, or if it's the last user message and imageInput was provided
+    if (msg.image) {
+      parts.push({
+        inlineData: {
+          mimeType: msg.image.mimeType,
+          data: msg.image.data,
         },
-        REQUEST_TIMEOUT_MS,
-      );
+      });
+    } else if (isLast && !isModel && imageInput) {
+      parts.push({
+        inlineData: {
+          mimeType: imageInput.mimeType,
+          data: imageInput.data.replace(/^data:[^;]+;base64,/, ''),
+        },
+      });
+    }
 
-      if (!response.ok) {
-        const detail = (await response.text()).slice(0, 500);
-        throw new Error(
-          `OpenRouter request failed (${response.status}): ${detail || response.statusText}`,
-        );
-      }
+    if (msg.content) {
+      parts.push({ text: msg.content });
+    }
 
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(`OpenRouter error: ${data.error.message || JSON.stringify(data.error)}`);
-      }
+    contents.push({
+      role: isModel ? 'model' : 'user',
+      parts,
+    });
+  }
 
-      const rawContent = data.choices?.[0]?.message?.content;
+  // If contents is empty (e.g. only imageInput without messages)
+  if (!contents.length && imageInput) {
+    contents.push({
+      role: 'user',
+      parts: [
+        {
+          inlineData: {
+            mimeType: imageInput.mimeType,
+            data: imageInput.data.replace(/^data:[^;]+;base64,/, ''),
+          },
+        },
+        { text: 'Please analyze this receipt/document, extract the financial details, and propose a transaction action.' },
+      ],
+    });
+  }
 
-      if (typeof rawContent !== 'string' || !rawContent.trim()) {
-        console.error('Empty response from OpenRouter. Raw data:', JSON.stringify(data, null, 2));
-        throw new Error('The AI returned an empty response. Please try again.');
-      }
+  const startTime = Date.now();
+  const modelsToTry = [PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL];
+  let lastError: any = null;
 
-      const cleanContent = extractJson(rawContent);
+  for (const model of modelsToTry) {
+    try {
+      const response = await gemini.models.generateContent({
+        model,
+        contents,
+        config: {
+          systemInstruction,
+          responseMimeType: 'application/json',
+          temperature: 0.6,
+        },
+      });
 
-      // Validate the JSON has the expected shape; repair if needed
+      const responseText = response.text || '';
       let parsed: any;
+
       try {
-        parsed = JSON.parse(cleanContent);
-      } catch {
-        throw new Error('The AI returned an invalid response format. Please try again.');
+        parsed = JSON.parse(responseText.trim());
+      } catch (parseErr) {
+        // Fallback cleanup if model returned unexpected wrappers
+        const first = responseText.indexOf('{');
+        const last = responseText.lastIndexOf('}');
+        if (first !== -1 && last > first) {
+          parsed = JSON.parse(responseText.substring(first, last + 1));
+        } else {
+          parsed = {
+            reply: responseText,
+            actions: [],
+            suggestions: ['What is my current liquidity?', 'How is my daily allowance?', 'Show my category breakdown'],
+          };
+        }
       }
 
-      // Ensure required fields exist with sensible defaults
-      if (typeof parsed.reply !== 'string' || !parsed.reply.trim()) {
-        throw new Error('The AI returned an empty reply. Please try again.');
+      // Ensure required structure
+      if (!parsed.reply) {
+        parsed.reply = "I've analyzed your financial request. Let me know if you would like me to take any specific actions.";
       }
-      if (!Array.isArray(parsed.actions)) parsed.actions = [];
-      if (!Array.isArray(parsed.suggestions) || parsed.suggestions.length === 0) {
+      if (!Array.isArray(parsed.actions)) {
+        parsed.actions = [];
+      }
+      if (!Array.isArray(parsed.suggestions) || !parsed.suggestions.length) {
         parsed.suggestions = [
-          'What is my spending this financial month?',
-          'How is my daily allowance looking?',
-          'Show me my budget status.',
+          'What is my safe-to-spend runway?',
+          'Check my budget progress',
+          'What are my biggest expenses this cycle?',
         ];
       }
 
-      data.choices[0].message.content = JSON.stringify(parsed);
-
-      const modelUsed = typeof data.model === 'string' ? data.model : openRouterModels[0];
-      setLastWorkingModel(modelUsed);
-
       return {
-        ...data,
-        modelUsed,
-        responseTimeMs: Date.now() - requestStartedAt,
+        choices: [
+          {
+            message: {
+              content: JSON.stringify(parsed),
+            },
+          },
+        ],
+        modelUsed: model,
+        responseTimeMs: Date.now() - startTime,
       };
-    } catch (error: any) {
-      if (error?.name === 'AbortError') {
-        lastError = new Error('The AI took too long to respond. Please try again.');
-      } else {
-        lastError = error instanceof Error ? error : new Error(String(error));
-      }
-
-      // Don't retry on the last attempt
-      if (attempt < MAX_RETRIES) {
-        console.warn(`[ChatService] Attempt ${attempt + 1} failed: ${lastError.message}. Retrying…`);
-        await new Promise((res) => setTimeout(res, 800 * (attempt + 1))); // back-off
-      }
+    } catch (err: any) {
+      console.warn(`[ChatService] Model ${model} returned error:`, err?.status || err?.message || err);
+      lastError = err;
+      // Try fallback model next
     }
   }
 
-  throw lastError;
+  throw new Error(lastError?.message || 'Failed to communicate with Google Gemini AI service');
 }
