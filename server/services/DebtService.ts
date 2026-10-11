@@ -1,0 +1,169 @@
+import { debtRepository } from '../repositories/DebtRepository.js';
+import { transactionRepository } from '../repositories/TransactionRepository.js';
+import { walletService } from './WalletService.js';
+
+export interface SettleDebtDTO {
+  amount: number;
+  contact?: string;
+  type?: 'Receivable' | 'Payable';
+  debt_id?: string;
+  due_date?: string;
+  /** Wallet that sends or receives the settlement money. */
+  walletId?: string;
+  category?: string;
+}
+
+export interface UpdateDebtDTO {
+  amount: number;
+  contact: string;
+  type: 'Receivable' | 'Payable';
+  due_date?: string;
+}
+
+export class DebtService {
+  async getDebtsWithSettlements(userId: string) {
+    const allDebts = await debtRepository.findAllByUserId(userId);
+    const allSplits = await debtRepository.findAllLinkedSplits();
+    const allTxs = await transactionRepository.findAllByUserId(userId);
+
+    return allDebts.map((debt) => {
+      const debtSplits = allSplits.filter((s) => s.linkedContactId === debt.id);
+      const settlements = debtSplits
+        .map((s) => {
+          const tx = allTxs.find((t) => t.id === s.transactionId);
+          const splitAmountNum = parseFloat(s.reimbursableAmount || '0');
+          return {
+            id: s.id,
+            amount: splitAmountNum > 0 ? s.reimbursableAmount : (tx ? tx.amount : '0'),
+            createdAt: tx ? tx.createdAt : debt.createdAt,
+          };
+        })
+        .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+
+      // Auto-correct any floating point remaining balance artifacts
+      const remainingNum = parseFloat(debt.remainingBalance as unknown as string);
+      let correctedStatus = debt.status;
+      if (remainingNum <= 0.001 && debt.status === 'Pending') {
+        correctedStatus = 'Cleared';
+        debtRepository.update(debt.id, userId, { status: 'Cleared', remainingBalance: '0' }).catch(() => {});
+      }
+
+      return {
+        ...debt,
+        remainingBalance: remainingNum <= 0.001 ? '0' : debt.remainingBalance,
+        status: correctedStatus,
+        settlements,
+      };
+    });
+  }
+
+  async processDebt(userId: string, dto: SettleDebtDTO) {
+    if (dto.debt_id) {
+      const debt = await debtRepository.findByIdAndUserId(dto.debt_id, userId);
+      if (!debt) {
+        throw new Error('Debt not found');
+      }
+
+      const currentRemaining = parseFloat(debt.remainingBalance as unknown as string);
+      const newRemaining = currentRemaining - dto.amount;
+
+      await debtRepository.update(dto.debt_id, userId, {
+        remainingBalance: String(newRemaining),
+        status: newRemaining <= 0.001 ? 'Cleared' : 'Pending',
+      });
+
+      const txType = debt.type === 'Receivable' ? 'Income' : 'Expense';
+      const txCategory = dto.category || (debt.type === 'Receivable' ? 'Reimbursement' : 'Debt Repayment');
+
+      let targetWalletId: string;
+      try {
+        const wallets = await walletService.getWallets(userId);
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (dto.walletId && uuidRegex.test(dto.walletId)) {
+          const found = wallets.find(w => w.id === dto.walletId);
+          targetWalletId = found ? found.id : wallets[0]?.id;
+        } else if (dto.walletId === 'Bank') {
+          const bankWallet = wallets.find(w => w.type === 'Bank' && w.isMain) || wallets.find(w => w.type === 'Bank') || wallets[0];
+          targetWalletId = bankWallet?.id;
+        } else {
+          const cashWallet = wallets.find(w => w.type === 'Cash') || wallets[0];
+          targetWalletId = cashWallet?.id;
+        }
+      } catch {
+        targetWalletId = dto.walletId as string;
+      }
+
+      const newTx = await transactionRepository.create({
+        userId,
+        amount: String(dto.amount),
+        type: txType,
+        walletId: targetWalletId,
+        category: txCategory,
+        notes: `Settlement for ${debt.contactName}`,
+      });
+
+      await transactionRepository.createSplit({
+        transactionId: newTx.id,
+        // Only Receivable settlements are reimbursable to the user; Payable settlements are bill/debt payments.
+        reimbursableAmount: debt.type === 'Receivable' ? String(dto.amount) : '0',
+        linkedContactId: dto.debt_id,
+      });
+
+      return { message: 'Debt settled' };
+    } else {
+      const newDebt = await debtRepository.create({
+        userId,
+        contactName: dto.contact || 'Unknown',
+        type: dto.type || 'Receivable',
+        originalAmount: String(dto.amount),
+        remainingBalance: String(dto.amount),
+        status: 'Pending',
+        dueDate: this.parseDueDate(dto.due_date),
+      });
+      return { message: 'Debt created', id: newDebt.id };
+    }
+  }
+
+  async updateDebt(userId: string, debtId: string, dto: UpdateDebtDTO) {
+    const debt = await debtRepository.findByIdAndUserId(debtId, userId);
+    if (!debt) {
+      throw new Error('Debt not found');
+    }
+
+    const currentRemaining = parseFloat(debt.remainingBalance as unknown as string);
+    const currentOriginal = parseFloat(debt.originalAmount as unknown as string);
+    const settledAmount = currentOriginal - currentRemaining;
+
+    const newOriginal = dto.amount;
+    if (!Number.isFinite(newOriginal) || newOriginal < settledAmount) {
+      throw new Error('The original amount cannot be lower than the amount already settled.');
+    }
+    let newRemaining = newOriginal - settledAmount;
+
+    await debtRepository.update(debtId, userId, {
+      contactName: dto.contact,
+      type: dto.type,
+      originalAmount: String(newOriginal),
+      remainingBalance: String(newRemaining),
+      status: newRemaining <= 0.001 ? 'Cleared' : 'Pending',
+      ...(dto.due_date !== undefined ? { dueDate: this.parseDueDate(dto.due_date) } : {}),
+    });
+
+    return { message: 'Debt updated' };
+  }
+
+  private parseDueDate(value?: string) {
+    if (!value) return undefined;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Invalid due date');
+    const date = new Date(`${value}T12:00:00.000Z`);
+    if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new Error('Invalid due date');
+    return date;
+  }
+
+  async deleteDebt(userId: string, debtId: string) {
+    await debtRepository.deleteByIdAndUserId(debtId, userId);
+    return { message: 'Debt deleted' };
+  }
+}
+
+export const debtService = new DebtService();

@@ -1,0 +1,1580 @@
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import {
+  Send,
+  Loader2,
+  Trash2,
+  Mic,
+  MicOff,
+  Copy,
+  Check,
+  ChevronDown,
+  Sparkles,
+  Bot,
+  Menu,
+  Camera,
+  Image as ImageIcon,
+  X,
+  Volume2,
+  VolumeX,
+  Download,
+  CheckCheck,
+  TrendingUp,
+  ShieldCheck,
+  Zap,
+  Share2,
+  Cpu,
+  Settings2,
+  RefreshCw,
+  ExternalLink,
+  Info,
+  AlertTriangle,
+  Award,
+} from 'lucide-react';
+import Markdown from 'react-markdown';
+
+const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
+import { useAuth } from '../context/AuthContext';
+import { cn } from '../lib/utils';
+import { useDashboardData } from '../hooks/useDashboardData';
+import { buildAiContextSnapshot } from '../lib/aiContext';
+
+const CHAT_SESSION_STORAGE_KEY = 'truespend_chat_session';
+
+const PROMPT_TOPICS = [
+  {
+    id: 'daily',
+    label: 'Daily Burn',
+    icon: Zap,
+    prompts: [
+      '💰 What can I safely spend today?',
+      '📊 How is my daily allowance tracking?',
+      '📅 Days left until next payday?',
+    ],
+  },
+  {
+    id: 'retrospective',
+    label: 'Report Card',
+    icon: Award,
+    prompts: [
+      '🎓 Give me my financial cycle report card & letter grade',
+      '🏆 What were my biggest wins and spending leaks this cycle?',
+      '💰 Recommend my next payday capital allocations',
+    ],
+  },
+  {
+    id: 'audit',
+    label: 'Health Audit',
+    icon: ShieldCheck,
+    prompts: [
+      '📊 Run a complete financial health audit',
+      '📈 Calculate my current runway and buffer',
+      '💡 Where can I cut spending this cycle?',
+    ],
+  },
+  {
+    id: 'whatif',
+    label: 'What-If Simulation',
+    icon: Sparkles,
+    prompts: [
+      '🔮 What if I make an unplanned 800 MAD purchase?',
+      '📱 Can I afford an unexpected 1,500 MAD expense?',
+      '🎯 What if I boost my savings goal by 500 MAD?',
+    ],
+  },
+  {
+    id: 'receipt',
+    label: 'Receipts & Multi-Log',
+    icon: Camera,
+    prompts: [
+      '🧾 I have a receipt to scan and log',
+      '☕ Log coffee: 30 MAD Cash at Starbucks',
+      '🛒 Log groceries: 450 MAD Bank at Marjane',
+    ],
+  },
+];
+
+const FALLBACK_SUGGESTIONS = [
+  'How am I doing this financial cycle?',
+  'What are my biggest expenses?',
+  'Show me my daily allowance breakdown',
+];
+
+export interface ModelOption {
+  id: string;
+  name: string;
+  shortName: string;
+  badge: string;
+  quotaSummary: string;
+  description: string;
+}
+
+export const AVAILABLE_MODELS: ModelOption[] = [
+  {
+    id: 'auto',
+    name: 'Auto (Smart Fallback)',
+    shortName: 'Smart Auto',
+    badge: 'Recommended',
+    quotaSummary: 'Dynamic • Auto failover',
+    description: 'Prioritizes Gemini 3.8 Flash; instantly auto-switches to Gemini 3.1 Flash Lite (500 req/day) if rate-limited or quota is reached.',
+  },
+  {
+    id: 'gemini-3.8-flash',
+    name: 'Gemini 3.8 Flash',
+    shortName: '3.8 Flash',
+    badge: 'Deep Intelligence',
+    quotaSummary: '20 req/day (Free Tier)',
+    description: 'Deep financial reasoning, scenario forecasting, safe-to-invest runway simulations, and high accuracy receipt parsing.',
+  },
+  {
+    id: 'gemini-3.1-flash-lite',
+    name: 'Gemini 3.1 Flash Lite',
+    shortName: '3.1 Flash Lite',
+    badge: '500 req/day',
+    quotaSummary: '500 req/day (Free Tier)',
+    description: 'Massive daily free quota, ultra-low latency, optimal for high-frequency day-to-day transaction logging.',
+  },
+  {
+    id: 'gemini-flash-latest',
+    name: 'Gemini Flash Latest',
+    shortName: 'Flash Latest',
+    badge: 'Standard Stable',
+    quotaSummary: '20 req/day (Free Tier)',
+    description: 'Production stable release fallback for high reliability and general finance management.',
+  },
+];
+
+export interface ModelStatusInfo {
+  id: string;
+  name: string;
+  badge: string;
+  dailyQuota: number | string;
+  rpm: number;
+  description: string;
+  recommendedFor: string;
+  isAvailable: boolean;
+  isExhausted: boolean;
+  cooldownRemainingSeconds: number;
+}
+
+function getChatSessionId() {
+  const existing = localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+  if (existing && /^[A-Za-z0-9_-]{1,128}$/.test(existing)) return existing;
+
+  const sessionId = crypto.randomUUID().replace(/-/g, '_');
+  localStorage.setItem(CHAT_SESSION_STORAGE_KEY, sessionId);
+  return sessionId;
+}
+
+function formatRelativeTime(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 10) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+interface AiAction {
+  type: string;
+  summary: string;
+  parameters: Record<string, unknown>;
+}
+
+interface Message {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  imageUrl?: string;
+  modelUsed?: string;
+  requestedModel?: string;
+  responseTimeMs?: number;
+  quotaFallback?: boolean;
+  fallbackReason?: string;
+  actions?: AiAction[];
+  actionStatus?: 'approved' | 'rejected';
+  suggestions?: string[];
+  timestamp: number;
+}
+
+interface AIChatProps {
+  onDataChange?: () => void;
+}
+
+// Animated typing dots
+function TypingDots() {
+  return (
+    <div className="flex items-center gap-1.5 py-1">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="h-2 w-2 rounded-full bg-indigo-400 dark:bg-indigo-500 opacity-60"
+          style={{ animation: `typingBounce 1.2s ease-in-out ${i * 0.18}s infinite` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Single message bubble
+function MessageBubble({
+  msg,
+  idx,
+  onAction,
+  onSpeak,
+  isPlayingAudio,
+  isAudioLoading,
+}: {
+  msg: Message;
+  idx: number;
+  onAction: (index: number, approve: boolean) => void;
+  onSpeak?: (text: string, index: number) => void;
+  isPlayingAudio?: boolean;
+  isAudioLoading?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [relTime, setRelTime] = useState(() => formatRelativeTime(msg.timestamp));
+  const isUser = msg.role === 'user';
+
+  // Update relative time every 30 seconds
+  useEffect(() => {
+    const id = setInterval(() => setRelTime(formatRelativeTime(msg.timestamp)), 30_000);
+    return () => clearInterval(id);
+  }, [msg.timestamp]);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(msg.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  }, [msg.content]);
+
+  return (
+    <div
+      className={cn(
+        'group flex flex-col gap-1 w-full',
+        isUser ? 'items-end' : 'items-start',
+        'animate-slideIn',
+      )}
+      style={{ animationDelay: `${idx * 0.02}s`, animationFillMode: 'both' }}
+    >
+      {/* Avatar row for assistant */}
+      {!isUser && (
+        <div className="flex items-center gap-1.5 ml-1 mb-0.5 flex-wrap">
+          <div className="h-5 w-5 rounded-full bg-indigo-600 dark:bg-indigo-700 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-xs">
+            <img src={appIconSrc} alt="Spex" className="w-3.5 h-3.5 object-contain" />
+          </div>
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">Spex</span>
+          {msg.modelUsed ? (
+            <span
+              className={cn(
+                'text-[9px] font-mono px-1.5 py-0.5 rounded-md border flex items-center gap-1 shadow-2xs',
+                msg.quotaFallback
+                  ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/40'
+                  : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-900/40',
+              )}
+              title={msg.fallbackReason || `Generated by ${msg.modelUsed}`}
+            >
+              {msg.quotaFallback ? '🔄 ' : '⚡ '}
+              {msg.modelUsed.replace('gemini-', '')}
+            </span>
+          ) : null}
+          {msg.responseTimeMs ? (
+            <span className="text-[9px] text-gray-400 dark:text-gray-500 font-mono">
+              {(msg.responseTimeMs / 1000).toFixed(1)}s
+            </span>
+          ) : null}
+          {msg.quotaFallback && (
+            <span
+              className="text-[8px] font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-1 py-0.2 rounded"
+              title={msg.fallbackReason}
+            >
+              Auto Failover
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className={cn('flex gap-2 max-w-[90%]', isUser ? 'flex-row-reverse' : 'flex-row')}>
+        <div
+          className={cn(
+            'relative rounded-2xl px-4 py-3 shadow-sm text-sm leading-relaxed',
+            isUser
+              ? 'bg-indigo-600 dark:bg-indigo-700 text-white rounded-br-none'
+              : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-700/60 rounded-bl-none',
+          )}
+        >
+          {msg.imageUrl && (
+            <div className="mb-2.5 overflow-hidden rounded-xl border border-white/20 bg-black/10">
+              <img
+                src={msg.imageUrl}
+                alt="Uploaded receipt or document"
+                className="max-h-56 w-auto object-contain rounded-lg"
+              />
+            </div>
+          )}
+
+          {isUser ? (
+            <span className="whitespace-pre-wrap">{msg.content}</span>
+          ) : (
+            <div className="prose prose-sm max-w-none text-gray-800 dark:text-gray-200 prose-p:leading-relaxed prose-p:my-1 prose-pre:text-gray-800 dark:prose-pre:text-gray-200 prose-pre:bg-gray-50 dark:prose-pre:bg-gray-900 prose-strong:text-indigo-800 dark:prose-strong:text-indigo-300 prose-headings:text-indigo-900 dark:prose-headings:text-indigo-300 prose-headings:font-semibold prose-a:text-indigo-600 dark:prose-a:text-indigo-400 prose-ul:my-1 prose-li:my-0">
+              <Markdown>{msg.content}</Markdown>
+            </div>
+          )}
+
+          {/* Action buttons — assistant messages */}
+          {!isUser && (
+            <div className="absolute -top-2.5 -right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+              {/* TTS Listen Button */}
+              <button
+                type="button"
+                onClick={() => onSpeak?.(msg.content, idx)}
+                title={isPlayingAudio ? 'Stop speech' : 'Listen with Gemini Speech (TTS)'}
+                className={cn(
+                  'rounded-full p-1 border shadow-xs transition-colors',
+                  isPlayingAudio
+                    ? 'bg-indigo-600 text-white border-indigo-600 animate-pulse'
+                    : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 hover:text-indigo-600',
+                )}
+              >
+                {isAudioLoading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : isPlayingAudio ? (
+                  <VolumeX className="w-3.5 h-3.5" />
+                ) : (
+                  <Volume2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+
+              {/* Copy button */}
+              <button
+                type="button"
+                onClick={handleCopy}
+                title="Copy message"
+                className="bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-xs hover:bg-gray-50 dark:hover:bg-gray-600 hover:text-indigo-600 transition-colors"
+              >
+                {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Action proposal panel */}
+      {!isUser && msg.actions && msg.actions.length > 0 && (
+        <div className="ml-7 mt-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/90 dark:bg-indigo-950/40 p-3 max-w-[90%] animate-fadeIn shadow-xs">
+          <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-indigo-200/60 dark:border-indigo-800/60">
+            <span className="text-[11px] font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              {msg.actions.length === 1 ? 'Proposed Financial Action' : `${msg.actions.length} Proposed Actions`}
+            </span>
+            {msg.actions.length > 1 && !msg.actionStatus && (
+              <button
+                type="button"
+                onClick={() => onAction(idx, true)}
+                className="rounded-lg bg-indigo-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-indigo-700 transition-colors shadow-xs flex items-center gap-1"
+              >
+                <CheckCheck className="w-3 h-3" />
+                Approve All
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            {msg.actions.map((action, actionIndex) => (
+              <div
+                key={actionIndex}
+                className="flex items-start gap-2 bg-white/70 dark:bg-gray-800/60 border border-indigo-100 dark:border-indigo-900/40 rounded-lg p-2 text-[11px] text-gray-800 dark:text-gray-200"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 mt-1.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{action.summary}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {!msg.actionStatus ? (
+            <div className="mt-2.5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onAction(idx, true)}
+                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 transition-colors shadow-xs flex items-center gap-1"
+              >
+                <Check className="w-3 h-3" />
+                Approve
+              </button>
+              <button
+                type="button"
+                onClick={() => onAction(idx, false)}
+                className="rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-indigo-950 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 transition-colors"
+              >
+                ✕ Reject
+              </button>
+            </div>
+          ) : (
+            <p
+              className={cn(
+                'mt-2 text-[11px] font-semibold flex items-center gap-1',
+                msg.actionStatus === 'approved' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400',
+              )}
+            >
+              {msg.actionStatus === 'approved' ? '✅ Approved and applied to your account.' : '✕ Rejected — no changes made.'}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Timestamp */}
+      <span className={cn('text-[10px] text-gray-300 dark:text-gray-600 select-none', isUser ? 'mr-1' : 'ml-8')}>
+        {relTime}
+      </span>
+    </div>
+  );
+}
+
+export function AIChat({ onDataChange }: AIChatProps = {}) {
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = localStorage.getItem('truespend_chat_history_v2');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {
+        console.error('Failed to parse chat history', e);
+      }
+    }
+    return [
+      {
+        role: 'assistant',
+        content:
+          "Hey there! 👋 I'm **Spex**, your TrueSpend financial co-pilot powered by **Google Gemini**.\n\nI have complete visibility into your balances, cycles, category burn rates, and savings goals. Ask me anything, dictate your expenses, simulate purchases, or tap a topic below to get started!",
+        timestamp: Date.now(),
+        suggestions: PROMPT_TOPICS[0].prompts,
+      },
+    ];
+  });
+
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [chatSessionId] = useState(getChatSessionId);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [activeTopic, setActiveTopic] = useState<'daily' | 'audit' | 'whatif' | 'receipt'>('daily');
+  const [playingAudioIndex, setPlayingAudioIndex] = useState<number | null>(null);
+  const [audioLoadingIndex, setAudioLoadingIndex] = useState<number | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Model Routing & Quota Failover state
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    return localStorage.getItem('truespend_selected_model') || 'auto';
+  });
+  const [allowFallback, setAllowFallback] = useState<boolean>(() => {
+    return localStorage.getItem('truespend_allow_fallback') !== 'false';
+  });
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [showQuotaModal, setShowQuotaModal] = useState(false);
+  const [modelStatuses, setModelStatuses] = useState<ModelStatusInfo[]>([]);
+  const [isResettingCooldowns, setIsResettingCooldowns] = useState(false);
+  const [isAutoFallenBack, setIsAutoFallenBack] = useState(false);
+
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+  const [selectedImage, setSelectedImage] = useState<{
+    data: string;
+    mimeType: string;
+    previewUrl: string;
+  } | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [voiceSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+  const { token } = useAuth();
+
+  // Close model dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setShowModelDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const fetchModelStatuses = useCallback(async () => {
+    try {
+      const res = await fetch('/api/chat/models', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.models)) {
+          setModelStatuses(data.models);
+        }
+        setIsAutoFallenBack(Boolean(data.isAutoFallenBack));
+      }
+    } catch {}
+  }, [token]);
+
+  useEffect(() => {
+    fetchModelStatuses();
+  }, [fetchModelStatuses]);
+
+  const handleModelChange = (modelId: string) => {
+    setSelectedModel(modelId);
+    localStorage.setItem('truespend_selected_model', modelId);
+    setShowModelDropdown(false);
+  };
+
+  const handleToggleFallback = (enabled: boolean) => {
+    setAllowFallback(enabled);
+    localStorage.setItem('truespend_allow_fallback', enabled ? 'true' : 'false');
+  };
+
+  const handleResetCooldowns = async () => {
+    setIsResettingCooldowns(true);
+    try {
+      const res = await fetch('/api/chat/reset-cooldown', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        await fetchModelStatuses();
+      }
+    } catch {} finally {
+      setIsResettingCooldowns(false);
+    }
+  };
+
+  const {
+    kpis,
+    transactions,
+    debts,
+    budgets,
+    payrolls,
+    goals,
+    fetchData,
+  } = useDashboardData(token);
+
+  const aiContext = useMemo(
+    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, payrolls, goals }),
+    [kpis, transactions, debts, budgets, payrolls, goals],
+  );
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<any>(null);
+
+  const scrollToBottom = useCallback((smooth = true) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom(messages.length <= 1);
+  }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    localStorage.setItem('truespend_chat_history_v2', JSON.stringify(messages));
+  }, [messages]);
+
+  // Track scroll position to show/hide scroll-to-bottom button
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const onScroll = () => {
+      const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      setShowScrollBtn(distFromBottom > 100);
+    };
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => container.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const handleReset = () => {
+    if (confirm('Clear the chat history and start a fresh session?')) {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      setPlayingAudioIndex(null);
+      setMessages([
+        {
+          role: 'assistant',
+          content: "Fresh session started! 👋 What would you like to review or plan today?",
+          timestamp: Date.now(),
+          suggestions: PROMPT_TOPICS[0].prompts,
+        },
+      ]);
+    }
+  };
+
+  const handleExportChat = () => {
+    const exportText = messages
+      .filter((m) => m.role !== 'system')
+      .map(
+        (m) =>
+          `### ${m.role === 'user' ? '👤 You' : '🤖 Spex (Google Gemini AI)'} — ${new Date(
+            m.timestamp,
+          ).toLocaleTimeString()}\n\n${m.content}\n`,
+      )
+      .join('\n---\n\n');
+
+    const blob = new Blob(
+      [
+        `# TrueSpend AI Financial Advisory Report\nDate: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n\n---\n\n${exportText}`,
+      ],
+      { type: 'text/markdown' },
+    );
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `truespend-ai-report-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleSpeak = async (text: string, index: number) => {
+    if (playingAudioIndex === index) {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      setPlayingAudioIndex(null);
+      return;
+    }
+
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
+
+    setAudioLoadingIndex(index);
+    try {
+      const res = await fetch('/api/chat/tts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!res.ok) throw new Error('TTS request failed');
+
+      const { audio, mimeType } = await res.json();
+      if (!audio) throw new Error('No audio in response');
+
+      const audioEl = new Audio(`data:${mimeType || 'audio/wav'};base64,${audio}`);
+      currentAudioRef.current = audioEl;
+
+      audioEl.onended = () => {
+        setPlayingAudioIndex(null);
+        currentAudioRef.current = null;
+      };
+      audioEl.onerror = () => {
+        setPlayingAudioIndex(null);
+        currentAudioRef.current = null;
+      };
+
+      setPlayingAudioIndex(index);
+      await audioEl.play();
+    } catch (err) {
+      console.warn('Gemini TTS failed, falling back to browser SpeechSynthesis:', err);
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const clean = text.replace(/[*#_~`>]/g, '').trim();
+        const utterance = new SpeechSynthesisUtterance(clean);
+        utterance.onend = () => setPlayingAudioIndex(null);
+        utterance.onerror = () => setPlayingAudioIndex(null);
+        setPlayingAudioIndex(index);
+        window.speechSynthesis.speak(utterance);
+      }
+    } finally {
+      setAudioLoadingIndex(null);
+    }
+  };
+
+  const handleSend = useCallback(
+    async (draft = input) => {
+      const content = draft.trim();
+      if ((!content && !selectedImage) || isLoading) return;
+
+      const currentImage = selectedImage;
+      const userMsg: Message = {
+        role: 'user',
+        content: content || 'Please analyze this receipt and propose a transaction.',
+        imageUrl: currentImage?.previewUrl,
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      setInput('');
+      setSelectedImage(null);
+      setIsLoading(true);
+
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+      }
+
+      try {
+        const apiMessages = [...messages, userMsg]
+          .filter((m) => m.role !== 'system')
+          .slice(-10)
+          .map(({ role, content: messageContent }) => ({
+            role,
+            content: messageContent.slice(0, 1400),
+          }));
+
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            messages: apiMessages,
+            contextData: aiContext,
+            sessionId: chatSessionId,
+            image: currentImage ? { data: currentImage.data, mimeType: currentImage.mimeType } : undefined,
+            selectedModel: selectedModel === 'auto' ? 'auto' : selectedModel,
+            allowFallback,
+          }),
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            window.dispatchEvent(new Event('auth:unauthorized'));
+          }
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to get response');
+        }
+
+        const data = await response.json();
+        if (data.reply) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: data.reply,
+              actions: data.actions || [],
+              suggestions: data.suggestions?.length ? data.suggestions : FALLBACK_SUGGESTIONS,
+              modelUsed: data.modelUsed,
+              requestedModel: data.requestedModel,
+              responseTimeMs: data.responseTimeMs,
+              quotaFallback: data.quotaFallback,
+              fallbackReason: data.fallbackReason,
+              timestamp: Date.now(),
+            },
+          ]);
+          // Refresh live model statuses in background
+          fetchModelStatuses();
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: "I've analyzed your financial situation. Let me know if you need any adjustments.",
+              timestamp: Date.now(),
+            },
+          ]);
+        }
+      } catch (error: any) {
+        console.error('Chat error:', error);
+        const errorMessage =
+          error.message && error.message !== 'Failed to fetch'
+            ? `⚠️ ${error.message}`
+            : '⚠️ Sorry, I ran into an error communicating with Gemini. Please try again.';
+        setMessages((prev) => [...prev, { role: 'assistant', content: errorMessage, timestamp: Date.now() }]);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [input, selectedImage, isLoading, messages, token, aiContext, chatSessionId, selectedModel, allowFallback, fetchModelStatuses],
+  );
+
+  // Listen for custom prompts dispatched from elsewhere in the app (e.g. Overview banner)
+  useEffect(() => {
+    const handler = (e: any) => {
+      const prompt = e.detail?.prompt;
+      if (prompt && typeof prompt === 'string') {
+        handleSend(prompt);
+      }
+    };
+    window.addEventListener('truespend:sendChatPrompt', handler);
+    return () => window.removeEventListener('truespend:sendChatPrompt', handler);
+  }, [handleSend]);
+
+  const handleAction = async (index: number, approve: boolean) => {
+    const message = messages[index];
+    if (!message.actions?.length) return;
+    if (!approve) {
+      setMessages((prev) => prev.map((item, i) => (i === index ? { ...item, actionStatus: 'rejected' } : item)));
+      return;
+    }
+    try {
+      const response = await fetch('/api/chat/actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ actions: message.actions }),
+      });
+      if (!response.ok) {
+        if (response.status === 401) {
+          window.dispatchEvent(new Event('auth:unauthorized'));
+        }
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Action could not be completed');
+      }
+      await fetchData();
+      onDataChange?.();
+      setMessages((prev) => prev.map((item, i) => (i === index ? { ...item, actionStatus: 'approved' } : item)));
+    } catch (error: any) {
+      console.error(error);
+      alert(error.message || 'The action could not be completed.');
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    const ta = e.target;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setSelectedImage({
+        data: dataUrl,
+        mimeType: file.type || 'image/jpeg',
+        previewUrl: dataUrl,
+      });
+    };
+    reader.readAsDataURL(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleVoice = useCallback(() => {
+    if (!voiceSupported) return;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInput((prev) => prev + (prev ? ' ' : '') + transcript);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsListening(true);
+  }, [isListening, voiceSupported]);
+
+  // Suggestions for the current active topic
+  const currentTopicData = PROMPT_TOPICS.find((t) => t.id === activeTopic) || PROMPT_TOPICS[0];
+  const lastAssistantMsg = [...messages].reverse().find((m) => m.role === 'assistant');
+  const activeSuggestions =
+    messages.length <= 1 ? currentTopicData.prompts : lastAssistantMsg?.suggestions ?? currentTopicData.prompts;
+
+  const charLimit = 500;
+  const charsLeft = charLimit - input.length;
+
+  return (
+    <>
+      <style>{`
+        @keyframes typingBounce {
+          0%, 80%, 100% { transform: translateY(0); opacity: 0.6; }
+          40% { transform: translateY(-6px); opacity: 1; }
+        }
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .animate-slideIn { animation: slideIn 0.25s ease-out; }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+      `}</style>
+
+      <div
+        className={cn(
+          'fixed inset-0 z-[60] flex flex-col bg-gray-50 dark:bg-gray-950',
+          'sm:static sm:z-auto sm:rounded-2xl sm:shadow-sm sm:border sm:border-gray-200 sm:dark:border-gray-800 sm:overflow-hidden sm:h-[calc(100vh-10rem)] sm:min-h-[520px]',
+        )}
+      >
+        {/* ─── Mobile compact header ─────────────────────────────── */}
+        <div className="sm:hidden flex items-center justify-between px-4 py-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('truespend:openSidebar'))}
+              title="Open menu"
+              className="p-1.5 -ml-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:text-white dark:hover:bg-gray-800 transition-colors"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-xs p-1.5">
+              <img src={appIconSrc} alt="Spex" className="w-full h-full object-contain drop-shadow-xs" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">Spex</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    fetchModelStatuses();
+                    setShowQuotaModal(true);
+                  }}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium border shadow-2xs transition-colors',
+                    selectedModel === 'auto'
+                      ? isAutoFallenBack
+                        ? 'bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60'
+                        : 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60'
+                      : 'bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/60',
+                  )}
+                  title="View/Change Gemini model routing"
+                >
+                  <Cpu className="w-2.5 h-2.5" />
+                  {selectedModel === 'auto'
+                    ? isAutoFallenBack
+                      ? 'Auto (3.1 Lite)'
+                      : 'Smart Auto'
+                    : AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.shortName || selectedModel}
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">TrueSpend AI Co-Pilot</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                fetchModelStatuses();
+                setShowQuotaModal(true);
+              }}
+              title="Model routing & quota manager"
+              className="p-2 rounded-full text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleExportChat}
+              title="Export report"
+              className="p-2 rounded-full text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleReset}
+              title="Clear chat"
+              className="p-2 rounded-full text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* ─── Desktop header ────────────────────────────────────── */}
+        <div className="hidden sm:flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 dark:from-indigo-900 dark:via-indigo-950 dark:to-purple-950 flex-shrink-0 text-white">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center p-1.5 shadow-sm">
+              <img src={appIconSrc} alt="Spex" className="w-full h-full object-contain drop-shadow-sm" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold text-white leading-tight">Spex Financial Intelligence</p>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/20 backdrop-blur-xs px-2 py-0.5 text-[10px] font-semibold text-white shadow-xs">
+                  <Sparkles className="w-3 h-3 text-indigo-200" />
+                  Google Gemini AI
+                </span>
+              </div>
+              <p className="text-[11px] text-indigo-200/90 leading-tight">
+                Autonomous Cycles, What-If Simulation & Smart Model Failover
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 relative">
+            {/* Model Selector Dropdown */}
+            <div className="relative" ref={modelDropdownRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowModelDropdown((prev) => !prev);
+                  fetchModelStatuses();
+                }}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white transition-all border shadow-xs',
+                  selectedModel === 'auto'
+                    ? isAutoFallenBack
+                      ? 'bg-amber-500/30 hover:bg-amber-500/40 border-amber-300/40 text-amber-100'
+                      : 'bg-white/15 hover:bg-white/25 border-white/20'
+                    : 'bg-indigo-500/40 hover:bg-indigo-500/50 border-indigo-300/40',
+                )}
+                title="Select Gemini AI Model or Switch Mode"
+              >
+                <Cpu className="w-3.5 h-3.5 text-indigo-200" />
+                <span className="font-semibold max-w-[130px] truncate">
+                  {selectedModel === 'auto'
+                    ? isAutoFallenBack
+                      ? 'Auto (3.1 Lite Active)'
+                      : 'Smart Auto'
+                    : AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.shortName || selectedModel}
+                </span>
+                <ChevronDown className={cn('w-3 h-3 text-white/80 transition-transform', showModelDropdown && 'rotate-180')} />
+              </button>
+
+              {/* Dropdown Menu */}
+              {showModelDropdown && (
+                <div className="absolute right-0 top-full mt-2 w-80 rounded-xl bg-white dark:bg-gray-800 shadow-2xl border border-gray-200 dark:border-gray-700 py-2.5 px-3 z-50 text-gray-900 dark:text-gray-100 animate-fadeIn">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100 dark:border-gray-700">
+                    <div>
+                      <p className="text-xs font-bold text-gray-900 dark:text-white">AI Model Routing</p>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400">Manual switch & smart quota failover</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowModelDropdown(false);
+                        setShowQuotaModal(true);
+                      }}
+                      className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium flex items-center gap-0.5"
+                    >
+                      <Info className="w-3 h-3" />
+                      Quota Info
+                    </button>
+                  </div>
+
+                  {/* Model List */}
+                  <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                    {AVAILABLE_MODELS.map((model) => {
+                      const isSelected = selectedModel === model.id;
+                      const status = modelStatuses.find((s) => s.id === model.id);
+                      const isExhausted = status?.isExhausted;
+
+                      return (
+                        <button
+                          key={model.id}
+                          type="button"
+                          onClick={() => handleModelChange(model.id)}
+                          className={cn(
+                            'w-full text-left p-2 rounded-lg text-xs transition-colors border',
+                            isSelected
+                              ? 'bg-indigo-50 dark:bg-indigo-950/70 border-indigo-200 dark:border-indigo-800/80 text-indigo-900 dark:text-indigo-100'
+                              : 'bg-transparent hover:bg-gray-50 dark:hover:bg-gray-750 border-transparent text-gray-700 dark:text-gray-300',
+                          )}
+                        >
+                          <div className="flex items-center justify-between mb-0.5">
+                            <span className="font-semibold flex items-center gap-1.5">
+                              {model.name}
+                              {isSelected && <Check className="w-3 h-3 text-indigo-600 dark:text-indigo-400 inline" />}
+                            </span>
+                            <span
+                              className={cn(
+                                'text-[9px] px-1.5 py-0.2 rounded-full font-mono font-medium',
+                                isExhausted
+                                  ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
+                              )}
+                            >
+                              {isExhausted ? 'Rate Limited' : model.badge}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-tight">
+                            {model.description}
+                          </p>
+                          <p className="text-[9px] text-indigo-600 dark:text-indigo-400 font-mono mt-1">
+                            📊 {model.quotaSummary}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Fallback Checkbox Toggle */}
+                  <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-gray-700">
+                    <label className="flex items-start gap-2 cursor-pointer select-none text-[11px] text-gray-700 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={allowFallback}
+                        onChange={(e) => handleToggleFallback(e.target.checked)}
+                        className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                      />
+                      <div>
+                        <span className="font-semibold block">Auto-fallback on rate limits</span>
+                        <span className="text-[9px] text-gray-400 dark:text-gray-500 block leading-tight">
+                          If chosen model runs out of requests or hits 429, auto-switches to 3.1 Lite (500/day).
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                fetchModelStatuses();
+                setShowQuotaModal(true);
+              }}
+              title="View Gemini API Quotas & Credits"
+              className="inline-flex items-center gap-1 rounded-lg bg-white/10 hover:bg-white/20 px-2.5 py-1.5 text-xs font-medium text-white transition-colors"
+            >
+              <Info className="w-3.5 h-3.5" />
+              <span>Quotas</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleExportChat}
+              title="Export financial report (Markdown)"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-2.5 py-1.5 text-xs font-medium text-white transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export
+            </button>
+            <button
+              type="button"
+              onClick={handleReset}
+              title="Clear chat"
+              className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* ─── Topic Selector Bar ─────────────────────────────────── */}
+        <div className="flex items-center gap-1.5 px-3 sm:px-5 py-2 bg-white/90 dark:bg-gray-900/90 border-b border-gray-100 dark:border-gray-800 overflow-x-auto no-scrollbar flex-shrink-0">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1 hidden sm:inline">
+            Modes:
+          </span>
+          {PROMPT_TOPICS.map((topic) => {
+            const Icon = topic.icon;
+            const isActive = activeTopic === topic.id;
+            return (
+              <button
+                key={topic.id}
+                type="button"
+                onClick={() => setActiveTopic(topic.id as any)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all whitespace-nowrap',
+                  isActive
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200',
+                )}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {topic.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ─── Messages ──────────────────────────────────────────── */}
+        <div
+          ref={messagesContainerRef}
+          className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 space-y-3.5 scroll-smooth"
+          style={{ overscrollBehavior: 'contain' }}
+        >
+          {messages
+            .filter((m) => m.role !== 'system')
+            .map((msg, idx) => (
+              <MessageBubble
+                key={idx}
+                msg={msg}
+                idx={idx}
+                onAction={handleAction}
+                onSpeak={handleSpeak}
+                isPlayingAudio={playingAudioIndex === idx}
+                isAudioLoading={audioLoadingIndex === idx}
+              />
+            ))}
+
+          {isLoading && (
+            <div className="flex items-start gap-2 animate-slideIn">
+              <div className="h-5 w-5 rounded-full bg-indigo-600 dark:bg-indigo-700 flex items-center justify-center flex-shrink-0 mt-1 overflow-hidden shadow-xs">
+                <img src={appIconSrc} alt="Spex" className="w-3.5 h-3.5 object-contain" />
+              </div>
+              <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700/60 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm">
+                <TypingDots />
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* ─── Scroll to bottom button ───────────────────────────── */}
+        {showScrollBtn && (
+          <button
+            type="button"
+            onClick={() => scrollToBottom()}
+            className="absolute bottom-28 right-4 sm:bottom-28 z-10 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white p-2 shadow-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-all animate-fadeIn"
+            title="Scroll to latest"
+          >
+            <ChevronDown className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* ─── Suggestion chips ──────────────────────────────────── */}
+        {activeSuggestions.length > 0 && !isLoading && (
+          <div className="flex gap-2 px-3 sm:px-5 pb-2 overflow-x-auto no-scrollbar flex-shrink-0">
+            {activeSuggestions.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                disabled={isLoading}
+                onClick={() => void handleSend(prompt)}
+                className="whitespace-nowrap rounded-full border border-indigo-200/80 dark:border-indigo-800/60 bg-white dark:bg-gray-800/90 px-3 py-1.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors disabled:opacity-50 flex-shrink-0 shadow-xs"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ─── Input bar ─────────────────────────────────────────── */}
+        <div className="flex-shrink-0 px-3 sm:px-5 pb-3 pt-2 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-t border-gray-100 dark:border-gray-800">
+          {selectedImage && (
+            <div className="mb-2 inline-flex items-center gap-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 p-1.5 pr-3 text-xs animate-fadeIn shadow-xs">
+              <img
+                src={selectedImage.previewUrl}
+                alt="Receipt preview"
+                className="h-11 w-11 rounded-lg object-cover border border-indigo-200 dark:border-indigo-700"
+              />
+              <div className="flex flex-col">
+                <span className="text-[11px] font-semibold text-indigo-900 dark:text-indigo-200 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                  Receipt Attached
+                </span>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400">
+                  Gemini Vision will extract store, amount, and items
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedImage(null)}
+                className="ml-2 rounded-full p-1 text-gray-400 hover:bg-white hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200 transition-colors"
+                title="Remove image"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          <div className="relative flex items-end gap-2 bg-gray-50 dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-indigo-400 dark:focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-400/20 transition-all shadow-xs">
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={input}
+              onChange={handleTextareaInput}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                selectedImage
+                  ? 'Add an optional note (e.g. Lunch with team)…'
+                  : 'Ask Spex or type multiple expenses (e.g. 120 MAD lunch, 30 MAD taxi)…'
+              }
+              maxLength={charLimit}
+              className="flex-1 resize-none bg-transparent pl-4 pr-2 py-3 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none leading-relaxed"
+              disabled={isLoading}
+              style={{ minHeight: '44px', maxHeight: '120px' }}
+            />
+            {charsLeft < 100 && (
+              <span
+                className={cn(
+                  'absolute bottom-3 right-[88px] text-[10px] select-none',
+                  charsLeft < 20 ? 'text-red-400' : 'text-gray-300 dark:text-gray-600',
+                )}
+              >
+                {charsLeft}
+              </span>
+            )}
+            <div className="flex items-center gap-1 pr-2 pb-2">
+              <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+                title="Scan receipt or invoice (Gemini Multimodal Vision)"
+                className="p-2 rounded-full transition-all text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+
+              {voiceSupported && (
+                <button
+                  type="button"
+                  onClick={handleVoice}
+                  title={isListening ? 'Stop listening' : 'Voice dictation'}
+                  className={cn(
+                    'p-2 rounded-full transition-all',
+                    isListening
+                      ? 'bg-red-100 dark:bg-red-900/30 text-red-500 animate-pulse'
+                      : 'text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700',
+                  )}
+                >
+                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleSend()}
+                disabled={(!input.trim() && !selectedImage) || isLoading}
+                className="p-2 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs"
+              >
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <p className="text-center text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 select-none">
+            Powered by Google Gemini • Spex can make mistakes, always verify numbers.
+          </p>
+        </div>
+      </div>
+
+      {/* ─── Gemini Quotas & Model Routing Modal ──────────────────────── */}
+      {showQuotaModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+          <div className="relative w-full max-w-xl max-h-[90vh] flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 text-white">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-white/20 backdrop-blur-xs">
+                  <Cpu className="w-5 h-5 text-indigo-100" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold leading-tight">Gemini Model Routing & Quotas</h3>
+                  <p className="text-xs text-indigo-200/90 leading-tight">
+                    Smart auto failover, manual switching & real-time quota diagnostics
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQuotaModal(false)}
+                className="p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/20 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300">
+              {/* How quotas work banner */}
+              <div className="rounded-xl p-4 bg-indigo-50/80 dark:bg-indigo-950/50 border border-indigo-100 dark:border-indigo-900/50 space-y-2">
+                <div className="flex items-center gap-2 text-indigo-900 dark:text-indigo-200 font-bold text-xs">
+                  <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>How Gemini Free Tier Quotas Work Across Models</span>
+                </div>
+                <p className="text-xs leading-relaxed text-indigo-800 dark:text-indigo-300">
+                  Google Gemini API quotas (RPD = Requests Per Day, RPM = Requests Per Minute) are <strong>tracked separately per model</strong>. When Gemini 3.8 Flash hits its 20 requests/day limit, <strong>Gemini 3.1 Flash Lite still has 500 requests/day available</strong>!
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
+                  <div className="bg-white dark:bg-gray-800 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
+                    <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Gemini 3.8 Flash</span>
+                    <span className="font-bold text-indigo-700 dark:text-indigo-300">20 req/day</span>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
+                    <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Gemini 3.1 Flash Lite</span>
+                    <span className="font-bold text-green-600 dark:text-green-400">500 req/day</span>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
+                    <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Gemini TTS Audio</span>
+                    <span className="font-bold text-purple-600 dark:text-purple-400">10 req/day</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mode Selection */}
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
+                  Select Routing Strategy
+                </h4>
+                <div className="space-y-2">
+                  {AVAILABLE_MODELS.map((model) => {
+                    const isSelected = selectedModel === model.id;
+                    const status = modelStatuses.find((s) => s.id === model.id);
+                    const isExhausted = status?.isExhausted;
+
+                    return (
+                      <div
+                        key={model.id}
+                        onClick={() => handleModelChange(model.id)}
+                        className={cn(
+                          'flex items-start justify-between p-3 rounded-xl border cursor-pointer transition-all',
+                          isSelected
+                            ? 'bg-indigo-50/70 dark:bg-indigo-950/50 border-indigo-300 dark:border-indigo-700 shadow-xs'
+                            : 'bg-gray-50 dark:bg-gray-800/60 border-gray-200 dark:border-gray-700/60 hover:bg-gray-100/70 dark:hover:bg-gray-800',
+                        )}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input
+                            type="radio"
+                            name="gemini-model"
+                            checked={isSelected}
+                            onChange={() => handleModelChange(model.id)}
+                            className="mt-1 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-gray-900 dark:text-white text-xs">{model.name}</span>
+                              <span
+                                className={cn(
+                                  'text-[9px] px-2 py-0.5 rounded-full font-mono font-medium',
+                                  isExhausted
+                                    ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                                    : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
+                                )}
+                              >
+                                {isExhausted ? '⚠️ Quota Cooldown' : model.badge}
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">
+                              {model.description}
+                            </p>
+                            <span className="inline-block text-[10px] text-indigo-600 dark:text-indigo-400 font-mono mt-1">
+                              📊 Quota: {model.quotaSummary}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Auto Fallback Checkbox */}
+                <div className="mt-4 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/60">
+                  <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={allowFallback}
+                      onChange={(e) => handleToggleFallback(e.target.checked)}
+                      className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                    />
+                    <div>
+                      <span className="font-semibold text-xs text-gray-900 dark:text-white block">
+                        Intelligent Auto-Fallback (Recommended)
+                      </span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 block leading-relaxed mt-0.5">
+                        If your chosen model encounters rate limiting (429) or high server demand (503), TrueSpend will instantly fall back to Gemini 3.1 Flash Lite so your workflow never gets interrupted.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Real-time Model Health Status */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Live System Monitor
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={handleResetCooldowns}
+                    disabled={isResettingCooldowns}
+                    className="inline-flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 font-semibold transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className={cn('w-3.5 h-3.5', isResettingCooldowns && 'animate-spin')} />
+                    Clear Cooldown Timers
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {modelStatuses.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 text-xs"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            'h-2.5 w-2.5 rounded-full',
+                            m.isExhausted ? 'bg-amber-500 animate-pulse' : 'bg-green-500',
+                          )}
+                        />
+                        <span className="font-semibold text-gray-900 dark:text-white">{m.name}</span>
+                        <span className="text-[10px] text-gray-400 font-mono">({m.dailyQuota} req/day)</span>
+                      </div>
+                      <div>
+                        {m.isExhausted ? (
+                          <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/40">
+                            Cooldown: {Math.ceil(m.cooldownRemainingSeconds / 60)}m left
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-mono text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-950/60 px-2 py-0.5 rounded-full border border-green-200 dark:border-green-900/40">
+                            Healthy & Ready
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Direct links to Google Cloud Console */}
+              <div className="pt-2 border-t border-gray-200 dark:border-gray-800 flex flex-wrap items-center gap-3">
+                <a
+                  href="https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/quotas"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  View Live Quotas on Google Cloud Console
+                </a>
+                <span className="text-gray-300 dark:text-gray-700">•</span>
+                <a
+                  href="https://aistudio.google.com/app/plan_information"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Google AI Studio Plan Information
+                </a>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3.5 bg-gray-50 dark:bg-gray-800/80 border-t border-gray-200 dark:border-gray-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowQuotaModal(false)}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
