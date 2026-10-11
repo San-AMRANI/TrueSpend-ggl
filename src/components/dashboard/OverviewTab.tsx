@@ -13,7 +13,7 @@ import { SpexAiPulseBanner } from './SpexAiPulseBanner';
 import {
   AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
   Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap,
-  Target, ChevronRight, Plus, Repeat, Snowflake, ShieldCheck, Coins, Award
+  Target, ChevronRight, Plus, Repeat, Snowflake, ShieldCheck, Coins
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -110,43 +110,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
       {/* Spex Daily AI Pulse Banner */}
       <SpexAiPulseBanner kpis={kpis} setActiveTab={setActiveTab} />
-
-      {/* AI Cycle Wrap-Up & Payday Retrospective Hero Quick-Banner */}
-      <div className="relative overflow-hidden rounded-2xl border border-indigo-200/80 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/80 dark:from-indigo-950/40 dark:via-gray-900 dark:to-purple-950/40 p-4 sm:p-5 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/20 shrink-0">
-              <Award className="w-5 h-5" />
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                  AI Cycle Wrap-Up & Payday Retrospective
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  Report Card 🎓
-                </span>
-              </div>
-              <h3 className="text-base font-bold text-gray-900 dark:text-white">
-                Grade Your Financial Cycle & Plan Next Payday Allocations
-              </h3>
-              <p className="text-xs text-gray-600 dark:text-gray-400 max-w-2xl">
-                Get your academic letter grade, review top spending victories vs leaks, and receive an AI-tailored payday allocation gameplan.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-            <Button
-              onClick={() => setActiveTab('reports')}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-md shadow-indigo-600/20"
-            >
-              <span>View Report Card</span>
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
 
       {/* Row 1 – Safe to Spend Hero + Daily Allowance + Runway */}
       <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">

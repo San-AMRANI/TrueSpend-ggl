@@ -248,9 +248,13 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           transactions={transactions}
           payrolls={payrolls}
           debts={debts}
+          budgets={budgets}
+          goals={goals}
+          subscriptions={subscriptions}
           analyticsMonth={analyticsMonth}
           setAnalyticsMonth={setAnalyticsMonth}
           wallets={kpis?.accounts || []}
+          setActiveTab={setActiveTab}
         />
       )}
 
