@@ -1,0 +1,6 @@
+{
+  "name": "TrueSpend",
+  "description": "Smart personal finance tracker with financial contexts, automated transaction linking, and real-time cash flow analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
