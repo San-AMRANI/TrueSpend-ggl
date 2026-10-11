@@ -39,20 +39,26 @@ const emptyForm = (wallets?: { id: string; name: string; type?: string }[]): For
 interface TransactionFormProps {
   onSuccess: () => void;
   transaction?: Transaction | null;
+  duplicateFrom?: Transaction | null;
+  initialType?: 'Income' | 'Expense' | 'Transfer';
   onCancel?: () => void;
   wallets?: { id: string; name: string; type?: string }[];
   contexts?: any[];
   onDelete?: (id: string) => Promise<void> | void;
 }
 
-export default function TransactionForm({ onSuccess, transaction, onCancel, wallets, contexts = [], onDelete }: TransactionFormProps) {
+export default function TransactionForm({ onSuccess, transaction, duplicateFrom, initialType, onCancel, wallets, contexts = [], onDelete }: TransactionFormProps) {
   const { token } = useAuth();
   const isEditing = Boolean(transaction);
   const [loading, setLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState('');
-  const [formData, setFormData] = useState<FormData>(emptyForm(wallets));
+  const [formData, setFormData] = useState<FormData>(() => {
+    const base = emptyForm(wallets);
+    if (initialType) base.type = initialType;
+    return base;
+  });
   const [isSplit, setIsSplit] = useState(false);
   const [splits, setSplits] = useState<FormSplit[]>([{ reimbursable_amount: '', linked_contact_name: '' }]);
   const [loanContactName, setLoanContactName] = useState('');
@@ -72,34 +78,37 @@ export default function TransactionForm({ onSuccess, transaction, onCancel, wall
   };
 
   useEffect(() => {
-    if (!transaction) {
-      setFormData(emptyForm(wallets));
+    const sourceTx = transaction || duplicateFrom;
+    if (!sourceTx) {
+      const base = emptyForm(wallets);
+      if (initialType) base.type = initialType;
+      setFormData(base);
       setIsSplit(false);
       setSplits([{ reimbursable_amount: '', linked_contact_name: '' }]);
       setLoanContactName('');
       return;
     }
-    if (transaction.type === 'Debt Repayment') {
+    if (transaction && transaction.type === 'Debt Repayment') {
       setError('Debt repayments are managed from the linked debt to protect settlement history.');
       return;
     }
     setError('');
     setFormData({
-      amount: transaction.amount,
-      type: transaction.category === '🤝 Loan Received' && transaction.linkedDebtType === 'Payable' ? 'Loan Received' : transaction.type,
-      walletId: transaction.walletId || wallets?.[0]?.id || '',
-      toWalletId: transaction.destinationWalletId || (transaction as any).toWalletId || wallets?.[1]?.id || '',
-      category: transaction.category || '',
-      notes: transaction.notes || '',
-      transaction_date: new Date(transaction.createdAt).toISOString().slice(0, 10),
-      contextId: transaction.contextId || null,
+      amount: sourceTx.amount,
+      type: sourceTx.category === '🤝 Loan Received' && sourceTx.linkedDebtType === 'Payable' ? 'Loan Received' : sourceTx.type,
+      walletId: sourceTx.walletId || wallets?.[0]?.id || '',
+      toWalletId: sourceTx.destinationWalletId || (sourceTx as any).toWalletId || wallets?.[1]?.id || '',
+      category: sourceTx.category || '',
+      notes: duplicateFrom ? `${sourceTx.notes || ''} (Copy)` : (sourceTx.notes || ''),
+      transaction_date: duplicateFrom ? new Date().toISOString().slice(0, 10) : new Date(sourceTx.createdAt).toISOString().slice(0, 10),
+      contextId: sourceTx.contextId || null,
     });
 
-    if (transaction.splits && transaction.splits.length > 0) {
-      const receivableSplits = transaction.splits
+    if (sourceTx.splits && sourceTx.splits.length > 0) {
+      const receivableSplits = sourceTx.splits
         .filter((s) => s.linkedDebtType !== 'Payable')
         .map((s) => ({
-          id: s.id,
+          id: duplicateFrom ? undefined : s.id,
           reimbursable_amount: s.reimbursableAmount || '',
           linked_contact_name: s.linkedContactName || '',
         }));
@@ -110,20 +119,20 @@ export default function TransactionForm({ onSuccess, transaction, onCancel, wall
         setIsSplit(false);
         setSplits([{ reimbursable_amount: '', linked_contact_name: '' }]);
       }
-    } else if (transaction.reimbursableAmount && Number.parseFloat(transaction.reimbursableAmount) > 0) {
+    } else if (sourceTx.reimbursableAmount && Number.parseFloat(sourceTx.reimbursableAmount) > 0) {
       setIsSplit(true);
       setSplits([{
-        id: transaction.linkedContactId || undefined,
-        reimbursable_amount: transaction.reimbursableAmount || '',
-        linked_contact_name: transaction.linkedContactName || '',
+        id: duplicateFrom ? undefined : (sourceTx.linkedContactId || undefined),
+        reimbursable_amount: sourceTx.reimbursableAmount || '',
+        linked_contact_name: sourceTx.linkedContactName || '',
       }]);
     } else {
       setIsSplit(false);
       setSplits([{ reimbursable_amount: '', linked_contact_name: '' }]);
     }
 
-    setLoanContactName(transaction.linkedDebtType === 'Payable' ? transaction.linkedContactName || '' : '');
-  }, [transaction]);
+    setLoanContactName(sourceTx.linkedDebtType === 'Payable' ? sourceTx.linkedContactName || '' : '');
+  }, [transaction, duplicateFrom, initialType]);
 
   useEffect(() => {
     // Only auto-suggest context for NEW transactions when date changes

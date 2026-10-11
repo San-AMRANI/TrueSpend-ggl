@@ -156,6 +156,12 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           transactions={transactions}
           wallets={kpis?.accounts || []}
           contexts={contexts}
+          budgets={budgets}
+          subscriptions={subscriptions}
+          goals={goals}
+          debts={debts}
+          payrolls={payrolls}
+          setActiveTab={setActiveTab}
           handleDeleteTx={handleDeleteTransaction}
           fetchData={fetchData}
           selectedTransactionId={selectedTransactionId}
