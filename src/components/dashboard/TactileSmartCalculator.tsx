@@ -414,13 +414,13 @@ export const TactileSmartCalculator: React.FC<TactileSmartCalculatorProps> = ({
     }
   };
 
-  // Test in What-If
+  // Test in What-If / Budgets
   const handleTestInWhatIf = () => {
     if (onSetWhatIfAmount) {
       onSetWhatIfAmount(numericResult);
     }
-    onNavigateToTab?.('what-if');
-    showToast(`Simulating ${numericResult.toLocaleString()} MAD in What-If engine`);
+    onNavigateToTab?.('budgets');
+    showToast(`Checking ${numericResult.toLocaleString()} MAD in Budgets`);
   };
 
   // Send to Savings Goal

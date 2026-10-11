@@ -73,9 +73,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     .filter((debt) => debt.type === 'Payable' && debt.status === 'Pending')
     .reduce((sum, debt) => sum + Number.parseFloat(debt.remainingBalance), 0);
   
-  // Unified Net Worth Tracking (Liquidity + Investments + Receivables - Payables)
-  const totalInvestments = investmentsData?.totalPortfolioValueMad || 0;
-  const netWorth = (kpis?.totalLiquidity ?? 0) + totalInvestments + activeReceivables - activePayables;
+  // Unified Net Worth Tracking (Liquidity across all wallets + Receivables - Payables)
+  const netWorth = (kpis?.totalLiquidity ?? 0) + activeReceivables - activePayables;
   const dailyStatusStyles = { on_track: 'text-blue-600', warning: 'text-amber-600', critical: 'text-red-600' };
 
   // Subscriptions metrics
@@ -204,7 +203,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               {kpis?.dailyRemaining.toFixed(2) || '0.00'} <span className="text-sm sm:text-base">MAD</span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{kpis?.dailySpent.toFixed(2) || '0.00'} spent of {kpis?.dailyAllowance.toFixed(2) || '0.00'}</p>
-            <Button type="button" variant="ghost" size="sm" className="mt-1 -ml-2 hidden sm:inline-flex" onClick={() => setActiveTab('what-if')}>Simulate a purchase</Button>
           </CardContent>
         </Card>
 
@@ -661,84 +659,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 onClick={() => setActiveTab('subscriptions')}
               >
                 Open Radar & Pruner →
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Row 7 – Investments & Wealth Glance */}
-      <Card className="min-w-0 overflow-hidden border-amber-100 dark:border-amber-900/40 bg-gradient-to-r from-white via-amber-50/20 to-indigo-50/20 dark:from-gray-900 dark:via-amber-950/20 dark:to-indigo-950/20">
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-3">
-          <CardTitle className="flex items-center gap-2 text-base sm:text-lg text-gray-900 dark:text-gray-100">
-            <Coins className="h-5 w-5 text-amber-500" /> Investment Portfolio & Wealth Engine
-          </CardTitle>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-700 dark:text-amber-400"
-            onClick={() => setActiveTab('investments')}
-          >
-            <span>Open Wealth & DCA Hub ({investmentsData?.holdings?.length || 0} Assets)</span>
-            <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-850/80">
-              <span className="text-[11px] text-gray-500 dark:text-gray-400 block font-medium">Portfolio Market Value</span>
-              <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                {(totalInvestments || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
-              </span>
-              <span className="text-[10px] text-gray-400 block mt-0.5">
-                Cost Basis: {(investmentsData?.totalCostBasisMad || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-850/80">
-              <span className="text-[11px] text-gray-500 dark:text-gray-400 block font-medium">Unrealized Return</span>
-              <span
-                className={`text-lg font-bold ${
-                  (investmentsData?.totalUnrealizedPnlMad || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'
-                }`}
-              >
-                {(investmentsData?.totalUnrealizedPnlMad || 0) >= 0 ? '+' : ''}
-                {(investmentsData?.totalUnrealizedPnlMad || 0).toFixed(2)} MAD
-              </span>
-              <span
-                className={`text-[10px] font-semibold block mt-0.5 ${
-                  (investmentsData?.totalUnrealizedPnlPercent || 0) >= 0 ? 'text-emerald-600' : 'text-red-600'
-                }`}
-              >
-                {(investmentsData?.totalUnrealizedPnlPercent || 0) >= 0 ? '+' : ''}
-                {(investmentsData?.totalUnrealizedPnlPercent || 0).toFixed(2)}%
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl border border-emerald-100 dark:border-emerald-950/40 bg-emerald-50/40 dark:bg-emerald-950/20">
-              <span className="text-[11px] text-emerald-800 dark:text-emerald-300 block font-semibold">Safe-to-Invest This Month</span>
-              <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
-                {(investmentsData?.safeToInvest?.safeToInvestMonthly || 0).toLocaleString()} MAD
-              </span>
-              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block mt-0.5">
-                Protected runway surplus
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-850/80 flex flex-col justify-between">
-              <div>
-                <span className="text-[11px] text-gray-500 dark:text-gray-400 block font-medium">Passive Yield / FIRE</span>
-                <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
-                  {(investmentsData?.annualPassiveIncomeMad || 0).toLocaleString()} MAD / yr
-                </span>
-              </div>
-              <Button
-                size="sm"
-                onClick={() => setActiveTab('investments')}
-                className="mt-2 text-xs bg-amber-600 hover:bg-amber-700 text-white w-full"
-              >
-                Manage Investments →
               </Button>
             </div>
           </div>

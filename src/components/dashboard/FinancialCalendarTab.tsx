@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Landmark, Trash2, WalletCards } from 'lucide-react';
-import { Debt, Payroll, Transaction, Goal, Subscription, DcaPlan } from '../../types';
+import { ChevronLeft, ChevronRight, Landmark, Trash2, WalletCards, CalendarDays, TrendingUp } from 'lucide-react';
+import { Debt, Payroll, Transaction, Goal, Subscription, DcaPlan, KPI } from '../../types';
 import { Button } from '../ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import { CashFlowTab } from './CashFlowTab';
 
 type EventKind = 'income' | 'expense' | 'transfer' | 'debt' | 'payroll' | 'goal' | 'subscription' | 'dca' | 'investment';
 type CalendarEvent = { id: string; date: string; kind: EventKind; title: string; amount?: number; transactionId?: string; debtId?: string; payroll?: Payroll; goalId?: string; dcaPlanId?: string };
@@ -16,6 +17,7 @@ interface FinancialCalendarTabProps {
   debts: Debt[];
   payrolls: Payroll[];
   dcaPlans?: DcaPlan[];
+  kpis?: KPI | null;
   openTransaction: (id: string) => void;
   setActiveTab: (tab: 'debts') => void;
   onCreatePayroll: (scheduledFor: string, amount: number) => Promise<void>;
@@ -27,11 +29,13 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   debts,
   payrolls,
   dcaPlans = [],
+  kpis = null,
   openTransaction,
   setActiveTab,
   onCreatePayroll,
   onDeletePayroll,
 }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'cashflow'>('calendar');
   const today = dateKey(new Date());
   const now = new Date();
   const [ref, setRef] = useState({ year: now.getUTCFullYear(), month: now.getUTCMonth() });
@@ -183,26 +187,180 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     investment: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 font-semibold',
   };
 
-  return <div className="min-w-0 space-y-4">
-    {notice && <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white shadow-lg dark:bg-gray-100 dark:text-gray-900">{notice}</div>}
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Financial Calendar</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">Select one day each month to set its payroll. Consecutive payrolls define your financial periods.</p>
+  return (
+    <div className="min-w-0 space-y-4">
+      {notice && (
+        <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-gray-900 px-4 py-3 text-sm font-medium text-white shadow-lg dark:bg-gray-100 dark:text-gray-900">
+          {notice}
+        </div>
+      )}
+
+      {/* Sub-Tab Navigation Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-800 pb-3">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+            <CalendarDays className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            Financial Calendar & Cash Flow
+          </h2>
+          <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+            Payroll periods, event scheduling, and historical cash flow balance timeline
+          </p>
+        </div>
+
+        {/* View Toggle */}
+        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700/60 self-start sm:self-auto">
+          <button
+            onClick={() => setActiveSubTab('calendar')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeSubTab === 'calendar'
+                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            <span>Calendar & Payday</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('cashflow')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeSubTab === 'cashflow'
+                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span>Cash Flow Timeline</span>
+          </button>
+        </div>
       </div>
-      <div className="flex items-center gap-2"><Button variant="outline" size="icon" onClick={() => navigate(-1)}><ChevronLeft className="h-4 w-4" /></Button><Button variant="outline" onClick={() => setRef({ year: now.getUTCFullYear(), month: now.getUTCMonth() })}>{monthLabel(ref.year, ref.month)}</Button><Button variant="outline" size="icon" onClick={() => navigate(1)}><ChevronRight className="h-4 w-4" /></Button></div>
-    </div>
 
-    <div className="grid gap-4 lg:grid-cols-3">
-      <Card className="min-w-0 overflow-hidden lg:col-span-2"><CardContent className="p-2 sm:p-4"><div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border bg-gray-200 dark:border-gray-800 dark:bg-gray-800">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <div key={day} className="bg-gray-50 py-2 text-center text-[10px] font-semibold text-gray-500 dark:bg-gray-900 dark:text-gray-400 sm:text-xs">{day}</div>)}{Array.from({ length: offset }, (_, index) => <div key={`blank-${index}`} className="min-h-20 bg-white dark:bg-gray-950" />)}{Array.from({ length: days }, (_, index) => {
-        const day = index + 1;
-        const key = dateKey(new Date(Date.UTC(ref.year, ref.month, day)));
-        const dayEvents = visible.filter((event) => event.date === key);
-        return <button key={key} onClick={() => selectDay(key)} className={`min-h-20 min-w-0 bg-white p-1 text-left align-top dark:bg-gray-950 sm:min-h-28 sm:p-2 ${selectedDate === key ? 'ring-2 ring-inset ring-indigo-600 dark:ring-indigo-400' : ''}`}><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${key === today ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'text-gray-600 dark:text-gray-400'}`}>{day}</span><div className="mt-1 space-y-1">{dayEvents.slice(0, 3).map((event) => <div key={event.id} className={`truncate rounded px-1 py-0.5 text-[9px] font-medium sm:text-[10px] ${eventStyle[event.kind]}`}>{event.kind === 'income' ? '+' : event.kind === 'expense' ? '−' : event.kind === 'payroll' ? '◆ ' : event.kind === 'goal' ? '★ ' : event.kind === 'dca' || event.kind === 'investment' ? '📈 ' : ''}{event.amount ? `${event.amount} ` : ''}{event.title}</div>)}{dayEvents.length > 3 && <p className="text-[10px] text-gray-500 dark:text-gray-400">+{dayEvents.length - 3} more</p>}</div></button>;
-      })}</div></CardContent></Card>
-      <Card><CardHeader><CardTitle>Payroll setup</CardTitle></CardHeader><CardContent className="space-y-3 text-sm"><p className="font-medium text-gray-900 dark:text-gray-100">{formatDate(selectedDate)}</p>{selectedPayroll ? <><div className="rounded-lg bg-violet-50 p-3 dark:bg-violet-950/50"><p className="text-xs font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">Configured payroll</p><p className="mt-1 text-lg font-bold text-violet-800 dark:text-violet-100">+{Number(selectedPayroll.amount).toFixed(2)} MAD</p><p className="mt-1 text-xs text-violet-700 dark:text-violet-300">{generatedTransaction ? 'Automatically posted to Bank.' : selectedDate <= today ? 'Will post on your next data refresh.' : 'Will post automatically on this date.'}</p></div>{generatedTransaction ? <Button className="w-full" variant="outline" onClick={() => openTransaction(generatedTransaction.id)}><Landmark className="mr-2 h-4 w-4" />Open payroll transaction</Button> : <Button className="w-full text-red-600" variant="outline" disabled={saving} onClick={removePayroll}><Trash2 className="mr-2 h-4 w-4" />Remove payroll</Button>}</> : <><p className="text-gray-500 dark:text-gray-400">Set this day as the one payroll for {monthLabel(ref.year, ref.month)}. You must also set the next month to form a complete financial period.</p><label className="block text-xs font-medium text-gray-700 dark:text-gray-300" htmlFor="payroll-amount">Payroll amount (MAD)</label><input id="payroll-amount" type="number" min="0" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white" placeholder="e.g. 8000" /><Button className="w-full" disabled={saving} onClick={savePayroll}><WalletCards className="mr-2 h-4 w-4" />{saving ? 'Saving…' : 'Set payroll day'}</Button></>}</CardContent></Card>
-    </div>
+      {activeSubTab === 'cashflow' ? (
+        <CashFlowTab kpis={kpis || null} transactions={transactions} />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Payday & Cycle Schedule</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Select one day each month to set its payroll. Consecutive payrolls define your financial periods.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={() => navigate(-1)}><ChevronLeft className="h-4 w-4" /></Button>
+              <Button variant="outline" onClick={() => setRef({ year: now.getUTCFullYear(), month: now.getUTCMonth() })}>{monthLabel(ref.year, ref.month)}</Button>
+              <Button variant="outline" size="icon" onClick={() => navigate(1)}><ChevronRight className="h-4 w-4" /></Button>
+            </div>
+          </div>
 
-    <Card><CardHeader><CardTitle>{formatDate(selectedDate)}</CardTitle></CardHeader><CardContent>{selected.length ? <div className="space-y-2">{selected.filter((event) => event.kind !== 'payroll').map((event) => <button key={event.id} onClick={() => event.transactionId ? openTransaction(event.transactionId) : event.debtId ? setActiveTab('debts') : undefined} className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50"><div className="min-w-0"><p className="font-medium text-gray-900 dark:text-gray-100">{event.title}</p><p className="text-xs text-gray-500 dark:text-gray-400">{event.kind}</p></div><span className="shrink-0 font-semibold text-gray-900 dark:text-gray-100">{event.amount ? `${event.kind === 'income' ? '+' : event.kind === 'expense' || event.kind === 'subscription' ? '−' : ''}${event.amount.toFixed(2)} MAD` : ''}</span></button>)}</div> : <p className="py-2 text-sm text-gray-500 dark:text-gray-400">No other financial activity.</p>}</CardContent></Card>
-  </div>;
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card className="min-w-0 overflow-hidden lg:col-span-2">
+              <CardContent className="p-2 sm:p-4">
+                <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border bg-gray-200 dark:border-gray-800 dark:bg-gray-800">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+                    <div key={day} className="bg-gray-50 py-2 text-center text-[10px] font-semibold text-gray-500 dark:bg-gray-900 dark:text-gray-400 sm:text-xs">{day}</div>
+                  ))}
+                  {Array.from({ length: offset }, (_, index) => (
+                    <div key={`blank-${index}`} className="min-h-20 bg-white dark:bg-gray-950" />
+                  ))}
+                  {Array.from({ length: days }, (_, index) => {
+                    const day = index + 1;
+                    const key = dateKey(new Date(Date.UTC(ref.year, ref.month, day)));
+                    const dayEvents = visible.filter((event) => event.date === key);
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => selectDay(key)}
+                        className={`min-h-20 min-w-0 bg-white p-1 text-left align-top dark:bg-gray-950 sm:min-h-28 sm:p-2 ${selectedDate === key ? 'ring-2 ring-inset ring-indigo-600 dark:ring-indigo-400' : ''}`}
+                      >
+                        <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${key === today ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900' : 'text-gray-600 dark:text-gray-400'}`}>{day}</span>
+                        <div className="mt-1 space-y-1">
+                          {dayEvents.slice(0, 3).map((event) => (
+                            <div key={event.id} className={`truncate rounded px-1 py-0.5 text-[9px] font-medium sm:text-[10px] ${eventStyle[event.kind]}`}>
+                              {event.kind === 'income' ? '+' : event.kind === 'expense' ? '−' : event.kind === 'payroll' ? '◆ ' : event.kind === 'goal' ? '★ ' : event.kind === 'dca' || event.kind === 'investment' ? '📈 ' : ''}
+                              {event.amount ? `${event.amount} ` : ''}
+                              {event.title}
+                            </div>
+                          ))}
+                          {dayEvents.length > 3 && <p className="text-[10px] text-gray-500 dark:text-gray-400">+{dayEvents.length - 3} more</p>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle>Payroll setup</CardTitle></CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p className="font-medium text-gray-900 dark:text-gray-100">{formatDate(selectedDate)}</p>
+                {selectedPayroll ? (
+                  <>
+                    <div className="rounded-lg bg-violet-50 p-3 dark:bg-violet-950/50">
+                      <p className="text-xs font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">Configured payroll</p>
+                      <p className="mt-1 text-lg font-bold text-violet-800 dark:text-violet-100">+{Number(selectedPayroll.amount).toFixed(2)} MAD</p>
+                      <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">{generatedTransaction ? 'Automatically posted to Bank.' : selectedDate <= today ? 'Will post on your next data refresh.' : 'Will post automatically on this date.'}</p>
+                    </div>
+                    {generatedTransaction ? (
+                      <Button className="w-full" variant="outline" onClick={() => openTransaction(generatedTransaction.id)}>
+                        <Landmark className="mr-2 h-4 w-4" />Open payroll transaction
+                      </Button>
+                    ) : (
+                      <Button className="w-full text-red-600" variant="outline" disabled={saving} onClick={removePayroll}>
+                        <Trash2 className="mr-2 h-4 w-4" />Remove payroll
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-gray-500 dark:text-gray-400">Set this day as the one payroll for {monthLabel(ref.year, ref.month)}. You must also set the next month to form a complete financial period.</p>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300" htmlFor="payroll-amount">Payroll amount (MAD)</label>
+                    <input
+                      id="payroll-amount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={amount}
+                      onChange={(event) => setAmount(event.target.value)}
+                      className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                      placeholder="e.g. 8000"
+                    />
+                    <Button className="w-full" disabled={saving} onClick={savePayroll}>
+                      <WalletCards className="mr-2 h-4 w-4" />{saving ? 'Saving…' : 'Set payroll day'}
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader><CardTitle>{formatDate(selectedDate)}</CardTitle></CardHeader>
+            <CardContent>
+              {selected.length ? (
+                <div className="space-y-2">
+                  {selected.filter((event) => event.kind !== 'payroll').map((event) => (
+                    <button
+                      key={event.id}
+                      onClick={() => event.transactionId ? openTransaction(event.transactionId) : event.debtId ? setActiveTab('debts') : undefined}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900 dark:text-gray-100">{event.title}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{event.kind}</p>
+                      </div>
+                      <span className="shrink-0 font-semibold text-gray-900 dark:text-gray-100">
+                        {event.amount ? `${event.kind === 'income' ? '+' : event.kind === 'expense' || event.kind === 'subscription' ? '−' : ''}${event.amount.toFixed(2)} MAD` : ''}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="py-2 text-sm text-gray-500 dark:text-gray-400">No other financial activity.</p>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
+    </div>
+  );
 };

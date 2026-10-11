@@ -229,15 +229,12 @@ export type DashboardTab =
   | 'budgets'
   | 'goals'
   | 'subscriptions'
-  | 'what-if'
   | 'debts'
   | 'analytics'
   | 'settings'
   | 'chat'
   | 'reports'
-  | 'cash-flow'
-  | 'contexts'
-  | 'investments';
+  | 'contexts';
 
 export type InvestmentAssetType =
   | 'crypto'

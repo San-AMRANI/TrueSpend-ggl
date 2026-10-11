@@ -3,7 +3,6 @@ import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { DashboardNav } from './dashboard/DashboardNav';
 import { OverviewTab } from './dashboard/OverviewTab';
-import { CashFlowTab } from './dashboard/CashFlowTab';
 import { TransactionsTab } from './dashboard/TransactionsTab';
 
 import { DebtsTab } from './dashboard/DebtsTab';
@@ -12,11 +11,9 @@ import { SettingsTab } from './dashboard/SettingsTab';
 import { BudgetsTab } from './dashboard/BudgetsTab';
 import { GoalsTab } from './dashboard/GoalsTab';
 import { SubscriptionsTab } from './dashboard/SubscriptionsTab';
-import { WhatIfTab } from './dashboard/WhatIfTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { ReportsTab } from './dashboard/ReportsTab';
 import { ContextsTab } from './dashboard/ContextsTab';
-import { InvestmentsTab } from './dashboard/InvestmentsTab';
 import { AIChat } from './AIChat';
 import type { DashboardTab } from '../types';
 
@@ -154,13 +151,6 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
         />
       )}
 
-      {activeTab === 'cash-flow' && (
-        <CashFlowTab 
-          kpis={kpis} 
-          transactions={transactions}
-        />
-      )}
-
       {activeTab === 'transactions' && (
         <TransactionsTab
           transactions={transactions}
@@ -178,6 +168,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           transactions={transactions}
           debts={debts}
           payrolls={payrolls}
+          kpis={kpis}
           dcaPlans={investmentsData?.dcaPlans || []}
           openTransaction={openTransaction}
           setActiveTab={setActiveTab}
@@ -225,24 +216,6 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onDeleteSubscription={handleDeleteSubscription}
           onPaySubscription={handlePaySubscription}
           onDetectSubscriptions={handleDetectSubscriptions}
-        />
-      )}
-
-      {activeTab === 'what-if' && (
-        <WhatIfTab
-          kpis={kpis}
-          amount={whatIfAmount}
-          setAmount={setWhatIfAmount}
-          transactions={transactions}
-          payrolls={payrolls}
-          debts={debts}
-          budgets={budgets}
-          goals={goals}
-          userSettings={userSettings}
-          onNavigateToTab={setActiveTab}
-          onCreateGoal={handleCreateGoal}
-          onSaveCategoryBudget={handleSaveCategoryBudget}
-          onSaveSettings={handleSaveSettings}
         />
       )}
 
@@ -296,27 +269,6 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           handleUpdateContext={handleUpdateContext}
           handleDeleteContext={handleDeleteContext}
           handleLinkTransactions={handleLinkTransactionsToContext}
-        />
-      )}
-      {activeTab === 'investments' && (
-        <InvestmentsTab
-          data={investmentsData}
-          loading={loading}
-          wallets={kpis?.accounts || []}
-          kpis={kpis}
-          debts={debts}
-          onRefresh={refreshInvestments}
-          onCreateHolding={handleCreateHolding}
-          onUpdateHolding={handleUpdateHolding}
-          onDeleteHolding={handleDeleteHolding}
-          onExecuteTrade={handleExecuteTrade}
-          onCreateDcaPlan={handleCreateDcaPlan}
-          onUpdateDcaPlan={handleUpdateDcaPlan}
-          onDeleteDcaPlan={handleDeleteDcaPlan}
-          onAddToWatchlist={handleAddToWatchlist}
-          onRemoveFromWatchlist={handleRemoveFromWatchlist}
-          onCreateWallet={handleCreateWallet}
-          setActiveTab={setActiveTab}
         />
       )}
       {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}
