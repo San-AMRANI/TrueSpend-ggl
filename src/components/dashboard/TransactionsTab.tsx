@@ -44,8 +44,6 @@ import {
   Coins,
   SlidersHorizontal,
   ChevronRight,
-  TrendingDown,
-  TrendingUp,
 } from 'lucide-react';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 
@@ -279,60 +277,6 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
 
     return result;
   }, [filters, transactions, quickPreset, budgets, categorySpentMap]);
-
-  // Quick statistics calculated on visible transactions
-  const stats = useMemo(() => {
-    let income = 0;
-    let incomeCount = 0;
-    let expense = 0;
-    let expenseCount = 0;
-    let transfer = 0;
-    let transferCount = 0;
-    let reimbursablePending = 0;
-    let splitCount = 0;
-
-    for (const tx of visibleTransactions) {
-      const amt = parseFloat(tx.amount) || 0;
-      if (tx.type === 'Income') {
-        income += amt;
-        incomeCount++;
-      } else if (tx.type === 'Expense') {
-        const reimb = parseFloat(tx.reimbursableAmount || '0') || 0;
-        expense += Math.max(0, amt - reimb);
-        expenseCount++;
-        if (reimb > 0) {
-          reimbursablePending += reimb;
-        }
-      } else if (tx.type === 'Transfer') {
-        transfer += amt;
-        transferCount++;
-      }
-
-      if ((tx.splits && tx.splits.length > 0) || parseFloat(tx.reimbursableAmount || '0') > 0) {
-        splitCount++;
-      }
-    }
-
-    const netCashflow = income - expense;
-    const avgTicket =
-      visibleTransactions.length > 0
-        ? visibleTransactions.reduce((acc, t) => acc + (parseFloat(t.amount) || 0), 0) /
-          visibleTransactions.length
-        : 0;
-
-    return {
-      income,
-      incomeCount,
-      expense,
-      expenseCount,
-      transfer,
-      transferCount,
-      reimbursablePending,
-      splitCount,
-      netCashflow,
-      avgTicket,
-    };
-  }, [visibleTransactions]);
 
   // Active filter count
   const activeFilterCount = [
@@ -1086,104 +1030,6 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
           </div>
         </div>
       )}
-
-      {/* Top Financial Pulse Ribbon / Metrics Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
-        <div
-          onClick={() => setQuickPreset(quickPreset === 'income' ? 'all' : 'income')}
-          className={`cursor-pointer rounded-2xl border p-4 transition-all duration-200 ${
-            quickPreset === 'income'
-              ? 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/40 shadow-sm ring-1 ring-emerald-500'
-              : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-700'
-          }`}
-        >
-          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-            <span className="font-semibold uppercase tracking-wider">Total Inflow</span>
-            <div className="rounded-full bg-emerald-100 dark:bg-emerald-950/50 p-1 text-emerald-600 dark:text-emerald-400">
-              <ArrowDownRight className="h-3.5 w-3.5" />
-            </div>
-          </div>
-          <div className="mt-2 text-xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
-            +{stats.income.toFixed(2)} <span className="text-xs font-normal text-gray-500">MAD</span>
-          </div>
-          <div className="mt-1 text-xs text-gray-400 flex items-center justify-between">
-            <span>{stats.incomeCount} transactions</span>
-            {quickPreset === 'income' && <span className="text-emerald-600 font-medium">Filtered</span>}
-          </div>
-        </div>
-
-        <div
-          onClick={() => setQuickPreset(quickPreset === 'expense' ? 'all' : 'expense')}
-          className={`cursor-pointer rounded-2xl border p-4 transition-all duration-200 ${
-            quickPreset === 'expense'
-              ? 'border-rose-500 bg-rose-50/80 dark:bg-rose-950/40 shadow-sm ring-1 ring-rose-500'
-              : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-700'
-          }`}
-        >
-          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-            <span className="font-semibold uppercase tracking-wider">Total Outflow</span>
-            <div className="rounded-full bg-rose-100 dark:bg-rose-950/50 p-1 text-rose-600 dark:text-rose-400">
-              <ArrowUpRight className="h-3.5 w-3.5" />
-            </div>
-          </div>
-          <div className="mt-2 text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-            -{stats.expense.toFixed(2)} <span className="text-xs font-normal text-gray-500">MAD</span>
-          </div>
-          <div className="mt-1 text-xs text-gray-400 flex items-center justify-between">
-            <span>{stats.expenseCount} transactions</span>
-            {quickPreset === 'expense' && <span className="text-rose-600 font-medium">Filtered</span>}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
-          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-            <span className="font-semibold uppercase tracking-wider">Net Cash Flow</span>
-            <div
-              className={`rounded-full p-1 ${
-                stats.netCashflow >= 0
-                  ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400'
-                  : 'bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400'
-              }`}
-            >
-              {stats.netCashflow >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-            </div>
-          </div>
-          <div
-            className={`mt-2 text-xl font-bold tracking-tight ${
-              stats.netCashflow >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-            }`}
-          >
-            {stats.netCashflow >= 0 ? '+' : ''}
-            {stats.netCashflow.toFixed(2)} <span className="text-xs font-normal text-gray-500">MAD</span>
-          </div>
-          <div className="mt-1 text-xs text-gray-400">
-            Avg ticket: {stats.avgTicket.toFixed(2)} MAD
-          </div>
-        </div>
-
-        <div
-          onClick={() => setQuickPreset(quickPreset === 'split' ? 'all' : 'split')}
-          className={`cursor-pointer rounded-2xl border p-4 transition-all duration-200 ${
-            quickPreset === 'split'
-              ? 'border-blue-500 bg-blue-50/80 dark:bg-blue-950/40 shadow-sm ring-1 ring-blue-500'
-              : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-700'
-          }`}
-        >
-          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-            <span className="font-semibold uppercase tracking-wider">Pending Reimbursable</span>
-            <div className="rounded-full bg-blue-100 dark:bg-blue-950/50 p-1 text-blue-600 dark:text-blue-400">
-              <Users className="h-3.5 w-3.5" />
-            </div>
-          </div>
-          <div className="mt-2 text-xl font-bold tracking-tight text-blue-600 dark:text-blue-400">
-            +{stats.reimbursablePending.toFixed(2)} <span className="text-xs font-normal text-gray-500">MAD</span>
-          </div>
-          <div className="mt-1 text-xs text-gray-400 flex items-center justify-between">
-            <span>{stats.splitCount} split entries</span>
-            {quickPreset === 'split' && <span className="text-blue-600 font-medium">Filtered</span>}
-          </div>
-        </div>
-      </div>
 
       {/* Main Transactions Card */}
       <Card>
