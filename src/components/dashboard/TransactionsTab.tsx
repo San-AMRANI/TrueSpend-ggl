@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Transaction, Wallet, CategoryBudget, Subscription, Goal, Debt, Payroll, DashboardTab } from '../../types';
 import { expenseCategories, incomeAndTransferCategories, normalizeCategory } from '../../lib/categories';
-import { filterTransactions, TransactionFilters } from '../../lib/finance';
+import { filterTransactions, TransactionFilters, getCategorySpending, netExpenseOf } from '../../lib/finance';
+import { getFinancialMonthRef } from '../../lib/financialMonth';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -131,24 +132,64 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     onSelectionHandled?.();
   }, [onSelectionHandled, selectedTransactionId, transactions]);
 
-  // Precompute spending per category per month: "year-month-normalizedCategory" -> totalSpent
+  // Helper to determine the financial year and month for a given transaction date
+  const getTxPeriod = (txDateStr: string | Date) => {
+    const d = new Date(txDateStr);
+    if (payrolls && payrolls.length >= 2) {
+      const ref = getFinancialMonthRef(d, payrolls);
+      if (ref) return ref;
+    }
+    // Fallback to calendar year and 1-based month (UTC aligned to avoid timezone shift)
+    return {
+      year: d.getUTCFullYear(),
+      month: d.getUTCMonth() + 1,
+    };
+  };
+
+  // Precompute spending per category per financial month using canonical getCategorySpending:
+  // "year-month-normalizedCategory" -> totalSpent
   const categorySpentMap = useMemo(() => {
     const map = new Map<string, number>();
-    for (const tx of transactions) {
-      if (tx.type === 'Expense' && tx.category) {
-        const d = new Date(tx.createdAt);
-        const y = d.getFullYear();
-        const m = d.getMonth() + 1;
-        const normCat = normalizeCategory(tx.category);
-        const key = `${y}-${m}-${normCat}`;
-        const amt = parseFloat(tx.amount) || 0;
-        const reimb = parseFloat(tx.reimbursableAmount || '0') || 0;
-        const netExpense = Math.max(0, amt - reimb);
-        map.set(key, (map.get(key) || 0) + netExpense);
+
+    // Collect all unique year-month-category combinations needed from budgets and transactions
+    const periodCatKeys = new Set<string>();
+
+    for (const b of budgets) {
+      if (b.category && b.year && b.month) {
+        const normCat = normalizeCategory(b.category);
+        periodCatKeys.add(`${b.year}-${b.month}-${normCat}`);
       }
     }
+
+    for (const tx of transactions) {
+      if ((tx.type === 'Expense' || tx.type === 'Transfer') && tx.category) {
+        const period = getTxPeriod(tx.createdAt);
+        let normCat = normalizeCategory(tx.category);
+        if (tx.type === 'Transfer' && wallets && tx.destinationWalletId) {
+          const dest = wallets.find((w) => w.id === tx.destinationWalletId);
+          const destType = dest?.type?.toLowerCase();
+          if (destType === 'investment') normCat = '📈 Investments';
+          else if (destType === 'savings') normCat = '🛟 Emergency & goals Fund';
+        }
+        if (normCat) {
+          periodCatKeys.add(`${period.year}-${period.month}-${normCat}`);
+        }
+      }
+    }
+
+    // Now calculate exact canonical category spending for each needed combination
+    for (const key of periodCatKeys) {
+      const [yStr, mStr, ...catParts] = key.split('-');
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10);
+      const normCat = catParts.join('-');
+
+      const totalSpent = getCategorySpending(transactions, normCat, y, m, payrolls || [], wallets);
+      map.set(key, totalSpent);
+    }
+
     return map;
-  }, [transactions]);
+  }, [transactions, budgets, payrolls, wallets]);
 
   // Active subscriptions normalized lookup
   const activeSubs = useMemo(() => {
@@ -178,21 +219,24 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   // Check budget health for an expense transaction
   const getTransactionBudgetHealth = (tx: Transaction) => {
     if (tx.type !== 'Expense' || !tx.category) return null;
-    const d = new Date(tx.createdAt);
-    const y = d.getFullYear();
-    const m = d.getMonth() + 1;
+    const { year: y, month: m } = getTxPeriod(tx.createdAt);
     const normCat = normalizeCategory(tx.category);
 
+    // Find the corresponding budget entry for this category and period
     const budget = budgets.find(
       (b) => b.year === y && b.month === m && normalizeCategory(b.category) === normCat
     );
 
     if (!budget) return null;
     const budgetLimit = parseFloat(budget.amount) || 0;
-    const totalSpent = categorySpentMap.get(`${y}-${m}-${normCat}`) || 0;
+    const key = `${y}-${m}-${normCat}`;
+    const totalSpent = categorySpentMap.has(key)
+      ? (categorySpentMap.get(key) || 0)
+      : getCategorySpending(transactions, normCat, y, m, payrolls || [], wallets);
+
     const usagePercent = budgetLimit > 0 ? (totalSpent / budgetLimit) * 100 : 0;
     const isOver = totalSpent > budgetLimit;
-    const isWarning = usagePercent >= 85 && !isOver;
+    const isWarning = usagePercent >= 80 && !isOver;
 
     return {
       budgetLimit,
@@ -201,6 +245,8 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
       isOver,
       isWarning,
       category: budget.category,
+      year: y,
+      month: m,
     };
   };
 
@@ -1697,7 +1743,8 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                                 {/* Interconnected Budget Health Badge */}
                                 {budgetHealth && (
                                   <span
-                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                    title={`Category: ${budgetHealth.category} (${budgetHealth.year}-${String(budgetHealth.month).padStart(2, '0')}) • Spent: ${budgetHealth.totalSpent.toFixed(2)} MAD of ${budgetHealth.budgetLimit.toFixed(2)} MAD budget`}
+                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold cursor-help ${
                                       budgetHealth.isOver
                                         ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400'
                                         : budgetHealth.isWarning
@@ -1705,7 +1752,9 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                                         : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400'
                                     }`}
                                   >
-                                    {budgetHealth.isOver ? '⚠️ Exceeds budget' : `${Math.round(budgetHealth.usagePercent)}% of budget`}
+                                    {budgetHealth.isOver
+                                      ? `⚠️ Over budget (${Math.round(budgetHealth.usagePercent)}%)`
+                                      : `${Math.round(budgetHealth.usagePercent)}% of budget`}
                                   </span>
                                 )}
 
