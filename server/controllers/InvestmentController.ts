@@ -185,6 +185,51 @@ export class InvestmentController {
       res.status(500).json({ error: e.message || 'Failed to fetch coin details' });
     }
   }
+
+  async searchStocks(req: AuthRequest, res: Response) {
+    try {
+      const q = (req.query.q as string) || '';
+      const results = await investmentService.searchStocks(q);
+      res.json(results);
+    } catch (e: any) {
+      console.error('InvestmentController.searchStocks error:', e);
+      res.status(500).json({ error: e.message || 'Failed to search stocks' });
+    }
+  }
+
+  async getStockDetails(req: AuthRequest, res: Response) {
+    try {
+      const symbol = req.params.symbol;
+      const details = await investmentService.getStockDetails(symbol);
+      if (!details) {
+        return res.status(404).json({ error: 'Stock details not found' });
+      }
+      res.json(details);
+    } catch (e: any) {
+      console.error('InvestmentController.getStockDetails error:', e);
+      res.status(500).json({ error: e.message || 'Failed to fetch stock details' });
+    }
+  }
+
+  async getPopularStocks(req: AuthRequest, res: Response) {
+    try {
+      const popular = await investmentService.getPopularStocks();
+      res.json(popular);
+    } catch (e: any) {
+      console.error('InvestmentController.getPopularStocks error:', e);
+      res.status(500).json({ error: e.message || 'Failed to fetch popular stocks' });
+    }
+  }
+
+  async analyzeStockPortfolio(req: AuthRequest, res: Response) {
+    try {
+      const analysis = await investmentService.analyzeStockPortfolio(req.dbUser.id);
+      res.json(analysis);
+    } catch (e: any) {
+      console.error('InvestmentController.analyzeStockPortfolio error:', e);
+      res.status(500).json({ error: e.message || 'Failed to analyze stock portfolio' });
+    }
+  }
 }
 
 export const investmentController = new InvestmentController();

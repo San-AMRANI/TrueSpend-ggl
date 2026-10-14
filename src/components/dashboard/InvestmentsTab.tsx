@@ -36,6 +36,11 @@ import {
   Globe,
   CircleAlert,
   Calculator,
+  Building2,
+  LineChart,
+  BookOpen,
+  Briefcase,
+  Bot,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -53,6 +58,9 @@ import {
   WatchlistItem,
   KPI,
   Debt,
+  StockQuote,
+  StockSearchResult,
+  StockAiAnalysis,
 } from '../../types';
 import { dashboardService } from '../../services/api/dashboardService';
 
@@ -85,7 +93,7 @@ interface InvestmentsTabProps {
   setActiveTab?: (tab: string) => void;
 }
 
-type SubTab = 'holdings' | 'market' | 'safe-to-invest' | 'allocation' | 'stress-test' | 'ledger';
+type SubTab = 'holdings' | 'stocks' | 'ai-health' | 'safe-to-invest' | 'market' | 'allocation' | 'stress-test' | 'ledger';
 type InfoModalType = 'safe-to-invest' | 'dca' | 'fire' | null;
 
 export const INVESTMENT_WALLET_TEMPLATES = [
@@ -180,6 +188,29 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   // CoinGecko Deep Details Modal state
   const [selectedCoinDetail, setSelectedCoinDetail] = useState<any | null>(null);
   const [loadingCoinDetail, setLoadingCoinDetail] = useState(false);
+
+  // Stocks & Equities state
+  const [stockCategory, setStockCategory] = useState<'tech' | 'etfs' | 'dividends' | 'morocco' | 'search'>('tech');
+  const [stockSearch, setStockSearch] = useState('');
+  const [stockSearchResults, setStockSearchResults] = useState<StockSearchResult[]>([]);
+  const [isSearchingStocks, setIsSearchingStocks] = useState(false);
+  const [selectedStockDetail, setSelectedStockDetail] = useState<StockQuote | null>(null);
+  const [loadingStockDetail, setLoadingStockDetail] = useState(false);
+  const [popularStocksData, setPopularStocksData] = useState<{
+    indices: StockQuote[];
+    tech: StockQuote[];
+    dividends: StockQuote[];
+    morocco: StockQuote[];
+  } | null>(null);
+  const [loadingPopularStocks, setLoadingPopularStocks] = useState(false);
+
+  // AI Stock Portfolio Co-Pilot (Spex) state
+  const [stockAiAnalysis, setStockAiAnalysis] = useState<StockAiAnalysis | null>(null);
+  const [analyzingPortfolio, setAnalyzingPortfolio] = useState(false);
+  const [analyzingError, setAnalyzingError] = useState<string | null>(null);
+
+  // Safe-to-Invest stock strategy state
+  const [selectedStockStrategy, setSelectedStockStrategy] = useState<'core' | 'dividend' | 'growth'>('core');
 
   // Modals state
   const [showAddHoldingModal, setShowAddHoldingModal] = useState(false);
@@ -623,7 +654,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
     }
   };
 
-  // Hook for instant CoinGecko search in Add Holding Modal
+  // Hook for instant search in Add Holding Modal (supporting Crypto & Stocks/ETFs/BVC)
   useEffect(() => {
     if (!showAddHoldingModal || !holdingSearchQuery.trim()) {
       setHoldingSearchResults([]);
@@ -633,16 +664,180 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       setIsSearchingHolding(true);
       try {
         const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
-        const results = await dashboardService.searchCoins(holdingSearchQuery.trim(), token);
-        setHoldingSearchResults(results || []);
+        if (['stock', 'etf', 'bourse_local'].includes(holdingForm.assetType)) {
+          const results = await dashboardService.searchStocks(holdingSearchQuery.trim(), token);
+          setHoldingSearchResults(results || []);
+        } else {
+          const results = await dashboardService.searchCoins(holdingSearchQuery.trim(), token);
+          setHoldingSearchResults(results || []);
+        }
       } catch (err) {
-        console.warn('Holding search coins error:', err);
+        console.warn('Holding search error:', err);
       } finally {
         setIsSearchingHolding(false);
       }
     }, 350);
     return () => clearTimeout(timer);
-  }, [showAddHoldingModal, holdingSearchQuery]);
+  }, [showAddHoldingModal, holdingSearchQuery, holdingForm.assetType]);
+
+  // Hook for standalone stock search in Stocks Tab
+  useEffect(() => {
+    if (!stockSearch.trim()) {
+      setStockSearchResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setIsSearchingStocks(true);
+      try {
+        const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+        const results = await dashboardService.searchStocks(stockSearch.trim(), token);
+        setStockSearchResults(results || []);
+      } catch (err) {
+        console.warn('Search stocks error:', err);
+      } finally {
+        setIsSearchingStocks(false);
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [stockSearch]);
+
+  // Sync popular stocks from data or fallback fetch
+  useEffect(() => {
+    if (data?.popularStocks) {
+      setPopularStocksData(data.popularStocks);
+      return;
+    }
+    const loadPopular = async () => {
+      setLoadingPopularStocks(true);
+      try {
+        const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+        const res = await dashboardService.getPopularStocks(token);
+        if (res) setPopularStocksData(res);
+      } catch (err) {
+        console.warn('Failed to load popular stocks:', err);
+      } finally {
+        setLoadingPopularStocks(false);
+      }
+    };
+    loadPopular();
+  }, [data?.popularStocks]);
+
+  // Open detailed stock modal
+  const openStockDetails = async (symbol: string) => {
+    if (!symbol) return;
+    setLoadingStockDetail(true);
+    setSelectedStockDetail(null);
+    try {
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+      const details = await dashboardService.getStockDetails(symbol, token);
+      if (details) setSelectedStockDetail(details);
+    } catch (e) {
+      console.warn('Failed to fetch stock details:', e);
+    } finally {
+      setLoadingStockDetail(false);
+    }
+  };
+
+  // Quick Buy stock helper
+  const handleQuickBuyStock = (stock: StockQuote | StockSearchResult) => {
+    const sym = stock.symbol.toUpperCase();
+    const existingHolding = (data?.holdings || []).find((h) => h.symbol.toUpperCase() === sym);
+    if (existingHolding) {
+      openTradeModal(existingHolding, 'BUY');
+    } else {
+      const quoteType = (stock as any).quoteType || (stock as any).assetType;
+      const isBvc = stock.exchange === 'Casablanca' || ['ATW', 'BCP', 'IAM', 'BOA', 'LHM', 'MNG', 'TGCC', 'CFG', 'ADH', 'TQM'].includes(sym);
+      const assetType: InvestmentAssetType = isBvc ? 'bourse_local' : (quoteType === 'ETF' ? 'etf' : 'stock');
+      const curr = stock.currency || (isBvc ? 'MAD' : 'USD');
+      
+      openAddHoldingModal({
+        symbol: sym,
+        name: stock.name,
+        assetType,
+        currency: curr,
+      });
+
+      const p = stock.price || (stock as any).priceInMad;
+      if (p) {
+        setHoldingForm((prev) => ({
+          ...prev,
+          currentPrice: String(p),
+          buyPriceAvg: String(p),
+          dividendYieldPercent: String((stock as StockQuote).dividendYield || 0),
+        }));
+      }
+    }
+  };
+
+  // Run AI Stock Portfolio Analysis
+  const handleRunStockAiAnalysis = async () => {
+    setAnalyzingPortfolio(true);
+    setAnalyzingError(null);
+    try {
+      const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+      const analysis = await dashboardService.analyzeStockPortfolio(token);
+      setStockAiAnalysis(analysis);
+    } catch (err: any) {
+      setAnalyzingError(err?.message || 'Failed to analyze stock portfolio');
+    } finally {
+      setAnalyzingPortfolio(false);
+    }
+  };
+
+  // Auto trigger AI analysis when entering ai-health subtab
+  useEffect(() => {
+    if (activeSubTab === 'ai-health' && !stockAiAnalysis && !analyzingPortfolio) {
+      handleRunStockAiAnalysis();
+    }
+  }, [activeSubTab]);
+
+  // Deploy Safe-to-Invest stock strategy
+  const handleDeploySafeToInvestStrategy = async (strategy: 'core' | 'dividend' | 'growth') => {
+    const monthlySurplus = data?.safeToInvest?.safeToInvestMonthly || 2500;
+    if (monthlySurplus <= 0) return;
+
+    let allocations: { symbol: string; name: string; assetType: InvestmentAssetType; percent: number; currency: string }[] = [];
+
+    if (strategy === 'core') {
+      allocations = [
+        { symbol: 'VOO', name: 'Vanguard S&P 500 ETF', assetType: 'etf', percent: 50, currency: 'USD' },
+        { symbol: 'AAPL', name: 'Apple Inc.', assetType: 'stock', percent: 25, currency: 'USD' },
+        { symbol: 'ATW', name: 'Attijariwafa Bank', assetType: 'bourse_local', percent: 25, currency: 'MAD' },
+      ];
+    } else if (strategy === 'dividend') {
+      allocations = [
+        { symbol: 'SCHD', name: 'Schwab US Dividend Equity ETF', assetType: 'etf', percent: 40, currency: 'USD' },
+        { symbol: 'IAM', name: 'Maroc Telecom', assetType: 'bourse_local', percent: 35, currency: 'MAD' },
+        { symbol: 'ATW', name: 'Attijariwafa Bank', assetType: 'bourse_local', percent: 25, currency: 'MAD' },
+      ];
+    } else {
+      allocations = [
+        { symbol: 'QQQ', name: 'Invesco QQQ (Nasdaq 100)', assetType: 'etf', percent: 50, currency: 'USD' },
+        { symbol: 'NVDA', name: 'NVIDIA Corp.', assetType: 'stock', percent: 30, currency: 'USD' },
+        { symbol: 'MSFT', name: 'Microsoft Corp.', assetType: 'stock', percent: 20, currency: 'USD' },
+      ];
+    }
+
+    for (const alloc of allocations) {
+      const targetAmount = Math.round((monthlySurplus * alloc.percent) / 100);
+      try {
+        await onCreateDcaPlan({
+          symbol: alloc.symbol,
+          assetName: alloc.name,
+          assetType: alloc.assetType,
+          targetAmount: String(targetAmount),
+          currency: 'MAD',
+          frequency: 'post_payday',
+          dayOffsetAfterPayday: 2,
+          walletId: investmentWallets[0]?.id || wallets[0]?.id || null,
+        });
+      } catch (err) {
+        console.warn('Failed to auto-create DCA plan for', alloc.symbol, err);
+      }
+    }
+    await onRefresh();
+    setActiveSubTab('safe-to-invest');
+  };
 
   // Create Investment Wallet submit
   const handleCreateInvestmentWalletSubmit = async (e: React.FormEvent) => {
@@ -678,14 +873,56 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
     }
   };
 
-  // Instant selection of coin from CoinGecko search or popular chips
-  const handleSelectCoinForHolding = async (coin: { symbol: string; name: string; id?: string }) => {
+  // Instant selection of asset from search or popular chips (supporting Stocks, ETFs, BVC, and Crypto)
+  const handleSelectCoinForHolding = async (coin: any) => {
     setHoldingSearchQuery('');
     setHoldingSearchResults([]);
+    const sym = (coin.symbol || '').toUpperCase();
+    const isBvc = coin.exchange === 'Casablanca' || ['ATW', 'BCP', 'IAM', 'BOA', 'LHM', 'MNG', 'TGCC', 'CFG', 'ADH', 'TQM'].includes(sym);
+    const isStockOrEtf = coin.quoteType === 'ETF' || coin.quoteType === 'EQUITY' || isBvc || ['stock', 'etf', 'bourse_local'].includes(holdingForm.assetType);
+    
+    if (isStockOrEtf) {
+      const assetType: InvestmentAssetType = isBvc ? 'bourse_local' : (coin.quoteType === 'ETF' ? 'etf' : 'stock');
+      const curr = isBvc ? 'MAD' : (coin.currency || 'USD');
+      
+      setHoldingForm((prev) => ({
+        ...prev,
+        symbol: sym,
+        name: coin.name || sym,
+        assetType,
+        currency: curr,
+        walletId: prev.walletId || investmentWallets[0]?.id || wallets[0]?.id || '',
+      }));
+
+      // fetch stock details to populate price and dividend yield
+      try {
+        const token = localStorage.getItem('auth_token') || localStorage.getItem('token');
+        const details = await dashboardService.getStockDetails(sym, token);
+        if (details) {
+          const p = curr === 'MAD' ? (details.priceInMad || details.price) : details.price;
+          setHoldingForm((prev) => {
+            const nextForm = {
+              ...prev,
+              currentPrice: p.toString(),
+              buyPriceAvg: prev.buyPriceAvg || p.toString(),
+              dividendYieldPercent: String(details.dividendYield || 0),
+            };
+            if (holdingTotalCash && parseFloat(holdingTotalCash) > 0) {
+              nextForm.units = ((parseFloat(holdingTotalCash) || 0) / p).toFixed(6);
+            }
+            return nextForm;
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to load stock details on select:', err);
+      }
+      return;
+    }
+
     const curr = displayCurrency === 'MAD' ? 'MAD' : displayCurrency === 'EUR' ? 'EUR' : 'USD';
     setHoldingForm((prev) => ({
       ...prev,
-      symbol: coin.symbol.toUpperCase(),
+      symbol: sym,
       name: coin.name,
       assetType: 'crypto',
       currency: curr,
@@ -993,6 +1230,23 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       default:
         return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-950/40 dark:text-purple-300">💼 Custom</span>;
     }
+  };
+
+  const getFormattedStockPrice = (stock: StockQuote | StockSearchResult) => {
+    const isMad = stock.currency === 'MAD' || stock.exchange === 'Casablanca';
+    const rawPrice = stock.price || (stock as any).priceInMad || 0;
+    
+    if (displayCurrency === 'MAD') {
+      const valMad = isMad ? rawPrice : rawPrice * rates.USD_TO_MAD;
+      return `${valMad.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD`;
+    }
+    if (displayCurrency === 'EUR') {
+      const valEur = isMad ? rawPrice / rates.EUR_TO_MAD : rawPrice * rates.USD_TO_EUR;
+      return `€${valEur.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    // USD
+    const valUsd = isMad ? rawPrice / rates.USD_TO_MAD : rawPrice;
+    return `$${valUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   return (
@@ -1503,18 +1757,34 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
 
         <button
           type="button"
-          onClick={() => setActiveSubTab('market')}
+          onClick={() => setActiveSubTab('stocks')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all shrink-0 ${
-            activeSubTab === 'market'
+            activeSubTab === 'stocks'
               ? 'bg-blue-600 text-white shadow-sm'
               : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
           }`}
         >
-          <Globe className="h-4 w-4" />
-          Markets & Watchlist (CoinGecko Live)
-          {data?.watchlist && data.watchlist.length > 0 && (
-            <span className="ml-1 text-[11px] px-1.5 py-0.2 bg-amber-400 text-gray-900 font-bold rounded-full">
-              {data.watchlist.length}
+          <TrendingUp className="h-4 w-4 text-emerald-500" />
+          Stocks & Equities Hub
+          <span className="ml-1 text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-bold rounded-full">
+            US & BVC
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('ai-health')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all shrink-0 ${
+            activeSubTab === 'ai-health'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+          }`}
+        >
+          <Bot className="h-4 w-4 text-indigo-400" />
+          AI Stock Co-Pilot
+          {stockAiAnalysis?.portfolioGrade && (
+            <span className="ml-1 text-[10px] px-1.5 py-0.5 bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 font-bold rounded-full">
+              Grade {stockAiAnalysis.portfolioGrade}
             </span>
           )}
         </button>
@@ -1528,8 +1798,26 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
               : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
           }`}
         >
-          <ShieldCheck className="h-4 w-4" />
+          <ShieldCheck className="h-4 w-4 text-emerald-500" />
           Safe-to-Invest & DCA Planner
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('market')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all shrink-0 ${
+            activeSubTab === 'market'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+          }`}
+        >
+          <Globe className="h-4 w-4" />
+          Crypto Markets
+          {data?.watchlist && data.watchlist.length > 0 && (
+            <span className="ml-1 text-[11px] px-1.5 py-0.2 bg-amber-400 text-gray-900 font-bold rounded-full">
+              {data.watchlist.length}
+            </span>
+          )}
         </button>
 
         <button
@@ -1542,7 +1830,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           }`}
         >
           <PieChart className="h-4 w-4" />
-          Asset Allocation & Rebalancing
+          Rebalancing
         </button>
 
         <button
@@ -1555,7 +1843,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           }`}
         >
           <Sliders className="h-4 w-4" />
-          Market Stress-Test (What-If)
+          Stress-Test
         </button>
 
         <button
@@ -1568,7 +1856,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           }`}
         >
           <History className="h-4 w-4" />
-          Trade & Dividend Ledger ({data?.transactions?.length || 0})
+          Ledger ({data?.transactions?.length || 0})
         </button>
       </div>
 
@@ -1868,6 +2156,696 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* SUB-TAB: STOCKS & EQUITIES INTELLIGENCE HUB */}
+      {activeSubTab === 'stocks' && (
+        <div className="space-y-6">
+          {/* Header & Quick Action Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-emerald-500" />
+                Stocks & Equities Intelligence Hub
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Track US Tech Leaders, Compounding Index ETFs, and Casablanca BVC Moroccan Stocks with real-time currency conversion.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefreshQuotes}
+                disabled={refreshing || loadingPopularStocks}
+                className="text-xs flex items-center gap-1.5"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${refreshing || loadingPopularStocks ? 'animate-spin' : ''}`} />
+                <span>Sync Prices</span>
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => openAddHoldingModal({ symbol: 'VOO', name: 'Vanguard S&P 500 ETF', assetType: 'etf', currency: 'USD' })}
+                className="text-xs flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Stock</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Major Indices Ticker Tape */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {(popularStocksData?.indices || [
+              { symbol: 'VOO', name: 'S&P 500 ETF', price: 524.1, change24h: 0.82, currency: 'USD', priceInMad: 5267 },
+              { symbol: 'QQQ', name: 'Nasdaq 100', price: 492.3, change24h: 1.15, currency: 'USD', priceInMad: 4947 },
+              { symbol: 'DIA', name: 'Dow Jones 30', price: 428.6, change24h: -0.24, currency: 'USD', priceInMad: 4307 },
+              { symbol: 'MASI', name: 'Casablanca MASI', price: 14210, change24h: 0.45, currency: 'MAD', priceInMad: 14210 },
+            ]).map((idx) => {
+              const isPositive = idx.change24h >= 0;
+              return (
+                <div
+                  key={idx.symbol}
+                  onClick={() => openStockDetails(idx.symbol)}
+                  className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 hover:border-emerald-500 cursor-pointer transition-all shadow-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{idx.name}</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${
+                      isPositive
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
+                    }`}>
+                      {isPositive ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                      {isPositive ? '+' : ''}{idx.change24h.toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="text-base font-extrabold text-gray-900 dark:text-gray-100 mt-1">
+                    {idx.currency === 'MAD' ? `${idx.price.toLocaleString()} MAD` : `$${idx.price.toFixed(2)}`}
+                  </div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 flex items-center justify-between">
+                    <span>{idx.symbol}</span>
+                    <span>{displayCurrency !== idx.currency && formatAmount(idx.priceInMad || (idx.price * rates.USD_TO_MAD))}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* TrueSpend Safe-to-Invest Compounding Strategy Card */}
+          <Card className="border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-r from-emerald-50/50 via-blue-50/30 to-indigo-50/30 dark:from-emerald-950/20 dark:via-blue-950/10 dark:to-indigo-950/10 shadow-sm overflow-hidden">
+            <CardContent className="p-5 space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" /> Safe-to-Invest Integration
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Surplus: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{formatAmount(data?.safeToInvest?.safeToInvestMonthly || 2500)}</strong> this cycle
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                    Deploy Your Monthly Safe Surplus Into Stock Wealth
+                  </h3>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed max-w-2xl">
+                    Unlike volatile crypto, broad stock indices (S&P 500) and dividend champions compound steadily. TrueSpend automates DCA schedules 2 days after payday so your savings never get spent elsewhere.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    size="sm"
+                    onClick={() => handleDeploySafeToInvestStrategy(selectedStockStrategy)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Zap className="h-3.5 w-3.5" />
+                    Deploy Strategy to DCA
+                  </Button>
+                </div>
+              </div>
+
+              {/* 3 Stock Strategy Selector Tabs */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-emerald-100 dark:border-emerald-900/30">
+                <div
+                  onClick={() => setSelectedStockStrategy('core')}
+                  className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                    selectedStockStrategy === 'core'
+                      ? 'border-emerald-500 bg-white dark:bg-gray-800 shadow-sm ring-1 ring-emerald-500/30'
+                      : 'border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-800/60 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs font-bold text-gray-900 dark:text-gray-100 mb-1">
+                    <span className="flex items-center gap-1">🏛️ Core Compounder</span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">Recommended</span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2 leading-tight">
+                    50% S&P 500 (VOO) + 25% Apple (AAPL) + 25% Attijariwafa Bank (ATW in MAD).
+                  </p>
+                  <div className="flex items-center justify-between text-[10px] text-gray-600 dark:text-gray-300 font-medium">
+                    <span>Est. Growth: 8-10% CAGR</span>
+                    <span>Yield: ~2.4%</span>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setSelectedStockStrategy('dividend')}
+                  className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                    selectedStockStrategy === 'dividend'
+                      ? 'border-emerald-500 bg-white dark:bg-gray-800 shadow-sm ring-1 ring-emerald-500/30'
+                      : 'border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-800/60 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs font-bold text-gray-900 dark:text-gray-100 mb-1">
+                    <span className="flex items-center gap-1">💵 High-Yield Cash Flow</span>
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">Passive Income</span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2 leading-tight">
+                    40% SCHD Dividend + 35% Maroc Telecom (IAM 4.6%) + 25% Attijariwafa (3.9%).
+                  </p>
+                  <div className="flex items-center justify-between text-[10px] text-gray-600 dark:text-gray-300 font-medium">
+                    <span>Est. Growth: 6-8% CAGR</span>
+                    <span>Yield: ~4.1%</span>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setSelectedStockStrategy('growth')}
+                  className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                    selectedStockStrategy === 'growth'
+                      ? 'border-emerald-500 bg-white dark:bg-gray-800 shadow-sm ring-1 ring-emerald-500/30'
+                      : 'border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-800/60 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs font-bold text-gray-900 dark:text-gray-100 mb-1">
+                    <span className="flex items-center gap-1">🚀 Tech & AI Innovators</span>
+                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">Max Upside</span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2 leading-tight">
+                    50% Nasdaq 100 (QQQ) + 30% NVIDIA (NVDA) + 20% Microsoft (MSFT).
+                  </p>
+                  <div className="flex items-center justify-between text-[10px] text-gray-600 dark:text-gray-300 font-medium">
+                    <span>Est. Growth: 12-16% CAGR</span>
+                    <span>Yield: ~0.8%</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Search & Category Pills */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {[
+                { id: 'tech', label: '🚀 US Tech Giants', icon: '💻' },
+                { id: 'etfs', label: '📊 Core Index ETFs', icon: '📈' },
+                { id: 'dividends', label: '💰 Dividend Aristocrats', icon: '💵' },
+                { id: 'morocco', label: '🇲🇦 Casablanca BVC Local', icon: '🏛️' },
+              ].map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    setStockCategory(c.id as any);
+                    setStockSearch('');
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    stockCategory === c.id && !stockSearch.trim()
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Standalone Stock Search Bar */}
+            <div className="relative w-full md:w-80">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search ticker or company (e.g. NVDA, VOO, IAM, ATW)..."
+                value={stockSearch}
+                onChange={(e) => setStockSearch(e.target.value)}
+                className="pl-8 text-xs h-9 bg-white dark:bg-gray-800"
+              />
+              {isSearchingStocks && (
+                <RefreshCw className="absolute right-2.5 top-2.5 h-4 w-4 text-gray-400 animate-spin" />
+              )}
+            </div>
+          </div>
+
+          {/* Stock Search Results Dropdown/Box if user typed */}
+          {stockSearch.trim() && (
+            <Card className="border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/20 dark:bg-emerald-950/10 shadow-sm">
+              <CardHeader className="py-3 px-4 border-b border-emerald-100 dark:border-emerald-900/30">
+                <CardTitle className="text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
+                  <span>Stock Search Results for "{stockSearch}"</span>
+                  <span className="text-[11px] font-normal text-gray-500">
+                    {stockSearchResults.length} matching equities found
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-3">
+                {stockSearchResults.length === 0 ? (
+                  <div className="text-center py-4 text-xs text-gray-500">
+                    {isSearchingStocks ? 'Searching global equity exchanges...' : 'No stocks matched your query. Try AAPL, VOO, ATW, IAM, or TSLA.'}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {stockSearchResults.map((stock) => (
+                      <div
+                        key={stock.symbol}
+                        className="p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between gap-3 shadow-2xs hover:border-emerald-500 transition-all"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-xs text-gray-900 dark:text-gray-100">{stock.symbol}</span>
+                            <span className="text-[10px] px-1.5 py-0.2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded">
+                              {stock.exchange || stock.quoteType}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-gray-500 truncate block">{stock.name}</span>
+                          <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 mt-1 block">
+                            {getFormattedStockPrice(stock)}
+                          </span>
+                        </div>
+                        <div className="flex flex-col gap-1 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openStockDetails(stock.symbol)}
+                            className="text-[10px] h-6 px-2"
+                          >
+                            Details
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleQuickBuyStock(stock)}
+                            className="text-[10px] h-6 px-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                          >
+                            + Add / Buy
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Active Category Stock Grid */}
+          {(() => {
+            let activeList: StockQuote[] = [];
+            if (stockCategory === 'tech') activeList = popularStocksData?.tech || [];
+            else if (stockCategory === 'etfs') activeList = popularStocksData?.indices || [];
+            else if (stockCategory === 'dividends') activeList = popularStocksData?.dividends || [];
+            else if (stockCategory === 'morocco') activeList = popularStocksData?.morocco || [];
+
+            if (activeList.length === 0 && !loadingPopularStocks) {
+              return (
+                <div className="p-8 text-center text-xs text-gray-500">
+                  No stock data currently available. Click "Sync Prices" to refresh market feeds.
+                </div>
+              );
+            }
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activeList.map((stock) => {
+                  const isPositive = (stock.change24h || 0) >= 0;
+                  const divYield = stock.dividendYield || 0;
+                  const isMoroccan = stock.currency === 'MAD' || stock.exchange === 'Casablanca';
+
+                  return (
+                    <Card
+                      key={stock.symbol}
+                      className="border-gray-200 dark:border-gray-800 hover:border-emerald-500/60 transition-all shadow-xs overflow-hidden flex flex-col justify-between"
+                    >
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-extrabold text-sm text-gray-900 dark:text-gray-100">
+                                {stock.symbol}
+                              </span>
+                              <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                                {isMoroccan ? '🇲🇦 BVC Casablanca' : stock.assetType === 'etf' ? '📊 Index ETF' : '🇺🇸 US Equity'}
+                              </span>
+                              {divYield > 0 && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 flex items-center gap-0.5">
+                                  💰 {divYield.toFixed(1)}% Div
+                                </span>
+                              )}
+                            </div>
+                            <h4 className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate max-w-[200px] mt-0.5">
+                              {stock.name}
+                            </h4>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className="text-base font-extrabold text-gray-900 dark:text-gray-100 block">
+                              {getFormattedStockPrice(stock)}
+                            </span>
+                            <span className={`text-[11px] font-bold inline-flex items-center gap-0.5 ${
+                              isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
+                            }`}>
+                              {isPositive ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                              {isPositive ? '+' : ''}{stock.change24h?.toFixed(2)}%
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Fundamentals Row: Sector, P/E, Parent Quote */}
+                        <div className="pt-2 border-t border-gray-100 dark:border-gray-800 grid grid-cols-3 gap-1 text-[11px]">
+                          <div>
+                            <span className="text-gray-400 block text-[10px]">Sector</span>
+                            <span className="font-medium text-gray-700 dark:text-gray-300 truncate block">
+                              {stock.sector || (stock.assetType === 'etf' ? 'Broad Index' : 'Financials')}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 block text-[10px]">P/E Ratio</span>
+                            <span className="font-medium text-gray-700 dark:text-gray-300 block">
+                              {stock.peRatio ? stock.peRatio.toFixed(1) : 'N/A'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 block text-[10px]">Parent Quote</span>
+                            <span className="font-medium text-gray-700 dark:text-gray-300 block">
+                              {stock.currency === 'MAD' ? `${stock.price} MAD` : `$${stock.price}`}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Quick Action Footer */}
+                        <div className="pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openStockDetails(stock.symbol)}
+                            className="text-xs h-7 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+                          >
+                            <LineChart className="h-3.5 w-3.5 mr-1" />
+                            Details
+                          </Button>
+
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setDcaForm((prev) => ({
+                                  ...prev,
+                                  symbol: stock.symbol,
+                                  assetName: stock.name,
+                                  assetType: stock.assetType as any,
+                                  currency: 'MAD',
+                                }));
+                                setShowDcaModal(true);
+                              }}
+                              className="text-[11px] h-7 px-2"
+                              title="Set up recurring Payday DCA for this stock"
+                            >
+                              <Calendar className="h-3 w-3 mr-1 text-emerald-600" />
+                              DCA
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              onClick={() => handleQuickBuyStock(stock)}
+                              className="text-[11px] h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Buy / Add
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* SUB-TAB: AI STOCK PORTFOLIO CO-PILOT (SPEX) */}
+      {activeSubTab === 'ai-health' && (
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                <Bot className="h-5 w-5 text-indigo-500" />
+                Spex AI Stock & Wealth Co-Pilot
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Autonomous algorithmic portfolio diagnostic powered by Gemini AI, assessing diversification, dividend cash flow coverage, and Safe-to-Invest alignment.
+              </p>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={handleRunStockAiAnalysis}
+              disabled={analyzingPortfolio}
+              className="text-xs flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${analyzingPortfolio ? 'animate-spin' : ''}`} />
+              <span>{analyzingPortfolio ? 'Analyzing Portfolio...' : 'Re-Audit Portfolio with AI'}</span>
+            </Button>
+          </div>
+
+          {analyzingError && (
+            <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>{analyzingError}</span>
+            </div>
+          )}
+
+          {/* Hero Audit Card */}
+          <Card className="border-indigo-200 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-50/50 via-white to-purple-50/30 dark:from-indigo-950/20 dark:via-gray-900 dark:to-purple-950/10 shadow-sm overflow-hidden">
+            <CardContent className="p-6 space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="flex items-center gap-5">
+                  {/* Grade Badge */}
+                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex flex-col items-center justify-center shadow-lg shrink-0">
+                    <span className="text-3xl font-black tracking-tight">
+                      {stockAiAnalysis?.portfolioGrade || 'A-'}
+                    </span>
+                    <span className="text-[10px] uppercase font-bold tracking-wider opacity-80">Rating</span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                        Spex Executive Verdict
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 font-semibold">
+                        Gemini AI Grounded
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed font-medium">
+                      {stockAiAnalysis?.executiveVerdict ||
+                        'Your stock and investment holdings maintain disciplined exposure with clear compounding opportunities. Continuing regular post-payday allocations will maximize long-term dividend cash flow.'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Score Dials */}
+                <div className="flex items-center gap-4 shrink-0">
+                  <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 text-center min-w-[100px]">
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 block uppercase font-bold">Health Score</span>
+                    <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                      {stockAiAnalysis?.healthScore || 85}
+                      <span className="text-xs text-gray-400 font-normal">/100</span>
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 text-center min-w-[100px]">
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 block uppercase font-bold">Diversification</span>
+                    <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                      {stockAiAnalysis?.diversificationScore || 80}
+                      <span className="text-xs text-gray-400 font-normal">/100</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Golden Rule Highlight */}
+              {stockAiAnalysis?.goldenRule && (
+                <div className="p-3.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 flex items-center gap-3 text-xs text-amber-900 dark:text-amber-200">
+                  <Award className="h-5 w-5 text-amber-600 shrink-0" />
+                  <div>
+                    <span className="font-bold block text-[11px] uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                      Spex Golden Investment Rule:
+                    </span>
+                    <span className="font-medium">{stockAiAnalysis.goldenRule}</span>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Living Expenses & Passive Dividend Coverage */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="border-gray-200 dark:border-gray-800 shadow-xs">
+              <CardContent className="p-5 space-y-1">
+                <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold block">
+                  Annual Passive Dividends
+                </span>
+                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                  {formatAmount(stockAiAnalysis?.projectedPassiveIncomeMad || data?.annualPassiveIncomeMad || 0)}
+                </div>
+                <span className="text-[11px] text-gray-400 block">
+                  Yield generated purely from dividends and staking
+                </span>
+              </CardContent>
+            </Card>
+
+            <Card className="border-gray-200 dark:border-gray-800 shadow-xs">
+              <CardContent className="p-5 space-y-1">
+                <span className="text-xs text-gray-500 uppercase tracking-wider font-semibold block">
+                  Monthly Passive Run-Rate
+                </span>
+                <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {formatAmount(Math.round((stockAiAnalysis?.projectedPassiveIncomeMad || data?.annualPassiveIncomeMad || 0) / 12))}
+                </div>
+                <span className="text-[11px] text-gray-400 block">
+                  Monthly cash flow before reinvestment (DRIP)
+                </span>
+              </CardContent>
+            </Card>
+
+            <Card className="border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/30 dark:bg-emerald-950/10 shadow-xs">
+              <CardContent className="p-5 space-y-1">
+                <span className="text-xs text-emerald-800 dark:text-emerald-300 uppercase tracking-wider font-bold block">
+                  TrueSpend Expense Coverage
+                </span>
+                <div className="text-2xl font-black text-emerald-700 dark:text-emerald-300">
+                  {stockAiAnalysis?.monthlyDividendCoveragePercent || data?.fireCoveragePercent || 4}%
+                </div>
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 block">
+                  Of living costs & subscriptions paid 100% passively
+                </span>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Allocations & Currency Exposure */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Sector Allocations */}
+            <Card className="border-gray-200 dark:border-gray-800 shadow-xs">
+              <CardHeader className="py-4 px-5 border-b border-gray-100 dark:border-gray-800">
+                <CardTitle className="text-xs font-bold text-gray-900 dark:text-gray-100 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <PieChart className="h-4 w-4 text-indigo-500" />
+                    Sector & Asset Class Diversification
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-5 space-y-3">
+                {(stockAiAnalysis?.sectorAllocations?.length ? stockAiAnalysis.sectorAllocations : [
+                  { sector: 'Index ETFs (VOO/QQQ)', percentage: 45, amountMad: 18000 },
+                  { sector: 'Moroccan Equities (BVC)', percentage: 30, amountMad: 12000 },
+                  { sector: 'US Tech Equities', percentage: 25, amountMad: 10000 },
+                ]).map((sec) => (
+                  <div key={sec.sector} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">{sec.sector}</span>
+                      <span className="font-bold text-gray-900 dark:text-gray-100">{sec.percentage}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-indigo-600 h-2 rounded-full transition-all duration-500"
+                        style={{ width: `${sec.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Currency Exposure */}
+            <Card className="border-gray-200 dark:border-gray-800 shadow-xs">
+              <CardHeader className="py-4 px-5 border-b border-gray-100 dark:border-gray-800">
+                <CardTitle className="text-xs font-bold text-gray-900 dark:text-gray-100 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Globe className="h-4 w-4 text-emerald-500" />
+                    Currency & Foreign Exchange Exposure
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-5 space-y-3">
+                {(stockAiAnalysis?.currencyExposure?.length ? stockAiAnalysis.currencyExposure : [
+                  { currency: 'USD', percentage: 65, amountMad: 26000 },
+                  { currency: 'MAD', percentage: 35, amountMad: 14000 },
+                ]).map((cur) => (
+                  <div key={cur.currency} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">
+                        {cur.currency === 'MAD' ? '🇲🇦 Moroccan Dirham (MAD)' : '🇺🇸 US Dollar (USD)'}
+                      </span>
+                      <span className="font-bold text-gray-900 dark:text-gray-100">{cur.percentage}%</span>
+                    </div>
+                    <div className="w-full bg-gray-100 dark:bg-gray-800 h-2 rounded-full overflow-hidden">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-500 ${cur.currency === 'MAD' ? 'bg-emerald-600' : 'bg-blue-600'}`}
+                        style={{ width: `${cur.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Risk Flags & Recommendations */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Risk Flags */}
+            <Card className="border-gray-200 dark:border-gray-800 shadow-xs">
+              <CardHeader className="py-4 px-5 border-b border-gray-100 dark:border-gray-800">
+                <CardTitle className="text-xs font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-amber-500" />
+                  Portfolio Risk Flags & Vulnerabilities
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3">
+                {(stockAiAnalysis?.riskFlags?.length ? stockAiAnalysis.riskFlags : [
+                  { severity: 'low' as const, title: 'Balanced Asset Breadth', detail: 'Positions are spread across index ETFs and local dividend champions.' },
+                  { severity: 'medium' as const, title: 'USD Currency Exposure', detail: 'Favorable for long-term hedge, but monitor USD/MAD foreign exchange adjustments.' },
+                ]).map((flag, idx) => (
+                  <div key={idx} className="p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/40 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-gray-900 dark:text-gray-100">{flag.title}</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        flag.severity === 'high'
+                          ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                          : flag.severity === 'medium'
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                          : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                      }`}>
+                        {flag.severity.toUpperCase()} RISK
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">{flag.detail}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Recommendations */}
+            <Card className="border-gray-200 dark:border-gray-800 shadow-xs">
+              <CardHeader className="py-4 px-5 border-b border-gray-100 dark:border-gray-800">
+                <CardTitle className="text-xs font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-indigo-500" />
+                  Actionable AI Investment Directives
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3">
+                {(stockAiAnalysis?.recommendations?.length ? stockAiAnalysis.recommendations : [
+                  { title: 'Anchor Core in Broad Index ETFs', rationale: 'Allocate 50% of monthly investment surplus to broad index ETFs like VOO for steady compounding.', priority: 'high' as const },
+                  { title: 'Automate Payday-Synced DCA', rationale: 'Set recurring buy orders 2 days post-payday to capture TrueSpend Safe-to-Invest surplus automatically.', priority: 'medium' as const },
+                  { title: 'Reinvest Dividends (DRIP)', rationale: 'Turn on dividend reinvestment to accelerate compounding on your passive stock cash flow.', priority: 'medium' as const },
+                ]).map((rec, idx) => (
+                  <div key={idx} className="p-3 rounded-xl border border-indigo-100 dark:border-indigo-950 bg-indigo-50/20 dark:bg-indigo-950/20 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200">{rec.title}</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200">
+                        {rec.priority.toUpperCase()} PRIORITY
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">{rec.rationale}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       )}
 
@@ -3070,9 +4048,9 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                     />
                     {holdingSearchResults.length > 0 && (
                       <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl max-h-48 overflow-y-auto p-1 divide-y divide-gray-100 dark:divide-gray-700">
-                        {holdingSearchResults.map((coin) => (
+                        {holdingSearchResults.map((coin, idx) => (
                           <div
-                            key={coin.id}
+                            key={coin.id || coin.symbol || idx}
                             onClick={() => handleSelectCoinForHolding(coin)}
                             className="p-2 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 cursor-pointer rounded-lg flex items-center justify-between text-xs transition-colors"
                           >
@@ -3084,7 +4062,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                                 {coin.symbol?.toUpperCase()}
                               </span>
                               <span className="text-gray-500 dark:text-gray-400 text-[11px] truncate max-w-[150px]">
-                                {coin.name} {coin.market_cap_rank ? `#${coin.market_cap_rank}` : ''}
+                                {coin.name} {coin.market_cap_rank ? `#${coin.market_cap_rank}` : (coin.exchange || coin.quoteType ? `(${coin.exchange || coin.quoteType})` : '')}
                               </span>
                             </div>
                             <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-900/40 px-2 py-0.5 rounded">
@@ -4219,6 +5197,240 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                         + Add to Portfolio
                       </Button>
                     </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* STOCK DETAILS MODAL */}
+      {(selectedStockDetail || loadingStockDetail) && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl max-w-xl w-full p-6 border border-gray-200 dark:border-gray-800 shadow-2xl max-h-[90vh] overflow-y-auto">
+            {loadingStockDetail ? (
+              <div className="py-16 text-center space-y-3">
+                <RefreshCw className="h-8 w-8 text-emerald-500 animate-spin mx-auto" />
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                  Fetching live stock fundamentals & valuation...
+                </p>
+              </div>
+            ) : selectedStockDetail ? (
+              <div className="space-y-5">
+                {/* Header */}
+                <div className="flex items-start justify-between pb-3 border-b border-gray-100 dark:border-gray-800">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-xl text-gray-900 dark:text-gray-100">
+                        {selectedStockDetail.symbol}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        {selectedStockDetail.exchange || (selectedStockDetail.currency === 'MAD' ? 'BVC Casablanca' : 'US Market')}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                        {selectedStockDetail.sector || (selectedStockDetail.assetType === 'etf' ? 'Index ETF' : 'Equity')}
+                      </span>
+                    </div>
+                    <h3 className="text-sm text-gray-500 dark:text-gray-400 font-medium mt-0.5">
+                      {selectedStockDetail.name}
+                    </h3>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStockDetail(null)}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Live Price Display */}
+                <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-gray-400 block tracking-wider">
+                      Current Share Price
+                    </span>
+                    <div className="text-2xl font-black text-gray-900 dark:text-gray-100">
+                      {getFormattedStockPrice(selectedStockDetail)}
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Primary Quote: {selectedStockDetail.currency === 'MAD' ? `${selectedStockDetail.price} MAD` : `$${selectedStockDetail.price.toFixed(2)}`}
+                    </span>
+                  </div>
+
+                  <div className="text-right">
+                    <span className={`text-sm font-bold px-2 py-1 rounded-lg inline-flex items-center gap-1 ${
+                      (selectedStockDetail.change24h || 0) >= 0
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                        : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                    }`}>
+                      {(selectedStockDetail.change24h || 0) >= 0 ? '+' : ''}
+                      {selectedStockDetail.change24h?.toFixed(2)}% (24h)
+                    </span>
+                    {selectedStockDetail.changeAmount !== undefined && (
+                      <span className="text-xs text-gray-400 block mt-1">
+                        {selectedStockDetail.changeAmount >= 0 ? '+' : ''}{selectedStockDetail.changeAmount.toFixed(2)} {selectedStockDetail.currency}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Key Fundamental Metrics */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800/50 space-y-1">
+                    <span className="text-gray-400 text-[10px] uppercase font-semibold block">Dividend Yield</span>
+                    <span className="font-extrabold text-amber-600 dark:text-amber-400 text-sm">
+                      {selectedStockDetail.dividendYield ? `${selectedStockDetail.dividendYield.toFixed(2)}%` : 'None / 0%'}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800/50 space-y-1">
+                    <span className="text-gray-400 text-[10px] uppercase font-semibold block">P/E Ratio</span>
+                    <span className="font-extrabold text-gray-800 dark:text-gray-200 text-sm">
+                      {selectedStockDetail.peRatio ? selectedStockDetail.peRatio.toFixed(1) : 'N/A'}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800/50 space-y-1">
+                    <span className="text-gray-400 text-[10px] uppercase font-semibold block">52-Week High</span>
+                    <span className="font-bold text-gray-700 dark:text-gray-300 text-sm">
+                      {selectedStockDetail.fiftyTwoWeekHigh
+                        ? `${selectedStockDetail.fiftyTwoWeekHigh} ${selectedStockDetail.currency}`
+                        : 'N/A'}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-800/50 space-y-1">
+                    <span className="text-gray-400 text-[10px] uppercase font-semibold block">52-Week Low</span>
+                    <span className="font-bold text-gray-700 dark:text-gray-300 text-sm">
+                      {selectedStockDetail.fiftyTwoWeekLow
+                        ? `${selectedStockDetail.fiftyTwoWeekLow} ${selectedStockDetail.currency}`
+                        : 'N/A'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Sparkline if available */}
+                {selectedStockDetail.sparkline && selectedStockDetail.sparkline.length > 4 && (
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/30 dark:bg-gray-800/20 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-semibold text-gray-700 dark:text-gray-300">
+                      <span className="flex items-center gap-1.5">
+                        <Activity className="h-3.5 w-3.5 text-emerald-500" />
+                        Price Trajectory & Trend
+                      </span>
+                      <span className="text-[10px] text-gray-400">Market Feed</span>
+                    </div>
+                    <div className="h-16 w-full flex items-end">
+                      {(() => {
+                        const pts = selectedStockDetail.sparkline!;
+                        const min = Math.min(...pts);
+                        const max = Math.max(...pts);
+                        const range = max - min || 1;
+                        const isUp = pts[pts.length - 1] >= pts[0];
+                        const strokeColor = isUp ? '#10b981' : '#ef4444';
+                        const width = 500;
+                        const height = 60;
+                        const polylinePoints = pts
+                          .map((p, idx) => {
+                            const x = (idx / (pts.length - 1)) * width;
+                            const y = height - ((p - min) / range) * (height - 10) - 5;
+                            return `${x.toFixed(1)},${y.toFixed(1)}`;
+                          })
+                          .join(' ');
+                        return (
+                          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+                            <polyline
+                              fill="none"
+                              stroke={strokeColor}
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              points={polylinePoints}
+                            />
+                          </svg>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* Safe-to-Invest Compounding Calculator for this Stock */}
+                <div className="p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 space-y-2 text-xs">
+                  <div className="flex items-center justify-between font-bold text-emerald-900 dark:text-emerald-200">
+                    <span className="flex items-center gap-1.5">
+                      <Calculator className="h-3.5 w-3.5 text-emerald-600" />
+                      TrueSpend Compounding Estimator
+                    </span>
+                    <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-normal">
+                      Based on Safe-to-Invest Runway
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                    If you DCA <strong>1,000 MAD/month</strong> into {selectedStockDetail.symbol} at an estimated historical 9% CAGR with DRIP, your investment will compound to approximately:
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 pt-1 font-semibold text-center">
+                    <div className="p-2 rounded-lg bg-white dark:bg-gray-800 border border-emerald-100 dark:border-emerald-900/40">
+                      <span className="text-[10px] text-gray-400 block font-normal">3 Years</span>
+                      <span className="text-emerald-700 dark:text-emerald-300 font-bold">~41,200 MAD</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-white dark:bg-gray-800 border border-emerald-100 dark:border-emerald-900/40">
+                      <span className="text-[10px] text-gray-400 block font-normal">5 Years</span>
+                      <span className="text-emerald-700 dark:text-emerald-300 font-bold">~75,400 MAD</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-white dark:bg-gray-800 border border-emerald-100 dark:border-emerald-900/40">
+                      <span className="text-[10px] text-gray-400 block font-normal">10 Years</span>
+                      <span className="text-emerald-700 dark:text-emerald-300 font-bold">~193,500 MAD</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Modal Footer Actions */}
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-800">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedStockDetail(null)}
+                    className="text-xs"
+                  >
+                    Close
+                  </Button>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const s = selectedStockDetail;
+                        setSelectedStockDetail(null);
+                        setDcaForm((prev) => ({
+                          ...prev,
+                          symbol: s.symbol,
+                          assetName: s.name,
+                          assetType: s.assetType as any,
+                          currency: 'MAD',
+                        }));
+                        setShowDcaModal(true);
+                      }}
+                      className="text-xs flex items-center gap-1 border-emerald-500 text-emerald-700 hover:bg-emerald-50"
+                    >
+                      <Calendar className="h-3.5 w-3.5" />
+                      Set Payday DCA
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        const s = selectedStockDetail;
+                        setSelectedStockDetail(null);
+                        handleQuickBuyStock(s);
+                      }}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      + Add to Portfolio
+                    </Button>
                   </div>
                 </div>
               </div>

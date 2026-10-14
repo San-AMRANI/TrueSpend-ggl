@@ -9,6 +9,7 @@ import { DebtsTab } from './dashboard/DebtsTab';
 import { AnalyticsTab } from './dashboard/AnalyticsTab';
 import { SettingsTab } from './dashboard/SettingsTab';
 import { BudgetsTab } from './dashboard/BudgetsTab';
+import { InvestmentsTab } from './dashboard/InvestmentsTab';
 import { GoalsTab } from './dashboard/GoalsTab';
 import { SubscriptionsTab } from './dashboard/SubscriptionsTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
@@ -200,6 +201,28 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onClearMonth={handleClearCategoryBudgetsMonth}
           onDeleteBudget={handleDeleteCategoryBudget}
           onContributeGoal={handleContributeToGoal}
+          setActiveTab={setActiveTab}
+        />
+      )}
+
+      {activeTab === 'investments' && (
+        <InvestmentsTab
+          data={investmentsData}
+          loading={loading}
+          wallets={kpis?.accounts || []}
+          kpis={kpis}
+          debts={debts}
+          onRefresh={refreshInvestments}
+          onCreateHolding={handleCreateHolding}
+          onUpdateHolding={handleUpdateHolding}
+          onDeleteHolding={handleDeleteHolding}
+          onExecuteTrade={handleExecuteTrade}
+          onCreateDcaPlan={handleCreateDcaPlan}
+          onUpdateDcaPlan={handleUpdateDcaPlan}
+          onDeleteDcaPlan={handleDeleteDcaPlan}
+          onAddToWatchlist={handleAddToWatchlist}
+          onRemoveFromWatchlist={handleRemoveFromWatchlist}
+          onCreateWallet={handleCreateWallet}
           setActiveTab={setActiveTab}
         />
       )}

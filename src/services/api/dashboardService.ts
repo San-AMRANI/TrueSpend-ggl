@@ -21,6 +21,9 @@ import {
   CoinSearchResult,
   CyclePeriodSummary,
   CycleRetrospectiveData,
+  StockQuote,
+  StockSearchResult,
+  StockAiAnalysis,
 } from '../../types';
 
 export const dashboardService = {
@@ -185,6 +188,16 @@ export const dashboardService = {
     apiClient.post<WatchlistItem>('/api/investments/watchlist', payload, token),
   removeFromWatchlist: (coinId: string, token: string | null) =>
     apiClient.delete<{ success: boolean }>(`/api/investments/watchlist/${encodeURIComponent(coinId)}`, token),
+
+  // Stocks & Equities (Global & Casablanca BVC)
+  searchStocks: (q: string, token: string | null) =>
+    apiClient.get<StockSearchResult[]>(`/api/investments/stocks/search?q=${encodeURIComponent(q)}`, token),
+  getPopularStocks: (token: string | null) =>
+    apiClient.get<{ indices: StockQuote[]; tech: StockQuote[]; dividends: StockQuote[]; morocco: StockQuote[] }>('/api/investments/stocks/popular', token),
+  getStockDetails: (symbol: string, token: string | null) =>
+    apiClient.get<StockQuote>(`/api/investments/stocks/details/${encodeURIComponent(symbol)}`, token),
+  analyzeStockPortfolio: (token: string | null) =>
+    apiClient.post<StockAiAnalysis>('/api/investments/stocks/ai-analysis', {}, token),
 
   // AI Cycle Wrap-Up & Payday Retrospective (Report Card)
   getCycles: (token: string | null) =>

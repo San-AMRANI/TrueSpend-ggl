@@ -14,6 +14,12 @@ router.get('/investments/coin/:id', (req, res) => investmentController.getCoinDe
 router.get('/investments/search-coins', (req, res) => investmentController.searchCoins(req as any, res));
 router.get('/investments/spot-price', (req, res) => investmentController.getSpotPrice(req as any, res));
 
+// Stocks & Equities (Global & Casablanca BVC)
+router.get('/investments/stocks/search', (req, res) => investmentController.searchStocks(req as any, res));
+router.get('/investments/stocks/popular', (req, res) => investmentController.getPopularStocks(req as any, res));
+router.get('/investments/stocks/details/:symbol', (req, res) => investmentController.getStockDetails(req as any, res));
+router.post('/investments/stocks/ai-analysis', (req, res) => investmentController.analyzeStockPortfolio(req as any, res));
+
 // Watchlist
 router.get('/investments/watchlist', (req, res) => investmentController.getWatchlist(req as any, res));
 router.post('/investments/watchlist', (req, res) => investmentController.addToWatchlist(req as any, res));

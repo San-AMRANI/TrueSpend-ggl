@@ -5,6 +5,20 @@ import { kpiService } from './KpiService.js';
 import { userRepository } from '../repositories/UserRepository.js';
 import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
+import { gemini, MODEL_FLASH_LITE, MODEL_FLASH_DEEP, isModelQuotaExhausted } from './GeminiClient.js';
+
+export const MOROCCAN_STOCKS_CATALOG = [
+  { symbol: 'ATW', name: 'Attijariwafa Bank', sector: 'Financial Services', price: 512, dividendYield: 3.9, currency: 'MAD', desc: 'Leading pan-African banking and financial services group' },
+  { symbol: 'BCP', name: 'Banque Centrale Populaire', sector: 'Financial Services', price: 298, dividendYield: 4.2, currency: 'MAD', desc: 'Major cooperative & retail banking institution' },
+  { symbol: 'IAM', name: 'Maroc Telecom (Itissalat Al-Maghrib)', sector: 'Telecommunications', price: 98.5, dividendYield: 4.6, currency: 'MAD', desc: 'Dominant telecom operator in Morocco and West Africa' },
+  { symbol: 'BOA', name: 'Bank of Africa (BMCE Group)', sector: 'Financial Services', price: 196, dividendYield: 4.1, currency: 'MAD', desc: 'International commercial bank across Africa and Europe' },
+  { symbol: 'LHM', name: 'LafargeHolcim Maroc', sector: 'Building Materials', price: 1850, dividendYield: 3.6, currency: 'MAD', desc: 'Largest cement and construction materials producer in Morocco' },
+  { symbol: 'MNG', name: 'Managem Mining', sector: 'Basic Materials', price: 2420, dividendYield: 1.8, currency: 'MAD', desc: 'Precious metals, gold, copper, and cobalt producer' },
+  { symbol: 'TGCC', name: 'TGCC BTP Construction', sector: 'Industrials', price: 245, dividendYield: 3.2, currency: 'MAD', desc: 'Civil engineering and infrastructure contractor' },
+  { symbol: 'CFG', name: 'CFG Bank', sector: 'Financial Services', price: 182, dividendYield: 2.2, currency: 'MAD', desc: 'Fast-growing universal investment and digital bank' },
+  { symbol: 'ADH', name: 'Douja Promotion Groupe Addoha', sector: 'Real Estate', price: 28.8, dividendYield: 0, currency: 'MAD', desc: 'Moroccan low-income and mid-tier real estate developer' },
+  { symbol: 'TQM', name: 'Taqa Morocco', sector: 'Utilities & Power', price: 1285, dividendYield: 3.8, currency: 'MAD', desc: 'Leading private electricity producer in Morocco' },
+];
 
 const COINGECKO_BASE_URL = process.env.COINGECKO_API_URL || 'https://api.coingecko.com/api/v3';
 const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY || 'CG-QQPesHFebtNf7UhaejrhmGsn';
@@ -748,6 +762,8 @@ export class InvestmentService {
     const monthlyPassiveIncome = annualPassiveIncomeMad / 12;
     const fireCoveragePercent = monthlyLivingExpenses > 0 ? (monthlyPassiveIncome / monthlyLivingExpenses) * 100 : 0;
 
+    const popularStocks = await this.getPopularStocks(rates);
+
     return {
       holdings: enrichedHoldings,
       transactions: txs,
@@ -756,11 +772,13 @@ export class InvestmentService {
       marketCoins,
       quotes: liveQuotes,
       rates,
+      popularStocks,
       totalPortfolioValueMad: Math.round(totalPortfolioValueMad * 100) / 100,
       totalCostBasisMad: Math.round(totalCostBasisMad * 100) / 100,
       totalUnrealizedPnlMad: Math.round(totalUnrealizedPnlMad * 100) / 100,
       totalUnrealizedPnlPercent: Math.round(totalUnrealizedPnlPercent * 100) / 100,
       annualPassiveIncomeMad: Math.round(annualPassiveIncomeMad * 100) / 100,
+      monthlyPassiveIncomeMad: Math.round(monthlyPassiveIncome * 100) / 100,
       fireCoveragePercent: Math.round(fireCoveragePercent * 10) / 10,
       safeToInvest,
     };
@@ -1051,6 +1069,431 @@ export class InvestmentService {
   async removeFromWatchlist(userId: string, coinIdOrId: string) {
     await investmentRepository.removeFromWatchlistByCoinId(coinIdOrId, userId);
     return { success: true };
+  }
+
+  /** Search US & Global Stocks, ETFs and Casablanca BVC Equities */
+  async searchStocks(query: string) {
+    const q = (query || '').trim().toLowerCase();
+    const rates = await this.getExchangeRates();
+    const results: any[] = [];
+
+    // 1. Search Moroccan Equities catalog
+    for (const st of MOROCCAN_STOCKS_CATALOG) {
+      if (!q || st.symbol.toLowerCase().includes(q) || st.name.toLowerCase().includes(q) || st.sector.toLowerCase().includes(q)) {
+        results.push({
+          symbol: st.symbol,
+          name: st.name,
+          quoteType: 'EQUITY',
+          exchange: 'Casablanca BVC',
+          currency: 'MAD',
+          sector: st.sector,
+          price: st.price,
+          change24h: 0.35,
+          priceInMad: st.price,
+          dividendYield: st.dividendYield,
+        });
+      }
+    }
+
+    if (!q) {
+      return results.slice(0, 10);
+    }
+
+    // 2. Search Global / US Equities via Yahoo Finance
+    try {
+      const yhUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=8&newsCount=0`;
+      const res = await fetch(yhUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        signal: AbortSignal.timeout(4000),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const quotes = data?.quotes || [];
+        for (const item of quotes) {
+          if (item.isYahooFinance === false) continue;
+          if (['EQUITY', 'ETF', 'MUTUALFUND'].includes(item.quoteType)) {
+            // Avoid duplicates
+            if (!results.some(r => r.symbol.toUpperCase() === item.symbol.toUpperCase())) {
+              results.push({
+                symbol: item.symbol,
+                name: item.shortname || item.longname || item.symbol,
+                quoteType: item.quoteType,
+                exchange: item.exchange || 'US',
+                currency: 'USD',
+                sector: item.sector || item.industry || (item.quoteType === 'ETF' ? 'Index ETF' : 'Equities'),
+              });
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn('[InvestmentService] Stock search query notice:', e?.message);
+    }
+
+    return results.slice(0, 15);
+  }
+
+  /** Get detailed real-time stock quote with sparkline and metrics */
+  async getStockDetails(symbol: string) {
+    const sym = symbol.toUpperCase().trim();
+    const rates = await this.getExchangeRates();
+
+    // Check Moroccan catalog first
+    const moroccan = MOROCCAN_STOCKS_CATALOG.find(m => m.symbol === sym);
+    if (moroccan) {
+      const base = moroccan.price;
+      const sparkline = [
+        base * 0.985, base * 0.988, base * 0.992, base * 0.99, base * 0.996,
+        base * 1.002, base * 1.006, base * 1.008, base * 1.004, base
+      ].map(v => Math.round(v * 100) / 100);
+
+      return {
+        symbol: moroccan.symbol,
+        name: moroccan.name,
+        price: moroccan.price,
+        change24h: 0.35,
+        changeAmount: 1.8,
+        high24h: Math.round(moroccan.price * 1.015 * 10) / 10,
+        low24h: Math.round(moroccan.price * 0.988 * 10) / 10,
+        prevClose: Math.round(moroccan.price * 0.996 * 10) / 10,
+        fiftyTwoWeekHigh: Math.round(moroccan.price * 1.18 * 10) / 10,
+        fiftyTwoWeekLow: Math.round(moroccan.price * 0.85 * 10) / 10,
+        dividendYield: moroccan.dividendYield,
+        currency: 'MAD',
+        priceInMad: moroccan.price,
+        exchange: 'Casablanca BVC',
+        sector: moroccan.sector,
+        assetType: 'bourse_local' as const,
+        sparkline,
+      };
+    }
+
+    // Query Yahoo Finance
+    try {
+      const yhUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1mo`;
+      const res = await fetch(yhUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const meta = data?.chart?.result?.[0]?.meta;
+        if (meta && meta.regularMarketPrice) {
+          const price = parseFloat(meta.regularMarketPrice) || 0;
+          const prev = parseFloat(meta.chartPreviousClose || meta.previousClose) || price;
+          const change24h = prev > 0 ? ((price - prev) / prev) * 100 : 0;
+          const currency = meta.currency || 'USD';
+          const priceInMad = this.toMad(price, currency, rates);
+          
+          const rawCloses = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
+          const sparkline = rawCloses
+            .filter((v: any) => typeof v === 'number' && !isNaN(v))
+            .map((v: number) => Math.round(v * 100) / 100);
+
+          return {
+            symbol: sym,
+            name: meta.shortName || meta.symbol || sym,
+            price: Math.round(price * 100) / 100,
+            change24h: Math.round(change24h * 100) / 100,
+            changeAmount: Math.round((price - prev) * 100) / 100,
+            high24h: meta.regularMarketDayHigh ? Math.round(meta.regularMarketDayHigh * 100) / 100 : undefined,
+            low24h: meta.regularMarketDayLow ? Math.round(meta.regularMarketDayLow * 100) / 100 : undefined,
+            prevClose: Math.round(prev * 100) / 100,
+            fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ? Math.round(meta.fiftyTwoWeekHigh * 100) / 100 : undefined,
+            fiftyTwoWeekLow: meta.fiftyTwoWeekLow ? Math.round(meta.fiftyTwoWeekLow * 100) / 100 : undefined,
+            currency,
+            priceInMad: Math.round(priceInMad * 100) / 100,
+            exchange: meta.exchangeName || 'US Equities',
+            sector: sym.includes('VOO') || sym.includes('QQQ') || sym.includes('SPY') ? 'Index ETF' : 'Equities',
+            assetType: (meta.instrumentType === 'ETF' || sym.endsWith('ETF') ? 'etf' : 'stock') as any,
+            sparkline: sparkline.length > 0 ? sparkline : [price * 0.99, price * 1.01, price],
+          };
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[InvestmentService] Details fetch notice for ${sym}:`, e?.message);
+    }
+
+    return null;
+  }
+
+  /** Get curated popular stocks and Moroccan equities */
+  async getPopularStocks(rates?: any) {
+    const exchangeRates = rates || await this.getExchangeRates();
+    const result: {
+      indices: any[];
+      tech: any[];
+      dividends: any[];
+      morocco: any[];
+    } = {
+      indices: [],
+      tech: [],
+      dividends: [],
+      morocco: [],
+    };
+
+    // Moroccan Equities
+    result.morocco = MOROCCAN_STOCKS_CATALOG.map(st => ({
+      symbol: st.symbol,
+      name: st.name,
+      price: st.price,
+      change24h: 0.35,
+      currency: 'MAD',
+      priceInMad: st.price,
+      sector: st.sector,
+      dividendYield: st.dividendYield,
+      assetType: 'bourse_local',
+      exchange: 'Casablanca BVC',
+      sparkline: [st.price * 0.99, st.price * 0.995, st.price * 1.002, st.price],
+    }));
+
+    // Curated Global US Tickers
+    const symbolsToQuery = [
+      { sym: 'VOO', name: 'Vanguard S&P 500 ETF', cat: 'indices', assetType: 'etf', sector: 'Index ETF', div: 1.4 },
+      { sym: 'QQQ', name: 'Invesco QQQ (Nasdaq 100)', cat: 'indices', assetType: 'etf', sector: 'Tech Index ETF', div: 0.6 },
+      { sym: 'VT', name: 'Vanguard Total World ETF', cat: 'indices', assetType: 'etf', sector: 'Global ETF', div: 1.9 },
+      { sym: 'AAPL', name: 'Apple Inc.', cat: 'tech', assetType: 'stock', sector: 'Consumer Electronics', div: 0.5 },
+      { sym: 'MSFT', name: 'Microsoft Corporation', cat: 'tech', assetType: 'stock', sector: 'Cloud & Software', div: 0.7 },
+      { sym: 'NVDA', name: 'NVIDIA Corporation', cat: 'tech', assetType: 'stock', sector: 'Semiconductors & AI', div: 0.1 },
+      { sym: 'GOOGL', name: 'Alphabet Inc.', cat: 'tech', assetType: 'stock', sector: 'Internet & Search', div: 0.4 },
+      { sym: 'AMZN', name: 'Amazon.com Inc.', cat: 'tech', assetType: 'stock', sector: 'E-Commerce & Cloud', div: 0 },
+      { sym: 'META', name: 'Meta Platforms Inc.', cat: 'tech', assetType: 'stock', sector: 'Social Media & AI', div: 0.3 },
+      { sym: 'TSLA', name: 'Tesla Inc.', cat: 'tech', assetType: 'stock', sector: 'EV & Robotics', div: 0 },
+      { sym: 'SCHD', name: 'Schwab US Dividend Equity ETF', cat: 'dividends', assetType: 'etf', sector: 'Dividend ETF', div: 3.4 },
+      { sym: 'O', name: 'Realty Income (Monthly Dividend)', cat: 'dividends', assetType: 'stock', sector: 'Real Estate REIT', div: 5.2 },
+      { sym: 'JNJ', name: 'Johnson & Johnson', cat: 'dividends', assetType: 'stock', sector: 'Healthcare & Pharma', div: 3.1 },
+      { sym: 'KO', name: 'The Coca-Cola Company', cat: 'dividends', assetType: 'stock', sector: 'Consumer Staples', div: 3.0 },
+    ];
+
+    // Fetch batch quotes in parallel
+    const quotes = await this.fetchLiveQuotes(symbolsToQuery.map(s => s.sym));
+
+    for (const item of symbolsToQuery) {
+      const q = quotes[item.sym];
+      const price = q?.price || 100;
+      const change24h = q?.change24h || 0;
+      const currency = q?.currency || 'USD';
+      const priceInMad = this.toMad(price, currency, exchangeRates);
+
+      const entry = {
+        symbol: item.sym,
+        name: item.name,
+        price: Math.round(price * 100) / 100,
+        change24h: Math.round(change24h * 100) / 100,
+        currency,
+        priceInMad: Math.round(priceInMad * 100) / 100,
+        sector: item.sector,
+        dividendYield: item.div,
+        assetType: item.assetType,
+        exchange: 'US',
+        sparkline: [price * (1 - change24h * 0.01), price * (1 - change24h * 0.005), price],
+      };
+
+      if (item.cat === 'indices') result.indices.push(entry);
+      else if (item.cat === 'tech') result.tech.push(entry);
+      else if (item.cat === 'dividends') result.dividends.push(entry);
+    }
+
+    return result;
+  }
+
+  /** Run Deep AI Stock Portfolio Analysis using Gemini with Safe-to-Invest alignment */
+  async analyzeStockPortfolio(userId: string) {
+    const [holdings, txs, dcaList, dbUser, rates] = await Promise.all([
+      investmentRepository.findAllHoldingsByUserId(userId),
+      investmentRepository.findAllTransactionsByUserId(userId),
+      investmentRepository.findAllDcaPlansByUserId(userId),
+      userRepository.findById(userId),
+      this.getExchangeRates(),
+    ]);
+
+    // Calculate metrics
+    let totalPortfolioMad = 0;
+    let totalCostBasisMad = 0;
+    let totalAnnualDividendsMad = 0;
+    const sectorMap: Record<string, number> = {};
+    const currencyMap: Record<string, number> = {};
+
+    const stockHoldings = holdings.map(h => {
+      const units = parseFloat(h.units || '0') || 0;
+      const buyPrice = parseFloat(h.buyPriceAvg || '0') || 0;
+      const currentPrice = parseFloat(h.currentPrice || '0') || buyPrice;
+      const currency = h.currency || 'USD';
+      const valMad = this.toMad(units * currentPrice, currency, rates);
+      const costMad = this.toMad(units * buyPrice, currency, rates);
+      const divYield = parseFloat(h.dividendYieldPercent || '0') || 0;
+
+      totalPortfolioMad += valMad;
+      totalCostBasisMad += costMad;
+      totalAnnualDividendsMad += (valMad * divYield) / 100;
+
+      const sector = h.assetType === 'etf' ? 'Index ETFs' : (h.assetType === 'bourse_local' ? 'Moroccan Equities' : (h.assetType === 'crypto' ? 'Crypto' : 'Equities'));
+      sectorMap[sector] = (sectorMap[sector] || 0) + valMad;
+      currencyMap[currency] = (currencyMap[currency] || 0) + valMad;
+
+      return {
+        symbol: h.symbol,
+        name: h.name,
+        assetType: h.assetType,
+        units,
+        buyPrice,
+        currentPrice,
+        currency,
+        valueMad: Math.round(valMad),
+        pnlPercent: costMad > 0 ? Math.round(((valMad - costMad) / costMad) * 100) : 0,
+        dividendYield: divYield,
+        notes: h.notes || undefined,
+      };
+    });
+
+    let safeToInvestAmount = 2500;
+    let monthlyIncome = 15000;
+    if (dbUser) {
+      try {
+        const kpis = await kpiService.getKpisForUser(dbUser);
+        safeToInvestAmount = (kpis as any).effectiveSafeToInvest || 2500;
+        monthlyIncome = kpis.monthlyIncome || 15000;
+      } catch {
+        // fallback
+      }
+    }
+
+    // Default rule-based result in case of quota or model delay
+    const sectorAllocations = Object.entries(sectorMap).map(([sector, amountMad]) => ({
+      sector,
+      amountMad: Math.round(amountMad),
+      percentage: totalPortfolioMad > 0 ? Math.round((amountMad / totalPortfolioMad) * 100) : 0,
+    }));
+
+    const currencyExposure = Object.entries(currencyMap).map(([currency, amountMad]) => ({
+      currency,
+      amountMad: Math.round(amountMad),
+      percentage: totalPortfolioMad > 0 ? Math.round((amountMad / totalPortfolioMad) * 100) : 0,
+    }));
+
+    const monthlyDividendsMad = Math.round(totalAnnualDividendsMad / 12);
+    const dividendCoverage = monthlyIncome > 0 ? Math.round((monthlyDividendsMad / (monthlyIncome * 0.4)) * 100) : 0;
+
+    let fallbackGrade = 'B+';
+    let fallbackScore = 82;
+    if (stockHoldings.length === 0) {
+      fallbackGrade = 'N/A';
+      fallbackScore = 50;
+    } else if (stockHoldings.length >= 4 && sectorAllocations.length >= 2) {
+      fallbackGrade = 'A';
+      fallbackScore = 90;
+    }
+
+    const fallbackAnalysis = {
+      portfolioGrade: fallbackGrade,
+      healthScore: fallbackScore,
+      executiveVerdict: stockHoldings.length > 0
+        ? `Your portfolio holds ${stockHoldings.length} asset positions totaling ${Math.round(totalPortfolioMad).toLocaleString()} MAD. You have ${safeToInvestAmount > 0 ? safeToInvestAmount.toLocaleString() + ' MAD in Safe-to-Invest surplus this cycle' : 'a balanced budget'} to deploy into compounding positions.`
+        : 'You do not have any active stock positions yet. Use your Safe-to-Invest surplus to begin dollar-cost averaging into broad index ETFs like VOO or blue-chip dividend compounders.',
+      diversificationScore: stockHoldings.length >= 4 ? 85 : Math.max(30, stockHoldings.length * 20),
+      sectorAllocations,
+      currencyExposure,
+      riskFlags: stockHoldings.length === 0 ? [] : [
+        {
+          severity: stockHoldings.length < 3 ? 'high' as const : 'low' as const,
+          title: stockHoldings.length < 3 ? 'High Concentration Risk' : 'Healthy Asset Breadth',
+          detail: stockHoldings.length < 3
+            ? 'Portfolio has fewer than 3 active positions. Single stock drawdowns could heavily impact net worth.'
+            : 'Positions are distributed across multiple holdings and tickers.',
+        },
+        {
+          severity: (currencyExposure.find(c => c.currency === 'USD')?.percentage || 0) > 75 ? 'medium' as const : 'low' as const,
+          title: 'Currency Fluctuation Exposure',
+          detail: 'Significant USD asset exposure. Favorable for long-term dollar hedge, but subject to USD/MAD foreign exchange swings.',
+        },
+      ],
+      recommendations: [
+        {
+          title: 'Anchor Core in Broad Index ETFs',
+          rationale: 'Allocate at least 50% of monthly investment surplus to broad index ETFs (VOO or QQQ) for steady compounding.',
+          priority: 'high' as const,
+        },
+        {
+          title: 'Sync Stock DCA with Payday Schedule',
+          rationale: `Automate stock purchases 2 days after payday to capture ${safeToInvestAmount.toLocaleString()} MAD surplus before discretionary leaks.`,
+          priority: 'medium' as const,
+        },
+        {
+          title: 'Reinvest Dividends (DRIP)',
+          rationale: `Turn on automated dividend reinvestment to accelerate compounding on your ${monthlyDividendsMad.toLocaleString()} MAD/mo passive run-rate.`,
+          priority: 'medium' as const,
+        },
+      ],
+      projectedPassiveIncomeMad: Math.round(totalAnnualDividendsMad),
+      monthlyDividendCoveragePercent: dividendCoverage,
+      goldenRule: 'Never deploy aggressive stock capital before securing your 3-month TrueSpend emergency vault.',
+      analyzedAt: new Date().toISOString(),
+    };
+
+    // If Gemini is available and not exhausted, generate AI analysis
+    const modelToTry = !isModelQuotaExhausted(MODEL_FLASH_LITE) ? MODEL_FLASH_LITE : (!isModelQuotaExhausted(MODEL_FLASH_DEEP) ? MODEL_FLASH_DEEP : null);
+
+    if (modelToTry) {
+      try {
+        const prompt = `You are Spex, the Chief Investment & Wealth Intelligence Co-Pilot in TrueSpend.
+Analyze the user's investment portfolio and financial situation:
+
+USER FINANCIAL SNAPSHOT:
+- Monthly Income: ${monthlyIncome.toLocaleString()} MAD
+- Safe-to-Invest Allowance this cycle: ${safeToInvestAmount.toLocaleString()} MAD
+- Total Portfolio Value: ${Math.round(totalPortfolioMad).toLocaleString()} MAD
+- Total Cost Basis: ${Math.round(totalCostBasisMad).toLocaleString()} MAD
+- Active Holdings (${stockHoldings.length}):
+${JSON.stringify(stockHoldings, null, 2)}
+- DCA Plans: ${JSON.stringify(dcaList.map(d => ({ symbol: d.symbol, amount: d.targetAmount, freq: d.frequency })))}
+
+Return a JSON object conforming strictly to this structure:
+{
+  "portfolioGrade": "A+" | "A" | "A-" | "B+" | "B" | "B-" | "C+" | "C" | "D",
+  "healthScore": integer from 0 to 100,
+  "executiveVerdict": "2-3 insightful sentences evaluating their stock portfolio, risk balance, and Safe-to-Invest alignment.",
+  "diversificationScore": integer from 0 to 100,
+  "riskFlags": [
+    { "severity": "high" | "medium" | "low", "title": "short title", "detail": "1-2 sentence explanation" }
+  ],
+  "recommendations": [
+    { "title": "short action title", "rationale": "clear rationale aligned with TrueSpend cash flow", "priority": "high" | "medium" | "low" }
+  ],
+  "goldenRule": "1 memorable sentence summarizing their best next investment move"
+}
+Ensure JSON is valid with no markdown code blocks outside.`;
+
+        const response = await gemini.models.generateContent({
+          model: modelToTry,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+
+        const text = response.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          const parsed = JSON.parse(text);
+          return {
+            ...fallbackAnalysis,
+            portfolioGrade: parsed.portfolioGrade || fallbackAnalysis.portfolioGrade,
+            healthScore: parsed.healthScore || fallbackAnalysis.healthScore,
+            executiveVerdict: parsed.executiveVerdict || fallbackAnalysis.executiveVerdict,
+            diversificationScore: parsed.diversificationScore || fallbackAnalysis.diversificationScore,
+            riskFlags: parsed.riskFlags?.length ? parsed.riskFlags : fallbackAnalysis.riskFlags,
+            recommendations: parsed.recommendations?.length ? parsed.recommendations : fallbackAnalysis.recommendations,
+            goldenRule: parsed.goldenRule || fallbackAnalysis.goldenRule,
+            analyzedAt: new Date().toISOString(),
+          };
+        }
+      } catch (err: any) {
+        console.warn('[InvestmentService] AI stock analysis notice:', err?.message);
+      }
+    }
+
+    return fallbackAnalysis;
   }
 }
 

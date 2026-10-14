@@ -227,6 +227,7 @@ export type DashboardTab =
   | 'calendar'
   | 'transactions'
   | 'budgets'
+  | 'investments'
   | 'goals'
   | 'subscriptions'
   | 'debts'
@@ -377,6 +378,56 @@ export interface SafeToInvestCalculation {
   riskAppetiteMax: number;
 }
 
+export interface StockQuote {
+  symbol: string;
+  name: string;
+  price: number;
+  change24h: number;
+  changeAmount?: number;
+  high24h?: number;
+  low24h?: number;
+  prevClose?: number;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
+  marketCap?: number;
+  peRatio?: number;
+  dividendYield?: number;
+  currency: string;
+  priceInMad: number;
+  exchange?: string;
+  sector?: string;
+  sparkline?: number[];
+  assetType: 'stock' | 'etf' | 'bourse_local';
+  isWatched?: boolean;
+}
+
+export interface StockSearchResult {
+  symbol: string;
+  name: string;
+  quoteType: string;
+  exchange: string;
+  currency?: string;
+  sector?: string;
+  price?: number;
+  change24h?: number;
+  priceInMad?: number;
+}
+
+export interface StockAiAnalysis {
+  portfolioGrade: string; // 'A+' | 'A' | 'B' ...
+  healthScore: number; // 0 - 100
+  executiveVerdict: string;
+  diversificationScore: number; // 0 - 100
+  sectorAllocations: { sector: string; percentage: number; amountMad: number }[];
+  currencyExposure: { currency: string; percentage: number; amountMad: number }[];
+  riskFlags: { severity: 'low' | 'medium' | 'high'; title: string; detail: string }[];
+  recommendations: { title: string; rationale: string; priority: 'high' | 'medium' | 'low' }[];
+  projectedPassiveIncomeMad: number;
+  monthlyDividendCoveragePercent: number;
+  goldenRule: string;
+  analyzedAt: string;
+}
+
 export interface InvestmentsData {
   holdings: InvestmentHolding[];
   transactions: InvestmentTransaction[];
@@ -384,6 +435,13 @@ export interface InvestmentsData {
   watchlist: WatchlistItem[];
   marketCoins: CoinGeckoMarketCoin[];
   quotes: Record<string, MarketQuote>;
+  stockQuotes?: Record<string, StockQuote>;
+  popularStocks?: {
+    indices: StockQuote[];
+    tech: StockQuote[];
+    dividends: StockQuote[];
+    morocco: StockQuote[];
+  };
   rates: {
     USD_TO_MAD: number;
     EUR_TO_MAD: number;
@@ -394,6 +452,7 @@ export interface InvestmentsData {
   totalUnrealizedPnlMad: number;
   totalUnrealizedPnlPercent: number;
   annualPassiveIncomeMad: number;
+  monthlyPassiveIncomeMad?: number;
   fireCoveragePercent: number;
   safeToInvest: SafeToInvestCalculation;
 }
