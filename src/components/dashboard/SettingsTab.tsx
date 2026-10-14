@@ -9,7 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { WalletsManager } from './WalletsManager';
 import type { NotifSettings, ServerNotifSettings } from '../../hooks/useNotifications';
-import type { Wallet } from '../../types';
+import type { Wallet, Subscription, Debt } from '../../types';
 
 interface NotificationsApi {
   supported: boolean;
@@ -31,6 +31,8 @@ interface SettingsTabProps {
   handleExportSql?: () => void;
   handleImportSql?: (sql: string) => Promise<{ message: string }>;
   wallets?: Wallet[];
+  subscriptions?: Subscription[];
+  debts?: Debt[];
   handleCreateWallet?: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   handleUpdateWallet?: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   handleDeleteWallet?: (id: string, reassignToWalletId?: string) => Promise<any>;
@@ -46,6 +48,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   handleExportSql,
   handleImportSql,
   wallets = [],
+  subscriptions = [],
+  debts = [],
   handleCreateWallet,
   handleUpdateWallet,
   handleDeleteWallet,
@@ -298,6 +302,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       {handleCreateWallet && handleUpdateWallet && handleDeleteWallet && (
         <WalletsManager
           wallets={wallets}
+          subscriptions={subscriptions}
+          debts={debts}
           onCreateWallet={handleCreateWallet}
           onUpdateWallet={handleUpdateWallet}
           onDeleteWallet={handleDeleteWallet}

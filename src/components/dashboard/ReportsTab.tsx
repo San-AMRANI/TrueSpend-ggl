@@ -1,17 +1,19 @@
 import React, { useState, useRef } from 'react';
-import { Transaction, KPI, CategoryBudget } from '../../types';
-import { FileBarChart, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Transaction, KPI, CategoryBudget, DashboardTab } from '../../types';
+import { FileBarChart, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Award, Sparkles, Database } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
 import { normalizeCategory } from '../../lib/categories';
+import { CycleRetrospectiveView } from './CycleRetrospectiveView';
 
 interface ReportsTabProps {
   transactions: Transaction[];
   kpis: KPI | null;
   budgets: CategoryBudget[];
   onDataChange?: () => Promise<void> | void;
+  onNavigateTab?: (tab: DashboardTab) => void;
 }
 
 interface ParsedTransactionRow {
@@ -23,10 +25,11 @@ interface ParsedTransactionRow {
   notes: string;
 }
 
-export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budgets, onDataChange }) => {
+export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budgets, onDataChange, onNavigateTab }) => {
   const { token } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [activeSubTab, setActiveSubTab] = useState<'retrospective' | 'export' | 'import'>('retrospective');
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -300,63 +303,140 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-          <FileBarChart className="h-6 w-6 text-indigo-500" />
-          Advanced Reporting & Data Transfer
-        </h2>
-        <p className="text-gray-500 dark:text-gray-400">Generate, export, or import detailed financial records</p>
+      {/* Top Header & Section Switcher */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
+        <div>
+          <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
+            <Award className="h-6 w-6 text-indigo-500" />
+            Financial Intelligence & Reports
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Cycle report cards, payday retrospectives, data exports, and backups
+          </p>
+        </div>
+
+        {/* Tab Pills */}
+        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 self-start sm:self-auto">
+          <button
+            onClick={() => setActiveSubTab('retrospective')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeSubTab === 'retrospective'
+                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <Award className="w-3.5 h-3.5" />
+            <span>AI Cycle Wrap-Up & Report Card</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('export')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeSubTab === 'export'
+                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export & Backup</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab('import')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeSubTab === 'import'
+                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Import CSV</span>
+          </button>
+        </div>
       </div>
 
-      {importStatus && (
-        <div className={`p-4 rounded-xl flex items-start gap-3 border ${
-          importStatus.type === 'success'
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300'
-            : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/40 dark:border-red-800 dark:text-red-300'
-        }`}>
-          {importStatus.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          ) : (
-            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          )}
-          <div className="text-sm font-medium">{importStatus.message}</div>
+      {/* Retrospective View (Signature Feature) */}
+      {activeSubTab === 'retrospective' && (
+        <CycleRetrospectiveView onNavigateTab={onNavigateTab} />
+      )}
+
+      {/* Export & Backup Sub-Tab */}
+      {activeSubTab === 'export' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* CSV Export Card */}
+            <Card className="flex flex-col justify-between">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-indigo-500" />
+                  <CardTitle>CSV Export (Universal Spreadsheet)</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 flex-1 flex flex-col justify-between">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Download your full transaction history with UTF-8 BOM encoding and standard CRLF format, fully compatible with Google Sheets, Microsoft Excel, and Apple Numbers.
+                </p>
+                <div className="pt-2">
+                  <Button onClick={handleExportCSV} className="w-full flex items-center justify-center gap-2">
+                    <Download className="w-4 h-4" />
+                    Download CSV ({transactions.length} transactions)
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* JSON Snapshot Card */}
+            <Card className="flex flex-col justify-between">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Download className="w-5 h-5 text-purple-500" />
+                  <CardTitle>JSON Snapshot (Full Context)</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 flex-1 flex flex-col justify-between">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Download a comprehensive JSON snapshot of your current financial context, including all KPIs, budgets, settings, and transaction trees.
+                </p>
+                <div className="pt-2">
+                  <Button onClick={handleExportJSON} variant="outline" className="w-full flex items-center justify-center gap-2">
+                    <Download className="w-4 h-4" />
+                    Download JSON Snapshot
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* CSV Export Card */}
-        <Card className="flex flex-col justify-between">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5 text-indigo-500" />
-              <CardTitle>CSV Export</CardTitle>
+      {/* Import CSV Sub-Tab */}
+      {activeSubTab === 'import' && (
+        <div className="space-y-6">
+          {importStatus && (
+            <div className={`p-4 rounded-xl flex items-start gap-3 border ${
+              importStatus.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300'
+                : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/40 dark:border-red-800 dark:text-red-300'
+            }`}>
+              {importStatus.type === 'success' ? (
+                <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              )}
+              <div className="text-sm font-medium">{importStatus.message}</div>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4 flex-1 flex flex-col justify-between">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Download your full transaction history with UTF-8 BOM encoding, fully compatible with Google Sheets, Microsoft Excel, and Apple Numbers.
-            </p>
-            <div className="pt-2">
-              <Button onClick={handleExportCSV} className="w-full flex items-center justify-center gap-2">
-                <Download className="w-4 h-4" />
-                Download CSV ({transactions.length} items)
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          )}
 
-        {/* CSV Import Card */}
-        <Card className="flex flex-col justify-between">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Upload className="w-5 h-5 text-emerald-500" />
-              <CardTitle>CSV Import</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 flex-1 flex flex-col justify-between">
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                Import transactions from a CSV spreadsheet. Columns recognized: <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200">Date, Type, Wallet, Category, Amount, Notes</code>.
+          <Card className="max-w-2xl mx-auto">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Upload className="w-5 h-5 text-emerald-500" />
+                <CardTitle>Import Transactions from CSV</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Upload transactions from a spreadsheet. The parser automatically detects headers: <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-gray-800 dark:text-gray-200">Date, Type, Wallet, Category, Amount, Notes</code>.
               </p>
               <input
                 ref={fileInputRef}
@@ -365,59 +445,36 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
                 onChange={handleFileChange}
                 className="hidden"
               />
-            </div>
-            
-            <div className="pt-2">
-              {isImporting ? (
-                <div className="space-y-2">
-                  <Button disabled className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {importProgress ? `Importing ${importProgress.current}/${importProgress.total}...` : 'Processing file...'}
+              <div className="pt-2">
+                {isImporting ? (
+                  <div className="space-y-2">
+                    <Button disabled className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {importProgress ? `Importing ${importProgress.current}/${importProgress.total}...` : 'Processing file...'}
+                    </Button>
+                    {importProgress && (
+                      <div className="w-full bg-gray-200 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-emerald-500 h-full transition-all duration-150"
+                          style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Select & Import CSV File
                   </Button>
-                  {importProgress && (
-                    <div className="w-full bg-gray-200 dark:bg-gray-700 h-1.5 rounded-full overflow-hidden">
-                      <div
-                        className="bg-emerald-500 h-full transition-all duration-150"
-                        style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <Button
-                  onClick={() => fileInputRef.current?.click()}
-                  variant="outline"
-                  className="w-full flex items-center justify-center gap-2 border-emerald-600/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
-                >
-                  <Upload className="w-4 h-4" />
-                  Import CSV File
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* JSON Export Card */}
-        <Card className="flex flex-col justify-between">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Download className="w-5 h-5 text-purple-500" />
-              <CardTitle>JSON Snapshot</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 flex-1 flex flex-col justify-between">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Download a complete JSON snapshot of your current financial context, including all KPIs, budgets, and transactions.
-            </p>
-            <div className="pt-2">
-              <Button onClick={handleExportJSON} variant="outline" className="w-full flex items-center justify-center gap-2">
-                <Download className="w-4 h-4" />
-                Download JSON Snapshot
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

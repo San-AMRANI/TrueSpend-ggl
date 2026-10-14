@@ -229,15 +229,12 @@ export type DashboardTab =
   | 'budgets'
   | 'goals'
   | 'subscriptions'
-  | 'what-if'
   | 'debts'
   | 'analytics'
   | 'settings'
   | 'chat'
   | 'reports'
-  | 'cash-flow'
-  | 'contexts'
-  | 'investments';
+  | 'contexts';
 
 export type InvestmentAssetType =
   | 'crypto'
@@ -399,6 +396,119 @@ export interface InvestmentsData {
   annualPassiveIncomeMad: number;
   fireCoveragePercent: number;
   safeToInvest: SafeToInvestCalculation;
+}
+
+export type RetrospectiveLetterGrade = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C+' | 'C' | 'D' | 'F';
+
+export interface CycleCategoryPerformance {
+  category: string;
+  actual: number;
+  budget: number;
+  difference: number;
+  percentUsed: number;
+  grade: RetrospectiveLetterGrade;
+  status: 'under' | 'on_track' | 'warning' | 'over';
+  commentary?: string;
+}
+
+export interface CycleDailyVelocity {
+  date: string;
+  dayNumber: number;
+  dayOfWeek: string;
+  spent: number;
+  allowance: number;
+  isUnderBudget: boolean;
+  cumulativeSpent: number;
+}
+
+export interface CyclePaydayAllocation {
+  bucket: string;
+  recommendedAmount: number;
+  rationale: string;
+  actionableStep: string;
+}
+
+export interface CycleComparison {
+  previousPeriodLabel: string;
+  expensesChangePercent: number;
+  savingsChangePercent: number;
+  avgDailySpendChange: number;
+  healthScoreChange: number;
+}
+
+export interface CyclePeriodSummary {
+  id: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  isCurrent: boolean;
+  year: number;
+  month: number;
+}
+
+export interface CycleRetrospectiveData {
+  id?: string;
+  cycleId: string;
+  periodLabel: string;
+  startDate: string;
+  endDate: string;
+  isCurrentCycle: boolean;
+  totalDays: number;
+  elapsedDays: number;
+  daysRemaining: number;
+
+  // Grade & Scorecard
+  letterGrade: RetrospectiveLetterGrade;
+  score: number; // 0 - 100
+  financialPersona: {
+    title: string;
+    description: string;
+    trait: string;
+    icon: string;
+  };
+
+  // Financial Figures
+  totalInflow: number;
+  totalOutflow: number;
+  netSavings: number;
+  savingsRate: number; // percentage
+  dailyAllowance: number;
+  avgDailySpend: number;
+  daysUnderAllowanceCount: number;
+  daysOverAllowanceCount: number;
+  safeToSpendEnding: number;
+  totalInvested: number;
+  totalDebtRepaid: number;
+
+  // Macro 50/30/20 Breakdown
+  macroSplit: {
+    needs: { amount: number; percent: number; targetPercent: number };
+    wants: { amount: number; percent: number; targetPercent: number };
+    savings: { amount: number; percent: number; targetPercent: number };
+  };
+
+  // Category Matrix
+  categories: CycleCategoryPerformance[];
+
+  // Daily Pace Velocity
+  dailyVelocity: CycleDailyVelocity[];
+
+  // Comparison
+  comparison?: CycleComparison | null;
+
+  // AI Narrative & Recommendations
+  verdictTitle: string;
+  executiveSummary: string;
+  biggestWins: string[];
+  financialLeaks: string[];
+  paydayAllocations: CyclePaydayAllocation[];
+  goldenRule: string;
+
+  // Metadata
+  generatedAt: string;
+  modelUsed: string;
+  isAiGenerated: boolean;
+  fallbackReason?: string;
 }
 
 

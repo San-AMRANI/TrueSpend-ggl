@@ -1,32 +1,40 @@
 import React, { useState, useMemo } from 'react';
-import { Debt } from '../../types';
+import { Debt, CategoryBudget, DashboardTab } from '../../types';
 import DebtForm from '../DebtForm';
 import { SettleDebtModal } from '../SettleDebtModal';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { CheckCircle2, ArrowDownRight, ArrowUpRight, Edit2, Trash2, History, Plus } from 'lucide-react';
+import { CheckCircle2, ArrowDownRight, ArrowUpRight, Edit2, Trash2, History, Plus, Zap, AlertTriangle, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface DebtsTabProps {
   debts: Debt[];
   wallets?: { id: string; name: string }[];
+  budgets?: CategoryBudget[];
   fetchData: () => void;
   handleSettle: (debtId: string, amount: number, category?: string, walletId?: string) => Promise<void> | void;
   handleEditDebt: (debtId: string, currentAmount: string, currentContact: string, currentType: string) => void;
   handleDeleteDebt: (debtId: string) => void;
+  onSaveBudget?: (category: string, year: number, month: number, amount: number) => Promise<void>;
+  setActiveTab?: (tab: DashboardTab) => void;
 }
 
 export const DebtsTab: React.FC<DebtsTabProps> = ({
   debts,
   wallets,
+  budgets = [],
   fetchData,
   handleSettle,
   handleEditDebt,
   handleDeleteDebt,
+  onSaveBudget,
+  setActiveTab: setDashboardTab,
 }) => {
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
   const [activeTab, setActiveTab] = useState<'receivable' | 'payable' | 'cleared' | 'all'>('receivable');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [reservingInBudget, setReservingInBudget] = useState(false);
+  const [budgetSuccessMsg, setBudgetSuccessMsg] = useState<string | null>(null);
 
   const { totalReceivable, totalPayable, filteredDebts } = useMemo(() => {
     const pendingReceivables = debts.filter(d => d.type === 'Receivable' && d.status === 'Pending');
@@ -45,6 +53,40 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
 
     return { totalReceivable, totalPayable, filteredDebts };
   }, [debts, activeTab]);
+
+  const now = new Date();
+  const currentYear = now.getUTCFullYear();
+  const currentMonth = now.getUTCMonth() + 1;
+
+  const currentDebtBudget = useMemo(() => {
+    const b = (budgets || []).find(
+      (item) => item.category === '💳 Debt & Obligations' && item.year === currentYear && item.month === currentMonth
+    );
+    return b ? parseFloat(b.amount) || 0 : 0;
+  }, [budgets, currentYear, currentMonth]);
+
+  const targetMonthlyDebtPayoff = useMemo(() => {
+    if (totalPayable <= 0) return 0;
+    if (totalPayable <= 1000) return totalPayable;
+    return Math.min(totalPayable, Math.max(300, Math.round(totalPayable * 0.1)));
+  }, [totalPayable]);
+
+  const isBudgetReserved = totalPayable > 0 && currentDebtBudget >= targetMonthlyDebtPayoff;
+
+  const handleQuickReserveInBudget = async () => {
+    if (!onSaveBudget || targetMonthlyDebtPayoff <= 0) return;
+    setReservingInBudget(true);
+    try {
+      await onSaveBudget('💳 Debt & Obligations', currentYear, currentMonth, targetMonthlyDebtPayoff);
+      setBudgetSuccessMsg(`Reserved ${targetMonthlyDebtPayoff.toFixed(2)} MAD for debt repayment in this month's budget!`);
+      setTimeout(() => setBudgetSuccessMsg(null), 4000);
+      fetchData();
+    } catch (e: any) {
+      alert(e.message || 'Failed to update budget');
+    } finally {
+      setReservingInBudget(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -80,6 +122,82 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Interconnected Monthly Budget Sync & Protection ── */}
+      {budgetSuccessMsg && (
+        <div className="rounded-xl bg-emerald-600 text-white p-3 text-xs font-semibold flex items-center gap-2 shadow-sm animate-in fade-in">
+          <CheckCircle2 className="h-4 w-4" />
+          <span>{budgetSuccessMsg}</span>
+        </div>
+      )}
+
+      {totalPayable > 0 && (
+        <Card className={`border overflow-hidden shadow-xs transition-all ${
+          isBudgetReserved
+            ? 'border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-r from-emerald-50/60 via-white to-white dark:from-emerald-950/20 dark:via-gray-900 dark:to-gray-900'
+            : 'border-orange-200 dark:border-orange-900/50 bg-gradient-to-r from-orange-50/60 via-white to-white dark:from-orange-950/20 dark:via-gray-900 dark:to-gray-900'
+        }`}>
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-xs ${
+                  isBudgetReserved
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300'
+                    : 'bg-orange-100 text-orange-700 dark:bg-orange-900/60 dark:text-orange-300'
+                }`}>
+                  <Zap className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-sm text-gray-900 dark:text-gray-100">
+                      Monthly Budget Debt Reserve
+                    </h4>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      isBudgetReserved
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300'
+                    }`}>
+                      {isBudgetReserved ? 'Fully Reserved' : 'Unreserved Gap'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 max-w-xl">
+                    {isBudgetReserved ? (
+                      <>Your monthly budget has safely reserved <strong>{currentDebtBudget.toFixed(2)} MAD</strong> this cycle for debt servicing. Your payoff strategy is protected.</>
+                    ) : (
+                      <>You owe <strong>{totalPayable.toFixed(2)} MAD</strong>, but your budget currently reserves <strong>{currentDebtBudget.toFixed(2)} MAD</strong> (target: <strong>{targetMonthlyDebtPayoff.toFixed(2)} MAD</strong>). Reserve cash in your budget to prevent overspending discretionary money.</>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                {!isBudgetReserved && onSaveBudget && (
+                  <Button
+                    size="sm"
+                    disabled={reservingInBudget}
+                    onClick={handleQuickReserveInBudget}
+                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs h-8 shadow-xs flex items-center gap-1.5"
+                  >
+                    <Zap className="h-3.5 w-3.5" />
+                    <span>{reservingInBudget ? 'Reserving…' : `Reserve ${targetMonthlyDebtPayoff.toFixed(0)} MAD in Budget`}</span>
+                  </Button>
+                )}
+                {setDashboardTab && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDashboardTab('budgets')}
+                    className="text-xs h-8"
+                  >
+                    <span>Budget Planner</span>
+                    <ExternalLink className="h-3 w-3 ml-1 text-gray-400" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Add New Debt Form / Button */}
       {!showAddForm ? (

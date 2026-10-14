@@ -8,13 +8,19 @@ declare global {
 
 export const createPool = () => {
   if (!global._postgresPool) {
-    const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    let connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+    if (connectionString) {
+      connectionString = connectionString.replace(/^(DATABASE_URL|POSTGRES_URL)=/i, '').trim();
+    }
 
     if (connectionString) {
       global._postgresPool = new Pool({
         connectionString,
         max: 10,
         connectionTimeoutMillis: 15000,
+        ssl: {
+          rejectUnauthorized: false,
+        },
       });
     } else {
       global._postgresPool = new Pool({

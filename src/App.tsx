@@ -44,17 +44,14 @@ function AppContent() {
 
   const tabs: { id: DashboardTab; label: string; icon: any }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'investments', label: 'Investments & Wealth', icon: Coins },
-    { id: 'cash-flow', label: 'Cash Flow', icon: TrendingUp },
-    { id: 'calendar', label: 'Calendar', icon: CalendarDays },
+    { id: 'calendar', label: 'Calendar & Cash Flow', icon: CalendarDays },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },
     { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
+    { id: 'budgets', label: 'Budgets', icon: WalletCards },
     { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
     { id: 'goals', label: 'Goals', icon: Target },
     { id: 'debts', label: 'Debts & Splits', icon: Users },
-    { id: 'budgets', label: 'Budgets', icon: WalletCards },
-    { id: 'what-if', label: 'Smart Calculator', icon: Calculator },
-    { id: 'reports', label: 'Reports', icon: FileBarChart },
+    { id: 'reports', label: 'Reports & Retrospective', icon: FileBarChart },
     { id: 'settings', label: 'Settings', icon: Settings },
     { id: 'chat', label: 'AI Chat', icon: Bot },
   ];

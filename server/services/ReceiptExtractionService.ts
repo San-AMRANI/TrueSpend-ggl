@@ -1,3 +1,12 @@
+import {
+  gemini,
+  PRIMARY_GEMINI_MODEL,
+  FALLBACK_GEMINI_MODEL,
+  MODEL_FLASH_LATEST,
+  isModelQuotaExhausted,
+  markModelQuotaExhausted,
+} from './GeminiClient.js';
+
 export interface ReceiptProposal {
   amount: number | null;
   transactionDate: string | null;
@@ -6,6 +15,8 @@ export interface ReceiptProposal {
   walletId: string | null;
   confidence: number;
   missing: string[];
+  items?: Array<{ name: string; price: number; quantity?: number }>;
+  notes?: string;
 }
 
 const amountPattern = /(?:total|grand total|amount due|net total|a payer|montant)\D{0,20}(\d{1,6}(?:[.,]\d{1,2})?)/i;
@@ -76,8 +87,111 @@ export function receiptProposalAction(proposal: ReceiptProposal) {
       type: 'Expense' as const,
       walletId: proposal.walletId,
       category: proposal.category,
-      notes: proposal.merchant || undefined,
+      notes: proposal.notes || proposal.merchant || undefined,
       transaction_date: proposal.transactionDate || undefined,
     },
+  };
+}
+
+export async function parseReceiptWithGemini(input: {
+  text?: string;
+  image?: { data: string; mimeType: string };
+  walletId?: string;
+}): Promise<ReceiptProposal> {
+  const parts: any[] = [];
+
+  if (input.image?.data && input.image?.mimeType) {
+    parts.push({
+      inlineData: {
+        mimeType: input.image.mimeType,
+        data: input.image.data.replace(/^data:[^;]+;base64,/, ''),
+      },
+    });
+  }
+
+  const promptText = `Analyze this receipt / invoice / ticket carefully and extract the financial data.
+If an image is provided, inspect the receipt image directly. If OCR text is provided, use the text.
+Available text content: ${input.text || 'N/A'}
+
+Respond with ONLY a JSON object matching this schema:
+{
+  "merchant": "Name of the merchant or store",
+  "amount": 123.45,
+  "transactionDate": "YYYY-MM-DD",
+  "category": "One of: 🍔 Dining & Takeaway, ☕ Coffee & Quick Food, 🛒 Groceries, 🚗 Transportation, 📱 Telecom & Subscriptions, 🩺 Health & Medical, 👕 Personal & Clothing, 🎬 Entertainment, 👥 Social, 🏠 Housing & Utilities, 🚨 Unexpected",
+  "confidence": 95,
+  "notes": "Short summary or item summary",
+  "items": [{"name": "item name", "price": 10.5, "quantity": 1}],
+  "missing": []
+}
+Notes on rules:
+- Amount should be the final Total (TTC / Net to pay) as a number.
+- Date should be formatted as YYYY-MM-DD.
+- Category must match the closest emoji category from the listed options.
+- If amount or merchant cannot be detected, list them in the "missing" array and set confidence lower.`;
+
+  parts.push({ text: promptText });
+
+  const models = isModelQuotaExhausted(PRIMARY_GEMINI_MODEL)
+    ? [FALLBACK_GEMINI_MODEL, MODEL_FLASH_LATEST]
+    : [PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL, MODEL_FLASH_LATEST];
+
+  for (const model of models) {
+    try {
+      const response = await gemini.models.generateContent({
+        model,
+        contents: { parts },
+        config: {
+          responseMimeType: 'application/json',
+          temperature: 0.1,
+        },
+      });
+
+      const responseText = response.text || '';
+      const parsed = JSON.parse(responseText.trim());
+
+      const amount = typeof parsed.amount === 'number' && Number.isFinite(parsed.amount) ? parsed.amount : null;
+      const merchant = typeof parsed.merchant === 'string' && parsed.merchant.trim() ? parsed.merchant.trim() : null;
+      const transactionDate = typeof parsed.transactionDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.transactionDate) ? parsed.transactionDate : null;
+      const category = typeof parsed.category === 'string' && parsed.category.trim() ? parsed.category.trim() : '🛒 Groceries';
+      const confidence = typeof parsed.confidence === 'number' ? Math.max(0, Math.min(100, parsed.confidence)) : 80;
+      const missing = Array.isArray(parsed.missing) ? parsed.missing : [
+        ...(amount === null ? ['amount'] : []),
+        ...(merchant === null ? ['merchant'] : []),
+      ];
+
+      return {
+        amount,
+        merchant,
+        transactionDate,
+        category,
+        walletId: input.walletId || 'Bank',
+        confidence,
+        missing,
+        notes: parsed.notes || merchant || undefined,
+        items: Array.isArray(parsed.items) ? parsed.items : undefined,
+      };
+    } catch (err: any) {
+      console.warn(`[ReceiptGemini] Error with model ${model}:`, err?.message || err);
+      if (err?.status === 429 || String(err?.message || '').includes('429') || String(err?.message || '').toLowerCase().includes('quota')) {
+        markModelQuotaExhausted(model, 1000 * 60 * 30);
+      }
+      // Try next model
+    }
+  }
+
+  // Fallback to regex parser if Gemini unavailable or text provided
+  if (input.text) {
+    return parseReceiptText(input.text);
+  }
+
+  return {
+    amount: null,
+    merchant: null,
+    transactionDate: null,
+    category: '🛒 Groceries',
+    walletId: input.walletId || 'Bank',
+    confidence: 0,
+    missing: ['amount', 'merchant', 'transactionDate'],
   };
 }

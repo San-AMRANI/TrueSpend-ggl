@@ -19,6 +19,8 @@ import {
   CoinGeckoMarketCoin,
   WatchlistItem,
   CoinSearchResult,
+  CyclePeriodSummary,
+  CycleRetrospectiveData,
 } from '../../types';
 
 export const dashboardService = {
@@ -183,4 +185,23 @@ export const dashboardService = {
     apiClient.post<WatchlistItem>('/api/investments/watchlist', payload, token),
   removeFromWatchlist: (coinId: string, token: string | null) =>
     apiClient.delete<{ success: boolean }>(`/api/investments/watchlist/${encodeURIComponent(coinId)}`, token),
+
+  // AI Cycle Wrap-Up & Payday Retrospective (Report Card)
+  getCycles: (token: string | null) =>
+    apiClient.get<CyclePeriodSummary[]>('/api/reports/cycles', token),
+  getCycleRetrospective: (
+    params: { cycleId?: string; model?: string; forceRefresh?: boolean },
+    token: string | null
+  ) => {
+    const query = new URLSearchParams();
+    if (params.cycleId) query.set('cycleId', params.cycleId);
+    if (params.model) query.set('model', params.model);
+    if (params.forceRefresh) query.set('forceRefresh', 'true');
+    return apiClient.get<CycleRetrospectiveData>(`/api/reports/cycle-retrospective?${query.toString()}`, token);
+  },
+  generateCycleRetrospective: (
+    payload: { cycleId?: string; preferredModel?: string; allowFallback?: boolean; forceRefresh?: boolean },
+    token: string | null
+  ) =>
+    apiClient.post<CycleRetrospectiveData>('/api/reports/cycle-retrospective/generate', payload, token),
 };

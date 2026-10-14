@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Goal, Wallet } from '../../types';
+import { Goal, Wallet, CategoryBudget, Transaction, DashboardTab } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import {
@@ -18,6 +18,7 @@ import {
   Flame,
   ArrowUpRight,
   ArrowDownRight,
+  ArrowRight,
   Edit3,
   Trash2,
   Clock,
@@ -38,6 +39,9 @@ import { format, differenceInDays } from 'date-fns';
 interface GoalsTabProps {
   goals: Goal[];
   wallets: Wallet[];
+  budgets?: CategoryBudget[];
+  transactions?: Transaction[];
+  setActiveTab?: (tab: DashboardTab) => void;
   onCreateGoal: (payload: {
     name: string;
     targetAmount: number;
@@ -181,6 +185,9 @@ const TEMPLATE_PRESETS = [
 export const GoalsTab: React.FC<GoalsTabProps> = ({
   goals,
   wallets,
+  budgets = [],
+  transactions = [],
+  setActiveTab,
   onCreateGoal,
   onUpdateGoal,
   onContributeGoal,
@@ -220,6 +227,38 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
   const [actionSourceWalletId, setActionSourceWalletId] = useState('');
   const [actionDestWalletId, setActionDestWalletId] = useState('');
   const [actionNote, setActionNote] = useState('');
+
+  // ─── Connected Budget Surplus Calculation ──────────────────────────────────
+  const now = new Date();
+  const currentMonthBudgets = useMemo(() => {
+    return (budgets || []).filter(
+      (b) => b.year === now.getFullYear() && b.month === now.getMonth() + 1
+    );
+  }, [budgets]);
+
+  const currentTotalBudget = useMemo(() => {
+    return currentMonthBudgets.reduce((s, b) => s + (parseFloat(b.amount) || 0), 0);
+  }, [currentMonthBudgets]);
+
+  const currentTotalSpent = useMemo(() => {
+    return (transactions || [])
+      .filter((tx) => {
+        if (tx.type !== 'Expense') return false;
+        const d = new Date(tx.createdAt);
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      })
+      .reduce((s, tx) => s + (parseFloat(tx.amount) || 0), 0);
+  }, [transactions]);
+
+  const availableSurplus = Math.max(0, currentTotalBudget - currentTotalSpent);
+
+  const handleQuickSoakSurplus = (goal: Goal) => {
+    openDepositModal(goal);
+    if (availableSurplus > 0) {
+      setActionAmount(String(Math.round(availableSurplus)));
+      setActionNote(`Budget surplus deposit (${new Date().toLocaleString('en-US', { month: 'long' })})`);
+    }
+  };
 
   // Wallets mapping & helper lookups
   const walletMap = useMemo(() => {
@@ -613,6 +652,56 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ── Interconnected Budget Surplus Soak Banner ── */}
+      {availableSurplus > 0 && goals.length > 0 && (
+        <Card className="border border-emerald-300 dark:border-emerald-800 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-white dark:from-emerald-950/40 dark:via-teal-950/20 dark:to-gray-900 shadow-xs overflow-hidden">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm sm:text-base text-gray-900 dark:text-gray-100">
+                      Unspent Budget Surplus Ready to Soak Up
+                    </h3>
+                    <span className="rounded-full bg-emerald-200 dark:bg-emerald-900/60 px-2 py-0.5 text-xs font-black text-emerald-800 dark:text-emerald-200">
+                      +{availableSurplus.toFixed(2)} MAD Available
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 max-w-xl">
+                    You have positive spending headroom from your monthly budget! Soak up this surplus into your priority goals before it gets spent.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+                <Button
+                  size="sm"
+                  onClick={() => handleQuickSoakSurplus(goals[0])}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 shadow-xs flex items-center gap-1.5"
+                >
+                  <PiggyBank className="h-4 w-4" />
+                  <span>Soak into "{goals[0].name}"</span>
+                </Button>
+                {setActiveTab && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setActiveTab('budgets')}
+                    className="text-xs h-9 border-gray-200 dark:border-gray-800"
+                  >
+                    <span>View Budget</span>
+                    <ArrowRight className="h-3 w-3 ml-1 text-gray-400" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* SAVINGS WALLETS & ALLOCATION HUB */}
       <Card className="border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-50/30 via-white to-white dark:from-indigo-950/20 dark:via-gray-900 dark:to-gray-900">
@@ -1162,6 +1251,18 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                     <p className="text-xs text-gray-500 dark:text-gray-400 italic line-clamp-1">
                       &ldquo;{goal.notes}&rdquo;
                     </p>
+                  )}
+
+                  {/* Quick Surplus Soak Pill */}
+                  {availableSurplus > 0 && !isCompleted && (
+                    <button
+                      type="button"
+                      onClick={() => handleQuickSoakSurplus(goal)}
+                      className="w-full flex items-center justify-center gap-1.5 rounded-lg py-1 px-2 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 transition-colors shadow-2xs"
+                    >
+                      <Sparkles className="h-3 w-3 text-emerald-500" />
+                      <span>Soak Surplus (+{Math.round(availableSurplus)} MAD)</span>
+                    </button>
                   )}
 
                   {/* Actions */}

@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { Landmark, Banknote, Wallet as WalletIcon, Plus, Edit2, Trash2, Star, Check, AlertCircle, X, TrendingUp } from 'lucide-react';
+import { Landmark, Banknote, Wallet as WalletIcon, Plus, Edit2, Trash2, Star, Check, AlertCircle, X, TrendingUp, Repeat, ShieldAlert, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
-import { Wallet } from '../../types';
+import { Wallet, Subscription, Debt } from '../../types';
 
 interface WalletsManagerProps {
   wallets: Wallet[];
+  subscriptions?: Subscription[];
+  debts?: Debt[];
+  onPaySubscription?: (id: string, payload?: { walletId?: string; date?: string }) => Promise<any>;
   onCreateWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   onUpdateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   onDeleteWallet: (id: string, reassignToWalletId?: string) => Promise<any>;
@@ -17,6 +20,9 @@ interface WalletsManagerProps {
 
 export const WalletsManager: React.FC<WalletsManagerProps> = ({
   wallets,
+  subscriptions = [],
+  debts = [],
+  onPaySubscription,
   onCreateWallet,
   onUpdateWallet,
   onDeleteWallet,
@@ -27,6 +33,8 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   const [editingWallet, setEditingWallet] = useState<Wallet | null>(null);
   const [deletingWallet, setDeletingWallet] = useState<Wallet | null>(null);
   const [reassignTargetId, setReassignTargetId] = useState<string>('');
+  const [expandedWalletBills, setExpandedWalletBills] = useState<Record<string, boolean>>({});
+  const [payingSubId, setPayingSubId] = useState<string | null>(null);
 
   // Form states for create/edit
   const [formData, setFormData] = useState({
@@ -337,16 +345,107 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
               </div>
 
               {/* Balance figures */}
-              <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800/80">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Current Balance</p>
-                <div className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                  {(wallet.balance ?? 0).toFixed(2)}{' '}
-                  <span className="text-xs font-medium text-gray-500">MAD</span>
-                </div>
-                <div className="mt-1 flex items-center justify-between text-[11px] text-gray-400">
-                  <span>Starting: {(parseFloat(wallet.initialBalance) || 0).toFixed(2)} MAD</span>
-                </div>
-              </div>
+              {(() => {
+                const assignedSubs = (subscriptions || []).filter(
+                  (s) => s.status === 'active' && (s.walletId === wallet.id || (!s.walletId && wallet.isMain))
+                );
+                const committedBills = assignedSubs.reduce((acc, s) => acc + (parseFloat(s.amount) || 0), 0);
+                const safeToSpend = (wallet.balance ?? 0) - committedBills;
+                const isOverdraftRisk = safeToSpend < 0;
+                const isExpanded = Boolean(expandedWalletBills[wallet.id]);
+
+                return (
+                  <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800/80 space-y-2">
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">Total Balance</p>
+                        <div className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                          {(wallet.balance ?? 0).toFixed(2)}{' '}
+                          <span className="text-xs font-medium text-gray-500">MAD</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">Safe-to-Spend</p>
+                        <div className={`text-base font-bold tabular-nums ${isOverdraftRisk ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                          {safeToSpend.toFixed(2)}{' '}
+                          <span className="text-[10px] font-medium text-gray-400">MAD</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Committed bills row */}
+                    <div className="flex items-center justify-between text-xs py-1.5 px-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 border border-gray-100 dark:border-gray-800">
+                      <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+                        <Repeat className="h-3.5 w-3.5 text-indigo-500" />
+                        <span>Committed Bills:</span>
+                      </div>
+                      <span className="font-semibold text-gray-900 dark:text-gray-100">
+                        {committedBills.toFixed(2)} MAD ({assignedSubs.length} bill{assignedSubs.length === 1 ? '' : 's'})
+                      </span>
+                    </div>
+
+                    {/* Overdraft risk alert */}
+                    {isOverdraftRisk && (
+                      <div className="rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 p-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 flex items-start gap-1.5 animate-pulse">
+                        <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                        <span>⚠️ Overdraft Alert: Upcoming bills exceed balance by {Math.abs(safeToSpend).toFixed(2)} MAD!</span>
+                      </div>
+                    )}
+
+                    {/* Expandable assigned bills list */}
+                    {assignedSubs.length > 0 && (
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedWalletBills(prev => ({ ...prev, [wallet.id]: !prev[wallet.id] }))}
+                          className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 w-full justify-between py-1"
+                        >
+                          <span>Assigned Recurring Bills ({assignedSubs.length})</span>
+                          {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        </button>
+
+                        {isExpanded && (
+                          <div className="mt-1 space-y-1.5 max-h-36 overflow-y-auto pr-0.5 animate-in fade-in">
+                            {assignedSubs.map((sub) => (
+                              <div
+                                key={sub.id}
+                                className="flex items-center justify-between p-1.5 rounded-md bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-xs"
+                              >
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="text-sm">{sub.icon || '📱'}</span>
+                                  <span className="font-medium truncate max-w-[100px] text-gray-800 dark:text-gray-200">{sub.name}</span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="font-bold text-gray-900 dark:text-gray-100">{parseFloat(sub.amount).toFixed(0)} MAD</span>
+                                  {onPaySubscription && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      disabled={payingSubId === sub.id}
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        setPayingSubId(sub.id);
+                                        try {
+                                          await onPaySubscription(sub.id, { walletId: wallet.id });
+                                        } finally {
+                                          setPayingSubId(null);
+                                        }
+                                      }}
+                                      className="h-6 px-1.5 text-[10px] text-purple-600 dark:text-purple-400 hover:bg-purple-50"
+                                    >
+                                      Pay
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Bottom Actions */}

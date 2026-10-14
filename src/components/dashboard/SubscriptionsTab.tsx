@@ -904,12 +904,28 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                       )}
                     </div>
 
-                    {/* Linked Wallet badge */}
-                    {sub.walletName && (
-                      <div className="mt-2 text-[11px] text-gray-400 dark:text-gray-500">
-                        Paid via: <span className="font-medium text-gray-600 dark:text-gray-300">{sub.walletName}</span>
-                      </div>
-                    )}
+                    {/* Linked Wallet & Balance verification */}
+                    {(() => {
+                      const linkedWallet = wallets.find((w) => w.id === sub.walletId) || (sub.walletName ? wallets.find((w) => w.name === sub.walletName) : wallets.find((w) => w.isMain));
+                      const subAmt = parseFloat(sub.amount) || 0;
+                      const isShort = linkedWallet && linkedWallet.balance < subAmt;
+
+                      return (
+                        <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-gray-800/60 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-gray-400">Paid via:</span>
+                            <span className="font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[110px]">
+                              {linkedWallet?.name || sub.walletName || 'Default Account'}
+                            </span>
+                          </div>
+                          {linkedWallet && (
+                            <span className={`font-semibold shrink-0 ${isShort ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                              {isShort ? `⚠️ ${linkedWallet.balance.toFixed(0)} MAD bal (Short!)` : `${linkedWallet.balance.toFixed(0)} MAD bal`}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Card Footer: Quick Actions */}

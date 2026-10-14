@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useCallback } from 'react';
-import { CategoryBudget, Payroll, Transaction } from '../../types';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import { CategoryBudget, Payroll, Transaction, Debt, Goal, DashboardTab } from '../../types';
 import { expenseCategories, normalizeCategory } from '../../lib/categories';
 import {
   budgetFor,
@@ -35,6 +35,13 @@ import {
   PieChart,
   Layers,
   Sparkles,
+  Zap,
+  PiggyBank,
+  ArrowRight,
+  WalletCards,
+  Shield,
+  CreditCard,
+  ExternalLink,
 } from 'lucide-react';
 
 type PlanKey = 'balanced' | 'savings_first' | 'essentials';
@@ -112,12 +119,16 @@ interface BudgetsTabProps {
   budgets: CategoryBudget[];
   transactions: Transaction[];
   payrolls: Payroll[];
-  wallets?: Array<{ id: string; name: string; type?: string }>;
+  debts?: Debt[];
+  goals?: Goal[];
+  wallets?: Array<{ id: string; name: string; type?: string; balance?: number }>;
   onSaveBudget: (category: string, year: number, month: number, amount: number) => Promise<void>;
   onSaveBudgetsBatch: (budgets: { category: string; year: number; month: number; amount: number }[]) => Promise<void>;
   onCopyPrevious: (year: number, month: number) => Promise<number>;
   onClearMonth: (year: number, month: number) => Promise<number>;
   onDeleteBudget: (id: string) => Promise<void>;
+  onContributeGoal?: (goalId: string, payload: { amount: number; walletId?: string; note?: string; date?: string }) => Promise<any>;
+  setActiveTab?: (tab: DashboardTab) => void;
 }
 
 type BudgetModel = 'category' | '503020' | 'envelope';
@@ -596,7 +607,21 @@ function EnvelopeView({ budgets, transactions, year, month, payrolls, wallets, o
 import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, payrolls, wallets = [], onSaveBudget, onSaveBudgetsBatch, onCopyPrevious, onClearMonth, onDeleteBudget }) => {
+export const BudgetsTab: React.FC<BudgetsTabProps> = ({
+  budgets,
+  transactions,
+  payrolls,
+  debts = [],
+  goals = [],
+  wallets = [],
+  onSaveBudget,
+  onSaveBudgetsBatch,
+  onCopyPrevious,
+  onClearMonth,
+  onDeleteBudget,
+  onContributeGoal,
+  setActiveTab,
+}) => {
   const [monthRef, setMonthRef] = useState(() => getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [budgetModel, setBudgetModel] = useState<BudgetModel>('category');
   const [newCategory, setNewCategory] = useState<string>(expenseCategories[0]);
@@ -737,6 +762,92 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
   const isNewAmountValid = Number.isFinite(parsedNewAmount) && parsedNewAmount >= 0;
   const projectedTotalBudget = isNewAmountValid ? (totalBudget - currentCategoryExistingBudget + parsedNewAmount) : totalBudget;
   const projectedRemaining = totalIncome > 0 ? (totalIncome - projectedTotalBudget) : 0;
+
+  // ─── Connected Debts Servicing & Payoff Allocation ─────────────────────────
+  const pendingPayables = useMemo(() => {
+    return (debts || []).filter((d) => d.type === 'Payable' && d.status === 'Pending');
+  }, [debts]);
+
+  const totalPayableDebt = useMemo(() => {
+    return pendingPayables.reduce((acc, d) => acc + (parseFloat(d.remainingBalance) || 0), 0);
+  }, [pendingPayables]);
+
+  const recommendedDebtAllocation = useMemo(() => {
+    if (totalPayableDebt <= 0) return 0;
+    const dueThisMonth = pendingPayables
+      .filter((d) => {
+        if (!d.dueDate) return false;
+        const dt = new Date(d.dueDate);
+        return dt.getUTCFullYear() === monthRef.year && dt.getUTCMonth() + 1 === monthRef.month;
+      })
+      .reduce((acc, d) => acc + (parseFloat(d.remainingBalance) || 0), 0);
+
+    if (dueThisMonth > 0) return dueThisMonth;
+    if (totalPayableDebt <= 1000) return totalPayableDebt;
+    return Math.min(totalPayableDebt, Math.max(300, Math.round(totalPayableDebt * 0.1)));
+  }, [pendingPayables, totalPayableDebt, monthRef]);
+
+  const currentDebtBudget = monthBudgetsMap.get('💳 Debt & Obligations') ?? 0;
+  const isDebtFullyReserved = totalPayableDebt > 0 && currentDebtBudget >= recommendedDebtAllocation;
+  const [reservingDebt, setReservingDebt] = useState(false);
+
+  const handleAutoReserveDebt = async () => {
+    if (recommendedDebtAllocation <= 0) return;
+    setReservingDebt(true);
+    try {
+      await onSaveBudget('💳 Debt & Obligations', monthRef.year, monthRef.month, recommendedDebtAllocation);
+      showToast(`Reserved ${recommendedDebtAllocation.toFixed(2)} MAD for debt repayment in ${monthLabel(monthRef.year, monthRef.month)} budget!`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to auto-reserve debt budget.', 'error');
+    } finally {
+      setReservingDebt(false);
+    }
+  };
+
+  // ─── Connected Surplus Sweep to Savings Goals ──────────────────────────────
+  const budgetSurplus = Math.max(0, totalBudget - totalSpent);
+  const [selectedGoalId, setSelectedGoalId] = useState<string>('');
+  const [sweepAmount, setSweepAmount] = useState<string>('');
+  const [selectedSweepWalletId, setSelectedSweepWalletId] = useState<string>('');
+  const [sweeping, setSweeping] = useState(false);
+
+  useEffect(() => {
+    if (!selectedGoalId && goals && goals.length > 0) {
+      setSelectedGoalId(goals[0].id);
+    }
+  }, [goals, selectedGoalId]);
+
+  useEffect(() => {
+    if (!selectedSweepWalletId && wallets && wallets.length > 0) {
+      const mainW = (wallets as any).find((w: any) => w.isMain) || wallets[0];
+      setSelectedSweepWalletId(mainW.id);
+    }
+  }, [wallets, selectedSweepWalletId]);
+
+  const handleExecuteSurplusSweep = async () => {
+    if (!onContributeGoal || !selectedGoalId) return;
+    const amt = parseFloat(sweepAmount);
+    if (!amt || amt <= 0) {
+      showToast('Enter a valid amount to sweep into goal.', 'error');
+      return;
+    }
+    setSweeping(true);
+    try {
+      const targetGoal = goals?.find((g) => g.id === selectedGoalId);
+      await onContributeGoal(selectedGoalId, {
+        amount: amt,
+        walletId: selectedSweepWalletId || undefined,
+        note: `Budget surplus sweep from ${monthLabel(monthRef.year, monthRef.month)}`,
+        date: new Date().toISOString(),
+      });
+      showToast(`🎉 Swept +${amt.toFixed(2)} MAD into ${targetGoal?.name || 'Goal'}!`, 'success');
+      setSweepAmount('');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to sweep surplus into goal.', 'error');
+    } finally {
+      setSweeping(false);
+    }
+  };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -893,6 +1004,161 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({ budgets, transactions, p
               <span>0 MAD</span>
               <span>Ideal today: {pace.ideal.toFixed(0)} MAD</span>
               <span>{totalBudget.toFixed(0)} MAD</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Interconnected Debt Payoff Reserve Hub ── */}
+      {totalPayableDebt > 0 && (
+        <Card className={`border overflow-hidden transition-all shadow-xs ${
+          isDebtFullyReserved
+            ? 'border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-r from-emerald-50/50 via-white to-white dark:from-emerald-950/20 dark:via-gray-900 dark:to-gray-900'
+            : 'border-orange-200 dark:border-orange-900/50 bg-gradient-to-r from-orange-50/60 via-white to-white dark:from-orange-950/20 dark:via-gray-900 dark:to-gray-900'
+        }`}>
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-xs ${
+                  isDebtFullyReserved
+                    ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400'
+                }`}>
+                  <CreditCard className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-bold text-sm sm:text-base text-gray-900 dark:text-gray-100">
+                      Debt Servicing & Payoff Allocation
+                    </h3>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      isDebtFullyReserved
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300'
+                    }`}>
+                      {isDebtFullyReserved ? (
+                        <><CheckCircle2 className="h-3.5 w-3.5" /> Budgeted & Protected</>
+                      ) : (
+                        <><AlertTriangle className="h-3.5 w-3.5" /> Under-Reserved</>
+                      )}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 max-w-2xl">
+                    You have <strong className="text-gray-900 dark:text-gray-200">{totalPayableDebt.toFixed(2)} MAD</strong> across {pendingPayables.length} active payable debts.
+                    {isDebtFullyReserved
+                      ? ` Your ${monthLabel(monthRef.year, monthRef.month)} budget safely reserves ${currentDebtBudget.toFixed(2)} MAD for debt servicing.`
+                      : ` Recommended monthly payoff allocation: ${recommendedDebtAllocation.toFixed(2)} MAD. Currently only ${currentDebtBudget.toFixed(2)} MAD is budgeted for debt servicing.`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
+                {!isDebtFullyReserved && (
+                  <Button
+                    size="sm"
+                    disabled={reservingDebt}
+                    onClick={handleAutoReserveDebt}
+                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs h-9 shadow-xs flex items-center gap-1.5"
+                  >
+                    <Zap className="h-3.5 w-3.5" />
+                    <span>{reservingDebt ? 'Reserving…' : `Auto-Reserve ${recommendedDebtAllocation.toFixed(0)} MAD in Budget`}</span>
+                  </Button>
+                )}
+                {setActiveTab && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setActiveTab('debts')}
+                    className="text-xs h-9 border-gray-200 dark:border-gray-800"
+                  >
+                    <span>View Debts & IOUs</span>
+                    <ExternalLink className="ml-1.5 h-3.5 w-3.5 text-gray-400" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Interconnected Smart Surplus Sweep into Savings Goals ── */}
+      {budgetSurplus > 0 && goals.length > 0 && (
+        <Card className="border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-50/70 via-teal-50/30 to-white dark:from-indigo-950/30 dark:via-teal-950/20 dark:to-gray-900 shadow-xs overflow-hidden">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+                  <PiggyBank className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-bold text-sm sm:text-base text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                      <Sparkles className="h-4 w-4 text-amber-500" />
+                      Smart Surplus Sweep: Soak Up Unspent Budget
+                    </h3>
+                    <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/60 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                      +{budgetSurplus.toFixed(2)} MAD Available
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 max-w-2xl">
+                    You spent less than budgeted this cycle! Instead of letting leftover cash evaporate, sweep this surplus directly into your target savings goals.
+                  </p>
+                </div>
+              </div>
+
+              {/* Sweep Action Controls */}
+              <div className="flex flex-wrap items-center gap-2 pt-2 lg:pt-0">
+                <div className="flex items-center gap-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1">
+                  <select
+                    value={selectedGoalId}
+                    onChange={(e) => setSelectedGoalId(e.target.value)}
+                    className="bg-transparent text-xs font-semibold text-gray-900 dark:text-gray-100 focus:outline-none px-2 py-1 max-w-[140px] truncate"
+                  >
+                    {goals.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        🎯 {g.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="flex items-center gap-1 border-l border-gray-200 dark:border-gray-700 pl-1.5">
+                    {[0.25, 0.5, 1].map((ratio) => {
+                      const val = Math.round(budgetSurplus * ratio);
+                      return (
+                        <button
+                          key={ratio}
+                          type="button"
+                          onClick={() => setSweepAmount(String(val))}
+                          className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-gray-700 dark:text-gray-300"
+                        >
+                          {ratio === 1 ? '100%' : `${ratio * 100}%`}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <input
+                    type="number"
+                    min="1"
+                    max={budgetSurplus}
+                    placeholder={budgetSurplus.toFixed(0)}
+                    value={sweepAmount}
+                    onChange={(e) => setSweepAmount(e.target.value)}
+                    className="w-16 bg-transparent text-xs font-bold text-right text-indigo-600 dark:text-indigo-400 focus:outline-none px-1"
+                  />
+                  <span className="text-[10px] text-gray-400 pr-1">MAD</span>
+                </div>
+
+                <Button
+                  size="sm"
+                  disabled={sweeping || !onContributeGoal}
+                  onClick={handleExecuteSurplusSweep}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-9 shadow-xs flex items-center gap-1.5"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>{sweeping ? 'Sweeping…' : 'Sweep to Goal'}</span>
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

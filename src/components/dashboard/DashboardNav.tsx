@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DashboardTab } from '../../types';
-import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, ChevronDown, ChevronUp, Bot, FileBarChart, TrendingUp, Map, Target, Repeat, ShieldCheck, ShieldAlert, Sparkles, Coins } from 'lucide-react';
+import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, Settings, WalletCards, CalendarDays, ChevronDown, ChevronUp, Bot, FileBarChart, Map, Target, Repeat } from 'lucide-react';
 
 interface DashboardNavProps {
   activeTab: DashboardTab;
@@ -9,18 +9,15 @@ interface DashboardNavProps {
 
 const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.FC<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
-  { id: 'investments', label: 'Investments & Wealth', shortLabel: 'Invest', icon: Coins },
-  { id: 'cash-flow', label: 'Cash Flow', shortLabel: 'Cash Flow', icon: TrendingUp },
-  { id: 'calendar', label: 'Calendar', shortLabel: 'Calendar', icon: CalendarDays },
+  { id: 'calendar', label: 'Calendar & Cash Flow', shortLabel: 'Calendar', icon: CalendarDays },
   { id: 'analytics', label: 'Analytics', shortLabel: 'Analytics', icon: BarChart2 },
   { id: 'transactions', label: 'Transactions', shortLabel: 'Transactions', icon: ArrowRightLeft },
+  { id: 'budgets', label: 'Budgets', shortLabel: 'Budgets', icon: WalletCards },
   { id: 'subscriptions', label: 'Subscriptions', shortLabel: 'Subs', icon: Repeat },
   { id: 'contexts', label: 'Contexts', shortLabel: 'Contexts', icon: Map },
   { id: 'goals', label: 'Goals', shortLabel: 'Goals', icon: Target },
   { id: 'debts', label: 'Debts & Splits', shortLabel: 'Debts', icon: Users },
-  { id: 'budgets', label: 'Budgets', shortLabel: 'Budgets', icon: WalletCards },
-  { id: 'what-if', label: 'Smart Calculator & Tools', shortLabel: 'Calculator', icon: Calculator },
-  { id: 'reports', label: 'Reports', shortLabel: 'Reports', icon: FileBarChart },
+  { id: 'reports', label: 'Reports & Retrospective', shortLabel: 'Reports', icon: FileBarChart },
   { id: 'chat', label: 'AI Chat', shortLabel: 'AI Chat', icon: Bot },
   { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
 ];
