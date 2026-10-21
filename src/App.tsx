@@ -57,7 +57,6 @@ function AppContent() {
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },
     { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
     { id: 'budgets', label: 'Budgets', icon: WalletCards },
-    { id: 'investments', label: 'Investments & Stocks', icon: TrendingUp },
     { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
     { id: 'goals', label: 'Goals', icon: Target },
     { id: 'debts', label: 'Debts & Splits', icon: Users },

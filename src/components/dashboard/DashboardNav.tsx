@@ -38,7 +38,6 @@ const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.F
   { id: 'analytics', label: 'Analytics', shortLabel: 'Analytics', icon: BarChart2 },
   { id: 'transactions', label: 'Transactions', shortLabel: 'Transactions', icon: ArrowRightLeft },
   { id: 'budgets', label: 'Budgets', shortLabel: 'Budgets', icon: WalletCards },
-  { id: 'investments', label: 'Investments & Stocks', shortLabel: 'Invest', icon: TrendingUp },
   { id: 'subscriptions', label: 'Subscriptions', shortLabel: 'Subs', icon: Repeat },
   { id: 'contexts', label: 'Contexts', shortLabel: 'Contexts', icon: Map },
   { id: 'goals', label: 'Goals', shortLabel: 'Goals', icon: Target },

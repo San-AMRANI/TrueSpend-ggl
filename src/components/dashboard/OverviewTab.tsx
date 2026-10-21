@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction, Goal, Subscription, InvestmentsData } from '../../types';
+import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction, Goal, Subscription } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SettleDebtModal } from '../SettleDebtModal';
@@ -25,7 +25,6 @@ interface OverviewTabProps {
   budgets: CategoryBudget[];
   goals?: Goal[];
   subscriptions?: Subscription[];
-  investmentsData?: InvestmentsData | null;
   setActiveTab: (tab: DashboardTab) => void;
   openTransaction: (transactionId: string) => void;
   handleSettle: (debtId: string, amount: number, category?: string, walletId?: string) => Promise<void> | void;
@@ -42,7 +41,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   budgets,
   goals = [],
   subscriptions = [],
-  investmentsData = null,
   payrolls,
   setActiveTab,
   openTransaction,
@@ -108,10 +106,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         subscriptions,
         debts,
         goals,
-        investmentsData,
         contexts: [],
       }),
-    [kpis, transactions, payrolls, budgets, subscriptions, debts, goals, investmentsData]
+    [kpis, transactions, payrolls, budgets, subscriptions, debts, goals]
   );
 
   // Health score ring color
@@ -448,9 +445,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 Synthesized from {holisticForecast.dataPointsAnalyzed.transactions} transactions,{' '}
                 {holisticForecast.dataPointsAnalyzed.wallets} wallets,{' '}
-                {holisticForecast.dataPointsAnalyzed.subscriptions} subscriptions,{' '}
-                {holisticForecast.dataPointsAnalyzed.debts} debts, and{' '}
-                {holisticForecast.dataPointsAnalyzed.holdings} investment holdings.
+                {holisticForecast.dataPointsAnalyzed.subscriptions} subscriptions, and{' '}
+                {holisticForecast.dataPointsAnalyzed.debts} debts.
               </p>
             </div>
             <Button

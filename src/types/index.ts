@@ -256,7 +256,6 @@ export type DashboardTab =
   | 'calendar'
   | 'transactions'
   | 'budgets'
-  | 'investments'
   | 'goals'
   | 'subscriptions'
   | 'debts'

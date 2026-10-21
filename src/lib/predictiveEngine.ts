@@ -88,7 +88,6 @@ export interface PredictiveSignal {
     | 'overview'
     | 'budgets'
     | 'subscriptions'
-    | 'investments'
     | 'goals'
     | 'debts'
     | 'calendar'
@@ -166,7 +165,7 @@ export function computeHolisticForecast(params: {
   subscriptions: Subscription[];
   debts: Debt[];
   goals: Goal[];
-  investmentsData: InvestmentsData | null;
+  investmentsData?: InvestmentsData | null;
   contexts: FinancialContext[];
   whatIf?: WhatIfScenarioParams;
 }): HolisticForecastReport {
@@ -758,8 +757,8 @@ export function computeHolisticForecast(params: {
       monthlyDcaCommitment + whatIf.extraMonthlyDcaMad
     ).toFixed(0)} MAD/mo DCA contributions, and portfolio compounding.`,
     impactMad: wealthGain12m,
-    actionTab: 'investments',
-    actionLabel: 'Open Investments Hub',
+    actionTab: 'goals',
+    actionLabel: 'Open Goals Hub',
   });
 
   // Signal E: Subscriptions Load

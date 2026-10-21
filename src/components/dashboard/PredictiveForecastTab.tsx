@@ -38,7 +38,6 @@ import {
   Debt,
   FinancialContext,
   Goal,
-  InvestmentsData,
   KPI,
   Payroll,
   Subscription,
@@ -57,7 +56,6 @@ interface PredictiveForecastTabProps {
   subscriptions: Subscription[];
   debts: Debt[];
   goals: Goal[];
-  investmentsData: InvestmentsData | null;
   contexts: FinancialContext[];
   setActiveTab: (tab: DashboardTab) => void;
 }
@@ -78,7 +76,6 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
   subscriptions,
   debts,
   goals,
-  investmentsData,
   contexts,
   setActiveTab,
 }) => {
@@ -98,7 +95,6 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
         subscriptions,
         debts,
         goals,
-        investmentsData,
         contexts,
         whatIf,
       }),
@@ -110,7 +106,6 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
       subscriptions,
       debts,
       goals,
-      investmentsData,
       contexts,
       whatIf,
     ]
@@ -184,8 +179,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
               Synthesized live across {forecast.dataPointsAnalyzed.transactions} transactions ·{' '}
               {forecast.dataPointsAnalyzed.wallets} wallets · {forecast.dataPointsAnalyzed.budgets}{' '}
               budgets · {forecast.dataPointsAnalyzed.subscriptions} subscriptions ·{' '}
-              {forecast.dataPointsAnalyzed.debts} debts · {forecast.dataPointsAnalyzed.goals} goals ·{' '}
-              {forecast.dataPointsAnalyzed.holdings} investment holdings
+              {forecast.dataPointsAnalyzed.debts} debts · {forecast.dataPointsAnalyzed.goals} goals
             </p>
           </div>
         </div>

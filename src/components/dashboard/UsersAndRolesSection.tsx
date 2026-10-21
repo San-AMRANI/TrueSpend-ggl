@@ -64,11 +64,6 @@ const PERMISSION_LABELS: {
     desc: 'Set or modify monthly category budget limits and payday parameters',
   },
   {
-    key: 'canAccessInvestments',
-    label: 'Investments & Equities Hub',
-    desc: 'Access holdings, DCA plans, and execute portfolio trades',
-  },
-  {
     key: 'canUseAiChat',
     label: 'Spex AI Co-Pilot',
     desc: 'Consult Spex AI assistant, run what-if simulations, and receipt vision',

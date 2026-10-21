@@ -9,7 +9,6 @@ import { DebtsTab } from './dashboard/DebtsTab';
 import { AnalyticsTab } from './dashboard/AnalyticsTab';
 import { SettingsTab } from './dashboard/SettingsTab';
 import { BudgetsTab } from './dashboard/BudgetsTab';
-import { InvestmentsTab } from './dashboard/InvestmentsTab';
 import { GoalsTab } from './dashboard/GoalsTab';
 import { SubscriptionsTab } from './dashboard/SubscriptionsTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
@@ -82,17 +81,6 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleUpdateContext,
     handleDeleteContext,
     handleLinkTransactionsToContext,
-    investmentsData,
-    handleCreateHolding,
-    handleUpdateHolding,
-    handleDeleteHolding,
-    handleExecuteTrade,
-    handleCreateDcaPlan,
-    handleUpdateDcaPlan,
-    handleDeleteDcaPlan,
-    handleAddToWatchlist,
-    handleRemoveFromWatchlist,
-    refreshInvestments,
     userSettings,
     notifications,
   } = useDashboardData(token);
@@ -143,7 +131,6 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           budgets={budgets}
           goals={goals}
           subscriptions={subscriptions}
-          investmentsData={investmentsData}
           setActiveTab={setActiveTab}
           openTransaction={openTransaction}
           handleSettle={handleSettleDebt}
@@ -180,7 +167,6 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           kpis={kpis}
           subscriptions={subscriptions}
           wallets={kpis?.accounts || []}
-          dcaPlans={investmentsData?.dcaPlans || []}
           openTransaction={openTransaction}
           setActiveTab={setActiveTab}
           onCreatePayroll={handleCreatePayroll}
@@ -203,28 +189,6 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onClearMonth={handleClearCategoryBudgetsMonth}
           onDeleteBudget={handleDeleteCategoryBudget}
           onContributeGoal={handleContributeToGoal}
-          setActiveTab={setActiveTab}
-        />
-      )}
-
-      {activeTab === 'investments' && (
-        <InvestmentsTab
-          data={investmentsData}
-          loading={loading}
-          wallets={kpis?.accounts || []}
-          kpis={kpis}
-          debts={debts}
-          onRefresh={refreshInvestments}
-          onCreateHolding={handleCreateHolding}
-          onUpdateHolding={handleUpdateHolding}
-          onDeleteHolding={handleDeleteHolding}
-          onExecuteTrade={handleExecuteTrade}
-          onCreateDcaPlan={handleCreateDcaPlan}
-          onUpdateDcaPlan={handleUpdateDcaPlan}
-          onDeleteDcaPlan={handleDeleteDcaPlan}
-          onAddToWatchlist={handleAddToWatchlist}
-          onRemoveFromWatchlist={handleRemoveFromWatchlist}
-          onCreateWallet={handleCreateWallet}
           setActiveTab={setActiveTab}
         />
       )}
@@ -319,7 +283,6 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           subscriptions={subscriptions}
           debts={debts}
           goals={goals}
-          investmentsData={investmentsData}
           contexts={contexts}
           setActiveTab={setActiveTab}
         />

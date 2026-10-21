@@ -50,7 +50,6 @@ const mainTabs: NavTabItem[] = [
   { id: 'calendar', label: 'Calendar & Cash Flow', icon: CalendarDays },
   { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
   { id: 'budgets', label: 'Budgets', icon: WalletCards },
-  { id: 'investments', label: 'Investments & Stocks', icon: TrendingUp },
   { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   { id: 'reports', label: 'Reports', icon: FileBarChart },
   { id: 'contexts', label: 'Contexts', icon: Map },

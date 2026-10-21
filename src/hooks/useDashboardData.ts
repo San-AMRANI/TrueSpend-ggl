@@ -12,10 +12,6 @@ import {
   Goal,
   Subscription,
   DetectedSubscription,
-  InvestmentsData,
-  InvestmentHolding,
-  DcaPlan,
-  InvestmentTradeType,
 } from '../types';
 import { useNotifications } from './useNotifications';
 
@@ -28,7 +24,6 @@ export function useDashboardData(token: string | null) {
   const [contexts, setContexts] = useState<any[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [investmentsData, setInvestmentsData] = useState<InvestmentsData | null>(null);
   const [userSettings, setUserSettings] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -45,7 +40,7 @@ export function useDashboardData(token: string | null) {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData, investData] = await Promise.all([
+      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
@@ -55,7 +50,6 @@ export function useDashboardData(token: string | null) {
         dashboardService.getContexts(token),
         dashboardService.getGoals(token),
         dashboardService.getSubscriptions(token),
-        dashboardService.getInvestmentsData(token),
       ]);
 
       setKpis(kpiData || null);
@@ -67,7 +61,6 @@ export function useDashboardData(token: string | null) {
       setContexts(contextData || []);
       setGoals(goalData || []);
       setSubscriptions(subData || []);
-      setInvestmentsData(investData || null);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -601,79 +594,6 @@ export function useDashboardData(token: string | null) {
     });
   }, [goals, kpis?.accounts]);
 
-  const handleCreateHolding = async (payload: Partial<InvestmentHolding>) => {
-    const created = await dashboardService.createHolding(payload, token);
-    await fetchData();
-    return created;
-  };
-
-  const handleUpdateHolding = async (id: string, payload: Partial<InvestmentHolding>) => {
-    const updated = await dashboardService.updateHolding(id, payload, token);
-    await fetchData();
-    return updated;
-  };
-
-  const handleDeleteHolding = async (id: string) => {
-    const res = await dashboardService.deleteHolding(id, token);
-    await fetchData();
-    return res;
-  };
-
-  const handleExecuteTrade = async (payload: {
-    holdingId: string;
-    type: InvestmentTradeType;
-    units?: number;
-    pricePerUnit?: number;
-    totalAmount?: number;
-    fees?: number;
-    walletId?: string | null;
-    notes?: string;
-  }) => {
-    const res = await dashboardService.executeTrade(payload, token);
-    await fetchData();
-    return res;
-  };
-
-  const handleCreateDcaPlan = async (payload: Partial<DcaPlan>) => {
-    const created = await dashboardService.createDcaPlan(payload, token);
-    await fetchData();
-    return created;
-  };
-
-  const handleUpdateDcaPlan = async (id: string, payload: Partial<DcaPlan>) => {
-    const updated = await dashboardService.updateDcaPlan(id, payload, token);
-    await fetchData();
-    return updated;
-  };
-
-  const handleDeleteDcaPlan = async (id: string) => {
-    const res = await dashboardService.deleteDcaPlan(id, token);
-    await fetchData();
-    return res;
-  };
-
-  const refreshInvestments = async () => {
-    if (!token) return;
-    try {
-      const data = await dashboardService.getInvestmentsData(token);
-      setInvestmentsData(data);
-    } catch (err) {
-      console.error('Error refreshing investments:', err);
-    }
-  };
-
-  const handleAddToWatchlist = async (payload: { coinId: string; symbol: string; name: string }) => {
-    const created = await dashboardService.addToWatchlist(payload, token);
-    await refreshInvestments();
-    return created;
-  };
-
-  const handleRemoveFromWatchlist = async (coinId: string) => {
-    const res = await dashboardService.removeFromWatchlist(coinId, token);
-    await refreshInvestments();
-    return res;
-  };
-
   return {
     kpis,
     transactions,
@@ -683,7 +603,6 @@ export function useDashboardData(token: string | null) {
     contexts,
     goals: syncedGoals,
     subscriptions,
-    investmentsData,
     userSettings,
     loading,
     isSaving,
@@ -731,16 +650,6 @@ export function useDashboardData(token: string | null) {
     handleDeleteSubscription,
     handlePaySubscription,
     handleDetectSubscriptions,
-    handleCreateHolding,
-    handleUpdateHolding,
-    handleDeleteHolding,
-    handleExecuteTrade,
-    handleCreateDcaPlan,
-    handleUpdateDcaPlan,
-    handleDeleteDcaPlan,
-    handleAddToWatchlist,
-    handleRemoveFromWatchlist,
-    refreshInvestments,
     notifications,
   };
 }
