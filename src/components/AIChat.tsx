@@ -31,12 +31,83 @@ import {
   Award,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { SpexAvatar } from './common/SpexAvatar';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { buildAiContextSnapshot } from '../lib/aiContext';
 import { playAudioBlob, playBrowserSpeech } from '../lib/speechEngine';
+
+/**
+ * Ensures Markdown tables have a blank line before the header row and valid GFM separator rows
+ * so react-markdown + remark-gfm parses AI-generated tables reliably even when adjacent to text.
+ */
+function normalizeMarkdownTables(raw: string): string {
+  if (!raw) return '';
+  const lines = raw.replace(/\r\n/g, '\n').split('\n');
+  const out: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    const nextTrimmed = i + 1 < lines.length ? lines[i + 1].trim() : '';
+
+    const looksLikeTableRow = trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.split('|').length >= 3;
+    const nextLooksLikeSeparator =
+      nextTrimmed.startsWith('|') &&
+      nextTrimmed.endsWith('|') &&
+      /^\|[\s:|-]+\|$/.test(nextTrimmed) &&
+      nextTrimmed.includes('-');
+
+    // If this is the header row of a table and the previous line wasn't blank or another table row, insert a blank line
+    if (looksLikeTableRow && nextLooksLikeSeparator && out.length > 0) {
+      const prevTrimmed = out[out.length - 1].trim();
+      if (prevTrimmed !== '' && !prevTrimmed.startsWith('|')) {
+        out.push('');
+      }
+    }
+
+    out.push(line);
+  }
+
+  return out.join('\n');
+}
+
+const MARKDOWN_COMPONENTS = {
+  table: ({ children, ...props }: any) => (
+    <div className="my-3 w-full overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-900/90 shadow-2xs">
+      <table className="w-full border-collapse text-left text-xs sm:text-sm" {...props}>
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children, ...props }: any) => (
+    <thead className="bg-gray-100/90 dark:bg-gray-800/90 text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700" {...props}>
+      {children}
+    </thead>
+  ),
+  tbody: ({ children, ...props }: any) => (
+    <tbody className="divide-y divide-gray-100 dark:divide-gray-800" {...props}>
+      {children}
+    </tbody>
+  ),
+  tr: ({ children, ...props }: any) => (
+    <tr className="hover:bg-gray-50/80 dark:hover:bg-gray-800/50 transition-colors" {...props}>
+      {children}
+    </tr>
+  ),
+  th: ({ children, ...props }: any) => (
+    <th className="px-3.5 py-2.5 font-semibold text-xs uppercase tracking-wider text-gray-600 dark:text-gray-300 whitespace-nowrap" {...props}>
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }: any) => (
+    <td className="px-3.5 py-2.5 text-gray-800 dark:text-gray-200 align-top" {...props}>
+      {children}
+    </td>
+  ),
+};
 
 const CHAT_SESSION_STORAGE_KEY = 'truespend_chat_session';
 
@@ -261,11 +332,9 @@ function MessageBubble({
     >
       {/* Avatar row for assistant */}
       {!isUser && (
-        <div className="flex items-center gap-1.5 ml-1 mb-0.5 flex-wrap">
-          <div className="h-5 w-5 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-xs p-0.5">
-            <SpexAvatar className="w-full h-full" />
-          </div>
-          <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">Spex</span>
+        <div className="flex items-center gap-2 ml-0.5 mb-0.5 flex-wrap">
+          <SpexAvatar className="h-6 w-6" />
+          <span className="text-[11px] text-gray-600 dark:text-gray-300 font-semibold">Spex</span>
           {msg.modelUsed ? (
             <span
               className={cn(
@@ -296,13 +365,20 @@ function MessageBubble({
         </div>
       )}
 
-      <div className={cn('flex gap-2 max-w-[90%]', isUser ? 'flex-row-reverse' : 'flex-row')}>
+      <div
+        className={cn(
+          'flex gap-2',
+          isUser
+            ? 'flex-row-reverse max-w-[78%] sm:max-w-[65%] lg:max-w-[55%]'
+            : 'flex-row w-full max-w-full',
+        )}
+      >
         <div
           className={cn(
-            'relative rounded-2xl px-4 py-3 shadow-sm text-sm leading-relaxed',
+            'relative rounded-2xl px-4 py-3.5 shadow-sm text-sm leading-relaxed',
             isUser
               ? 'bg-indigo-600 dark:bg-indigo-700 text-white rounded-br-none'
-              : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-700/60 rounded-bl-none',
+              : 'w-full bg-white/90 dark:bg-gray-800/90 backdrop-blur-[2px] text-gray-800 dark:text-gray-100 border border-gray-200/80 dark:border-gray-700/70 rounded-bl-none',
           )}
         >
           {msg.imageUrl && (
@@ -318,8 +394,10 @@ function MessageBubble({
           {isUser ? (
             <span className="whitespace-pre-wrap">{msg.content}</span>
           ) : (
-            <div className="prose prose-sm max-w-none text-gray-800 dark:text-gray-200 prose-p:leading-relaxed prose-p:my-1 prose-pre:text-gray-800 dark:prose-pre:text-gray-200 prose-pre:bg-gray-50 dark:prose-pre:bg-gray-900 prose-strong:text-indigo-800 dark:prose-strong:text-indigo-300 prose-headings:text-indigo-900 dark:prose-headings:text-indigo-300 prose-headings:font-semibold prose-a:text-indigo-600 dark:prose-a:text-indigo-400 prose-ul:my-1 prose-li:my-0">
-              <Markdown>{msg.content}</Markdown>
+            <div className="prose prose-sm max-w-none w-full text-gray-800 dark:text-gray-200 prose-p:leading-relaxed prose-p:my-1.5 prose-pre:text-gray-800 dark:prose-pre:text-gray-200 prose-pre:bg-gray-50 dark:prose-pre:bg-gray-900 prose-strong:text-indigo-800 dark:prose-strong:text-indigo-300 prose-headings:text-indigo-900 dark:prose-headings:text-indigo-300 prose-headings:font-semibold prose-a:text-indigo-600 dark:prose-a:text-indigo-400 prose-ul:my-1.5 prose-li:my-0.5">
+              <Markdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                {normalizeMarkdownTables(msg.content)}
+              </Markdown>
             </div>
           )}
 
@@ -363,7 +441,7 @@ function MessageBubble({
 
       {/* Action proposal panel */}
       {!isUser && msg.actions && msg.actions.length > 0 && (
-        <div className="ml-7 mt-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/90 dark:bg-indigo-950/40 p-3 max-w-[90%] animate-fadeIn shadow-xs">
+        <div className="mt-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/90 dark:bg-indigo-950/40 p-3 w-full max-w-full animate-fadeIn shadow-xs">
           <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-indigo-200/60 dark:border-indigo-800/60">
             <span className="text-[11px] font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
@@ -1006,8 +1084,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         )}
       >
         {/* ─── Mobile compact header ─────────────────────────────── */}
-        <div className="sm:hidden flex items-center justify-between px-4 py-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
-          <div className="flex items-center gap-2">
+        <div className="sm:hidden flex items-center justify-between px-4 py-3 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('truespend:openSidebar'))}
@@ -1016,9 +1094,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-xs p-1">
-              <SpexAvatar className="w-full h-full" animated />
-            </div>
+            <SpexAvatar className="h-9 w-9" animated />
             <div>
               <div className="flex items-center gap-1.5">
                 <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">Spex</p>
@@ -1034,7 +1110,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                       ? isAutoFallenBack
                         ? 'bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60'
                         : 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60'
-                      : 'bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800/60',
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700',
                   )}
                   title="View/Change Gemini model routing"
                 >
@@ -1093,22 +1169,20 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           </div>
         </div>
 
-        {/* ─── Desktop header ────────────────────────────────────── */}
-        <div className="hidden sm:flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 dark:from-indigo-900 dark:via-indigo-950 dark:to-purple-950 flex-shrink-0 text-white">
+        {/* ─── Desktop header (clean surface, no purple gradient behind avatar) ─── */}
+        <div className="hidden sm:flex items-center justify-between px-5 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 text-gray-900 dark:text-gray-100">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center p-1 shadow-sm">
-              <SpexAvatar className="w-full h-full" animated />
-            </div>
+            <SpexAvatar className="h-11 w-11" animated />
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-bold text-white leading-tight">Spex Financial Intelligence</p>
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/20 backdrop-blur-xs px-2 py-0.5 text-[10px] font-semibold text-white shadow-xs">
-                  <Sparkles className="w-3 h-3 text-indigo-200" />
+                <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight">Spex Financial Intelligence</p>
+                <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200/70 dark:border-indigo-800/60 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
+                  <Sparkles className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
                   Google Gemini AI
                 </span>
               </div>
-              <p className="text-[11px] text-indigo-200/90 leading-tight">
-                Autonomous Cycles, What-If Simulation & Smart Model Failover
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-tight">
+                Autonomous Cycles, What-If Simulation &amp; Smart Model Failover
               </p>
             </div>
           </div>
@@ -1122,16 +1196,16 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                   fetchModelStatuses();
                 }}
                 className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-white transition-all border shadow-xs',
+                  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all border shadow-xs',
                   selectedModel === 'auto'
                     ? isAutoFallenBack
-                      ? 'bg-amber-500/30 hover:bg-amber-500/40 border-amber-300/40 text-amber-100'
-                      : 'bg-white/15 hover:bg-white/25 border-white/20'
-                    : 'bg-indigo-500/40 hover:bg-indigo-500/50 border-indigo-300/40',
+                      ? 'bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200'
+                      : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200'
+                    : 'bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-200',
                 )}
                 title="Select Gemini AI Model or Switch Mode"
               >
-                <Cpu className="w-3.5 h-3.5 text-indigo-200" />
+                <Cpu className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
                 <span className="font-semibold max-w-[130px] truncate">
                   {selectedModel === 'auto'
                     ? isAutoFallenBack
@@ -1139,7 +1213,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                       : 'Smart Auto'
                     : AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.shortName || selectedModel}
                 </span>
-                <ChevronDown className={cn('w-3 h-3 text-white/80 transition-transform', showModelDropdown && 'rotate-180')} />
+                <ChevronDown className={cn('w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform', showModelDropdown && 'rotate-180')} />
               </button>
 
               {/* Dropdown Menu */}
@@ -1237,11 +1311,11 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all shadow-xs border',
                 isVoiceMode
-                  ? 'bg-emerald-500/30 hover:bg-emerald-500/40 border-emerald-300/40 text-emerald-100 ring-1 ring-emerald-400/50'
-                  : 'bg-white/10 hover:bg-white/20 border-white/15 text-white/80',
+                  ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                  : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200',
               )}
             >
-              {isVoiceMode ? <Volume2 className="w-3.5 h-3.5 text-emerald-200 animate-pulse" /> : <VolumeX className="w-3.5 h-3.5 text-white/60" />}
+              {isVoiceMode ? <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 animate-pulse" /> : <VolumeX className="w-3.5 h-3.5 text-gray-400" />}
               <span>{isVoiceMode ? 'Voice Mode On' : 'Voice Mode'}</span>
             </button>
 
@@ -1252,7 +1326,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 setShowQuotaModal(true);
               }}
               title="View Gemini API Quotas & Credits"
-              className="inline-flex items-center gap-1 rounded-lg bg-white/10 hover:bg-white/20 px-2.5 py-1.5 text-xs font-medium text-white transition-colors"
+              className="inline-flex items-center gap-1 rounded-lg bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 transition-colors"
             >
               <Info className="w-3.5 h-3.5" />
               <span>Quotas</span>
@@ -1261,7 +1335,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               type="button"
               onClick={handleExportChat}
               title="Export financial report (Markdown)"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-2.5 py-1.5 text-xs font-medium text-white transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 transition-colors"
             >
               <Download className="w-3.5 h-3.5" />
               Export
@@ -1270,7 +1344,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               type="button"
               onClick={handleReset}
               title="Clear chat"
-              className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -1304,37 +1378,45 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           })}
         </div>
 
-        {/* ─── Messages ──────────────────────────────────────────── */}
-        <div
-          ref={messagesContainerRef}
-          className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 space-y-3.5 scroll-smooth"
-          style={{ overscrollBehavior: 'contain' }}
-        >
-          {messages
-            .filter((m) => m.role !== 'system')
-            .map((msg, idx) => (
-              <MessageBubble
-                key={idx}
-                msg={msg}
-                idx={idx}
-                onAction={handleAction}
-                onSpeak={handleSpeak}
-                isPlayingAudio={playingAudioIndex === idx}
-                isAudioLoading={audioLoadingIndex === idx}
-              />
-            ))}
+        {/* ─── Messages Area with Centered Background Spex Watermark ─── */}
+        <div className="relative flex-1 overflow-hidden flex flex-col">
+          {/* Centered Spex Character in the background behind messages */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-0 overflow-hidden"
+          >
+            <SpexAvatar className="w-60 h-60 sm:w-80 sm:h-80 md:w-96 md:h-96 opacity-[0.11] dark:opacity-[0.14] transition-opacity" />
+          </div>
 
-          {isLoading && (
-            <div className="flex items-start gap-2 animate-slideIn">
-              <div className="h-5 w-5 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center flex-shrink-0 mt-1 overflow-hidden shadow-xs p-0.5">
-                <SpexAvatar className="w-full h-full" animated />
+          <div
+            ref={messagesContainerRef}
+            className="relative z-10 flex-1 overflow-y-auto px-3 py-4 sm:px-5 space-y-4 scroll-smooth"
+            style={{ overscrollBehavior: 'contain' }}
+          >
+            {messages
+              .filter((m) => m.role !== 'system')
+              .map((msg, idx) => (
+                <MessageBubble
+                  key={idx}
+                  msg={msg}
+                  idx={idx}
+                  onAction={handleAction}
+                  onSpeak={handleSpeak}
+                  isPlayingAudio={playingAudioIndex === idx}
+                  isAudioLoading={audioLoadingIndex === idx}
+                />
+              ))}
+
+            {isLoading && (
+              <div className="flex items-start gap-2.5 w-full animate-slideIn">
+                <SpexAvatar className="h-7 w-7 mt-0.5 flex-shrink-0" animated />
+                <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-[2px] border border-gray-200/80 dark:border-gray-700/70 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm">
+                  <TypingDots />
+                </div>
               </div>
-              <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700/60 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm">
-                <TypingDots />
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
+            )}
+            <div ref={messagesEndRef} />
+          </div>
         </div>
 
         {/* ─── Scroll to bottom button ───────────────────────────── */}

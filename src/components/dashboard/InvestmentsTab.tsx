@@ -2583,9 +2583,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2.5">
-                <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 p-0.5 flex items-center justify-center shadow-xs">
-                  <SpexAvatar className="w-full h-full" animated />
-                </div>
+                <SpexAvatar className="h-8 w-8" animated />
                 Spex AI Stock & Wealth Co-Pilot
               </h2>
               <p className="text-xs text-gray-500 dark:text-gray-400">

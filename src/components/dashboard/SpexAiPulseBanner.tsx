@@ -53,18 +53,13 @@ export const SpexAiPulseBanner: React.FC<SpexAiPulseBannerProps> = ({
         ? 'border-rose-200/80 bg-gradient-to-r from-rose-50/90 via-orange-50/50 to-white dark:border-rose-900/60 dark:from-rose-950/30 dark:via-gray-900 dark:to-gray-900'
         : tone === 'warning'
         ? 'border-amber-200/80 bg-gradient-to-r from-amber-50/90 via-yellow-50/50 to-white dark:border-amber-900/60 dark:from-amber-950/30 dark:via-gray-900 dark:to-gray-900'
-        : 'border-indigo-100 bg-gradient-to-r from-indigo-50/80 via-purple-50/40 to-white dark:border-indigo-900/40 dark:from-indigo-950/30 dark:via-gray-900 dark:to-gray-900'
+        : 'border-gray-200/80 bg-white dark:border-gray-800 dark:bg-gray-900'
     }`}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         {/* Left: Spex Avatar & Headline */}
         <div className="flex items-start sm:items-center gap-3">
           <div className="relative flex-shrink-0">
-            <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 p-1 shadow-md flex items-center justify-center">
-              <SpexAvatar className="h-full w-full" animated />
-            </div>
-            <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] text-white ring-2 ring-white dark:ring-gray-900 shadow-xs">
-              <Sparkles className="h-2.5 w-2.5" />
-            </span>
+            <SpexAvatar className="h-12 w-12" animated />
           </div>
 
           <div>

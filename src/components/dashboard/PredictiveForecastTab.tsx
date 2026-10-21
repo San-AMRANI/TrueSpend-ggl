@@ -175,9 +175,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
       {/* ── Top Header & Data Synthesis Telemetry ── */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-start gap-3">
-          <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 p-1 shadow-md flex items-center justify-center shrink-0">
-            <SpexAvatar className="w-full h-full" animated />
-          </div>
+          <SpexAvatar className="h-12 w-12 shrink-0" animated />
           <div>
             <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <span>Holistic Predictive Intelligence &amp; Forecasting</span>

@@ -201,7 +201,7 @@ function AppContent() {
           <DesktopHeaderNav activeTab={activeTab} onSelectTab={handleSelectTab} />
         </div>
       </header>
-      <main className={`mx-auto min-w-0 max-w-7xl overflow-x-hidden ${isChatOnMobile ? 'p-0 sm:p-6 sm:pb-24 md:pb-6 lg:p-8' : 'p-3 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8'}`}>
+      <main className={`mx-auto min-w-0 overflow-x-hidden ${isChatOnMobile ? 'w-full max-w-none p-0 sm:px-3 sm:py-3 sm:pb-24 md:pb-4 lg:px-5' : 'max-w-7xl p-3 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8'}`}>
         <Dashboard activeTab={activeTab} onTabChange={setActiveTab} />
       </main>
 
