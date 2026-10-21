@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sparkles, ArrowRight, ShieldCheck, AlertTriangle, TrendingUp, Camera, Bot } from 'lucide-react';
 import { KPI, DashboardTab } from '../../types';
+import { SpexAvatar } from '../common/SpexAvatar';
 
 interface SpexAiPulseBannerProps {
   kpis: KPI | null;
@@ -13,8 +14,6 @@ export const SpexAiPulseBanner: React.FC<SpexAiPulseBannerProps> = ({
   setActiveTab,
   onSendPrompt,
 }) => {
-  const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
-
   // Compute live diagnostic summary
   const safeToSpend = kpis?.safeToSpend ?? 0;
   const dailyRemaining = kpis?.dailyRemaining ?? 0;
@@ -60,8 +59,8 @@ export const SpexAiPulseBanner: React.FC<SpexAiPulseBannerProps> = ({
         {/* Left: Spex Avatar & Headline */}
         <div className="flex items-start sm:items-center gap-3">
           <div className="relative flex-shrink-0">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 p-1.5 shadow-sm flex items-center justify-center">
-              <img src={appIconSrc} alt="Spex" className="h-full w-full object-contain drop-shadow-sm" />
+            <div className="h-11 w-11 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 p-1 shadow-md flex items-center justify-center">
+              <SpexAvatar className="h-full w-full" animated />
             </div>
             <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] text-white ring-2 ring-white dark:ring-gray-900 shadow-xs">
               <Sparkles className="h-2.5 w-2.5" />

@@ -1,14 +1,39 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DashboardTab } from '../../types';
-import { LayoutDashboard, ArrowRightLeft, Users, BarChart2, Settings, WalletCards, CalendarDays, ChevronDown, ChevronUp, Bot, FileBarChart, Map, Target, Repeat, TrendingUp } from 'lucide-react';
+import {
+  LayoutDashboard,
+  ArrowRightLeft,
+  Users,
+  BarChart2,
+  Settings,
+  WalletCards,
+  CalendarDays,
+  ChevronDown,
+  ChevronUp,
+  FileBarChart,
+  Map,
+  Target,
+  Repeat,
+  TrendingUp,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
+import { SpexAvatar } from '../common/SpexAvatar';
 
 interface DashboardNavProps {
   activeTab: DashboardTab;
   setActiveTab: (tab: DashboardTab) => void;
 }
 
+const SpexNavIcon: React.FC<{ className?: string }> = ({ className = 'h-5 w-5' }) => (
+  <span className={`inline-flex items-center justify-center shrink-0 ${className}`}>
+    <SpexAvatar className="w-full h-full" />
+  </span>
+);
+
 const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.FC<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
+  { id: 'forecast', label: 'Predictive Forecast', shortLabel: 'Forecast', icon: Sparkles },
   { id: 'calendar', label: 'Calendar & Cash Flow', shortLabel: 'Calendar', icon: CalendarDays },
   { id: 'analytics', label: 'Analytics', shortLabel: 'Analytics', icon: BarChart2 },
   { id: 'transactions', label: 'Transactions', shortLabel: 'Transactions', icon: ArrowRightLeft },
@@ -19,11 +44,12 @@ const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.F
   { id: 'goals', label: 'Goals', shortLabel: 'Goals', icon: Target },
   { id: 'debts', label: 'Debts & Splits', shortLabel: 'Debts', icon: Users },
   { id: 'reports', label: 'Reports & Retrospective', shortLabel: 'Reports', icon: FileBarChart },
-  { id: 'chat', label: 'AI Chat', shortLabel: 'AI Chat', icon: Bot },
+  { id: 'users', label: 'Users & Roles', shortLabel: 'Users', icon: ShieldCheck },
+  { id: 'chat', label: 'Spex AI Chat', shortLabel: 'Spex AI', icon: SpexNavIcon },
   { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
 ];
 
-const quickTabIds: DashboardTab[] = ['overview', 'analytics', 'transactions', 'chat'];
+const quickTabIds: DashboardTab[] = ['overview', 'forecast', 'transactions', 'chat'];
 
 export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActiveTab }) => {
   const [isExpanded, setIsExpanded] = useState(false);

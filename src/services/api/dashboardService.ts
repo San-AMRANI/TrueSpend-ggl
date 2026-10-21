@@ -24,6 +24,14 @@ import {
   StockQuote,
   StockSearchResult,
   StockAiAnalysis,
+  ManagedUser,
+  RoleDefinition,
+  UserAuditLog,
+  User,
+  UserRole,
+  UserStatus,
+  WorkspaceMode,
+  UserPermissions,
 } from '../../types';
 
 export const dashboardService = {
@@ -217,4 +225,53 @@ export const dashboardService = {
     token: string | null
   ) =>
     apiClient.post<CycleRetrospectiveData>('/api/reports/cycle-retrospective/generate', payload, token),
+
+  // User Management & Role-Based Access Control (RBAC)
+  getAuthMe: (token: string | null) =>
+    apiClient.get<{ user: User }>('/api/auth/me', token),
+  getUsersAndRoles: (token: string | null) =>
+    apiClient.get<{
+      users: ManagedUser[];
+      roles: RoleDefinition[];
+      auditLogs: UserAuditLog[];
+    }>('/api/users', token),
+  createManagedUser: (
+    payload: {
+      username: string;
+      displayName?: string;
+      email: string;
+      password: string;
+      role?: UserRole;
+      workspaceMode?: WorkspaceMode;
+      permissions?: Partial<UserPermissions>;
+      avatarColor?: string;
+      notes?: string;
+      salary?: number;
+      payday?: number;
+      emergencyBuffer?: number;
+      seedDefaultWallets?: boolean;
+    },
+    token: string | null
+  ) => apiClient.post<ManagedUser>('/api/users', payload, token),
+  updateManagedUser: (
+    id: string,
+    payload: {
+      username?: string;
+      displayName?: string;
+      email?: string;
+      role?: UserRole;
+      status?: UserStatus;
+      workspaceMode?: WorkspaceMode;
+      permissions?: Partial<UserPermissions>;
+      avatarColor?: string;
+      notes?: string | null;
+      password?: string;
+    },
+    token: string | null
+  ) => apiClient.put<ManagedUser>(`/api/users/${id}`, payload, token),
+  deleteManagedUser: (id: string, token: string | null) =>
+    apiClient.delete<{ deletedId: string }>(`/api/users/${id}`, token),
+  impersonateManagedUser: (id: string, token: string | null) =>
+    apiClient.post<{ token: string; user: User }>(`/api/users/${id}/impersonate`, {}, token),
 };
+

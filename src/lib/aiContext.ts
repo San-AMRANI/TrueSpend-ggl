@@ -1,5 +1,6 @@
 import type { CategoryBudget, Debt, KPI, Payroll, Transaction, Goal } from '../types/index.js';
-import { financialPeriodLabel, getCurrentFinancialMonth, getPreviousFinancialMonth, isInFinancialMonth } from './financialMonth.js';
+import { financialPeriodLabel, getCurrentFinancialMonth, getPreviousFinancialMonth } from './financialMonth.js';
+import { computeHolisticForecast } from './predictiveEngine.js';
 
 const amountOf = (value: string | number | null | undefined) => Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : 0;
 const dateKey = (value: string | Date | null | undefined) => {
@@ -25,6 +26,18 @@ export function buildAiContextSnapshot({
   const income = periodTransactions.filter((transaction) => transaction.type === 'Income').reduce((sum, transaction) => sum + amountOf(transaction.amount), 0);
   const expenses = periodTransactions.filter((transaction) => transaction.type === 'Expense' || transaction.type === 'Debt Repayment').reduce((sum, transaction) => sum + amountOf(transaction.amount), 0);
 
+  const forecast = computeHolisticForecast({
+    kpis,
+    transactions,
+    payrolls,
+    budgets,
+    subscriptions: [],
+    debts,
+    goals,
+    investmentsData: null,
+    contexts: [],
+  });
+
   return {
     asOf: dateKey(new Date()),
     currency: 'MAD',
@@ -41,6 +54,24 @@ export function buildAiContextSnapshot({
       monthlyIncome: amountOf(kpis.monthlyIncome), monthlyExpenses: amountOf(kpis.monthlyExpenses), dailyAllowance: amountOf(kpis.dailyAllowance),
       dailySpent: amountOf(kpis.dailySpent), dailyRemaining: amountOf(kpis.dailyRemaining), daysUntilPayroll: kpis.daysUntilPayday,
     } : null,
+    predictiveForecast: {
+      projectedNetWorth90d: forecast.projectedNetWorth90d,
+      projectedNetWorth12m: forecast.projectedNetWorth12m,
+      projectedNetSavingsMonthly: forecast.monthlyNetSavingsBaseline,
+      lowest30dBalance: forecast.lowest30dBalance,
+      lowest30dDate: forecast.lowest30dDateLabel,
+      survivalRunwayDays: forecast.survivalRunwayDays,
+      hasLiquidityPinchBeforePayday: forecast.hasLiquidityPinchBeforePayday,
+      topSignals: forecast.signals.slice(0, 4).map((s) => ({ title: s.title, detail: s.detail, severity: s.severity })),
+      categoryRadar: forecast.categoryPredictions.slice(0, 8).map((c) => ({
+        category: c.category,
+        spentSoFar: c.spentSoFar,
+        budgetLimit: c.budgetCap,
+        projectedCycleEnd: c.projectedEndOfCycle,
+        status: c.status,
+        exhaustionDate: c.exhaustionDateLabel,
+      })),
+    },
     financialPeriodSummary: { income: amountOf(income), expenses: amountOf(expenses), netPosition: amountOf(income - expenses), previousPeriodExpenses: previousTransactions.filter((transaction) => transaction.type === 'Expense').reduce((sum, transaction) => sum + amountOf(transaction.amount), 0) },
     payrolls: payrolls.map((payroll) => ({ date: dateKey(payroll.scheduledFor), amount: amountOf(payroll.amount) })),
     budgets: budgets.slice(0, 30).map((budget) => ({ category: budget.category, amount: amountOf(budget.amount), year: budget.year, month: budget.month })),

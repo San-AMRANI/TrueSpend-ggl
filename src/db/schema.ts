@@ -87,8 +87,19 @@ export const investmentWatchlist = pgTable('investment_watchlist', {
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
-  uid: text('uid').notNull().unique(), // Firebase Auth UID
+  uid: text('uid').notNull().unique(), // Firebase Auth UID or unique user identifier
+  username: text('username'),
+  displayName: text('display_name'),
   email: text('email').notNull(),
+  passwordHash: text('password_hash'),
+  role: text('role').default('member').notNull(), // 'owner' | 'admin' | 'manager' | 'member' | 'viewer'
+  status: text('status').default('active').notNull(), // 'active' | 'suspended' | 'pending' | 'legacy_hidden'
+  workspaceMode: text('workspace_mode').default('isolated').notNull(), // 'shared' | 'isolated'
+  permissions: text('permissions'), // JSON string of UserPermissions
+  avatarColor: text('avatar_color').default('indigo'),
+  notes: text('notes'),
+  lastLoginAt: timestamp('last_login_at'),
+  createdBy: uuid('created_by'),
   createdAt: timestamp('created_at').defaultNow(),
   payday: integer('payday').default(25),
   emergencyBuffer: decimal('emergency_buffer').default('0').notNull(),
@@ -100,6 +111,17 @@ export const users = pgTable('users', {
   googleDriveTokenExpiry: timestamp('google_drive_token_expiry'),
   notificationEnabled: integer('notification_enabled').default(0),
   notificationTime: text('notification_time').default('09:00'),
+});
+
+export const userAuditLogs = pgTable('user_audit_logs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+  actorName: text('actor_name').notNull(),
+  targetUserId: uuid('target_user_id').references(() => users.id, { onDelete: 'set null' }),
+  targetUserName: text('target_user_name').notNull(),
+  action: text('action').notNull(),
+  details: text('details').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 export const debts = pgTable('debts', {

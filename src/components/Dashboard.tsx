@@ -15,6 +15,8 @@ import { SubscriptionsTab } from './dashboard/SubscriptionsTab';
 import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
 import { ReportsTab } from './dashboard/ReportsTab';
 import { ContextsTab } from './dashboard/ContextsTab';
+import { UsersAndRolesSection } from './dashboard/UsersAndRolesSection';
+import { PredictiveForecastTab } from './dashboard/PredictiveForecastTab';
 import { AIChat } from './AIChat';
 import type { DashboardTab } from '../types';
 
@@ -303,6 +305,23 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           handleUpdateWallet={handleUpdateWallet}
           handleDeleteWallet={handleDeleteWallet}
           notifications={notifications}
+        />
+      )}
+
+      {activeTab === 'users' && <UsersAndRolesSection />}
+
+      {activeTab === 'forecast' && (
+        <PredictiveForecastTab
+          kpis={kpis}
+          transactions={transactions}
+          payrolls={payrolls}
+          budgets={budgets}
+          subscriptions={subscriptions}
+          debts={debts}
+          goals={goals}
+          investmentsData={investmentsData}
+          contexts={contexts}
+          setActiveTab={setActiveTab}
         />
       )}
 

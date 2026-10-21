@@ -154,6 +154,46 @@ export const createPool = () => {
           "created_at" timestamp NOT NULL DEFAULT now()
         );
         CREATE INDEX IF NOT EXISTS "investment_watchlist_user_id_idx" ON "investment_watchlist"("user_id");
+
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "username" text;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "display_name" text;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password_hash" text;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "role" text NOT NULL DEFAULT 'member';
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "status" text NOT NULL DEFAULT 'active';
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "workspace_mode" text NOT NULL DEFAULT 'isolated';
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "permissions" text;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "avatar_color" text DEFAULT 'indigo';
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "notes" text;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "last_login_at" timestamp;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "created_by" uuid;
+
+        CREATE TABLE IF NOT EXISTS "user_audit_logs" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "actor_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+          "actor_name" text NOT NULL,
+          "target_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+          "target_user_name" text NOT NULL,
+          "action" text NOT NULL,
+          "details" text NOT NULL,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS "user_audit_logs_created_at_idx" ON "user_audit_logs"("created_at" DESC);
+
+        UPDATE "users"
+        SET
+          "role" = 'owner',
+          "status" = 'active',
+          "workspace_mode" = 'shared',
+          "username" = COALESCE("username", '${process.env.ADMIN_USERNAME || 'SanSpend'}'),
+          "display_name" = COALESCE("display_name", 'Hassan Amrani (Owner)'),
+          "avatar_color" = COALESCE("avatar_color", 'indigo')
+        WHERE "email" = 'amranihassan.am@gmail.com';
+
+        UPDATE "users"
+        SET "status" = 'legacy_hidden'
+        WHERE "email" IN ('amranihassan2003@gmail.com', 'SanSpend@local.host')
+          AND "role" = 'member'
+          AND "password_hash" IS NULL;
       `)
       .catch((err) => {
         console.warn('[DB Init] Schema columns ensure notice:', err?.message || err);

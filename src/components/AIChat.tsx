@@ -31,6 +31,7 @@ import {
   Award,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
+import { SpexAvatar } from './common/SpexAvatar';
 
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
 import { useAuth } from '../context/AuthContext';
@@ -263,8 +264,8 @@ function MessageBubble({
       {/* Avatar row for assistant */}
       {!isUser && (
         <div className="flex items-center gap-1.5 ml-1 mb-0.5 flex-wrap">
-          <div className="h-5 w-5 rounded-full bg-indigo-600 dark:bg-indigo-700 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-xs">
-            <img src={appIconSrc} alt="Spex" className="w-3.5 h-3.5 object-contain" />
+          <div className="h-5 w-5 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-xs p-0.5">
+            <SpexAvatar className="w-full h-full" />
           </div>
           <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">Spex</span>
           {msg.modelUsed ? (
@@ -1017,8 +1018,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-xs p-1.5">
-              <img src={appIconSrc} alt="Spex" className="w-full h-full object-contain drop-shadow-xs" />
+            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-xs p-1">
+              <SpexAvatar className="w-full h-full" animated />
             </div>
             <div>
               <div className="flex items-center gap-1.5">
@@ -1097,8 +1098,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         {/* ─── Desktop header ────────────────────────────────────── */}
         <div className="hidden sm:flex items-center justify-between px-5 py-3.5 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 dark:from-indigo-900 dark:via-indigo-950 dark:to-purple-950 flex-shrink-0 text-white">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center p-1.5 shadow-sm">
-              <img src={appIconSrc} alt="Spex" className="w-full h-full object-contain drop-shadow-sm" />
+            <div className="h-9 w-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center p-1 shadow-sm">
+              <SpexAvatar className="w-full h-full" animated />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -1327,8 +1328,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
           {isLoading && (
             <div className="flex items-start gap-2 animate-slideIn">
-              <div className="h-5 w-5 rounded-full bg-indigo-600 dark:bg-indigo-700 flex items-center justify-center flex-shrink-0 mt-1 overflow-hidden shadow-xs">
-                <img src={appIconSrc} alt="Spex" className="w-3.5 h-3.5 object-contain" />
+              <div className="h-5 w-5 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center flex-shrink-0 mt-1 overflow-hidden shadow-xs p-0.5">
+                <SpexAvatar className="w-full h-full" animated />
               </div>
               <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700/60 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm">
                 <TypingDots />

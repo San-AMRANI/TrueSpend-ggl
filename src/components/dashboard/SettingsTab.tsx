@@ -8,6 +8,7 @@ import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { WalletsManager } from './WalletsManager';
+import { UsersAndRolesSection } from './UsersAndRolesSection';
 import type { NotifSettings, ServerNotifSettings } from '../../hooks/useNotifications';
 import type { Wallet, Subscription, Debt } from '../../types';
 
@@ -260,24 +261,42 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/60">
             <div className="flex items-center gap-3.5 min-w-0">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white font-bold text-lg shadow-sm">
-                {(user?.username?.[0] || user?.email?.[0] || 'U').toUpperCase()}
+                {(user?.displayName?.[0] || user?.username?.[0] || user?.email?.[0] || 'U').toUpperCase()}
               </div>
               <div className="min-w-0">
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                  {user?.username || user?.uid || user?.email?.split('@')[0] || 'Administrator'}
-                </h4>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                    {user?.displayName || user?.username || user?.uid || user?.email?.split('@')[0] || 'Owner'}
+                  </h4>
+                  {user?.username && (
+                    <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
+                      @{user.username}
+                    </span>
+                  )}
+                </div>
                 <p className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
                   <Mail className="h-3.5 w-3.5 shrink-0 text-gray-400 dark:text-gray-500" />
                   <span className="truncate">{user?.email || 'Authenticated User'}</span>
                 </p>
-                <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700">
-                    <ShieldCheck className="h-3 w-3 text-indigo-500" />
-                    Admin Privileges
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                  <span className="inline-flex items-center gap-1 font-medium text-indigo-700 dark:text-indigo-300">
+                    <ShieldCheck className="h-3.5 w-3.5 text-indigo-500" />
+                    {user?.role === 'owner'
+                      ? 'Owner (Super Admin)'
+                      : user?.role === 'admin'
+                      ? 'Administrator'
+                      : user?.role === 'manager'
+                      ? 'Finance Manager'
+                      : user?.role === 'viewer'
+                      ? 'Viewer (Read-Only)'
+                      : 'Standard Member'}
                   </span>
-                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700">
+                  <span aria-hidden="true">·</span>
+                  <span className="inline-flex items-center gap-1">
                     <Key className="h-3 w-3 text-amber-500" />
-                    JWT Authenticated
+                    {user?.workspaceMode === 'isolated'
+                      ? 'Isolated Personal Workspace'
+                      : 'Shared Main Ledger'}
                   </span>
                 </div>
               </div>
@@ -297,6 +316,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* ── User Management & Role-Based Access Control ── */}
+      <UsersAndRolesSection />
 
       {/* ── Wallets & Accounts Management ── */}
       {handleCreateWallet && handleUpdateWallet && handleDeleteWallet && (

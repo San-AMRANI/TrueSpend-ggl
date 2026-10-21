@@ -12,14 +12,22 @@ import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 import { DesktopHeaderNav } from './components/dashboard/DesktopHeaderNav';
 import type { DashboardTab } from './types';
-import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins } from 'lucide-react';
+import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins, Sparkles } from 'lucide-react';
+
+import { SpexAvatar } from './components/common/SpexAvatar';
 
 const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}logo-1.png`;
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
 
+const SpexNavIcon: React.FC<{ className?: string }> = ({ className = 'h-5 w-5' }) => (
+  <span className={`inline-flex items-center justify-center shrink-0 ${className}`}>
+    <SpexAvatar className="w-full h-full" />
+  </span>
+);
+
 
 function AppContent() {
-  const { user, loading, signIn } = useAuth();
+  const { user, loading, signIn, switchUserSession } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -44,16 +52,19 @@ function AppContent() {
 
   const tabs: { id: DashboardTab; label: string; icon: any }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'forecast', label: 'Predictive Forecast', icon: Sparkles },
     { id: 'calendar', label: 'Calendar & Cash Flow', icon: CalendarDays },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },
     { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
     { id: 'budgets', label: 'Budgets', icon: WalletCards },
+    { id: 'investments', label: 'Investments & Stocks', icon: TrendingUp },
     { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
     { id: 'goals', label: 'Goals', icon: Target },
     { id: 'debts', label: 'Debts & Splits', icon: Users },
     { id: 'reports', label: 'Reports & Retrospective', icon: FileBarChart },
+    { id: 'users', label: 'Users & Roles', icon: ShieldCheck },
     { id: 'settings', label: 'Settings', icon: Settings },
-    { id: 'chat', label: 'AI Chat', icon: Bot },
+    { id: 'chat', label: 'Spex AI Chat', icon: SpexNavIcon },
   ];
 
   // On mobile, hide the top header when the chat tab is active so the chat
@@ -131,11 +142,12 @@ function AppContent() {
           
           <form onSubmit={handleLogin} className="space-y-4 text-left">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Username or Email</label>
               <input 
                 type="text" 
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                placeholder="Username or email address"
                 className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-white shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 required
               />
@@ -162,6 +174,20 @@ function AppContent() {
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+      {user?.impersonatedBy && activeTab !== 'users' && activeTab !== 'settings' && (
+        <div className="bg-amber-500 text-amber-950 px-4 py-1.5 text-xs font-medium flex items-center justify-between gap-3">
+          <div className="truncate">
+            Previewing session as <strong>{user.displayName || user.username}</strong> ({(user.role || 'member').toUpperCase()})
+          </div>
+          <button
+            type="button"
+            onClick={() => user.impersonatedBy && switchUserSession(user.impersonatedBy.id)}
+            className="px-2.5 py-0.5 rounded bg-amber-950 text-amber-100 hover:bg-amber-900 font-semibold shrink-0 transition-colors"
+          >
+            Return to Owner
+          </button>
+        </div>
+      )}
       {/* Header — hidden on mobile when the chat tab is active (chat becomes a full-screen overlay) */}
       <header className={`sticky top-0 z-30 border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md px-4 py-2.5 sm:px-6 lg:px-8 ${isChatOnMobile ? 'hidden sm:block' : ''}`}>
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">

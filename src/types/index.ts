@@ -1,6 +1,34 @@
+export type UserRole = 'owner' | 'admin' | 'manager' | 'member' | 'viewer';
+export type UserStatus = 'active' | 'suspended' | 'pending' | 'legacy_hidden';
+export type WorkspaceMode = 'shared' | 'isolated';
+
+export interface UserPermissions {
+  canWriteTransactions: boolean;
+  canManageWallets: boolean;
+  canManageBudgets: boolean;
+  canAccessInvestments: boolean;
+  canUseAiChat: boolean;
+  canExportData: boolean;
+  canManageUsers: boolean;
+}
+
 export interface User {
+  id?: string;
   email: string;
   uid: string;
+  username?: string;
+  displayName?: string;
+  role?: UserRole;
+  status?: UserStatus;
+  workspaceMode?: WorkspaceMode;
+  permissions?: UserPermissions;
+  avatarColor?: string;
+  impersonatedBy?: {
+    id: string;
+    username: string;
+    displayName: string;
+    role: UserRole;
+  } | null;
 }
 
 export interface HealthFactor {
@@ -224,6 +252,7 @@ export interface UserSettings {
 
 export type DashboardTab =
   | 'overview'
+  | 'forecast'
   | 'calendar'
   | 'transactions'
   | 'budgets'
@@ -233,6 +262,7 @@ export type DashboardTab =
   | 'debts'
   | 'analytics'
   | 'settings'
+  | 'users'
   | 'chat'
   | 'reports'
   | 'contexts';
@@ -570,4 +600,47 @@ export interface CycleRetrospectiveData {
   fallbackReason?: string;
 }
 
+export interface ManagedUser {
+  id: string;
+  uid: string;
+  username: string;
+  displayName: string;
+  email: string;
+  role: UserRole;
+  status: UserStatus;
+  workspaceMode: WorkspaceMode;
+  permissions: UserPermissions;
+  avatarColor: string;
+  notes?: string | null;
+  payday: number;
+  salary: number;
+  emergencyBuffer: number;
+  createdAt: string;
+  lastLoginAt?: string | null;
+  isOwnerAccount: boolean;
+  stats: {
+    transactionCount: number;
+    walletCount: number;
+    holdingCount: number;
+  };
+}
 
+export interface UserAuditLog {
+  id: string;
+  actorId: string | null;
+  actorName: string;
+  targetUserId: string | null;
+  targetUserName: string;
+  action: string;
+  details: string;
+  createdAt: string;
+}
+
+export interface RoleDefinition {
+  role: UserRole;
+  label: string;
+  shortDesc: string;
+  description: string;
+  defaultWorkspaceMode: WorkspaceMode;
+  defaultPermissions: UserPermissions;
+}

@@ -25,6 +25,8 @@ import {
   Coins,
 } from 'lucide-react';
 
+import { SpexAvatar } from '../common/SpexAvatar';
+
 interface DesktopHeaderNavProps {
   activeTab: DashboardTab;
   onSelectTab: (tab: DashboardTab) => void;
@@ -36,8 +38,15 @@ interface NavTabItem {
   icon: React.FC<{ className?: string }>;
 }
 
+const SpexNavIcon: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }) => (
+  <span className={`inline-flex items-center justify-center shrink-0 ${className}`}>
+    <SpexAvatar className="w-full h-full" />
+  </span>
+);
+
 const mainTabs: NavTabItem[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'forecast', label: 'Forecast', icon: Sparkles },
   { id: 'calendar', label: 'Calendar & Cash Flow', icon: CalendarDays },
   { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
   { id: 'budgets', label: 'Budgets', icon: WalletCards },
@@ -45,13 +54,14 @@ const mainTabs: NavTabItem[] = [
   { id: 'analytics', label: 'Analytics', icon: BarChart2 },
   { id: 'reports', label: 'Reports', icon: FileBarChart },
   { id: 'contexts', label: 'Contexts', icon: Map },
-  { id: 'chat', label: 'AI Chat', icon: Bot },
+  { id: 'chat', label: 'Spex AI', icon: SpexNavIcon },
 ];
 
 const moreTabs: NavTabItem[] = [
   { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
   { id: 'goals', label: 'Goals', icon: Target },
   { id: 'debts', label: 'Debts & Splits', icon: Users },
+  { id: 'users', label: 'Users & Roles', icon: ShieldCheck },
 ];
 
 export const DesktopHeaderNav: React.FC<DesktopHeaderNavProps> = ({ activeTab, onSelectTab }) => {

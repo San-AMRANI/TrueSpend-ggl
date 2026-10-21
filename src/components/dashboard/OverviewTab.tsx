@@ -10,6 +10,7 @@ import { generateFacts, selectFacts } from '../../lib/financialFacts';
 import { FinancialFactsCarousel } from './FinancialFactsCarousel';
 import { FinancialInsightModal } from './FinancialInsightModal';
 import { SpexAiPulseBanner } from './SpexAiPulseBanner';
+import { computeHolisticForecast } from '../../lib/predictiveEngine';
 import {
   AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
   Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap,
@@ -94,6 +95,23 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     () => selectFacts(generateFacts(kpis, transactions, debts, budgets, payrolls)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [kpis, transactions, debts, budgets, payrolls],
+  );
+
+  // Holistic Cross-Data Predictive Forecast
+  const holisticForecast = useMemo(
+    () =>
+      computeHolisticForecast({
+        kpis,
+        transactions,
+        payrolls,
+        budgets,
+        subscriptions,
+        debts,
+        goals,
+        investmentsData,
+        contexts: [],
+      }),
+    [kpis, transactions, payrolls, budgets, subscriptions, debts, goals, investmentsData]
   );
 
   // Health score ring color
@@ -417,6 +435,117 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Holistic Cross-Data Predictive Intelligence Radar ── */}
+      <Card className="border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-br from-indigo-50/40 via-white to-emerald-50/20 dark:from-indigo-950/20 dark:via-gray-900 dark:to-emerald-950/10">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <TrendingUp className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                <span>Cross-Domain Predictive Trajectory (90d &amp; 12m Forecast)</span>
+              </CardTitle>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Synthesized from {holisticForecast.dataPointsAnalyzed.transactions} transactions,{' '}
+                {holisticForecast.dataPointsAnalyzed.wallets} wallets,{' '}
+                {holisticForecast.dataPointsAnalyzed.subscriptions} subscriptions,{' '}
+                {holisticForecast.dataPointsAnalyzed.debts} debts, and{' '}
+                {holisticForecast.dataPointsAnalyzed.holdings} investment holdings.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => setActiveTab('forecast')}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs flex items-center gap-1.5 self-start sm:self-auto"
+            >
+              <span>Open Predictive &amp; What-If Hub</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/70">
+              <p className="text-xs text-gray-500 dark:text-gray-400">90-Day Projected Net Worth</p>
+              <p className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-1 font-mono">
+                {holisticForecast.projectedNetWorth90d.toLocaleString()} MAD
+              </p>
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">
+                {holisticForecast.projectedNetWorth90d >= holisticForecast.currentNetWorth ? '+' : ''}
+                {(holisticForecast.projectedNetWorth90d - holisticForecast.currentNetWorth).toFixed(0)} MAD vs today
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/70">
+              <p className="text-xs text-gray-500 dark:text-gray-400">12-Month Projected Net Worth</p>
+              <p className="text-lg sm:text-xl font-bold text-indigo-600 dark:text-indigo-400 mt-1 font-mono">
+                {holisticForecast.projectedNetWorth12m.toLocaleString()} MAD
+              </p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                {holisticForecast.savingsRateBaseline.toFixed(1)}% projected savings rate
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/70">
+              <p className="text-xs text-gray-500 dark:text-gray-400">30-Day Lowest Cash Point</p>
+              <p
+                className={`text-lg sm:text-xl font-bold mt-1 font-mono ${
+                  holisticForecast.hasLiquidityPinchBeforePayday
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : 'text-gray-900 dark:text-white'
+                }`}
+              >
+                {holisticForecast.lowest30dBalance.toLocaleString()} MAD
+              </p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                Around {holisticForecast.lowest30dDateLabel} · {holisticForecast.survivalRunwayDays}d runway
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/70">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Category Exhaustion Radar</p>
+              <p className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-1 font-mono">
+                {
+                  holisticForecast.categoryPredictions.filter(
+                    (c) => c.status === 'breached' || c.status === 'breach_imminent'
+                  ).length
+                }{' '}
+                At Risk
+              </p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                Out of {holisticForecast.categoryPredictions.length} tracked categories
+              </p>
+            </div>
+          </div>
+
+          {holisticForecast.signals.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
+              {holisticForecast.signals.slice(0, 2).map((sig) => (
+                <div
+                  key={sig.id}
+                  className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/60 flex items-center justify-between gap-3 text-xs"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-gray-900 dark:text-white truncate">
+                      {sig.title}
+                    </div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                      {sig.detail}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('forecast')}
+                    className="text-indigo-600 dark:text-indigo-400 font-semibold shrink-0 hover:underline"
+                  >
+                    Simulate →
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
       
       {/* Row 4 – Recent Transactions + Pending Receivables */}
       <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-3">
