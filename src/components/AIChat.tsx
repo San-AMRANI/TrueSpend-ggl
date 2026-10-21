@@ -644,12 +644,13 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     budgets,
     payrolls,
     goals,
+    investmentsData,
     fetchData,
   } = useDashboardData(token);
 
   const aiContext = useMemo(
-    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, payrolls, goals }),
-    [kpis, transactions, debts, budgets, payrolls, goals],
+    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, payrolls, goals, investmentsData }),
+    [kpis, transactions, debts, budgets, payrolls, goals, investmentsData],
   );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);

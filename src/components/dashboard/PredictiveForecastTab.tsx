@@ -38,6 +38,7 @@ import {
   Debt,
   FinancialContext,
   Goal,
+  InvestmentsData,
   KPI,
   Payroll,
   Subscription,
@@ -57,6 +58,7 @@ interface PredictiveForecastTabProps {
   debts: Debt[];
   goals: Goal[];
   contexts: FinancialContext[];
+  investmentsData?: InvestmentsData | null;
   setActiveTab: (tab: DashboardTab) => void;
 }
 
@@ -77,6 +79,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
   debts,
   goals,
   contexts,
+  investmentsData = null,
   setActiveTab,
 }) => {
   const [whatIf, setWhatIf] = useState<WhatIfScenarioParams>(DEFAULT_WHAT_IF);
@@ -96,6 +99,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
         debts,
         goals,
         contexts,
+        investmentsData,
         whatIf,
       }),
     [
@@ -107,6 +111,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
       debts,
       goals,
       contexts,
+      investmentsData,
       whatIf,
     ]
   );

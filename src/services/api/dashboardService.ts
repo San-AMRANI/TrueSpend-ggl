@@ -12,18 +12,13 @@ import {
   Subscription,
   DetectedSubscription,
   InvestmentsData,
-  InvestmentHolding,
-  InvestmentTransaction,
-  DcaPlan,
-  MarketQuote,
-  CoinGeckoMarketCoin,
-  WatchlistItem,
-  CoinSearchResult,
+  StockPosition,
+  StockOrder,
+  StockCatalogItem,
+  StockMarketType,
+  StockOrderAction,
   CyclePeriodSummary,
   CycleRetrospectiveData,
-  StockQuote,
-  StockSearchResult,
-  StockAiAnalysis,
   ManagedUser,
   RoleDefinition,
   UserAuditLog,
@@ -159,53 +154,73 @@ export const dashboardService = {
     apiClient.post<{ success: boolean; message: string; restored: Record<string, number> }>('/api/settings/import-sql', { sql }, token),
   seedData: (token: string | null) => apiClient.post<{ success: boolean }>('/api/seed', {}, token),
 
-  // Investment & Wealth APIs
+  // Stock Portfolio & Equities APIs
   getInvestmentsData: (token: string | null) => apiClient.get<InvestmentsData>('/api/investments', token),
-  createHolding: (payload: Partial<InvestmentHolding>, token: string | null) =>
-    apiClient.post<InvestmentHolding>('/api/investments/holdings', payload, token),
-  updateHolding: (id: string, payload: Partial<InvestmentHolding>, token: string | null) =>
-    apiClient.put<InvestmentHolding>(`/api/investments/holdings/${id}`, payload, token),
-  deleteHolding: (id: string, token: string | null) =>
-    apiClient.delete<{ success: boolean }>(`/api/investments/holdings/${id}`, token),
-  executeTrade: (payload: { holdingId: string; type: string; units?: number; pricePerUnit?: number; totalAmount?: number; fees?: number; walletId?: string | null; notes?: string }, token: string | null) =>
-    apiClient.post<{ success: boolean; transaction: InvestmentTransaction }>('/api/investments/trades', payload, token),
-  createDcaPlan: (payload: Partial<DcaPlan>, token: string | null) =>
-    apiClient.post<DcaPlan>('/api/investments/dca-plans', payload, token),
-  updateDcaPlan: (id: string, payload: Partial<DcaPlan>, token: string | null) =>
-    apiClient.put<DcaPlan>(`/api/investments/dca-plans/${id}`, payload, token),
-  deleteDcaPlan: (id: string, token: string | null) =>
-    apiClient.delete<{ success: boolean }>(`/api/investments/dca-plans/${id}`, token),
-  getMarketQuotes: (symbols: string[], token: string | null) =>
-    apiClient.get<Record<string, MarketQuote>>(`/api/investments/quotes?symbols=${encodeURIComponent(symbols.join(','))}`, token),
-  getMarketCoins: (vsCurrency = 'usd', perPage = 50, refresh = false, token: string | null) =>
-    apiClient.get<CoinGeckoMarketCoin[]>(`/api/investments/market-coins?vs_currency=${vsCurrency}&per_page=${perPage}&refresh=${refresh}`, token),
-  getTrendingCoins: (token: string | null) =>
-    apiClient.get<any[]>('/api/investments/trending', token),
-  getCoinDetails: (coinId: string, token: string | null) =>
-    apiClient.get<any>(`/api/investments/coin/${encodeURIComponent(coinId)}`, token),
-  searchCoins: (q: string, token: string | null) =>
-    apiClient.get<CoinSearchResult[]>(`/api/investments/search-coins?q=${encodeURIComponent(q)}`, token),
-  getSpotPrice: (symbol: string, coinId?: string, token?: string | null) =>
-    apiClient.get<{ symbol: string; priceUsd: number; priceEur: number; priceMad: number; change24h: number }>(
-      `/api/investments/spot-price?symbol=${encodeURIComponent(symbol)}${coinId ? `&coin_id=${encodeURIComponent(coinId)}` : ''}`,
-      token || null
-    ),
-  getWatchlist: (token: string | null) =>
-    apiClient.get<WatchlistItem[]>('/api/investments/watchlist', token),
-  addToWatchlist: (payload: { coinId: string; symbol: string; name: string }, token: string | null) =>
-    apiClient.post<WatchlistItem>('/api/investments/watchlist', payload, token),
-  removeFromWatchlist: (coinId: string, token: string | null) =>
-    apiClient.delete<{ success: boolean }>(`/api/investments/watchlist/${encodeURIComponent(coinId)}`, token),
-
-  // Stocks & Equities (Global & Casablanca BVC)
   searchStocks: (q: string, token: string | null) =>
-    apiClient.get<StockSearchResult[]>(`/api/investments/stocks/search?q=${encodeURIComponent(q)}`, token),
-  getPopularStocks: (token: string | null) =>
-    apiClient.get<{ indices: StockQuote[]; tech: StockQuote[]; dividends: StockQuote[]; morocco: StockQuote[] }>('/api/investments/stocks/popular', token),
-  getStockDetails: (symbol: string, token: string | null) =>
-    apiClient.get<StockQuote>(`/api/investments/stocks/details/${encodeURIComponent(symbol)}`, token),
-  analyzeStockPortfolio: (token: string | null) =>
-    apiClient.post<StockAiAnalysis>('/api/investments/stocks/ai-analysis', {}, token),
+    apiClient.get<StockCatalogItem[]>(`/api/investments/stocks/search?q=${encodeURIComponent(q)}`, token),
+  upsertStockPosition: (
+    payload: {
+      ticker: string;
+      companyName?: string;
+      market?: StockMarketType;
+      sector?: string;
+      shares?: number;
+      avgCostPerShare?: number;
+      currentPrice?: number;
+      currency?: string;
+      annualDividendPerShare?: number;
+      targetWeightPercent?: number;
+      convictionThesis?: string;
+      isWatchlistOnly?: boolean;
+      walletId?: string | null;
+      syncWithWallet?: boolean;
+    },
+    token: string | null
+  ) => apiClient.post<StockPosition>('/api/investments/positions', payload, token),
+  updateStockPosition: (
+    id: string,
+    payload: {
+      companyName?: string;
+      market?: StockMarketType;
+      sector?: string;
+      shares?: number;
+      avgCostPerShare?: number;
+      currentPrice?: number;
+      currency?: string;
+      annualDividendPerShare?: number;
+      targetWeightPercent?: number;
+      convictionThesis?: string | null;
+      walletId?: string | null;
+      isWatchlistOnly?: boolean;
+    },
+    token: string | null
+  ) => apiClient.put<StockPosition>(`/api/investments/positions/${id}`, payload, token),
+  deleteStockPosition: (id: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/investments/positions/${id}`, token),
+  executeStockOrder: (
+    payload: {
+      positionId?: string;
+      ticker?: string;
+      action: StockOrderAction;
+      shares?: number;
+      pricePerShare?: number;
+      totalNativeAmount?: number;
+      walletId?: string | null;
+      syncWithWallet?: boolean;
+      notes?: string;
+    },
+    token: string | null
+  ) => apiClient.post<{ success: boolean; order: StockOrder }>('/api/investments/orders', payload, token),
+  deleteStockOrder: (id: string, token: string | null) =>
+    apiClient.delete<{ success: boolean }>(`/api/investments/orders/${id}`, token),
+  executePaydayAllocation: (
+    payload: {
+      walletId?: string | null;
+      syncWithWallet?: boolean;
+      allocations: { positionId: string; amountMad: number }[];
+    },
+    token: string | null
+  ) => apiClient.post<{ success: boolean; executedCount: number }>('/api/investments/payday-allocate', payload, token),
 
   // AI Cycle Wrap-Up & Payday Retrospective (Report Card)
   getCycles: (token: string | null) =>

@@ -12,6 +12,9 @@ import {
   Goal,
   Subscription,
   DetectedSubscription,
+  InvestmentsData,
+  StockMarketType,
+  StockOrderAction,
 } from '../types';
 import { useNotifications } from './useNotifications';
 
@@ -24,6 +27,7 @@ export function useDashboardData(token: string | null) {
   const [contexts, setContexts] = useState<any[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [investmentsData, setInvestmentsData] = useState<InvestmentsData | null>(null);
   const [userSettings, setUserSettings] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -40,7 +44,7 @@ export function useDashboardData(token: string | null) {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData] = await Promise.all([
+      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData, invData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
@@ -50,6 +54,7 @@ export function useDashboardData(token: string | null) {
         dashboardService.getContexts(token),
         dashboardService.getGoals(token),
         dashboardService.getSubscriptions(token),
+        dashboardService.getInvestmentsData(token).catch(() => null),
       ]);
 
       setKpis(kpiData || null);
@@ -61,6 +66,7 @@ export function useDashboardData(token: string | null) {
       setContexts(contextData || []);
       setGoals(goalData || []);
       setSubscriptions(subData || []);
+      setInvestmentsData(invData || null);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -579,6 +585,132 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleUpsertStockPosition = async (payload: {
+    ticker: string;
+    companyName?: string;
+    market?: StockMarketType;
+    sector?: string;
+    shares?: number;
+    avgCostPerShare?: number;
+    currentPrice?: number;
+    currency?: string;
+    annualDividendPerShare?: number;
+    targetWeightPercent?: number;
+    convictionThesis?: string;
+    isWatchlistOnly?: boolean;
+    walletId?: string | null;
+    syncWithWallet?: boolean;
+  }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.upsertStockPosition(payload, token);
+      await fetchData();
+      return res;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateStockPosition = async (
+    id: string,
+    payload: {
+      companyName?: string;
+      market?: StockMarketType;
+      sector?: string;
+      shares?: number;
+      avgCostPerShare?: number;
+      currentPrice?: number;
+      currency?: string;
+      annualDividendPerShare?: number;
+      targetWeightPercent?: number;
+      convictionThesis?: string | null;
+      walletId?: string | null;
+      isWatchlistOnly?: boolean;
+    }
+  ) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.updateStockPosition(id, payload, token);
+      await fetchData();
+      return res;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteStockPosition = async (id: string) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.deleteStockPosition(id, token);
+      await fetchData();
+      return res;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleExecuteStockOrder = async (payload: {
+    positionId?: string;
+    ticker?: string;
+    action: StockOrderAction;
+    shares?: number;
+    pricePerShare?: number;
+    totalNativeAmount?: number;
+    walletId?: string | null;
+    syncWithWallet?: boolean;
+    notes?: string;
+  }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.executeStockOrder(payload, token);
+      await fetchData();
+      return res;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteStockOrder = async (id: string) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.deleteStockOrder(id, token);
+      await fetchData();
+      return res;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleExecutePaydayAllocation = async (payload: {
+    walletId?: string | null;
+    syncWithWallet?: boolean;
+    allocations: { positionId: string; amountMad: number }[];
+  }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.executePaydayAllocation(payload, token);
+      await fetchData();
+      return res;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSearchStocks = async (q: string) => {
+    if (!token) return [];
+    try {
+      return await dashboardService.searchStocks(q, token);
+    } catch {
+      return [];
+    }
+  };
+
   const syncedGoals = useMemo(() => {
     if (!goals) return [];
     if (!kpis?.accounts) return goals;
@@ -603,6 +735,7 @@ export function useDashboardData(token: string | null) {
     contexts,
     goals: syncedGoals,
     subscriptions,
+    investmentsData,
     userSettings,
     loading,
     isSaving,
@@ -650,6 +783,13 @@ export function useDashboardData(token: string | null) {
     handleDeleteSubscription,
     handlePaySubscription,
     handleDetectSubscriptions,
+    handleUpsertStockPosition,
+    handleUpdateStockPosition,
+    handleDeleteStockPosition,
+    handleExecuteStockOrder,
+    handleDeleteStockOrder,
+    handleExecutePaydayAllocation,
+    handleSearchStocks,
     notifications,
   };
 }

@@ -1,204 +1,179 @@
 import { db } from '../../src/db/index.js';
-import { investmentHoldings, investmentTransactions, dcaPlans, investmentWatchlist, wallets } from '../../src/db/schema.js';
-import { eq, desc, and } from 'drizzle-orm';
+import { stockPositions, stockOrders, wallets } from '../../src/db/schema.js';
+import { eq, desc, and, sql } from 'drizzle-orm';
 
-export interface CreateHoldingParams {
+export interface CreateStockPositionParams {
   userId: string;
   walletId?: string | null;
-  symbol: string;
-  name: string;
-  assetType: string;
-  units: string;
-  buyPriceAvg: string;
+  ticker: string;
+  companyName: string;
+  market: string;
+  sector: string;
+  shares: string;
+  avgCostPerShare: string;
   currentPrice: string;
-  currency?: string;
-  targetAllocationPercent?: string | null;
-  dividendYieldPercent?: string | null;
-  notes?: string | null;
+  currency: string;
+  annualDividendPerShare?: string;
+  targetWeightPercent?: string;
+  convictionThesis?: string | null;
+  isWatchlistOnly?: boolean;
 }
 
-export interface CreateInvestmentTransactionParams {
+export interface CreateStockOrderParams {
   userId: string;
-  holdingId: string;
+  positionId: string;
   walletId?: string | null;
-  type: string;
-  units: string;
-  pricePerUnit: string;
-  totalAmount: string;
-  currency?: string;
-  fees?: string;
-  realizedPnl?: string | null;
+  linkedTransactionId?: string | null;
+  action: 'BUY' | 'SELL' | 'DIVIDEND';
+  shares: string;
+  pricePerShare: string;
+  totalNativeAmount: string;
+  totalMadAmount: string;
+  exchangeRateUsed: string;
+  realizedPnlMad?: string;
   notes?: string | null;
-}
-
-export interface CreateDcaPlanParams {
-  userId: string;
-  holdingId?: string | null;
-  symbol: string;
-  assetName: string;
-  assetType: string;
-  targetAmount: string;
-  currency?: string;
-  frequency?: string;
-  dayOffsetAfterPayday?: number;
-  walletId?: string | null;
-  status?: string;
+  executedAt?: Date;
 }
 
 export class InvestmentRepository {
-  async findAllHoldingsByUserId(userId: string) {
+  async findAllPositionsByUserId(userId: string) {
     const rows = await db
       .select({
-        holding: investmentHoldings,
+        position: stockPositions,
         walletName: wallets.name,
       })
-      .from(investmentHoldings)
-      .leftJoin(wallets, eq(investmentHoldings.walletId, wallets.id))
-      .where(eq(investmentHoldings.userId, userId))
-      .orderBy(desc(investmentHoldings.createdAt));
+      .from(stockPositions)
+      .leftJoin(wallets, eq(stockPositions.walletId, wallets.id))
+      .where(eq(stockPositions.userId, userId))
+      .orderBy(desc(stockPositions.createdAt));
 
-    return rows.map(r => ({
-      ...r.holding,
+    return rows.map((r) => ({
+      ...r.position,
       walletName: r.walletName || null,
     }));
   }
 
-  async findHoldingById(id: string, userId: string) {
-    const result = await db
+  async findPositionById(id: string, userId: string) {
+    const rows = await db
       .select()
-      .from(investmentHoldings)
-      .where(and(eq(investmentHoldings.id, id), eq(investmentHoldings.userId, userId)));
-    return result[0] || null;
+      .from(stockPositions)
+      .where(and(eq(stockPositions.id, id), eq(stockPositions.userId, userId)));
+    return rows[0] || null;
   }
 
-  async createHolding(data: CreateHoldingParams) {
-    const inserted = await db.insert(investmentHoldings).values(data).returning();
+  async findPositionByTicker(ticker: string, userId: string) {
+    const cleanTicker = ticker.trim().toUpperCase();
+    const rows = await db
+      .select()
+      .from(stockPositions)
+      .where(
+        and(
+          eq(stockPositions.userId, userId),
+          sql`UPPER(${stockPositions.ticker}) = ${cleanTicker}`
+        )
+      );
+    return rows[0] || null;
+  }
+
+  async createPosition(data: CreateStockPositionParams) {
+    const inserted = await db
+      .insert(stockPositions)
+      .values({
+        userId: data.userId,
+        walletId: data.walletId || null,
+        ticker: data.ticker.toUpperCase().trim(),
+        companyName: data.companyName.trim(),
+        market: data.market || 'US',
+        sector: data.sector || 'Technology',
+        shares: data.shares || '0',
+        avgCostPerShare: data.avgCostPerShare || '0',
+        currentPrice: data.currentPrice || data.avgCostPerShare || '0',
+        currency: (data.currency || 'USD').toUpperCase(),
+        annualDividendPerShare: data.annualDividendPerShare || '0',
+        targetWeightPercent: data.targetWeightPercent || '0',
+        convictionThesis: data.convictionThesis || null,
+        isWatchlistOnly: Boolean(data.isWatchlistOnly),
+      })
+      .returning();
     return inserted[0];
   }
 
-  async updateHolding(id: string, userId: string, data: Partial<CreateHoldingParams>) {
+  async updatePosition(id: string, userId: string, data: Partial<CreateStockPositionParams>) {
     const updated = await db
-      .update(investmentHoldings)
-      .set({ ...data, updatedAt: new Date() })
-      .where(and(eq(investmentHoldings.id, id), eq(investmentHoldings.userId, userId)))
+      .update(stockPositions)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(stockPositions.id, id), eq(stockPositions.userId, userId)))
       .returning();
     return updated[0] || null;
   }
 
-  async deleteHolding(id: string, userId: string) {
+  async deletePosition(id: string, userId: string) {
     await db
-      .delete(investmentHoldings)
-      .where(and(eq(investmentHoldings.id, id), eq(investmentHoldings.userId, userId)));
+      .delete(stockPositions)
+      .where(and(eq(stockPositions.id, id), eq(stockPositions.userId, userId)));
   }
 
-  async findAllTransactionsByUserId(userId: string) {
+  async findAllOrdersByUserId(userId: string) {
     const rows = await db
       .select({
-        tx: investmentTransactions,
-        holdingSymbol: investmentHoldings.symbol,
-        holdingName: investmentHoldings.name,
+        order: stockOrders,
+        ticker: stockPositions.ticker,
+        companyName: stockPositions.companyName,
+        currency: stockPositions.currency,
         walletName: wallets.name,
       })
-      .from(investmentTransactions)
-      .leftJoin(investmentHoldings, eq(investmentTransactions.holdingId, investmentHoldings.id))
-      .leftJoin(wallets, eq(investmentTransactions.walletId, wallets.id))
-      .where(eq(investmentTransactions.userId, userId))
-      .orderBy(desc(investmentTransactions.createdAt));
+      .from(stockOrders)
+      .leftJoin(stockPositions, eq(stockOrders.positionId, stockPositions.id))
+      .leftJoin(wallets, eq(stockOrders.walletId, wallets.id))
+      .where(eq(stockOrders.userId, userId))
+      .orderBy(desc(stockOrders.executedAt));
 
-    return rows.map(r => ({
-      ...r.tx,
-      holdingSymbol: r.holdingSymbol || undefined,
-      holdingName: r.holdingName || undefined,
-      walletName: r.walletName || undefined,
-    }));
-  }
-
-  async createTransaction(data: CreateInvestmentTransactionParams) {
-    const inserted = await db.insert(investmentTransactions).values(data).returning();
-    return inserted[0];
-  }
-
-  async deleteTransaction(id: string, userId: string) {
-    await db
-      .delete(investmentTransactions)
-      .where(and(eq(investmentTransactions.id, id), eq(investmentTransactions.userId, userId)));
-  }
-
-  async findAllDcaPlansByUserId(userId: string) {
-    const rows = await db
-      .select({
-        plan: dcaPlans,
-        walletName: wallets.name,
-      })
-      .from(dcaPlans)
-      .leftJoin(wallets, eq(dcaPlans.walletId, wallets.id))
-      .where(eq(dcaPlans.userId, userId))
-      .orderBy(desc(dcaPlans.createdAt));
-
-    return rows.map(r => ({
-      ...r.plan,
+    return rows.map((r) => ({
+      ...r.order,
+      ticker: r.ticker || undefined,
+      companyName: r.companyName || undefined,
+      currency: r.currency || 'USD',
       walletName: r.walletName || null,
     }));
   }
 
-  async findDcaPlanById(id: string, userId: string) {
-    const result = await db
+  async findOrderById(id: string, userId: string) {
+    const rows = await db
       .select()
-      .from(dcaPlans)
-      .where(and(eq(dcaPlans.id, id), eq(dcaPlans.userId, userId)));
-    return result[0] || null;
+      .from(stockOrders)
+      .where(and(eq(stockOrders.id, id), eq(stockOrders.userId, userId)));
+    return rows[0] || null;
   }
 
-  async createDcaPlan(data: CreateDcaPlanParams) {
-    const inserted = await db.insert(dcaPlans).values(data).returning();
-    return inserted[0];
-  }
-
-  async updateDcaPlan(id: string, userId: string, data: Partial<CreateDcaPlanParams>) {
-    const updated = await db
-      .update(dcaPlans)
-      .set({ ...data, updatedAt: new Date() })
-      .where(and(eq(dcaPlans.id, id), eq(dcaPlans.userId, userId)))
+  async createOrder(data: CreateStockOrderParams) {
+    const inserted = await db
+      .insert(stockOrders)
+      .values({
+        userId: data.userId,
+        positionId: data.positionId,
+        walletId: data.walletId || null,
+        linkedTransactionId: data.linkedTransactionId || null,
+        action: data.action,
+        shares: data.shares || '0',
+        pricePerShare: data.pricePerShare || '0',
+        totalNativeAmount: data.totalNativeAmount,
+        totalMadAmount: data.totalMadAmount,
+        exchangeRateUsed: data.exchangeRateUsed || '1',
+        realizedPnlMad: data.realizedPnlMad || '0',
+        notes: data.notes || null,
+        executedAt: data.executedAt || new Date(),
+      })
       .returning();
-    return updated[0] || null;
-  }
-
-  async deleteDcaPlan(id: string, userId: string) {
-    await db
-      .delete(dcaPlans)
-      .where(and(eq(dcaPlans.id, id), eq(dcaPlans.userId, userId)));
-  }
-
-  async findAllWatchlistByUserId(userId: string) {
-    return await db
-      .select()
-      .from(investmentWatchlist)
-      .where(eq(investmentWatchlist.userId, userId))
-      .orderBy(desc(investmentWatchlist.createdAt));
-  }
-
-  async addToWatchlist(data: { userId: string; coinId: string; symbol: string; name: string }) {
-    // Check if already in watchlist
-    const existing = await db
-      .select()
-      .from(investmentWatchlist)
-      .where(and(eq(investmentWatchlist.userId, data.userId), eq(investmentWatchlist.coinId, data.coinId)));
-    if (existing.length > 0) return existing[0];
-
-    const inserted = await db.insert(investmentWatchlist).values(data).returning();
     return inserted[0];
   }
 
-  async removeFromWatchlist(id: string, userId: string) {
+  async deleteOrder(id: string, userId: string) {
     await db
-      .delete(investmentWatchlist)
-      .where(and(eq(investmentWatchlist.id, id), eq(investmentWatchlist.userId, userId)));
-  }
-
-  async removeFromWatchlistByCoinId(coinId: string, userId: string) {
-    await db
-      .delete(investmentWatchlist)
-      .where(and(eq(investmentWatchlist.coinId, coinId), eq(investmentWatchlist.userId, userId)));
+      .delete(stockOrders)
+      .where(and(eq(stockOrders.id, id), eq(stockOrders.userId, userId)));
   }
 }
 

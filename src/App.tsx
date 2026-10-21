@@ -52,6 +52,7 @@ function AppContent() {
 
   const tabs: { id: DashboardTab; label: string; icon: any }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+    { id: 'investments', label: 'Stocks & Equities', icon: TrendingUp },
     { id: 'forecast', label: 'Predictive Forecast', icon: Sparkles },
     { id: 'calendar', label: 'Calendar & Cash Flow', icon: CalendarDays },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },

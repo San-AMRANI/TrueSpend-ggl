@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction, Goal, Subscription } from '../../types';
+import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction, Goal, Subscription, InvestmentsData } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SettleDebtModal } from '../SettleDebtModal';
@@ -25,6 +25,7 @@ interface OverviewTabProps {
   budgets: CategoryBudget[];
   goals?: Goal[];
   subscriptions?: Subscription[];
+  investmentsData?: InvestmentsData | null;
   setActiveTab: (tab: DashboardTab) => void;
   openTransaction: (transactionId: string) => void;
   handleSettle: (debtId: string, amount: number, category?: string, walletId?: string) => Promise<void> | void;
@@ -41,6 +42,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   budgets,
   goals = [],
   subscriptions = [],
+  investmentsData = null,
   payrolls,
   setActiveTab,
   openTransaction,
@@ -72,8 +74,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     .filter((debt) => debt.type === 'Payable' && debt.status === 'Pending')
     .reduce((sum, debt) => sum + Number.parseFloat(debt.remainingBalance), 0);
   
-  // Unified Net Worth Tracking (Liquidity across all wallets + Receivables - Payables)
-  const netWorth = (kpis?.totalLiquidity ?? 0) + activeReceivables - activePayables;
+  const stockPortfolioMad = investmentsData?.totalPortfolioValueMad ?? 0;
+  const activeStockPositions = useMemo(
+    () => (investmentsData?.positions || []).filter((p) => !p.isWatchlistOnly && p.sharesNum > 0),
+    [investmentsData]
+  );
+
+  // Unified Net Worth Tracking (Liquidity across all wallets + Stock Portfolio + Receivables - Payables)
+  const netWorth = (kpis?.totalLiquidity ?? 0) + stockPortfolioMad + activeReceivables - activePayables;
   const dailyStatusStyles = { on_track: 'text-blue-600', warning: 'text-amber-600', critical: 'text-red-600' };
 
   // Subscriptions metrics
@@ -107,8 +115,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         debts,
         goals,
         contexts: [],
+        investmentsData,
       }),
-    [kpis, transactions, payrolls, budgets, subscriptions, debts, goals]
+    [kpis, transactions, payrolls, budgets, subscriptions, debts, goals, investmentsData]
   );
 
   // Health score ring color
@@ -145,7 +154,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             )}
           </CardHeader>
           <CardContent>
-            <div className="break-words text-2xl font-bold sm:text-3xl">
+            <div className="break-words text-2xl font-bold sm:text-3xl font-mono tabular-nums">
               {(kpis?.safeToSpend ?? 0).toFixed(2)} <span className="text-lg text-gray-400">MAD</span>
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -168,14 +177,25 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-wider text-gray-500">
               <span>Liquidity {(kpis?.totalLiquidity ?? 0).toFixed(0)}</span>
+              {stockPortfolioMad > 0 && <span className="text-emerald-400">· Stocks +{stockPortfolioMad.toFixed(0)}</span>}
               <span>· Buffer −{(kpis?.emergencyBuffer ?? 0).toFixed(0)}</span>
               {monthlySubBurn > 0 && <span className="text-purple-400">· Committed Bills −{monthlySubBurn.toFixed(0)}</span>}
               {(kpis?.pendingPayables ?? 0) > 0 && <span>· Payables −{(kpis?.pendingPayables ?? 0).toFixed(0)}</span>}
             </div>
             {/* Net Worth Badge */}
-            <div className="mt-4 pt-3 border-t border-gray-800">
-              <p className="text-xs text-gray-400">Estimated Net Worth</p>
-              <p className="text-lg font-semibold text-white">{netWorth.toFixed(2)} MAD</p>
+            <div className="mt-4 pt-3 border-t border-gray-800 flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs text-gray-400">Estimated Unified Net Worth</p>
+                <p className="text-lg font-semibold text-white font-mono tabular-nums">{netWorth.toFixed(2)} MAD</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('investments')}
+                className="text-xs font-medium text-emerald-300 hover:text-white bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-800/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap shrink-0"
+              >
+                <TrendingUp className="h-3.5 w-3.5" />
+                <span>{activeStockPositions.length > 0 ? `${activeStockPositions.length} Stocks` : 'Invest in Stocks'}</span>
+              </button>
             </div>
           </CardContent>
         </Card>
@@ -210,6 +230,53 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CardContent>
         </Card>
       </div>
+
+      {/* Stock Portfolio & Buying Power Pulse Strip */}
+      <Card className="min-w-0 overflow-hidden border-emerald-200/70 dark:border-emerald-900/40 bg-gradient-to-r from-white via-emerald-50/20 to-indigo-50/20 dark:from-gray-900 dark:via-emerald-950/15 dark:to-indigo-950/15">
+        <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300">
+              <TrendingUp className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span className="text-sm font-bold text-gray-900 dark:text-white">Equities &amp; Stock Portfolio</span>
+                <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">·</span>
+                <span className="text-xs font-mono tabular-nums font-semibold text-gray-800 dark:text-gray-200">
+                  {stockPortfolioMad.toLocaleString(undefined, { maximumFractionDigits: 0 })} MAD
+                </span>
+                {investmentsData && investmentsData.totalUnrealizedPnlMad !== 0 && (
+                  <span
+                    className={`text-xs font-mono tabular-nums font-semibold ${
+                      investmentsData.totalUnrealizedPnlMad >= 0
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-rose-600 dark:text-rose-400'
+                    }`}
+                  >
+                    ({investmentsData.totalUnrealizedPnlMad >= 0 ? '+' : ''}
+                    {investmentsData.totalUnrealizedPnlPercent.toFixed(1)}%)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                {activeStockPositions.length > 0
+                  ? `${activeStockPositions.map((p) => p.ticker).slice(0, 5).join(' · ')} · Safe Buying Power: ${(investmentsData?.buyingPower.deployableSurplusMad ?? 0).toFixed(0)} MAD`
+                  : `Synced with TrueSpend Wallets & Safe-to-Spend · Recommended Stock Buying Power: ${(investmentsData?.buyingPower.deployableSurplusMad ?? 0).toFixed(0)} MAD`}
+              </p>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setActiveTab('investments')}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 self-start sm:self-auto"
+          >
+            <span>Open Stock Portfolio</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Row 3 – Financial Facts Carousel + Spending Pace */}
       <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-3">

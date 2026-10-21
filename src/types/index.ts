@@ -252,6 +252,7 @@ export interface UserSettings {
 
 export type DashboardTab =
   | 'overview'
+  | 'investments'
   | 'forecast'
   | 'calendar'
   | 'transactions'
@@ -266,224 +267,142 @@ export type DashboardTab =
   | 'reports'
   | 'contexts';
 
-export type InvestmentAssetType =
-  | 'crypto'
-  | 'stock'
-  | 'etf'
-  | 'bourse_local'
-  | 'commodity'
-  | 'real_estate'
-  | 'custom';
+export type StockMarketType = 'US' | 'BVC' | 'ETF' | 'GLOBAL';
+export type StockOrderAction = 'BUY' | 'SELL' | 'DIVIDEND';
 
-export type InvestmentTradeType =
-  | 'BUY'
-  | 'SELL'
-  | 'DIVIDEND'
-  | 'STAKING_REWARD';
-
-export interface InvestmentHolding {
+export interface StockPosition {
   id: string;
   userId: string;
   walletId?: string | null;
   walletName?: string | null;
-  symbol: string;
-  name: string;
-  assetType: InvestmentAssetType;
-  units: string;
-  buyPriceAvg: string;
+  ticker: string;
+  companyName: string;
+  market: StockMarketType;
+  sector: string;
+  shares: string;
+  avgCostPerShare: string;
   currentPrice: string;
-  currency: string;
-  targetAllocationPercent?: string | null;
-  dividendYieldPercent?: string | null;
-  notes?: string | null;
+  currency: 'USD' | 'MAD' | 'EUR' | string;
+  annualDividendPerShare: string;
+  targetWeightPercent: string;
+  convictionThesis?: string | null;
+  isWatchlistOnly: boolean;
   createdAt: string;
   updatedAt: string;
-  // Computed client/server fields
-  totalCostBasis?: number;
-  currentMarketValue?: number;
-  unrealizedPnl?: number;
-  unrealizedPnlPercent?: number;
-  change24h?: number;
+  // Enriched live metrics
+  sharesNum: number;
+  avgCostNum: number;
+  currentPriceNum: number;
+  change24hPercent: number;
+  costBasisNative: number;
+  marketValueNative: number;
+  unrealizedPnlNative: number;
+  unrealizedPnlPercent: number;
+  costBasisMad: number;
+  marketValueMad: number;
+  unrealizedPnlMad: number;
+  actualWeightPercent: number;
+  annualDividendNative: number;
+  annualDividendMad: number;
+  dividendYieldPercent: number;
+  affordableSharesFromSurplus: number;
 }
 
-export interface InvestmentTransaction {
+export interface StockOrder {
   id: string;
   userId: string;
-  holdingId: string;
-  walletId?: string | null;
-  walletName?: string | null;
-  holdingSymbol?: string;
-  holdingName?: string;
-  type: InvestmentTradeType;
-  units: string;
-  pricePerUnit: string;
-  totalAmount: string;
-  currency: string;
-  fees: string;
-  realizedPnl?: string | null;
-  notes?: string | null;
-  createdAt: string;
-}
-
-export interface DcaPlan {
-  id: string;
-  userId: string;
-  holdingId?: string | null;
-  symbol: string;
-  assetName: string;
-  assetType: InvestmentAssetType;
-  targetAmount: string;
-  currency: string;
-  frequency: 'daily' | 'weekly' | 'monthly' | 'post_payday';
-  dayOffsetAfterPayday: number;
-  walletId?: string | null;
-  walletName?: string | null;
-  status: 'active' | 'paused';
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface MarketQuote {
-  symbol: string;
-  price: number;
-  change24h?: number;
-  currency: string;
-  lastUpdated: string;
-}
-
-export interface CoinGeckoMarketCoin {
-  id: string;
-  symbol: string;
-  name: string;
-  image: string;
-  current_price: number;
-  market_cap: number;
-  market_cap_rank: number;
-  total_volume: number;
-  high_24h: number;
-  low_24h: number;
-  price_change_24h: number;
-  price_change_percentage_24h: number;
-  circulating_supply: number;
-  total_supply: number | null;
-  sparkline_in_7d?: { price: number[] };
-  isWatched?: boolean;
-}
-
-export interface WatchlistItem {
-  id: string;
-  userId: string;
-  coinId: string;
-  symbol: string;
-  name: string;
-  createdAt: string;
-}
-
-export interface CoinSearchResult {
-  id: string;
-  name: string;
-  api_symbol?: string;
-  symbol: string;
-  market_cap_rank?: number;
-  thumb?: string;
-  large?: string;
-}
-
-export interface SafeToInvestCalculation {
-  monthlyIncome: number;
-  fixedObligations: number;
-  variableSpendPace: number;
-  emergencyBufferDeficiency: number;
-  pendingPayables: number;
-  totalInvestmentBudget?: number;
-  investedThisMonth?: number;
-  remainingInvestmentBudget?: number;
-  safeToInvestMonthly: number;
-  currentMonthlyDcaTarget: number;
-  surplusAfterDca: number;
-  dcaBudgetStatus?: 'fully_budgeted' | 'over_budget' | 'covered_by_surplus' | 'exceeds_capacity';
-  dcaBudgetCoveragePercent?: number | null;
-  recommendationText: string;
-  riskAppetiteMax: number;
-}
-
-export interface StockQuote {
-  symbol: string;
-  name: string;
-  price: number;
-  change24h: number;
-  changeAmount?: number;
-  high24h?: number;
-  low24h?: number;
-  prevClose?: number;
-  fiftyTwoWeekHigh?: number;
-  fiftyTwoWeekLow?: number;
-  marketCap?: number;
-  peRatio?: number;
-  dividendYield?: number;
-  currency: string;
-  priceInMad: number;
-  exchange?: string;
-  sector?: string;
-  sparkline?: number[];
-  assetType: 'stock' | 'etf' | 'bourse_local';
-  isWatched?: boolean;
-}
-
-export interface StockSearchResult {
-  symbol: string;
-  name: string;
-  quoteType: string;
-  exchange: string;
+  positionId: string;
+  ticker?: string;
+  companyName?: string;
   currency?: string;
-  sector?: string;
-  price?: number;
-  change24h?: number;
-  priceInMad?: number;
+  walletId?: string | null;
+  walletName?: string | null;
+  linkedTransactionId?: string | null;
+  action: StockOrderAction;
+  shares: string;
+  pricePerShare: string;
+  totalNativeAmount: string;
+  totalMadAmount: string;
+  exchangeRateUsed: string;
+  realizedPnlMad: string;
+  notes?: string | null;
+  executedAt: string;
 }
 
-export interface StockAiAnalysis {
-  portfolioGrade: string; // 'A+' | 'A' | 'B' ...
-  healthScore: number; // 0 - 100
-  executiveVerdict: string;
-  diversificationScore: number; // 0 - 100
-  sectorAllocations: { sector: string; percentage: number; amountMad: number }[];
-  currencyExposure: { currency: string; percentage: number; amountMad: number }[];
-  riskFlags: { severity: 'low' | 'medium' | 'high'; title: string; detail: string }[];
-  recommendations: { title: string; rationale: string; priority: 'high' | 'medium' | 'low' }[];
-  projectedPassiveIncomeMad: number;
-  monthlyDividendCoveragePercent: number;
-  goldenRule: string;
-  analyzedAt: string;
+export interface StockCatalogItem {
+  ticker: string;
+  companyName: string;
+  market: StockMarketType;
+  sector: string;
+  price: number;
+  change24hPercent: number;
+  currency: 'USD' | 'MAD' | 'EUR';
+  priceInMad: number;
+  annualDividendPerShare: number;
+  dividendYieldPercent: number;
+  thesis: string;
+  inPortfolio?: boolean;
+  inWatchlist?: boolean;
+}
+
+export interface BuyingPowerSnapshot {
+  safeToSpendMad: number;
+  investmentWalletBalanceMad: number;
+  monthlyIncomeMad: number;
+  monthlyInvestmentBudgetMad: number;
+  investedThisCycleMad: number;
+  remainingInvestmentBudgetMad: number;
+  deployableSurplusMad: number;
+  deployableSurplusUsd: number;
+  emergencyBufferIntact: boolean;
+  emergencyDeficitMad: number;
+  daysUntilPayday: number;
+  guidanceText: string;
 }
 
 export interface InvestmentsData {
-  holdings: InvestmentHolding[];
-  transactions: InvestmentTransaction[];
-  dcaPlans: DcaPlan[];
-  watchlist: WatchlistItem[];
-  marketCoins: CoinGeckoMarketCoin[];
-  quotes: Record<string, MarketQuote>;
-  stockQuotes?: Record<string, StockQuote>;
-  popularStocks?: {
-    indices: StockQuote[];
-    tech: StockQuote[];
-    dividends: StockQuote[];
-    morocco: StockQuote[];
-  };
+  positions: StockPosition[];
+  watchlistPositions: StockPosition[];
+  orders: StockOrder[];
+  catalog: StockCatalogItem[];
   rates: {
     USD_TO_MAD: number;
     EUR_TO_MAD: number;
     USD_TO_EUR: number;
   };
+  buyingPower: BuyingPowerSnapshot;
+  // Portfolio Aggregates (MAD & USD)
   totalPortfolioValueMad: number;
+  totalPortfolioValueUsd: number;
   totalCostBasisMad: number;
   totalUnrealizedPnlMad: number;
   totalUnrealizedPnlPercent: number;
+  totalRealizedPnlMad: number;
+  totalDividendsCollectedMad: number;
   annualPassiveIncomeMad: number;
-  monthlyPassiveIncomeMad?: number;
+  monthlyPassiveIncomeMad: number;
+  portfolioYieldPercent: number;
+  subscriptionCoveragePercent: number;
+  livingExpenseCoveragePercent: number;
+  sectorBreakdown: { sector: string; valueMad: number; weightPercent: number }[];
+  marketBreakdown: { market: string; valueMad: number; weightPercent: number }[];
+  // Compatibility for PredictiveEngine
   fireCoveragePercent: number;
-  safeToInvest: SafeToInvestCalculation;
+  safeToInvest: {
+    monthlyIncome: number;
+    fixedObligations: number;
+    variableSpendPace: number;
+    emergencyBufferDeficiency: number;
+    pendingPayables: number;
+    totalInvestmentBudget?: number;
+    investedThisMonth?: number;
+    remainingInvestmentBudget?: number;
+    safeToInvestMonthly: number;
+    currentMonthlyDcaTarget: number;
+    surplusAfterDca: number;
+    recommendationText: string;
+    riskAppetiteMax: number;
+  };
 }
 
 export type RetrospectiveLetterGrade = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C+' | 'C' | 'D' | 'F';

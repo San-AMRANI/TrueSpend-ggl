@@ -86,6 +86,7 @@ export interface PredictiveSignal {
   impactMad: number;
   actionTab:
     | 'overview'
+    | 'investments'
     | 'budgets'
     | 'subscriptions'
     | 'goals'
@@ -301,12 +302,11 @@ export function computeHolisticForecast(params: {
     weightedDailyBurn * 30 - monthlyFixedSubsBurn
   );
 
-  // 5. DCA & Investment Return Assumptions
+  // 5. Stock Investment Allocation & Return Assumptions
   const monthlyDcaCommitment =
+    investmentsData?.buyingPower?.monthlyInvestmentBudgetMad ||
     investmentsData?.safeToInvest?.currentMonthlyDcaTarget ||
-    (investmentsData?.dcaPlans || [])
-      .filter((p) => p.status === 'active')
-      .reduce((s, p) => s + (parseFloat(p.targetAmount) || 0), 0);
+    0;
 
   const annualDividendIncomeMad = investmentsData?.annualPassiveIncomeMad || 0;
   const monthlyPassiveIncomeMad = annualDividendIncomeMad / 12;
@@ -757,8 +757,8 @@ export function computeHolisticForecast(params: {
       monthlyDcaCommitment + whatIf.extraMonthlyDcaMad
     ).toFixed(0)} MAD/mo DCA contributions, and portfolio compounding.`,
     impactMad: wealthGain12m,
-    actionTab: 'goals',
-    actionLabel: 'Open Goals Hub',
+    actionTab: 'investments',
+    actionLabel: 'Open Stock Portfolio',
   });
 
   // Signal E: Subscriptions Load
@@ -830,7 +830,7 @@ export function computeHolisticForecast(params: {
       subscriptions: subscriptions.length,
       debts: debts.length,
       goals: goals.length,
-      holdings: investmentsData?.holdings?.length ?? 0,
+      holdings: investmentsData?.positions?.length ?? 0,
       contexts: contexts.length,
     },
   };

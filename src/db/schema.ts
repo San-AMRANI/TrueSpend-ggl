@@ -25,64 +25,41 @@ export const debtStatusEnum = pgEnum('debt_status', ['Pending', 'Cleared']);
 export const financialContextStatusEnum = pgEnum('financial_context_status', ['Planned', 'Active', 'Completed']);
 export const financialContextTypeEnum = pgEnum('financial_context_type', ['Trip', 'Work / Mission', 'Project', 'Life Event', 'Other']);
 
-export const investmentHoldings = pgTable('investment_holdings', {
+export const stockPositions = pgTable('stock_positions', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
   walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
-  symbol: text('symbol').notNull(),
-  name: text('name').notNull(),
-  assetType: text('asset_type').notNull(), // 'crypto' | 'stock' | 'etf' | 'bourse_local' | 'commodity' | 'real_estate' | 'custom'
-  units: decimal('units').default('0').notNull(),
-  buyPriceAvg: decimal('buy_price_avg').default('0').notNull(),
+  ticker: text('ticker').notNull(),
+  companyName: text('company_name').notNull(),
+  market: text('market').default('US').notNull(), // 'US' | 'BVC' | 'ETF' | 'GLOBAL'
+  sector: text('sector').default('Technology').notNull(),
+  shares: decimal('shares').default('0').notNull(),
+  avgCostPerShare: decimal('avg_cost_per_share').default('0').notNull(),
   currentPrice: decimal('current_price').default('0').notNull(),
   currency: text('currency').default('USD').notNull(), // 'USD' | 'MAD' | 'EUR'
-  targetAllocationPercent: decimal('target_allocation_percent').default('0'),
-  dividendYieldPercent: decimal('dividend_yield_percent').default('0'),
-  notes: text('notes'),
+  annualDividendPerShare: decimal('annual_dividend_per_share').default('0').notNull(),
+  targetWeightPercent: decimal('target_weight_percent').default('0').notNull(),
+  convictionThesis: text('conviction_thesis'),
+  isWatchlistOnly: boolean('is_watchlist_only').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
-export const investmentTransactions = pgTable('investment_transactions', {
+export const stockOrders = pgTable('stock_orders', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  holdingId: uuid('holding_id').references(() => investmentHoldings.id, { onDelete: 'cascade' }).notNull(),
+  positionId: uuid('position_id').references(() => stockPositions.id, { onDelete: 'cascade' }).notNull(),
   walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
-  type: text('type').notNull(), // 'BUY' | 'SELL' | 'DIVIDEND' | 'STAKING_REWARD'
-  units: decimal('units').notNull(),
-  pricePerUnit: decimal('price_per_unit').notNull(),
-  totalAmount: decimal('total_amount').notNull(),
-  currency: text('currency').default('USD').notNull(),
-  fees: decimal('fees').default('0').notNull(),
-  realizedPnl: decimal('realized_pnl').default('0'),
+  linkedTransactionId: uuid('linked_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  action: text('action').notNull(), // 'BUY' | 'SELL' | 'DIVIDEND'
+  shares: decimal('shares').default('0').notNull(),
+  pricePerShare: decimal('price_per_share').default('0').notNull(),
+  totalNativeAmount: decimal('total_native_amount').notNull(),
+  totalMadAmount: decimal('total_mad_amount').notNull(),
+  exchangeRateUsed: decimal('exchange_rate_used').default('1').notNull(),
+  realizedPnlMad: decimal('realized_pnl_mad').default('0').notNull(),
   notes: text('notes'),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-
-export const dcaPlans = pgTable('dca_plans', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  holdingId: uuid('holding_id').references(() => investmentHoldings.id, { onDelete: 'set null' }),
-  symbol: text('symbol').notNull(),
-  assetName: text('asset_name').notNull(),
-  assetType: text('asset_type').notNull(),
-  targetAmount: decimal('target_amount').notNull(),
-  currency: text('currency').default('MAD').notNull(),
-  frequency: text('frequency').default('post_payday').notNull(), // 'daily' | 'weekly' | 'monthly' | 'post_payday'
-  dayOffsetAfterPayday: integer('day_offset_after_payday').default(2),
-  walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
-  status: text('status').default('active').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
-
-export const investmentWatchlist = pgTable('investment_watchlist', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  coinId: text('coin_id').notNull(), // e.g. 'bitcoin', 'ethereum', 'solana'
-  symbol: text('symbol').notNull(),
-  name: text('name').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+  executedAt: timestamp('executed_at').defaultNow().notNull(),
 });
 
 export const users = pgTable('users', {
@@ -412,7 +389,7 @@ export const walletsRelations = relations(wallets, ({ one, many }) => ({
   goals: many(goals),
   subscriptions: many(subscriptions),
   transactions: many(transactions),
-  investments: many(investmentHoldings),
+  stockPositions: many(stockPositions),
 }));
 
 export const goalsRelations = relations(goals, ({ one }) => ({
@@ -437,54 +414,36 @@ export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
   }),
 }));
 
-export const investmentHoldingsRelations = relations(investmentHoldings, ({ one, many }) => ({
+export const stockPositionsRelations = relations(stockPositions, ({ one, many }) => ({
   user: one(users, {
-    fields: [investmentHoldings.userId],
+    fields: [stockPositions.userId],
     references: [users.id],
   }),
   wallet: one(wallets, {
-    fields: [investmentHoldings.walletId],
+    fields: [stockPositions.walletId],
     references: [wallets.id],
   }),
-  transactions: many(investmentTransactions),
-  dcaPlans: many(dcaPlans),
+  orders: many(stockOrders),
 }));
 
-export const investmentTransactionsRelations = relations(investmentTransactions, ({ one }) => ({
+export const stockOrdersRelations = relations(stockOrders, ({ one }) => ({
   user: one(users, {
-    fields: [investmentTransactions.userId],
+    fields: [stockOrders.userId],
     references: [users.id],
   }),
-  holding: one(investmentHoldings, {
-    fields: [investmentTransactions.holdingId],
-    references: [investmentHoldings.id],
+  position: one(stockPositions, {
+    fields: [stockOrders.positionId],
+    references: [stockPositions.id],
   }),
   wallet: one(wallets, {
-    fields: [investmentTransactions.walletId],
+    fields: [stockOrders.walletId],
     references: [wallets.id],
+  }),
+  linkedTransaction: one(transactions, {
+    fields: [stockOrders.linkedTransactionId],
+    references: [transactions.id],
   }),
 }));
 
-export const dcaPlansRelations = relations(dcaPlans, ({ one }) => ({
-  user: one(users, {
-    fields: [dcaPlans.userId],
-    references: [users.id],
-  }),
-  holding: one(investmentHoldings, {
-    fields: [dcaPlans.holdingId],
-    references: [investmentHoldings.id],
-  }),
-  wallet: one(wallets, {
-    fields: [dcaPlans.walletId],
-    references: [wallets.id],
-  }),
-}));
-
-export const investmentWatchlistRelations = relations(investmentWatchlist, ({ one }) => ({
-  user: one(users, {
-    fields: [investmentWatchlist.userId],
-    references: [users.id],
-  }),
-}));
 
 

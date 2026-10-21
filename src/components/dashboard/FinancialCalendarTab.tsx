@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Landmark, Trash2, WalletCards, CalendarDays, TrendingUp, Repeat, Zap, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
-import { Debt, Payroll, Transaction, Goal, Subscription, DcaPlan, KPI, Wallet } from '../../types';
+import { Debt, Payroll, Transaction, Goal, Subscription, KPI, Wallet } from '../../types';
 import { Button } from '../ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { CashFlowTab } from './CashFlowTab';
@@ -28,7 +28,6 @@ interface FinancialCalendarTabProps {
   transactions: Transaction[];
   debts: Debt[];
   payrolls: Payroll[];
-  dcaPlans?: DcaPlan[];
   kpis?: KPI | null;
   subscriptions?: Subscription[];
   wallets?: Wallet[];
@@ -43,7 +42,6 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   transactions,
   debts,
   payrolls,
-  dcaPlans = [],
   kpis = null,
   subscriptions = [],
   wallets = [],
@@ -109,34 +107,6 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     }));
 
     const dcaEvents: CalendarEvent[] = [];
-    (dcaPlans || []).filter(p => p.status === 'active').forEach((plan) => {
-      const planAmt = parseFloat(plan.targetAmount || '0') || 0;
-      if (plan.frequency === 'post_payday') {
-        payrolls.forEach((p) => {
-          const paydayDate = new Date(p.scheduledFor);
-          const dcaDate = new Date(paydayDate);
-          dcaDate.setUTCDate(dcaDate.getUTCDate() + (plan.dayOffsetAfterPayday || 2));
-          dcaEvents.push({
-            id: `dca-${plan.id}-${p.id}`,
-            date: dateKey(dcaDate),
-            kind: 'dca' as const,
-            title: `📈 DCA ${plan.symbol} (${plan.assetName})`,
-            amount: planAmt,
-            dcaPlanId: plan.id,
-          });
-        });
-      } else if (plan.frequency === 'monthly') {
-        const dcaDate = new Date(Date.UTC(ref.year, ref.month, 15));
-        dcaEvents.push({
-          id: `dca-${plan.id}-${ref.year}-${ref.month}`,
-          date: dateKey(dcaDate),
-          kind: 'dca' as const,
-          title: `📈 Monthly DCA ${plan.symbol}`,
-          amount: planAmt,
-          dcaPlanId: plan.id,
-        });
-      }
-    });
 
     // Project active recurring subscriptions onto this calendar month
     const subscriptionEvents: CalendarEvent[] = [];
@@ -168,7 +138,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     });
 
     return [...transactionEvents, ...payrollEvents, ...debtEvents, ...dcaEvents, ...subscriptionEvents];
-  }, [debts, payrolls, transactions, dcaPlans, subscriptions, ref]);
+  }, [debts, payrolls, transactions, subscriptions, ref]);
 
   const visible = events.filter((event) => {
     const eventDate = new Date(`${event.date}T00:00:00Z`);

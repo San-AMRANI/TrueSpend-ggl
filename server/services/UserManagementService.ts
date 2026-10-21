@@ -319,7 +319,7 @@ export class UserManagementService {
     const [txCountsRes, walletCountsRes, holdingCountsRes] = await Promise.all([
       pool.query('SELECT user_id, COUNT(*)::int AS cnt FROM transactions GROUP BY user_id'),
       pool.query('SELECT user_id, COUNT(*)::int AS cnt FROM wallets GROUP BY user_id'),
-      pool.query('SELECT user_id, COUNT(*)::int AS cnt FROM investment_holdings GROUP BY user_id'),
+      pool.query('SELECT user_id, COUNT(*)::int AS cnt FROM stock_positions WHERE is_watchlist_only = false GROUP BY user_id'),
     ]);
 
     const statsMap: Record<

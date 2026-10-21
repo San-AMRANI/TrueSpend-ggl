@@ -16,6 +16,7 @@ import { ReportsTab } from './dashboard/ReportsTab';
 import { ContextsTab } from './dashboard/ContextsTab';
 import { UsersAndRolesSection } from './dashboard/UsersAndRolesSection';
 import { PredictiveForecastTab } from './dashboard/PredictiveForecastTab';
+import { InvestmentsTab } from './dashboard/InvestmentsTab';
 import { AIChat } from './AIChat';
 import type { DashboardTab } from '../types';
 
@@ -67,6 +68,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     contexts,
     goals,
     subscriptions,
+    investmentsData,
     handleCreateGoal,
     handleUpdateGoal,
     handleContributeToGoal,
@@ -77,6 +79,13 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleDeleteSubscription,
     handlePaySubscription,
     handleDetectSubscriptions,
+    handleUpsertStockPosition,
+    handleUpdateStockPosition,
+    handleDeleteStockPosition,
+    handleExecuteStockOrder,
+    handleDeleteStockOrder,
+    handleExecutePaydayAllocation,
+    handleSearchStocks,
     handleCreateContext,
     handleUpdateContext,
     handleDeleteContext,
@@ -131,6 +140,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           budgets={budgets}
           goals={goals}
           subscriptions={subscriptions}
+          investmentsData={investmentsData}
           setActiveTab={setActiveTab}
           openTransaction={openTransaction}
           handleSettle={handleSettleDebt}
@@ -138,6 +148,23 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           handleCreateWallet={handleCreateWallet}
           handleUpdateWallet={handleUpdateWallet}
           handleDeleteWallet={handleDeleteWallet}
+        />
+      )}
+
+      {activeTab === 'investments' && (
+        <InvestmentsTab
+          investmentsData={investmentsData}
+          wallets={kpis?.accounts || []}
+          isSaving={isSaving}
+          onUpsertPosition={handleUpsertStockPosition}
+          onUpdatePosition={handleUpdateStockPosition}
+          onDeletePosition={handleDeleteStockPosition}
+          onExecuteOrder={handleExecuteStockOrder}
+          onDeleteOrder={handleDeleteStockOrder}
+          onExecutePaydayAllocation={handleExecutePaydayAllocation}
+          onSearchStocks={handleSearchStocks}
+          onRefresh={fetchData}
+          setActiveTab={setActiveTab}
         />
       )}
 
@@ -284,6 +311,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           debts={debts}
           goals={goals}
           contexts={contexts}
+          investmentsData={investmentsData}
           setActiveTab={setActiveTab}
         />
       )}

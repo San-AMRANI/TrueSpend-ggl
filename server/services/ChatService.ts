@@ -161,6 +161,12 @@ Emit the structured action object inside the "actions" array so TrueSpend render
 7. **settle_debt**:
    {"type":"settle_debt","summary":"Settle 300 MAD of debt to Omar","parameters":{"debtId":"<debt-uuid>","amount":300,"walletId":"<wallet-uuid>"}}
 
+8. **buy_stock**:
+   {"type":"buy_stock","summary":"Buy 2 shares of NVDA synced with Main Bank","parameters":{"ticker":"NVDA","shares":2,"walletId":"<wallet-uuid>","notes":"Core AI equity position"}}
+
+9. **record_dividend**:
+   {"type":"record_dividend","summary":"Record 450 MAD dividend from ATW into Main Bank","parameters":{"ticker":"ATW","totalNativeAmount":450,"walletId":"<wallet-uuid>"}}
+
 ## BATCH ACTIONS & MULTI-EXPENSE PARSING
 If the user mentions multiple transactions, expenses, or transfers in a single prompt (e.g. "Today I spent 120 on groceries, 35 on cafe, and transferred 500 to cash"):
 - Propose an individual action in the "actions" array for EACH movement!

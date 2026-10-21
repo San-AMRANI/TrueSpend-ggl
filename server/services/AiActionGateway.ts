@@ -3,10 +3,34 @@ import { debtService } from './DebtService.js';
 import { settingsService } from './SettingsService.js';
 import { categoryBudgetService } from './CategoryBudgetService.js';
 import { goalService } from './GoalService.js';
+import { investmentService } from './InvestmentService.js';
 
-export type AiAction = { type: 'create_transaction' | 'create_debt' | 'update_settings' | 'upsert_budget' | 'settle_debt' | 'create_goal' | 'contribute_goal'; parameters: Record<string, unknown>; summary: string };
+export type AiAction = {
+  type:
+    | 'create_transaction'
+    | 'create_debt'
+    | 'update_settings'
+    | 'upsert_budget'
+    | 'settle_debt'
+    | 'create_goal'
+    | 'contribute_goal'
+    | 'buy_stock'
+    | 'record_dividend';
+  parameters: Record<string, unknown>;
+  summary: string;
+};
 
-const permitted = new Set<AiAction['type']>(['create_transaction', 'create_debt', 'update_settings', 'upsert_budget', 'settle_debt', 'create_goal', 'contribute_goal']);
+const permitted = new Set<AiAction['type']>([
+  'create_transaction',
+  'create_debt',
+  'update_settings',
+  'upsert_budget',
+  'settle_debt',
+  'create_goal',
+  'contribute_goal',
+  'buy_stock',
+  'record_dividend',
+]);
 
 export const sanitizeAiActions = (value: unknown): AiAction[] => {
   if (!Array.isArray(value)) return [];
@@ -118,7 +142,42 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
         note: p.note ? String(p.note) : undefined,
       }));
     }
+
+    if (action.type === 'buy_stock') {
+      const ticker = String(p.ticker || '').toUpperCase().trim();
+      const shares = Number(p.shares || 0);
+      const pricePerShare = p.pricePerShare !== undefined ? Number(p.pricePerShare) : undefined;
+      if (!ticker || shares <= 0) {
+        throw new Error('Stock buy proposal requires ticker and positive shares.');
+      }
+      results.push(await investmentService.executeOrder(userId, {
+        ticker,
+        action: 'BUY',
+        shares,
+        pricePerShare,
+        walletId: p.walletId ? String(p.walletId) : undefined,
+        syncWithWallet: Boolean(p.walletId),
+        notes: p.notes ? String(p.notes) : `AI-assisted purchase of ${shares} ${ticker}`,
+      }));
+    }
+
+    if (action.type === 'record_dividend') {
+      const ticker = String(p.ticker || '').toUpperCase().trim();
+      const totalNativeAmount = Number(p.amount || p.totalNativeAmount || 0);
+      if (!ticker || totalNativeAmount <= 0) {
+        throw new Error('Dividend proposal requires ticker and positive amount.');
+      }
+      results.push(await investmentService.executeOrder(userId, {
+        ticker,
+        action: 'DIVIDEND',
+        totalNativeAmount,
+        walletId: p.walletId ? String(p.walletId) : undefined,
+        syncWithWallet: Boolean(p.walletId),
+        notes: p.notes ? String(p.notes) : `Dividend payout from ${ticker}`,
+      }));
+    }
   }
   
   return results;
 }
+

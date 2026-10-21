@@ -1,4 +1,4 @@
-import type { CategoryBudget, Debt, KPI, Payroll, Transaction, Goal } from '../types/index.js';
+import type { CategoryBudget, Debt, KPI, Payroll, Transaction, Goal, InvestmentsData } from '../types/index.js';
 import { financialPeriodLabel, getCurrentFinancialMonth, getPreviousFinancialMonth } from './financialMonth.js';
 import { computeHolisticForecast } from './predictiveEngine.js';
 
@@ -9,7 +9,7 @@ const dateKey = (value: string | Date | null | undefined) => {
 };
 
 export function buildAiContextSnapshot({
-  kpis, transactions, debts, budgets, payrolls, goals = [],
+  kpis, transactions, debts, budgets, payrolls, goals = [], investmentsData = null,
 }: {
   kpis: KPI | null;
   transactions: Transaction[];
@@ -17,6 +17,7 @@ export function buildAiContextSnapshot({
   budgets: CategoryBudget[];
   payrolls: Payroll[];
   goals?: Goal[];
+  investmentsData?: InvestmentsData | null;
 }) {
   const current = getCurrentFinancialMonth(payrolls);
   const previous = current ? getPreviousFinancialMonth(payrolls, current) : null;
@@ -34,7 +35,7 @@ export function buildAiContextSnapshot({
     subscriptions: [],
     debts,
     goals,
-    investmentsData: null,
+    investmentsData,
     contexts: [],
   });
 
@@ -53,6 +54,28 @@ export function buildAiContextSnapshot({
       totalLiquidity: amountOf(kpis.totalLiquidity), bankBalance: amountOf(kpis.bankBalance), cashOnHand: amountOf(kpis.cashOnHand),
       monthlyIncome: amountOf(kpis.monthlyIncome), monthlyExpenses: amountOf(kpis.monthlyExpenses), dailyAllowance: amountOf(kpis.dailyAllowance),
       dailySpent: amountOf(kpis.dailySpent), dailyRemaining: amountOf(kpis.dailyRemaining), daysUntilPayroll: kpis.daysUntilPayday,
+    } : null,
+    stockPortfolio: investmentsData ? {
+      totalPortfolioValueMad: investmentsData.totalPortfolioValueMad,
+      totalPortfolioValueUsd: investmentsData.totalPortfolioValueUsd,
+      totalUnrealizedPnlMad: investmentsData.totalUnrealizedPnlMad,
+      totalUnrealizedPnlPercent: investmentsData.totalUnrealizedPnlPercent,
+      annualDividendIncomeMad: investmentsData.annualPassiveIncomeMad,
+      monthlyDividendIncomeMad: investmentsData.monthlyPassiveIncomeMad,
+      deployableBuyingPowerMad: investmentsData.buyingPower.deployableSurplusMad,
+      deployableBuyingPowerUsd: investmentsData.buyingPower.deployableSurplusUsd,
+      positions: investmentsData.positions.map(p => ({
+        ticker: p.ticker,
+        company: p.companyName,
+        market: p.market,
+        shares: p.sharesNum,
+        avgCost: p.avgCostNum,
+        currentPrice: p.currentPriceNum,
+        currency: p.currency,
+        valueMad: p.marketValueMad,
+        pnlPercent: p.unrealizedPnlPercent,
+        weightPercent: p.actualWeightPercent,
+      })),
     } : null,
     predictiveForecast: {
       projectedNetWorth90d: forecast.projectedNetWorth90d,
@@ -97,3 +120,4 @@ export function buildAiContextSnapshot({
       .map((transaction) => ({ date: dateKey(transaction.createdAt), amount: amountOf(transaction.amount), type: transaction.type, category: transaction.category, note: transaction.notes })),
   };
 }
+

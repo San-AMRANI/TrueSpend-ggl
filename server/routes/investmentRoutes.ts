@@ -7,35 +7,18 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/investments', (req, res) => investmentController.getData(req as any, res));
-router.get('/investments/quotes', (req, res) => investmentController.getQuotes(req as any, res));
-router.get('/investments/market-coins', (req, res) => investmentController.getMarketCoins(req as any, res));
-router.get('/investments/trending', (req, res) => investmentController.getTrending(req as any, res));
-router.get('/investments/coin/:id', (req, res) => investmentController.getCoinDetails(req as any, res));
-router.get('/investments/search-coins', (req, res) => investmentController.searchCoins(req as any, res));
-router.get('/investments/spot-price', (req, res) => investmentController.getSpotPrice(req as any, res));
-
-// Stocks & Equities (Global & Casablanca BVC)
 router.get('/investments/stocks/search', (req, res) => investmentController.searchStocks(req as any, res));
-router.get('/investments/stocks/popular', (req, res) => investmentController.getPopularStocks(req as any, res));
-router.get('/investments/stocks/details/:symbol', (req, res) => investmentController.getStockDetails(req as any, res));
-router.post('/investments/stocks/ai-analysis', (req, res) => investmentController.analyzeStockPortfolio(req as any, res));
 
-// Watchlist
-router.get('/investments/watchlist', (req, res) => investmentController.getWatchlist(req as any, res));
-router.post('/investments/watchlist', (req, res) => investmentController.addToWatchlist(req as any, res));
-router.delete('/investments/watchlist/:coinId', (req, res) => investmentController.removeFromWatchlist(req as any, res));
+// Stock Positions
+router.post('/investments/positions', (req, res) => investmentController.upsertPosition(req as any, res));
+router.put('/investments/positions/:id', (req, res) => investmentController.updatePosition(req as any, res));
+router.delete('/investments/positions/:id', (req, res) => investmentController.deletePosition(req as any, res));
 
-// Holdings
-router.post('/investments/holdings', (req, res) => investmentController.createHolding(req as any, res));
-router.put('/investments/holdings/:id', (req, res) => investmentController.updateHolding(req as any, res));
-router.delete('/investments/holdings/:id', (req, res) => investmentController.deleteHolding(req as any, res));
+// Stock Orders (BUY / SELL / DIVIDEND with TrueSpend Wallet Sync)
+router.post('/investments/orders', (req, res) => investmentController.executeOrder(req as any, res));
+router.delete('/investments/orders/:id', (req, res) => investmentController.deleteOrder(req as any, res));
 
-// Trades (Buy / Sell / Dividend / Staking)
-router.post('/investments/trades', (req, res) => investmentController.executeTrade(req as any, res));
-
-// DCA Plans
-router.post('/investments/dca-plans', (req, res) => investmentController.createDcaPlan(req as any, res));
-router.put('/investments/dca-plans/:id', (req, res) => investmentController.updateDcaPlan(req as any, res));
-router.delete('/investments/dca-plans/:id', (req, res) => investmentController.deleteDcaPlan(req as any, res));
+// Payday Batch Allocation
+router.post('/investments/payday-allocate', (req, res) => investmentController.executePaydayBatchBuy(req as any, res));
 
 export default router;

@@ -46,6 +46,7 @@ const SpexNavIcon: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }
 
 const mainTabs: NavTabItem[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'investments', label: 'Stocks', icon: TrendingUp },
   { id: 'forecast', label: 'Forecast', icon: Sparkles },
   { id: 'calendar', label: 'Calendar & Cash Flow', icon: CalendarDays },
   { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },

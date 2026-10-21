@@ -33,6 +33,7 @@ const SpexNavIcon: React.FC<{ className?: string }> = ({ className = 'h-5 w-5' }
 
 const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.FC<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
+  { id: 'investments', label: 'Stocks & Equities', shortLabel: 'Stocks', icon: TrendingUp },
   { id: 'forecast', label: 'Predictive Forecast', shortLabel: 'Forecast', icon: Sparkles },
   { id: 'calendar', label: 'Calendar & Cash Flow', shortLabel: 'Calendar', icon: CalendarDays },
   { id: 'analytics', label: 'Analytics', shortLabel: 'Analytics', icon: BarChart2 },
@@ -48,7 +49,7 @@ const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.F
   { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
 ];
 
-const quickTabIds: DashboardTab[] = ['overview', 'forecast', 'transactions', 'chat'];
+const quickTabIds: DashboardTab[] = ['overview', 'investments', 'transactions', 'chat'];
 
 export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActiveTab }) => {
   const [isExpanded, setIsExpanded] = useState(false);

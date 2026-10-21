@@ -91,69 +91,45 @@ export const createPool = () => {
           WHEN undefined_object THEN null;
         END $$;
 
-        CREATE TABLE IF NOT EXISTS "investment_holdings" (
+        CREATE TABLE IF NOT EXISTS "stock_positions" (
           "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
           "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
-          "symbol" text NOT NULL,
-          "name" text NOT NULL,
-          "asset_type" text NOT NULL,
-          "units" numeric NOT NULL DEFAULT 0,
-          "buy_price_avg" numeric NOT NULL DEFAULT 0,
+          "ticker" text NOT NULL,
+          "company_name" text NOT NULL,
+          "market" text NOT NULL DEFAULT 'US',
+          "sector" text NOT NULL DEFAULT 'Technology',
+          "shares" numeric NOT NULL DEFAULT 0,
+          "avg_cost_per_share" numeric NOT NULL DEFAULT 0,
           "current_price" numeric NOT NULL DEFAULT 0,
           "currency" text NOT NULL DEFAULT 'USD',
-          "target_allocation_percent" numeric DEFAULT 0,
-          "dividend_yield_percent" numeric DEFAULT 0,
-          "notes" text,
+          "annual_dividend_per_share" numeric NOT NULL DEFAULT 0,
+          "target_weight_percent" numeric NOT NULL DEFAULT 0,
+          "conviction_thesis" text,
+          "is_watchlist_only" boolean NOT NULL DEFAULT false,
           "created_at" timestamp NOT NULL DEFAULT now(),
           "updated_at" timestamp NOT NULL DEFAULT now()
         );
-        CREATE INDEX IF NOT EXISTS "investment_holdings_user_id_idx" ON "investment_holdings"("user_id");
+        CREATE INDEX IF NOT EXISTS "stock_positions_user_id_idx" ON "stock_positions"("user_id");
 
-        CREATE TABLE IF NOT EXISTS "investment_transactions" (
+        CREATE TABLE IF NOT EXISTS "stock_orders" (
           "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
           "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-          "holding_id" uuid REFERENCES "investment_holdings"("id") ON DELETE CASCADE,
+          "position_id" uuid NOT NULL REFERENCES "stock_positions"("id") ON DELETE CASCADE,
           "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
-          "type" text NOT NULL,
-          "units" numeric NOT NULL DEFAULT 0,
-          "price_per_unit" numeric NOT NULL DEFAULT 0,
-          "total_amount" numeric NOT NULL DEFAULT 0,
-          "currency" text NOT NULL DEFAULT 'USD',
-          "fees" numeric NOT NULL DEFAULT 0,
-          "realized_pnl" numeric DEFAULT 0,
+          "linked_transaction_id" uuid REFERENCES "transactions"("id") ON DELETE SET NULL,
+          "action" text NOT NULL,
+          "shares" numeric NOT NULL DEFAULT 0,
+          "price_per_share" numeric NOT NULL DEFAULT 0,
+          "total_native_amount" numeric NOT NULL DEFAULT 0,
+          "total_mad_amount" numeric NOT NULL DEFAULT 0,
+          "exchange_rate_used" numeric NOT NULL DEFAULT 1,
+          "realized_pnl_mad" numeric NOT NULL DEFAULT 0,
           "notes" text,
-          "created_at" timestamp NOT NULL DEFAULT now()
+          "executed_at" timestamp NOT NULL DEFAULT now()
         );
-        CREATE INDEX IF NOT EXISTS "investment_tx_user_id_idx" ON "investment_transactions"("user_id");
-
-        CREATE TABLE IF NOT EXISTS "dca_plans" (
-          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-          "holding_id" uuid REFERENCES "investment_holdings"("id") ON DELETE SET NULL,
-          "symbol" text NOT NULL,
-          "asset_name" text NOT NULL,
-          "asset_type" text NOT NULL,
-          "target_amount" numeric NOT NULL,
-          "currency" text NOT NULL DEFAULT 'MAD',
-          "frequency" text NOT NULL DEFAULT 'post_payday',
-          "day_offset_after_payday" integer DEFAULT 2,
-          "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
-          "status" text NOT NULL DEFAULT 'active',
-          "created_at" timestamp NOT NULL DEFAULT now(),
-          "updated_at" timestamp NOT NULL DEFAULT now()
-        );
-        CREATE INDEX IF NOT EXISTS "dca_plans_user_id_idx" ON "dca_plans"("user_id");
-
-        CREATE TABLE IF NOT EXISTS "investment_watchlist" (
-          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-          "coin_id" text NOT NULL,
-          "symbol" text NOT NULL,
-          "name" text NOT NULL,
-          "created_at" timestamp NOT NULL DEFAULT now()
-        );
-        CREATE INDEX IF NOT EXISTS "investment_watchlist_user_id_idx" ON "investment_watchlist"("user_id");
+        CREATE INDEX IF NOT EXISTS "stock_orders_user_id_idx" ON "stock_orders"("user_id");
+        CREATE INDEX IF NOT EXISTS "stock_orders_position_id_idx" ON "stock_orders"("position_id");
 
         ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "username" text;
         ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "display_name" text;
