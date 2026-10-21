@@ -32,8 +32,6 @@ import {
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { SpexAvatar } from './common/SpexAvatar';
-
-const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { useDashboardData } from '../hooks/useDashboardData';
