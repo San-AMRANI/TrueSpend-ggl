@@ -787,11 +787,51 @@ export class InvestmentService {
       };
     });
 
+    // Compute per-Investment-wallet summary (Uninvested Brokerage Cash + Linked Stock Holdings)
+    let investmentWallets: {
+      walletId: string;
+      name: string;
+      type: 'Investment';
+      uninvestedCashMad: number;
+      investedStockValueMad: number;
+      totalAccountValueMad: number;
+      positionsCount: number;
+    }[] = [];
+
+    if (dbUser) {
+      try {
+        const kpis = await kpiService.getKpisForUser(dbUser);
+        const accounts = kpis.accounts || [];
+        const invAccounts = accounts.filter((a) => a.type === 'Investment');
+        investmentWallets = invAccounts.map((acc, idx) => {
+          const linkedPositions = activePositions.filter(
+            (p) => p.walletId === acc.id || (!p.walletId && idx === 0)
+          );
+          const uninvestedCashMad = Math.round((acc.balance || 0) * 100) / 100;
+          const investedStockValueMad = Math.round(
+            linkedPositions.reduce((s, p) => s + p.marketValueMad, 0) * 100
+          ) / 100;
+          return {
+            walletId: acc.id,
+            name: acc.name,
+            type: 'Investment' as const,
+            uninvestedCashMad,
+            investedStockValueMad,
+            totalAccountValueMad: Math.round((uninvestedCashMad + investedStockValueMad) * 100) / 100,
+            positionsCount: linkedPositions.length,
+          };
+        });
+      } catch {
+        // Ignore if KPI lookup fails
+      }
+    }
+
     return {
       positions: activePositions,
       watchlistPositions,
       orders,
       catalog,
+      investmentWallets,
       rates,
       buyingPower: {
         safeToSpendMad,
@@ -1282,6 +1322,75 @@ export class InvestmentService {
     return {
       success: true,
       executedCount: results.length,
+    };
+  }
+
+  /**
+   * 1-Click Fund Investment Wallet (Brokerage Reserve):
+   * Transfers MAD from a Bank/Cash wallet into an Investment wallet (auto-creating a
+   * 'Brokerage Reserve' Investment wallet if the user doesn't have one yet), recorded
+   * as type: 'Transfer' with category: '📈 Investments' so it counts toward the
+   * '📈 Investments' category budget and moves cash into the protected investmentReserve.
+   */
+  async fundInvestmentWallet(
+    userId: string,
+    payload: {
+      sourceWalletId?: string;
+      destinationWalletId?: string;
+      amountMad: number;
+      notes?: string;
+    }
+  ) {
+    const amountMad = Math.round((Number(payload.amountMad) || 0) * 100) / 100;
+    if (amountMad <= 0) {
+      throw new Error('Please enter a valid transfer amount greater than 0 MAD.');
+    }
+
+    const allWallets = await walletRepository.findAllByUserId(userId);
+    const sourceWallet = payload.sourceWalletId
+      ? allWallets.find((w) => w.id === payload.sourceWalletId)
+      : allWallets.find((w) => w.type === 'Bank' && w.isMain) ||
+        allWallets.find((w) => w.type === 'Bank') ||
+        allWallets.find((w) => w.type === 'Cash');
+
+    if (!sourceWallet) {
+      throw new Error('Source Bank or Cash wallet not found.');
+    }
+
+    let destWallet = payload.destinationWalletId
+      ? allWallets.find((w) => w.id === payload.destinationWalletId)
+      : allWallets.find((w) => w.type === 'Investment');
+
+    if (!destWallet) {
+      destWallet = await walletRepository.create({
+        userId,
+        name: 'Brokerage Reserve',
+        type: 'Investment',
+        isMain: false,
+        initialBalance: '0',
+      });
+    }
+
+    if (sourceWallet.id === destWallet.id) {
+      throw new Error('Source wallet and Investment destination wallet must be different.');
+    }
+
+    const tx = await transactionRepository.create({
+      userId,
+      walletId: sourceWallet.id,
+      destinationWalletId: destWallet.id,
+      amount: amountMad.toFixed(2),
+      type: 'Transfer',
+      category: '📈 Investments',
+      notes:
+        payload.notes ||
+        `Brokerage Reserve Funding: ${sourceWallet.name} → ${destWallet.name}`,
+    });
+
+    return {
+      success: true,
+      transaction: tx,
+      destinationWallet: destWallet,
     };
   }
 }

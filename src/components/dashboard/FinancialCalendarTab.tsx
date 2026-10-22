@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Landmark, Trash2, WalletCards, CalendarDays, TrendingUp, Repeat, Zap, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
-import { Debt, Payroll, Transaction, Goal, Subscription, KPI, Wallet } from '../../types';
+import { Debt, Payroll, Transaction, Goal, Subscription, KPI, Wallet, InvestmentsData } from '../../types';
 import { Button } from '../ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { CashFlowTab } from './CashFlowTab';
@@ -31,6 +31,7 @@ interface FinancialCalendarTabProps {
   kpis?: KPI | null;
   subscriptions?: Subscription[];
   wallets?: Wallet[];
+  investmentsData?: InvestmentsData | null;
   openTransaction: (id: string) => void;
   setActiveTab: (tab: any) => void;
   onCreatePayroll: (scheduledFor: string, amount: number) => Promise<void>;
@@ -45,6 +46,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   kpis = null,
   subscriptions = [],
   wallets = [],
+  investmentsData = null,
   openTransaction,
   setActiveTab,
   onCreatePayroll,
@@ -108,6 +110,24 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
 
     const dcaEvents: CalendarEvent[] = [];
 
+    // Project a Post-Payday Stock Allocation reminder (Payday + 1 day) when user has stock positions
+    if (investmentsData && investmentsData.positions.length > 0) {
+      const topTickers = investmentsData.positions.slice(0, 3).map((p) => p.ticker).join(', ');
+      payrolls.forEach((payroll) => {
+        const pDate = new Date(payroll.scheduledFor);
+        if (!isNaN(pDate.getTime())) {
+          const allocDate = new Date(pDate.getTime() + 24 * 60 * 60 * 1000);
+          dcaEvents.push({
+            id: `stock-payday-alloc-${payroll.id}`,
+            date: dateKey(allocDate),
+            kind: 'dca',
+            title: `Payday Stock Splitter (${topTickers})`,
+            amount: Math.round((Number.parseFloat(payroll.amount) || 0) * 0.15),
+          });
+        }
+      });
+    }
+
     // Project active recurring subscriptions onto this calendar month
     const subscriptionEvents: CalendarEvent[] = [];
     const daysInViewMonth = new Date(Date.UTC(ref.year, ref.month + 1, 0)).getUTCDate();
@@ -138,7 +158,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     });
 
     return [...transactionEvents, ...payrollEvents, ...debtEvents, ...dcaEvents, ...subscriptionEvents];
-  }, [debts, payrolls, transactions, subscriptions, ref]);
+  }, [debts, payrolls, transactions, subscriptions, investmentsData, ref]);
 
   const visible = events.filter((event) => {
     const eventDate = new Date(`${event.date}T00:00:00Z`);
@@ -468,12 +488,22 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                     return (
                       <button
                         key={event.id}
-                        onClick={() => event.transactionId ? openTransaction(event.transactionId) : event.debtId ? setActiveTab('debts') : undefined}
+                        onClick={() =>
+                          event.transactionId
+                            ? openTransaction(event.transactionId)
+                            : event.debtId
+                            ? setActiveTab('debts')
+                            : event.kind === 'dca' || event.kind === 'investment'
+                            ? setActiveTab('investments')
+                            : undefined
+                        }
                         className="flex w-full items-center justify-between gap-3 rounded-lg border p-3 text-left hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50"
                       >
                         <div className="min-w-0">
                           <p className="font-medium text-gray-900 dark:text-gray-100">{event.title}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{event.kind}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {event.kind === 'dca' ? 'Recommended 15% Payday Stock Allocation • Click to open Stocks' : event.kind}
+                          </p>
                         </div>
                         <span className="shrink-0 font-semibold text-gray-900 dark:text-gray-100">
                           {event.amount ? `${event.kind === 'income' ? '+' : event.kind === 'expense' || event.kind === 'subscription' ? '−' : ''}${event.amount.toFixed(2)} MAD` : ''}

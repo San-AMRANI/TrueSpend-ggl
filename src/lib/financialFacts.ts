@@ -1,4 +1,4 @@
-import { CategoryBudget, Debt, KPI, Transaction } from '../types/index.js';
+import { CategoryBudget, Debt, KPI, Transaction, InvestmentsData } from '../types/index.js';
 import { amountOf, getExpensesForMonth, isInMonth, transactionDate } from './finance.js';
 import { normalizeCategory } from './categories.js';
 import { getCurrentFinancialMonth, getPreviousFinancialMonth, type PayrollLike } from './financialMonth.js';
@@ -81,6 +81,7 @@ export function generateFacts(
   debts: Debt[],
   budgets: CategoryBudget[],
   payrolls: PayrollLike[] = [],
+  investmentsData?: InvestmentsData | null,
 ): FinancialFact[] {
   if (!kpis) return [];
 
@@ -1787,6 +1788,61 @@ export function generateFacts(
       value: `${elapsedPct}% elapsed`,
       icon: 'calendar',
       priority: 4,
+    });
+  }
+
+  // ── STOCK PORTFOLIO & BROKERAGE RESERVE FACTS ────────────────────────────
+  if (investmentsData && investmentsData.positions && investmentsData.positions.length > 0) {
+    const posCount = investmentsData.positions.length;
+    const isGain = investmentsData.totalUnrealizedPnlMad >= 0;
+
+    facts.push({
+      id: 'stock-portfolio-equity',
+      type: 'savings',
+      title: 'Stock portfolio equity',
+      message: `Your ${posCount} stock position${posCount > 1 ? 's' : ''} hold ${fmt(investmentsData.totalPortfolioValueMad)} MAD in market value (${isGain ? '+' : ''}${investmentsData.totalUnrealizedPnlPercent.toFixed(1)}% total return).`,
+      value: `${fmt(investmentsData.totalPortfolioValueMad)} MAD`,
+      icon: isGain ? 'trending-up' : 'trending-down',
+      priority: 2,
+    });
+
+    const topPerformer = [...investmentsData.positions].sort(
+      (a, b) => (b.unrealizedPnlPercent || 0) - (a.unrealizedPnlPercent || 0)
+    )[0];
+    if (topPerformer) {
+      facts.push({
+        id: 'stock-top-performer',
+        type: 'milestone',
+        title: 'Top performing stock',
+        message: `${topPerformer.ticker} (${topPerformer.companyName}) leads your portfolio with a ${topPerformer.unrealizedPnlPercent >= 0 ? '+' : ''}${topPerformer.unrealizedPnlPercent.toFixed(1)}% unrealized return.`,
+        value: `${topPerformer.unrealizedPnlPercent >= 0 ? '+' : ''}${topPerformer.unrealizedPnlPercent.toFixed(1)}% (${topPerformer.ticker})`,
+        icon: 'award',
+        priority: 2,
+      });
+    }
+
+    if (investmentsData.monthlyPassiveIncomeMad > 0) {
+      facts.push({
+        id: 'stock-dividend-passive-income',
+        type: 'income',
+        title: 'Passive dividend income',
+        message: `Your stock portfolio generates ~${fmt(investmentsData.annualPassiveIncomeMad)} MAD/yr (~${fmt(investmentsData.monthlyPassiveIncomeMad)} MAD/mo) in passive dividends.`,
+        value: `+${fmt(investmentsData.monthlyPassiveIncomeMad)} MAD / mo`,
+        icon: 'sparkles',
+        priority: 2,
+      });
+    }
+  }
+
+  if (typeof kpis.investmentReserve === 'number' && kpis.investmentReserve > 0) {
+    facts.push({
+      id: 'brokerage-reserve-shield',
+      type: 'savings',
+      title: 'Protected brokerage reserve',
+      message: `${fmt(kpis.investmentReserve)} MAD in your Investment Wallet is shielded from daily Safe-to-Spend burn and ready for stock orders.`,
+      value: `${fmt(kpis.investmentReserve)} MAD`,
+      icon: 'shield-check',
+      priority: 3,
     });
   }
 

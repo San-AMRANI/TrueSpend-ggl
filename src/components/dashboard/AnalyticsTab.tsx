@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Debt, Payroll, Transaction, Wallet, CategoryBudget, Goal, Subscription, DashboardTab } from '../../types';
+import { Debt, Payroll, Transaction, Wallet, CategoryBudget, Goal, Subscription, DashboardTab, InvestmentsData } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
@@ -84,6 +84,7 @@ interface AnalyticsTabProps {
   budgets?: CategoryBudget[];
   goals?: Goal[];
   subscriptions?: Subscription[];
+  investmentsData?: InvestmentsData | null;
   setActiveTab?: (tab: DashboardTab) => void;
 }
 
@@ -97,6 +98,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   budgets = [],
   goals = [],
   subscriptions = [],
+  investmentsData = null,
   setActiveTab,
 }) => {
   const [subView, setSubView] = useState<AnalyticsSubView>('overview');
@@ -284,13 +286,20 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     filteredTransactions.forEach((tx) => {
       const amount = parseFloat(tx.amount);
       const isInvest = isInvestmentTransaction(tx, wallets);
+      const sourceWallet = wallets.find((w) => w.id === tx.walletId);
+      const isFromInvestmentWallet = sourceWallet?.type === 'Investment';
+
       if (tx.type === 'Expense') {
         totalGrossExpenses += amount;
         if (isInvest) {
-          investmentCapital += netExpenseOf(tx);
+          if (!isFromInvestmentWallet) {
+            investmentCapital += netExpenseOf(tx);
+          }
         } else {
           totalExpenses += netExpenseOf(tx);
         }
+      } else if (tx.type === 'Transfer' && isInvest && !isFromInvestmentWallet) {
+        investmentCapital += amount;
       }
 
       if (
@@ -1177,13 +1186,32 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 </div>
               </div>
 
-              {adjustedTrueSpendData.investmentCapital > 0 && (
-                <div className="mt-4 flex items-center justify-between rounded-md bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 px-4 py-3 text-sm text-indigo-900 dark:text-indigo-200">
-                  <p>
-                    🛡️ <strong>{adjustedTrueSpendData.investmentCapital.toFixed(2)} MAD</strong> allocated to
-                    Investment Wallets / Assets is protected as capital conversions and strictly excluded from
-                    living expenses.
-                  </p>
+              {(adjustedTrueSpendData.investmentCapital > 0 || (investmentsData && investmentsData.positions.length > 0)) && (
+                <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-900/50 px-4 py-3 text-sm text-indigo-900 dark:text-indigo-200">
+                  <div className="space-y-0.5">
+                    <p>
+                      🛡️ <strong>{adjustedTrueSpendData.investmentCapital.toFixed(2)} MAD</strong> deployed to{' '}
+                      <strong>📈 Investments &amp; Brokerage Reserve</strong> this period is protected as capital conversion and strictly excluded from living expenses.
+                    </p>
+                    {investmentsData && investmentsData.positions.length > 0 && (
+                      <p className="text-xs text-indigo-700 dark:text-indigo-300">
+                        Active Stock Portfolio: <strong>{investmentsData.positions.length} positions</strong> • Market Value:{' '}
+                        <strong>{investmentsData.totalPortfolioValueMad.toFixed(2)} MAD</strong> (
+                        {investmentsData.totalUnrealizedPnlMad >= 0 ? '+' : ''}
+                        {investmentsData.totalUnrealizedPnlPercent.toFixed(1)}% return)
+                      </p>
+                    )}
+                  </div>
+                  {setActiveTab && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveTab('investments')}
+                      className="shrink-0 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 text-xs"
+                    >
+                      Open Stock Portfolio <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
+                  )}
                 </div>
               )}
               {adjustedTrueSpendData.pendingReimbursable > 0 && (

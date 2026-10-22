@@ -54,6 +54,7 @@ export class KpiService {
       userSettings: {
         emergencyBuffer: parseFloat(dbUser.emergencyBuffer as unknown as string) || 0,
         salary: parseFloat(dbUser.salary as unknown as string) || 0,
+        payday: dbUser.payday ? Number(dbUser.payday) : undefined,
       }
     };
     

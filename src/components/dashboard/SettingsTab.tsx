@@ -10,7 +10,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { WalletsManager } from './WalletsManager';
 import { UsersAndRolesSection } from './UsersAndRolesSection';
 import type { NotifSettings, ServerNotifSettings } from '../../hooks/useNotifications';
-import type { Wallet, Subscription, Debt } from '../../types';
+import type { Wallet, Subscription, Debt, InvestmentsData, DashboardTab } from '../../types';
 
 interface NotificationsApi {
   supported: boolean;
@@ -34,6 +34,8 @@ interface SettingsTabProps {
   wallets?: Wallet[];
   subscriptions?: Subscription[];
   debts?: Debt[];
+  investmentsData?: InvestmentsData | null;
+  setActiveTab?: (tab: DashboardTab) => void;
   handleCreateWallet?: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   handleUpdateWallet?: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   handleDeleteWallet?: (id: string, reassignToWalletId?: string) => Promise<any>;
@@ -51,6 +53,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   wallets = [],
   subscriptions = [],
   debts = [],
+  investmentsData = null,
+  setActiveTab,
   handleCreateWallet,
   handleUpdateWallet,
   handleDeleteWallet,
@@ -326,6 +330,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           wallets={wallets}
           subscriptions={subscriptions}
           debts={debts}
+          investmentsData={investmentsData}
+          onOpenInvestments={setActiveTab ? () => setActiveTab('investments') : undefined}
           onCreateWallet={handleCreateWallet}
           onUpdateWallet={handleUpdateWallet}
           onDeleteWallet={handleDeleteWallet}

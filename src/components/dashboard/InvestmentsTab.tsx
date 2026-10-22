@@ -89,6 +89,18 @@ interface InvestmentsTabProps {
     syncWithWallet?: boolean;
     allocations: { positionId: string; amountMad: number }[];
   }) => Promise<any>;
+  onFundInvestmentWallet?: (payload: {
+    sourceWalletId?: string;
+    destinationWalletId?: string;
+    amountMad: number;
+    notes?: string;
+  }) => Promise<any>;
+  onCreateWallet?: (payload: {
+    name: string;
+    type: 'Bank' | 'Cash' | 'Savings' | 'Investment';
+    isMain?: boolean;
+    initialBalance?: number;
+  }) => Promise<any>;
   onSearchStocks: (q: string) => Promise<StockCatalogItem[]>;
 }
 
@@ -115,6 +127,8 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   onExecuteOrder,
   onDeleteOrder,
   onExecutePaydayAllocation,
+  onFundInvestmentWallet,
+  onCreateWallet,
   onSearchStocks,
 }) => {
   const [activeView, setActiveView] = useState<'portfolio' | 'discover' | 'payday'>('portfolio');
@@ -152,7 +166,23 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   const [orderNotes, setOrderNotes] = useState('');
   const [orderError, setOrderError] = useState('');
 
+  // Brokerage Wallet Funding Modal State
+  const [showFundWalletModal, setShowFundWalletModal] = useState(false);
+  const [fundSourceWalletId, setFundSourceWalletId] = useState<string>('');
+  const [fundDestWalletId, setFundDestWalletId] = useState<string>('');
+  const [fundAmountMad, setFundAmountMad] = useState<string>('');
+  const [fundNotes, setFundNotes] = useState<string>('');
+  const [fundError, setFundError] = useState<string>('');
+
   // Payday Stock Splitter State
+  const investmentWalletsList = useMemo(
+    () => wallets.filter((w) => w.type === 'Investment'),
+    [wallets]
+  );
+  const fundingSourceWallets = useMemo(
+    () => wallets.filter((w) => w.type !== 'Investment'),
+    [wallets]
+  );
   const defaultWallet = useMemo(
     () =>
       wallets.find((w) => w.type === 'Investment') ||
@@ -667,31 +697,88 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
         </Card>
       </div>
 
-      {/* ── TrueSpend Cash-Flow Integration Guidance Strip ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-xs">
-        <div className="flex items-center gap-2.5 text-gray-700 dark:text-gray-300">
-          <WalletCards className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
-          <span>{buyingPower.guidanceText}</span>
-        </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={() => setActiveView('payday')}
-            className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
-          >
-            Payday Stock Splitter →
-          </button>
-          <span className="text-gray-300 dark:text-gray-700">·</span>
-          <button
-            type="button"
-            onClick={() => onRefresh()}
-            className="inline-flex items-center gap-1 text-gray-500 hover:text-gray-900 dark:hover:text-white whitespace-nowrap"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            <span>Refresh Quotes</span>
-          </button>
-        </div>
-      </div>
+      {/* ── TrueSpend Brokerage Reserve (Investment Wallet) & Cash-Flow Hub ── */}
+      <Card className="border-amber-200/70 dark:border-amber-900/50 bg-gradient-to-r from-amber-50/40 via-white to-indigo-50/30 dark:from-amber-950/15 dark:via-gray-900 dark:to-indigo-950/15">
+        <CardContent className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5 min-w-0">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 mt-0.5">
+              <Landmark className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                <span className="text-sm font-bold text-gray-900 dark:text-white">
+                  Brokerage Reserve Wallet ({investmentWalletsList.length > 0 ? investmentWalletsList.map((w) => w.name).join(' · ') : 'No Investment Wallet Yet'})
+                </span>
+                <span className="text-gray-300 dark:text-gray-700">·</span>
+                <span className="text-xs font-mono tabular-nums font-semibold text-amber-700 dark:text-amber-300">
+                  Uninvested Cash: {buyingPower.investmentWalletBalanceMad.toLocaleString()} MAD
+                </span>
+                <span className="text-gray-300 dark:text-gray-700">·</span>
+                <span className="text-xs font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">
+                  Stock Equity: {totalValueMad.toLocaleString(undefined, { maximumFractionDigits: 0 })} MAD
+                </span>
+                <span className="text-gray-300 dark:text-gray-700">·</span>
+                <span className="text-xs font-mono tabular-nums font-bold text-gray-900 dark:text-white">
+                  Total Brokerage Account: {(buyingPower.investmentWalletBalanceMad + totalValueMad).toLocaleString(undefined, { maximumFractionDigits: 0 })} MAD
+                </span>
+              </div>
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                {buyingPower.guidanceText}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {onFundInvestmentWallet && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  const defaultSource =
+                    fundingSourceWallets.find((w) => w.type === 'Bank' && w.isMain) ||
+                    fundingSourceWallets[0];
+                  setFundSourceWalletId(defaultSource?.id || '');
+                  setFundDestWalletId(investmentWalletsList[0]?.id || '');
+                  setFundAmountMad(
+                    buyingPower.remainingInvestmentBudgetMad > 0
+                      ? String(Math.round(buyingPower.remainingInvestmentBudgetMad))
+                      : '1000'
+                  );
+                  setFundNotes('');
+                  setFundError('');
+                  setShowFundWalletModal(true);
+                }}
+                className="bg-amber-600 hover:bg-amber-700 text-white text-xs flex items-center gap-1.5 whitespace-nowrap"
+              >
+                <WalletCards className="h-3.5 w-3.5" />
+                <span>
+                  {investmentWalletsList.length > 0
+                    ? 'Fund Brokerage Wallet'
+                    : 'Create & Fund Brokerage Wallet'}
+                </span>
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setActiveView('payday')}
+              className="text-xs whitespace-nowrap"
+            >
+              Payday Stock Splitter →
+            </Button>
+            <button
+              type="button"
+              onClick={() => onRefresh()}
+              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 dark:hover:text-white px-2 py-1"
+              title="Refresh Live Stock Quotes"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ═══════════════════════════════════════════════════════════════════════════
           VIEW 1: MY STOCK POSITIONS & PORTFOLIO ALLOCATION
@@ -2076,17 +2163,40 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                 </label>
 
                 {orderSyncWallet && (
-                  <select
-                    value={orderWalletId}
-                    onChange={(e) => setOrderWalletId(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs sm:text-sm text-gray-900 dark:text-white"
-                  >
-                    {wallets.map((w) => (
-                      <option key={w.id} value={w.id}>
-                        {w.name} ({w.type} · {w.balance.toFixed(0)} MAD)
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <select
+                      value={orderWalletId}
+                      onChange={(e) => setOrderWalletId(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs sm:text-sm text-gray-900 dark:text-white"
+                    >
+                      {wallets.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.type === 'Investment' ? '📈 ' : w.type === 'Bank' ? '🏦 ' : '💵 '}
+                          {w.name} ({w.type} · {w.balance.toFixed(0)} MAD)
+                        </option>
+                      ))}
+                    </select>
+                    {(() => {
+                      const selectedW = wallets.find((w) => w.id === orderWalletId);
+                      if (!selectedW) return null;
+                      if (selectedW.type === 'Investment') {
+                        return (
+                          <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                            {orderAction === 'BUY'
+                              ? 'Uses protected Brokerage Reserve cash — does not reduce your Safe-to-Spend or double-count against your 📈 Investments budget.'
+                              : 'Deposits proceeds into your protected Brokerage Reserve cash for future stock reinvestment.'}
+                          </p>
+                        );
+                      }
+                      return (
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                          {orderAction === 'BUY'
+                            ? 'Paid directly from Bank/Cash — counts toward your 📈 Investments budget and reduces Safe-to-Spend.'
+                            : 'Deposits proceeds directly into your spendable Bank/Cash liquidity.'}
+                        </p>
+                      );
+                    })()}
+                  </>
                 )}
               </div>
 
@@ -2133,6 +2243,166 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                     : orderAction === 'SELL'
                     ? 'Confirm Sell Order'
                     : 'Record Cash Dividend'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════════════
+          MODAL 3: FUND BROKERAGE WALLET (1-CLICK TRANSFER TO INVESTMENT RESERVE)
+         ═══════════════════════════════════════════════════════════════════════════ */}
+      {showFundWalletModal && onFundInvestmentWallet && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-800">
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                  Fund Brokerage Reserve Wallet
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Transfer cash from Bank/Cash into your protected Investment Reserve
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFundWalletModal(false)}
+                className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-lg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setFundError('');
+                try {
+                  const amt = parseFloat(fundAmountMad || '0');
+                  if (!amt || amt <= 0) {
+                    setFundError('Please enter a valid amount in MAD.');
+                    return;
+                  }
+                  await onFundInvestmentWallet({
+                    sourceWalletId: fundSourceWalletId || undefined,
+                    destinationWalletId: fundDestWalletId || undefined,
+                    amountMad: amt,
+                    notes: fundNotes || undefined,
+                  });
+                  setShowFundWalletModal(false);
+                } catch (err: any) {
+                  setFundError(err?.message || 'Failed to transfer funds to Investment wallet.');
+                }
+              }}
+              className="p-5 space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  From Spendable Wallet (Bank / Cash)
+                </label>
+                <select
+                  value={fundSourceWalletId}
+                  onChange={(e) => setFundSourceWalletId(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs sm:text-sm text-gray-900 dark:text-white"
+                >
+                  {fundingSourceWallets.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} ({w.type} · {w.balance.toFixed(2)} MAD)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  To Brokerage Reserve Wallet (Investment)
+                </label>
+                {investmentWalletsList.length > 0 ? (
+                  <select
+                    value={fundDestWalletId}
+                    onChange={(e) => setFundDestWalletId(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs sm:text-sm text-gray-900 dark:text-white"
+                  >
+                    {investmentWalletsList.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        📈 {w.name} (Current Reserve: {w.balance.toFixed(2)} MAD)
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50/60 dark:bg-amber-950/30 p-2.5 text-xs text-amber-800 dark:text-amber-300">
+                    A new <strong>&ldquo;Brokerage Reserve&rdquo; (Investment)</strong> wallet will be automatically created and funded for you.
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    Transfer Amount (MAD) *
+                  </label>
+                  {buyingPower.remainingInvestmentBudgetMad > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFundAmountMad(String(Math.round(buyingPower.remainingInvestmentBudgetMad)))
+                      }
+                      className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-mono"
+                    >
+                      Remaining Budget ({buyingPower.remainingInvestmentBudgetMad.toFixed(0)} MAD)
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="number"
+                  step="any"
+                  min="1"
+                  required
+                  value={fundAmountMad}
+                  onChange={(e) => setFundAmountMad(e.target.value)}
+                  placeholder="1000"
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono tabular-nums text-gray-900 dark:text-white"
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Recorded as a <code className="font-mono">Transfer</code> under{' '}
+                  <strong>📈 Investments</strong> — counts toward your monthly investment target and moves cash into your protected Brokerage Reserve.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Note (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={fundNotes}
+                  onChange={(e) => setFundNotes(e.target.value)}
+                  placeholder="e.g. Monthly brokerage funding for stock buys"
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-xs sm:text-sm text-gray-900 dark:text-white"
+                />
+              </div>
+
+              {fundError && (
+                <p className="text-xs text-rose-600 dark:text-rose-400">{fundError}</p>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowFundWalletModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={isSaving}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  {isSaving ? 'Transferring...' : 'Transfer to Brokerage Reserve'}
                 </Button>
               </div>
             </form>

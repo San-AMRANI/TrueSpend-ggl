@@ -4,12 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
-import { Wallet, Subscription, Debt } from '../../types';
+import { Wallet, Subscription, Debt, InvestmentsData } from '../../types';
 
 interface WalletsManagerProps {
   wallets: Wallet[];
   subscriptions?: Subscription[];
   debts?: Debt[];
+  investmentsData?: InvestmentsData | null;
+  onOpenInvestments?: () => void;
   onPaySubscription?: (id: string, payload?: { walletId?: string; date?: string }) => Promise<any>;
   onCreateWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   onUpdateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
@@ -22,6 +24,8 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   wallets,
   subscriptions = [],
   debts = [],
+  investmentsData = null,
+  onOpenInvestments,
   onPaySubscription,
   onCreateWallet,
   onUpdateWallet,
@@ -315,6 +319,11 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                           Goal Vault
                         </span>
                       )}
+                      {wallet.type === 'Investment' && (
+                        <span className="rounded bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300">
+                          Brokerage Reserve
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -346,6 +355,64 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
 
               {/* Balance figures */}
               {(() => {
+                if (wallet.type === 'Investment') {
+                  const invWallets = wallets.filter((w) => w.type === 'Investment');
+                  const isFirstInvWallet = invWallets[0]?.id === wallet.id;
+                  const linkedStocks = (investmentsData?.positions || []).filter(
+                    (p) => !p.isWatchlistOnly && p.sharesNum > 0 && (p.walletId === wallet.id || (!p.walletId && isFirstInvWallet))
+                  );
+                  const uninvestedCashMad = wallet.balance ?? 0;
+                  const linkedStockValueMad = linkedStocks.reduce((sum, p) => sum + p.marketValueMad, 0);
+                  const totalBrokerageMad = uninvestedCashMad + linkedStockValueMad;
+
+                  return (
+                    <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800/80 space-y-2.5">
+                      <div className="flex items-baseline justify-between">
+                        <div>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400">Uninvested Brokerage Cash</p>
+                          <div className="text-xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
+                            {uninvestedCashMad.toFixed(2)}{' '}
+                            <span className="text-xs font-medium text-gray-500">MAD</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400">Linked Stock Equity</p>
+                          <div className="text-base font-bold font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
+                            {linkedStockValueMad.toFixed(2)}{' '}
+                            <span className="text-[10px] font-medium text-gray-400">MAD</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/50">
+                        <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
+                          <TrendingUp className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                          <span>Total Brokerage Value:</span>
+                        </div>
+                        <span className="font-bold font-mono tabular-nums text-amber-900 dark:text-amber-200">
+                          {totalBrokerageMad.toFixed(2)} MAD ({linkedStocks.length} stock{linkedStocks.length === 1 ? '' : 's'})
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 pt-0.5">
+                        <span>Protected Reserve (excluded from Safe-to-Spend)</span>
+                        {onOpenInvestments && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose?.();
+                              onOpenInvestments();
+                            }}
+                            className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                          >
+                            Manage Stocks →
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
                 const assignedSubs = (subscriptions || []).filter(
                   (s) => s.status === 'active' && (s.walletId === wallet.id || (!s.walletId && wallet.isMain))
                 );

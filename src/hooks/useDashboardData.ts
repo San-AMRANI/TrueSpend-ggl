@@ -702,6 +702,23 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleFundInvestmentWallet = async (payload: {
+    sourceWalletId?: string;
+    destinationWalletId?: string;
+    amountMad: number;
+    notes?: string;
+  }) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.fundInvestmentWallet(payload, token);
+      await fetchData();
+      return res;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSearchStocks = async (q: string) => {
     if (!token) return [];
     try {
@@ -789,6 +806,7 @@ export function useDashboardData(token: string | null) {
     handleExecuteStockOrder,
     handleDeleteStockOrder,
     handleExecutePaydayAllocation,
+    handleFundInvestmentWallet,
     handleSearchStocks,
     notifications,
   };

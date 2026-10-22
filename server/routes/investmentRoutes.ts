@@ -18,7 +18,8 @@ router.delete('/investments/positions/:id', (req, res) => investmentController.d
 router.post('/investments/orders', (req, res) => investmentController.executeOrder(req as any, res));
 router.delete('/investments/orders/:id', (req, res) => investmentController.deleteOrder(req as any, res));
 
-// Payday Batch Allocation
+// Payday Batch Allocation & Brokerage Wallet Funding
 router.post('/investments/payday-allocate', (req, res) => investmentController.executePaydayBatchBuy(req as any, res));
+router.post('/investments/fund-wallet', (req, res) => investmentController.fundInvestmentWallet(req as any, res));
 
 export default router;

@@ -85,6 +85,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleExecuteStockOrder,
     handleDeleteStockOrder,
     handleExecutePaydayAllocation,
+    handleFundInvestmentWallet,
     handleSearchStocks,
     handleCreateContext,
     handleUpdateContext,
@@ -162,6 +163,8 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onExecuteOrder={handleExecuteStockOrder}
           onDeleteOrder={handleDeleteStockOrder}
           onExecutePaydayAllocation={handleExecutePaydayAllocation}
+          onFundInvestmentWallet={handleFundInvestmentWallet}
+          onCreateWallet={handleCreateWallet}
           onSearchStocks={handleSearchStocks}
           onRefresh={fetchData}
           setActiveTab={setActiveTab}
@@ -178,6 +181,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           goals={goals}
           debts={debts}
           payrolls={payrolls}
+          investmentsData={investmentsData}
           setActiveTab={setActiveTab}
           handleDeleteTx={handleDeleteTransaction}
           fetchData={fetchData}
@@ -194,6 +198,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           kpis={kpis}
           subscriptions={subscriptions}
           wallets={kpis?.accounts || []}
+          investmentsData={investmentsData}
           openTransaction={openTransaction}
           setActiveTab={setActiveTab}
           onCreatePayroll={handleCreatePayroll}
@@ -210,12 +215,14 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           debts={debts}
           goals={goals}
           wallets={kpis?.accounts || []}
+          investmentsData={investmentsData}
           onSaveBudget={handleSaveCategoryBudget}
           onSaveBudgetsBatch={handleSaveCategoryBudgetsBatch}
           onCopyPrevious={handleCopyPreviousMonthBudgets}
           onClearMonth={handleClearCategoryBudgetsMonth}
           onDeleteBudget={handleDeleteCategoryBudget}
           onContributeGoal={handleContributeToGoal}
+          onFundInvestmentWallet={handleFundInvestmentWallet}
           setActiveTab={setActiveTab}
         />
       )}
@@ -273,6 +280,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           budgets={budgets}
           goals={goals}
           subscriptions={subscriptions}
+          investmentsData={investmentsData}
           analyticsMonth={analyticsMonth}
           setAnalyticsMonth={setAnalyticsMonth}
           wallets={kpis?.accounts || []}
@@ -292,6 +300,8 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           wallets={kpis?.accounts || []}
           subscriptions={subscriptions}
           debts={debts}
+          investmentsData={investmentsData}
+          setActiveTab={setActiveTab}
           handleCreateWallet={handleCreateWallet}
           handleUpdateWallet={handleUpdateWallet}
           handleDeleteWallet={handleDeleteWallet}
@@ -312,6 +322,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           goals={goals}
           contexts={contexts}
           investmentsData={investmentsData}
+          userSettings={userSettings}
           setActiveTab={setActiveTab}
         />
       )}

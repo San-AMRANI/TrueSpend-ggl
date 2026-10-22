@@ -221,6 +221,15 @@ export const dashboardService = {
     },
     token: string | null
   ) => apiClient.post<{ success: boolean; executedCount: number }>('/api/investments/payday-allocate', payload, token),
+  fundInvestmentWallet: (
+    payload: {
+      sourceWalletId?: string;
+      destinationWalletId?: string;
+      amountMad: number;
+      notes?: string;
+    },
+    token: string | null
+  ) => apiClient.post<{ success: boolean; transaction: Transaction; destinationWallet: Wallet }>('/api/investments/fund-wallet', payload, token),
 
   // AI Cycle Wrap-Up & Payday Retrospective (Report Card)
   getCycles: (token: string | null) =>

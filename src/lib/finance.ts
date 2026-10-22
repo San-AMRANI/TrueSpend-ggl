@@ -133,7 +133,19 @@ export const getCategorySpending = (
       }
 
       if (txCategory !== normCategory) return false;
-      if (transaction.type === 'Expense') return true;
+      if (transaction.type === 'Expense') {
+        if (wallets && transaction.walletId) {
+          const sourceWallet = wallets.find((w) => w.id === transaction.walletId);
+          const sourceType = sourceWallet?.type?.toLowerCase();
+          if (normCategory === '📈 Investments' && sourceType === 'investment') {
+            return false;
+          }
+          if (normCategory === '🛟 Emergency & goals Fund' && sourceType === 'savings') {
+            return false;
+          }
+        }
+        return true;
+      }
       if (transaction.type === 'Transfer') {
         return Boolean(txCategory && txCategory !== '🔄 Transfer' && txCategory !== 'Transfer');
       }

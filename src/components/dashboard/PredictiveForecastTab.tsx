@@ -59,6 +59,7 @@ interface PredictiveForecastTabProps {
   goals: Goal[];
   contexts: FinancialContext[];
   investmentsData?: InvestmentsData | null;
+  userSettings?: any;
   setActiveTab: (tab: DashboardTab) => void;
 }
 
@@ -80,6 +81,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
   goals,
   contexts,
   investmentsData = null,
+  userSettings = null,
   setActiveTab,
 }) => {
   const [whatIf, setWhatIf] = useState<WhatIfScenarioParams>(DEFAULT_WHAT_IF);
@@ -100,6 +102,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
         goals,
         contexts,
         investmentsData,
+        userSettings,
         whatIf,
       }),
     [
@@ -112,6 +115,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
       goals,
       contexts,
       investmentsData,
+      userSettings,
       whatIf,
     ]
   );

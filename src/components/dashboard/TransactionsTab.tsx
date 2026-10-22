@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Transaction, Wallet, CategoryBudget, Subscription, Goal, Debt, Payroll, DashboardTab } from '../../types';
+import { Transaction, Wallet, CategoryBudget, Subscription, Goal, Debt, Payroll, DashboardTab, InvestmentsData, StockOrder } from '../../types';
 import { expenseCategories, incomeAndTransferCategories, normalizeCategory } from '../../lib/categories';
-import { filterTransactions, TransactionFilters, getCategorySpending, netExpenseOf } from '../../lib/finance';
+import { filterTransactions, TransactionFilters, getCategorySpending, netExpenseOf, isInvestmentTransaction } from '../../lib/finance';
 import { getFinancialMonthRef } from '../../lib/financialMonth';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -56,6 +56,7 @@ interface TransactionsTabProps {
   goals?: Goal[];
   debts?: Debt[];
   payrolls?: Payroll[];
+  investmentsData?: InvestmentsData | null;
   setActiveTab?: (tab: DashboardTab) => void;
   handleDeleteTx: (id: string) => Promise<void> | void;
   fetchData: () => void;
@@ -74,7 +75,7 @@ const initialFilters: TransactionFilters = {
 };
 
 type ViewMode = 'grouped' | 'compact' | 'table';
-type QuickPreset = 'all' | 'expense' | 'income' | 'transfer' | 'split' | 'over_budget' | 'high_value';
+type QuickPreset = 'all' | 'expense' | 'income' | 'transfer' | 'stocks' | 'split' | 'over_budget' | 'high_value';
 
 export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   transactions,
@@ -85,6 +86,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   goals = [],
   debts = [],
   payrolls = [],
+  investmentsData = null,
   setActiveTab,
   handleDeleteTx,
   fetchData,
@@ -214,6 +216,21 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     });
   };
 
+  // Match a transaction to a Stock Order (Buy / Sell / Dividend)
+  const stockOrderByTxId = useMemo(() => {
+    const map = new Map<string, StockOrder>();
+    for (const order of investmentsData?.orders || []) {
+      if (order.linkedTransactionId) {
+        map.set(order.linkedTransactionId, order);
+      }
+    }
+    return map;
+  }, [investmentsData?.orders]);
+
+  const getMatchedStockOrder = (tx: Transaction): StockOrder | undefined => {
+    return stockOrderByTxId.get(tx.id);
+  };
+
   // Check budget health for an expense transaction
   const getTransactionBudgetHealth = (tx: Transaction) => {
     if (tx.type !== 'Expense' || !tx.category) return null;
@@ -262,6 +279,14 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
       result = result.filter((tx) => tx.type === 'Income');
     } else if (quickPreset === 'transfer') {
       result = result.filter((tx) => tx.type === 'Transfer');
+    } else if (quickPreset === 'stocks') {
+      result = result.filter(
+        (tx) =>
+          stockOrderByTxId.has(tx.id) ||
+          isInvestmentTransaction(tx, wallets) ||
+          normalizeCategory(tx.category) === '📈 Investments' ||
+          normalizeCategory(tx.category) === '📈 Investment Returns / Dividends'
+      );
     } else if (quickPreset === 'split') {
       result = result.filter(
         (tx) => (tx.splits && tx.splits.length > 0) || (parseFloat(tx.reimbursableAmount || '0') > 0)
@@ -276,7 +301,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     }
 
     return result;
-  }, [filters, transactions, quickPreset, budgets, categorySpentMap]);
+  }, [filters, transactions, quickPreset, budgets, categorySpentMap, stockOrderByTxId, wallets]);
 
   // Active filter count
   const activeFilterCount = [
@@ -709,6 +734,82 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                     <p className="text-[11px] text-gray-500 dark:text-gray-400">
                       Matches your registered recurring bill in Subscriptions.
                     </p>
+                  </div>
+                );
+              })()}
+
+              {/* Connected Stock Order / Equity Trade Card */}
+              {(() => {
+                const matchedOrder = getMatchedStockOrder(inspectingTx);
+                const isInvTransfer =
+                  inspectingTx.type === 'Transfer' &&
+                  inspectingTx.destinationWalletId &&
+                  wallets.find((w) => w.id === inspectingTx.destinationWalletId)?.type === 'Investment';
+
+                if (!matchedOrder && !isInvTransfer) return null;
+
+                const matchedPosition = matchedOrder
+                  ? investmentsData?.positions.find(
+                      (p) => p.id === matchedOrder.positionId || p.ticker === matchedOrder.ticker
+                    )
+                  : undefined;
+
+                return (
+                  <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/30 p-4 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-indigo-800 dark:text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Coins className="w-3.5 h-3.5" />
+                        {matchedOrder
+                          ? `Connected Stock Order: ${matchedOrder.action} ${matchedOrder.ticker || matchedPosition?.ticker || ''}`
+                          : 'Brokerage Reserve Capital Funding'}
+                      </span>
+                      {setActiveTab && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInspectingTx(null);
+                            setActiveTab('investments');
+                          }}
+                          className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                        >
+                          Open Stock Portfolio <ChevronRight className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+
+                    {matchedOrder ? (
+                      <>
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div>
+                            <span className="text-gray-500 dark:text-gray-400">Shares & Price</span>
+                            <p className="font-bold text-gray-900 dark:text-gray-100">
+                              {parseFloat(matchedOrder.shares).toFixed(2)} sh @ {parseFloat(matchedOrder.pricePerShare).toFixed(2)} {matchedOrder.currency || 'USD'}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500 dark:text-gray-400">MAD Settlement</span>
+                            <p className="font-bold text-indigo-600 dark:text-indigo-400">
+                              {parseFloat(matchedOrder.totalMadAmount).toFixed(2)} MAD
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500 dark:text-gray-400">Current Position</span>
+                            <p className="font-bold text-gray-900 dark:text-gray-100">
+                              {matchedPosition
+                                ? `${matchedPosition.sharesNum.toFixed(2)} sh (${matchedPosition.unrealizedPnlPercent >= 0 ? '+' : ''}${matchedPosition.unrealizedPnlPercent.toFixed(1)}%)`
+                                : matchedOrder.companyName || matchedOrder.ticker || 'Position'}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                          Protected under Financial Calculation Contract — treated as equity capital conversion, not living burn.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-gray-600 dark:text-gray-300">
+                        Moved liquid funds into your Brokerage Reserve (<code className="font-mono">Investment</code> wallet). Counts toward your <span className="font-semibold">📈 Investments</span> monthly target without inflating living expenses.
+                      </p>
+                    )}
                   </div>
                 );
               })()}
@@ -1204,6 +1305,16 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
               🔄 Transfers
             </button>
             <button
+              onClick={() => setQuickPreset(quickPreset === 'stocks' ? 'all' : 'stocks')}
+              className={`rounded-full px-3 py-1 font-medium transition-all whitespace-nowrap ${
+                quickPreset === 'stocks'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100'
+              }`}
+            >
+              📈 Stock Orders &amp; Reserve
+            </button>
+            <button
               onClick={() => setQuickPreset(quickPreset === 'split' ? 'all' : 'split')}
               className={`rounded-full px-3 py-1 font-medium transition-all whitespace-nowrap ${
                 quickPreset === 'split'
@@ -1610,6 +1721,17 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                                     <Repeat className="w-2.5 h-2.5" /> Sub: {matchedSub.name}
                                   </span>
                                 )}
+
+                                {/* Interconnected Stock Order Badge */}
+                                {(() => {
+                                  const matchedOrder = getMatchedStockOrder(transaction);
+                                  if (!matchedOrder) return null;
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800">
+                                      📈 {matchedOrder.action} {parseFloat(matchedOrder.shares).toFixed(2)} {matchedOrder.ticker || ''} @ {parseFloat(matchedOrder.pricePerShare).toFixed(2)} {matchedOrder.currency || 'USD'}
+                                    </span>
+                                  );
+                                })()}
 
                                 {/* Interconnected Split / Contact Badge */}
                                 {transaction.splits && transaction.splits.length > 1 ? (

@@ -360,11 +360,22 @@ export interface BuyingPowerSnapshot {
   guidanceText: string;
 }
 
+export interface InvestmentWalletSummary {
+  walletId: string;
+  name: string;
+  type: 'Investment';
+  uninvestedCashMad: number;
+  investedStockValueMad: number;
+  totalAccountValueMad: number;
+  positionsCount: number;
+}
+
 export interface InvestmentsData {
   positions: StockPosition[];
   watchlistPositions: StockPosition[];
   orders: StockOrder[];
   catalog: StockCatalogItem[];
+  investmentWallets?: InvestmentWalletSummary[];
   rates: {
     USD_TO_MAD: number;
     EUR_TO_MAD: number;

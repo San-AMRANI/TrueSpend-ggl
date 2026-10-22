@@ -18,6 +18,7 @@ export interface FinancialEngineInput {
   userSettings: {
     emergencyBuffer: number;
     salary: number;
+    payday?: number;
   };
   wallets?: FinancialEngineWalletInput[];
   now?: Date;
@@ -57,6 +58,8 @@ export function computeFinancialState(input: FinancialEngineInput) {
   let monthlyFixedExpenses = 0;
   let monthlyIncome = 0;
   let monthlyInvestmentFunded = 0;
+  let monthlyStockPurchasesMad = 0;
+  let monthlyDividendIncomeMad = 0;
   let monthlySavingsFunded = 0;
   let dailySpent = 0;
   let todaysIncome = 0;
@@ -181,9 +184,16 @@ export function computeFinancialState(input: FinancialEngineInput) {
         }
       } else if (tx.type === 'Expense') {
         if (isInvestmentCategory || isInvestmentWalletTx) {
-          monthlyInvestmentFunded += netExpense;
+          monthlyStockPurchasesMad += netExpense;
+          // Only count against monthlyInvestmentFunded if paid from a non-Investment wallet (Bank/Cash),
+          // because funds inside an Investment wallet were already counted when transferred into the reserve.
+          if (!isInvestmentWalletTx) {
+            monthlyInvestmentFunded += netExpense;
+          }
         } else if (isSavingsCategory || isSavingsWalletTx) {
-          monthlySavingsFunded += netExpense;
+          if (!isSavingsWalletTx) {
+            monthlySavingsFunded += netExpense;
+          }
         } else {
           monthlyExpenses += netExpense;
           if (variableCategories.includes(tx.category || '')) {
@@ -193,7 +203,12 @@ export function computeFinancialState(input: FinancialEngineInput) {
           }
         }
       }
-      if (tx.type === 'Income') monthlyIncome += txAmount;
+      if (tx.type === 'Income') {
+        monthlyIncome += txAmount;
+        if (isInvestmentCategory || isInvestmentWalletTx || (tx.category || '').toLowerCase().includes('dividend')) {
+          monthlyDividendIncomeMad += txAmount;
+        }
+      }
       if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) debtRepayments += txAmount;
       if (tx.type === 'Expense' && !isPayableTx && tx.reimbursableAmount) reimbursements += reimbursableAmt;
     }
@@ -376,7 +391,10 @@ export function computeFinancialState(input: FinancialEngineInput) {
     dailyRemaining,
     dailyUsagePercent,
     dailyStatus,
-    payday: null,
+    payday: nextPayday ? nextPayday.getDate() : ((input.userSettings as any)?.payday || null),
+    salary: (input.userSettings?.salary && input.userSettings.salary > 0 ? input.userSettings.salary : 0) ||
+      (nextPayroll ? parseFloat(nextPayroll.amount as string) : 0) ||
+      (currentFm ? parseFloat(currentFm.startPayroll.amount as string) : 0),
     currentFinancialAmount: currentFm ? Number(currentFm.startPayroll.amount) : 0,
     financialPeriodStart: currentFm ? currentFm.start.toISOString() : null,
     financialPeriodEnd: currentFm ? currentFm.end.toISOString() : null,
@@ -398,6 +416,8 @@ export function computeFinancialState(input: FinancialEngineInput) {
     totalSavingsBudget: Math.round(totalSavingsBudget * 100) / 100,
     totalInvestmentBudget: Math.round(totalInvestmentBudget * 100) / 100,
     monthlyInvestmentFunded: Math.round(monthlyInvestmentFunded * 100) / 100,
+    monthlyStockPurchasesMad: Math.round(monthlyStockPurchasesMad * 100) / 100,
+    monthlyDividendIncomeMad: Math.round(monthlyDividendIncomeMad * 100) / 100,
     monthlySavingsFunded: Math.round(monthlySavingsFunded * 100) / 100,
     monthlyFixedExpenses: Math.round(monthlyFixedExpenses * 100) / 100,
     monthlyVariableExpenses: Math.round(monthlyVariableExpenses * 100) / 100,

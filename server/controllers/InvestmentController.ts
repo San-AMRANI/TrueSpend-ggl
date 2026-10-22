@@ -83,6 +83,16 @@ export class InvestmentController {
       res.status(400).json({ error: e.message || 'Failed to execute payday allocation' });
     }
   }
+
+  async fundInvestmentWallet(req: AuthRequest, res: Response) {
+    try {
+      const result = await investmentService.fundInvestmentWallet(req.dbUser.id, req.body);
+      res.status(201).json(result);
+    } catch (e: any) {
+      console.error('InvestmentController.fundInvestmentWallet error:', e);
+      res.status(400).json({ error: e.message || 'Failed to fund investment wallet' });
+    }
+  }
 }
 
 export const investmentController = new InvestmentController();

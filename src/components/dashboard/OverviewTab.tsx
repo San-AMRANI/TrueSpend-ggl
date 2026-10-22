@@ -96,11 +96,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     }, 0);
   }, [activeSubs]);
 
-  // Generate financial facts for the carousel
+  // Generate financial facts for the carousel (including Stock Portfolio & Brokerage Reserve insights)
   const facts = useMemo(
-    () => selectFacts(generateFacts(kpis, transactions, debts, budgets, payrolls)),
+    () => selectFacts(generateFacts(kpis, transactions, debts, budgets, payrolls, investmentsData)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [kpis, transactions, debts, budgets, payrolls],
+    [kpis, transactions, debts, budgets, payrolls, investmentsData],
   );
 
   // Holistic Cross-Data Predictive Forecast
@@ -163,11 +163,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   const accCommitted = subscriptions
                     .filter((s) => s.status === 'active' && (s.walletId === acc.id || (!s.walletId && acc.isMain)))
                     .reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
-                  const isLow = acc.balance < accCommitted && accCommitted > 0;
+                  const isLow = acc.type !== 'Investment' && acc.balance < accCommitted && accCommitted > 0;
 
                   return (
                     <span key={acc.id} className="flex items-center gap-1">
-                      {acc.type === 'Bank' ? <Landmark className="h-3 w-3" /> : acc.type === 'Cash' ? <Banknote className="h-3 w-3" /> : <WalletCards className="h-3 w-3" />}
+                      {acc.type === 'Bank' ? <Landmark className="h-3 w-3" /> : acc.type === 'Cash' ? <Banknote className="h-3 w-3" /> : acc.type === 'Investment' ? <TrendingUp className="h-3 w-3 text-amber-400" /> : <WalletCards className="h-3 w-3" />}
                       {acc.name}: {acc.balance.toFixed(2)}
                       {isLow && <span className="text-rose-400 font-bold" title={`Upcoming bills (${accCommitted.toFixed(0)} MAD) exceed balance`}>⚠️</span>}
                     </span>
@@ -179,6 +179,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <span>Liquidity {(kpis?.totalLiquidity ?? 0).toFixed(0)}</span>
               {stockPortfolioMad > 0 && <span className="text-emerald-400">· Stocks +{stockPortfolioMad.toFixed(0)}</span>}
               <span>· Buffer −{(kpis?.emergencyBuffer ?? 0).toFixed(0)}</span>
+              {(kpis?.investmentReserve ?? 0) > 0 && <span className="text-amber-400">· Inv Reserve −{(kpis?.investmentReserve ?? 0).toFixed(0)}</span>}
               {monthlySubBurn > 0 && <span className="text-purple-400">· Committed Bills −{monthlySubBurn.toFixed(0)}</span>}
               {(kpis?.pendingPayables ?? 0) > 0 && <span>· Payables −{(kpis?.pendingPayables ?? 0).toFixed(0)}</span>}
             </div>
@@ -843,6 +844,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           wallets={kpis?.accounts || []}
           subscriptions={subscriptions}
           debts={debts}
+          investmentsData={investmentsData}
+          onOpenInvestments={() => setActiveTab('investments')}
           isModal={true}
           onClose={() => setShowWalletsModal(false)}
           onCreateWallet={handleCreateWallet}

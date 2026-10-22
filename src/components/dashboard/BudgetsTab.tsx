@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { CategoryBudget, Payroll, Transaction, Debt, Goal, DashboardTab } from '../../types';
+import { CategoryBudget, Payroll, Transaction, Debt, Goal, DashboardTab, InvestmentsData } from '../../types';
 import { expenseCategories, normalizeCategory } from '../../lib/categories';
 import {
   budgetFor,
@@ -122,12 +122,14 @@ interface BudgetsTabProps {
   debts?: Debt[];
   goals?: Goal[];
   wallets?: Array<{ id: string; name: string; type?: string; balance?: number }>;
+  investmentsData?: InvestmentsData | null;
   onSaveBudget: (category: string, year: number, month: number, amount: number) => Promise<void>;
   onSaveBudgetsBatch: (budgets: { category: string; year: number; month: number; amount: number }[]) => Promise<void>;
   onCopyPrevious: (year: number, month: number) => Promise<number>;
   onClearMonth: (year: number, month: number) => Promise<number>;
   onDeleteBudget: (id: string) => Promise<void>;
   onContributeGoal?: (goalId: string, payload: { amount: number; walletId?: string; note?: string; date?: string }) => Promise<any>;
+  onFundInvestmentWallet?: (payload: { sourceWalletId?: string; destinationWalletId?: string; amountMad: number; notes?: string }) => Promise<any>;
   setActiveTab?: (tab: DashboardTab) => void;
 }
 
@@ -614,12 +616,14 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   debts = [],
   goals = [],
   wallets = [],
+  investmentsData = null,
   onSaveBudget,
   onSaveBudgetsBatch,
   onCopyPrevious,
   onClearMonth,
   onDeleteBudget,
   onContributeGoal,
+  onFundInvestmentWallet,
   setActiveTab,
 }) => {
   const [monthRef, setMonthRef] = useState(() => getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
@@ -810,6 +814,37 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   const [sweepAmount, setSweepAmount] = useState<string>('');
   const [selectedSweepWalletId, setSelectedSweepWalletId] = useState<string>('');
   const [sweeping, setSweeping] = useState(false);
+
+  // ─── Connected Stock Portfolio & 📈 Investments Budget Hub ──────────────────
+  const currentInvestmentBudget = monthBudgetsMap.get('📈 Investments') ?? 0;
+  const currentInvestmentSpent = useMemo(
+    () => getCategorySpending(transactions, '📈 Investments', monthRef.year, monthRef.month, payrolls, wallets),
+    [transactions, monthRef, payrolls, wallets]
+  );
+  const remainingInvestmentBudget = Math.max(0, currentInvestmentBudget - currentInvestmentSpent);
+  const recommendedInvestmentBudget = useMemo(
+    () => (totalIncome > 0 ? Math.round(totalIncome * 0.1) : 1500),
+    [totalIncome]
+  );
+  const [fundingBrokerage, setFundingBrokerage] = useState(false);
+
+  const handleFundRemainingInvestmentBudget = async () => {
+    if (!onFundInvestmentWallet) return;
+    const amt = remainingInvestmentBudget > 0 ? remainingInvestmentBudget : Math.min(budgetSurplus > 0 ? budgetSurplus : 1000, 2500);
+    if (amt <= 0) return;
+    setFundingBrokerage(true);
+    try {
+      await onFundInvestmentWallet({
+        amountMad: amt,
+        notes: `Budget allocation transfer for ${monthLabel(monthRef.year, monthRef.month)}`,
+      });
+      showToast(`Transferred ${amt.toFixed(2)} MAD into your Brokerage Reserve Wallet!`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to fund Brokerage Wallet.', 'error');
+    } finally {
+      setFundingBrokerage(false);
+    }
+  };
 
   useEffect(() => {
     if (!selectedGoalId && goals && goals.length > 0) {
@@ -1072,6 +1107,78 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                     className="text-xs h-9 border-gray-200 dark:border-gray-800"
                   >
                     <span>View Debts & IOUs</span>
+                    <ExternalLink className="ml-1.5 h-3.5 w-3.5 text-gray-400" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Interconnected Stock Portfolio & 📈 Investments Budget Hub ── */}
+      {(currentInvestmentBudget > 0 || (investmentsData && (investmentsData.positions.length > 0 || investmentsData.buyingPower.investmentWalletBalanceMad > 0))) && (
+        <Card className="border border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-r from-emerald-50/50 via-white to-indigo-50/30 dark:from-emerald-950/20 dark:via-gray-900 dark:to-indigo-950/20 shadow-xs overflow-hidden">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
+                  <TrendingUp className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-bold text-sm sm:text-base text-gray-900 dark:text-gray-100">
+                      Equities &amp; Stock Portfolio Allocation (📈 Investments)
+                    </h3>
+                    <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/60 px-2.5 py-0.5 text-xs font-bold font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
+                      {currentInvestmentSpent.toFixed(0)} / {currentInvestmentBudget > 0 ? currentInvestmentBudget.toFixed(0) : recommendedInvestmentBudget.toFixed(0)} MAD Funded
+                    </span>
+                    {investmentsData && investmentsData.buyingPower.investmentWalletBalanceMad > 0 && (
+                      <span className="rounded-full bg-amber-100 dark:bg-amber-950/60 px-2.5 py-0.5 text-xs font-bold font-mono tabular-nums text-amber-800 dark:text-amber-300">
+                        Brokerage Cash: {investmentsData.buyingPower.investmentWalletBalanceMad.toFixed(0)} MAD
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 max-w-2xl">
+                    {currentInvestmentBudget > 0
+                      ? remainingInvestmentBudget > 0
+                        ? `You have ${remainingInvestmentBudget.toFixed(2)} MAD left in your 📈 Investments budget this cycle. Transferring cash to your Brokerage Reserve wallet or buying stocks directly from Bank/Cash automatically tracks against this budget.`
+                        : `You have fulfilled 100% of your ${currentInvestmentBudget.toFixed(0)} MAD 📈 Investments budget this cycle! Buying stocks using cash already inside your Brokerage Reserve wallet will not double-count against this budget.`
+                      : `You hold ${investmentsData?.positions.length || 0} stock positions worth ${(investmentsData?.totalPortfolioValueMad || 0).toFixed(0)} MAD. Set a monthly 📈 Investments budget (recommended 10%: ${recommendedInvestmentBudget.toFixed(0)} MAD) to automate your Payday Stock Splitter.`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {currentInvestmentBudget <= 0 && (
+                  <Button
+                    size="sm"
+                    onClick={() => onSaveBudget('📈 Investments', monthRef.year, monthRef.month, recommendedInvestmentBudget)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 flex items-center gap-1.5"
+                  >
+                    <Zap className="h-3.5 w-3.5" />
+                    <span>Set {recommendedInvestmentBudget.toFixed(0)} MAD Stock Budget</span>
+                  </Button>
+                )}
+                {onFundInvestmentWallet && remainingInvestmentBudget > 0 && isCurrentMonth && (
+                  <Button
+                    size="sm"
+                    disabled={fundingBrokerage}
+                    onClick={handleFundRemainingInvestmentBudget}
+                    className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-9 flex items-center gap-1.5"
+                  >
+                    <WalletCards className="h-3.5 w-3.5" />
+                    <span>{fundingBrokerage ? 'Funding…' : `Fund ${remainingInvestmentBudget.toFixed(0)} MAD to Brokerage`}</span>
+                  </Button>
+                )}
+                {setActiveTab && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setActiveTab('investments')}
+                    className="text-xs h-9 border-gray-200 dark:border-gray-800"
+                  >
+                    <span>Open Stock Portfolio</span>
                     <ExternalLink className="ml-1.5 h-3.5 w-3.5 text-gray-400" />
                   </Button>
                 )}
@@ -1425,7 +1532,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {budgetRows.map((cat) => {
                 const budget = budgetFor(budgets, cat, monthRef.year, monthRef.month);
-                const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payrolls);
+                const spent = getCategorySpending(transactions, cat, monthRef.year, monthRef.month, payrolls, wallets);
                 return (
                   <BudgetCard
                     key={cat}

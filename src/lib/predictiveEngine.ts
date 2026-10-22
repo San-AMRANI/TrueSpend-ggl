@@ -158,6 +158,18 @@ export interface HolisticForecastReport {
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+export const toIsoDateStr = (val: string | Date | null | undefined): string => {
+  if (!val) return '';
+  if (typeof val === 'string') return val.slice(0, 10);
+  if (val instanceof Date && !Number.isNaN(val.getTime())) return val.toISOString().slice(0, 10);
+  try {
+    const d = new Date(val);
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  } catch {
+    return '';
+  }
+};
+
 export function computeHolisticForecast(params: {
   kpis: KPI | null;
   transactions: Transaction[];
@@ -168,6 +180,11 @@ export function computeHolisticForecast(params: {
   goals: Goal[];
   investmentsData?: InvestmentsData | null;
   contexts: FinancialContext[];
+  userSettings?: {
+    salary?: number | string;
+    payday?: number;
+    emergencyBuffer?: number | string;
+  } | null;
   whatIf?: WhatIfScenarioParams;
 }): HolisticForecastReport {
   const {
@@ -180,6 +197,7 @@ export function computeHolisticForecast(params: {
     goals = [],
     investmentsData = null,
     contexts = [],
+    userSettings = null,
     whatIf = {
       discretionaryCutPercent: 0,
       extraMonthlyDcaMad: 0,
@@ -207,23 +225,51 @@ export function computeHolisticForecast(params: {
   const currentNetWorth =
     currentLiquidity + currentPortfolioMad + pendingReceivables - pendingPayables;
 
-  // 2. Monthly Income Baseline (from salary, recent payrolls, or monthly income KPI)
-  const recentPayrollAmounts = payrolls
-    .slice()
-    .sort((a, b) => new Date(b.scheduledFor).getTime() - new Date(a.scheduledFor).getTime())
-    .slice(0, 3)
-    .map((p) => parseFloat(p.amount) || 0)
-    .filter((v) => v > 0);
+  // 2. Verified Active Salary & Recurring Monthly Income Baseline
+  // Sort payrolls descending by scheduled date to find the active/current payroll amount
+  const validPayrolls = payrolls
+    .filter((p) => p.scheduledFor && !Number.isNaN(new Date(p.scheduledFor).getTime()))
+    .slice();
 
-  const avgPayroll =
-    recentPayrollAmounts.length > 0
-      ? recentPayrollAmounts.reduce((a, b) => a + b, 0) / recentPayrollAmounts.length
-      : 0;
+  const sortedPayrollsDesc = validPayrolls
+    .slice()
+    .sort((a, b) => new Date(b.scheduledFor).getTime() - new Date(a.scheduledFor).getTime());
+
+  // Upcoming scheduled payroll (the closest future payroll)
+  const upcomingPayroll = validPayrolls
+    .filter((p) => new Date(p.scheduledFor).getTime() >= now.getTime())
+    .sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())[0];
+
+  const latestPayroll = sortedPayrollsDesc[0];
+
+  const upcomingAmt = upcomingPayroll ? parseFloat(upcomingPayroll.amount) || 0 : 0;
+  const latestAmt = latestPayroll ? parseFloat(latestPayroll.amount) || 0 : 0;
+  const configuredSalary =
+    (userSettings?.salary && parseFloat(String(userSettings.salary)) > 0
+      ? parseFloat(String(userSettings.salary))
+      : 0) ||
+    (kpis?.salary && kpis.salary > 0 ? kpis.salary : 0);
+
+  // Active verified salary from user's actual scheduled payrolls / settings:
+  const activeSalary =
+    (upcomingAmt > 0 ? upcomingAmt : 0) ||
+    (latestAmt > 0 ? latestAmt : 0) ||
+    configuredSalary;
 
   const monthlyIncomeBaseline =
-    (kpis?.salary && kpis.salary > 0 ? kpis.salary : 0) ||
-    avgPayroll ||
-    (kpis?.monthlyIncome && kpis.monthlyIncome > 0 ? kpis.monthlyIncome : 6000);
+    activeSalary > 0
+      ? activeSalary
+      : (kpis?.monthlyIncome && kpis.monthlyIncome > 0 ? kpis.monthlyIncome : 6000);
+
+  // Inferred standard payday day-of-month (strictly grounded on user records)
+  const inferredPaydayDayOfMonth =
+    (userSettings?.payday && Number(userSettings.payday) >= 1 && Number(userSettings.payday) <= 31
+      ? Number(userSettings.payday)
+      : null) ||
+    (kpis?.payday && kpis.payday >= 1 && kpis.payday <= 31 ? kpis.payday : null) ||
+    (upcomingPayroll ? new Date(upcomingPayroll.scheduledFor).getDate() : null) ||
+    (latestPayroll ? new Date(latestPayroll.scheduledFor).getDate() : null) ||
+    25;
 
   // 3. Subscriptions Burn
   const activeSubs = subscriptions.filter((s) => s.status === 'active');
@@ -420,7 +466,9 @@ export function computeHolisticForecast(params: {
     });
 
   // 7. Day-by-Day 30-Day Forward Cash Flow & Liquidity Stress Simulation
-  const emergencyFloor = kpis?.emergencyBuffer ?? 1000;
+  const emergencyFloor =
+    kpis?.emergencyBuffer ??
+    (userSettings?.emergencyBuffer ? parseFloat(String(userSettings.emergencyBuffer)) : 1000);
   const dailyCashFlow30d: DailyCashFlowPoint[] = [];
   let runningBaseline = currentLiquidity;
   let runningSimulated = currentLiquidity + whatIf.oneTimeShockMad;
@@ -428,11 +476,29 @@ export function computeHolisticForecast(params: {
   let lowest30dDateLabel = 'Today';
   let hasLiquidityPinchBeforePayday = false;
 
-  const paydayDayOfMonth = kpis?.payday || 25;
+  // Track calendar months that already have a real scheduled or historical payroll in payrolls
+  const monthsWithExistingPayroll = new Set<string>();
+  for (const p of validPayrolls) {
+    if (p.scheduledFor) {
+      const pDate = new Date(p.scheduledFor);
+      if (!Number.isNaN(pDate.getTime())) {
+        monthsWithExistingPayroll.add(`${pDate.getFullYear()}-${pDate.getMonth() + 1}`);
+      }
+    }
+  }
+
+  // Track calendar months where a salary/payday event was applied during this 30-day projection
+  const monthsWithSalaryAppliedInWindow = new Set<string>();
+
+  // Track subscriptions billed per month to avoid duplicate hits
+  const billedSubsInWindow = new Set<string>();
 
   for (let d = 0; d <= 30; d++) {
     const targetDate = new Date(now.getTime() + d * 86400000);
     const dateIso = targetDate.toISOString().slice(0, 10);
+    const targetYear = targetDate.getFullYear();
+    const targetMonth = targetDate.getMonth() + 1;
+    const yearMonthKey = `${targetYear}-${targetMonth}`;
     const dayOfMonth = targetDate.getDate();
     const dow = targetDate.getDay();
     const label =
@@ -445,38 +511,61 @@ export function computeHolisticForecast(params: {
     let dayFixedOutflow = 0;
 
     if (d > 0) {
-      // Check Payday
+      // 1. Check for real scheduled payroll on this exact calendar date
       const matchingScheduledPayroll = payrolls.find(
-        (p) => p.scheduledFor && p.scheduledFor.slice(0, 10) === dateIso
+        (p) => toIsoDateStr(p.scheduledFor) === dateIso
       );
+
       if (matchingScheduledPayroll) {
         const payAmt = parseFloat(matchingScheduledPayroll.amount) || monthlyIncomeBaseline;
-        dayInflow += payAmt + whatIf.incomeDeltaMad;
-        events.push(`Payday (+${(payAmt + whatIf.incomeDeltaMad).toFixed(0)} MAD)`);
-      } else if (dayOfMonth === paydayDayOfMonth) {
-        dayInflow += monthlyIncomeBaseline + whatIf.incomeDeltaMad;
-        events.push(`Projected Salary (+${(monthlyIncomeBaseline + whatIf.incomeDeltaMad).toFixed(0)} MAD)`);
+        const totalPay = payAmt + whatIf.incomeDeltaMad;
+        dayInflow += totalPay;
+        events.push(`Payday (+${totalPay.toFixed(0)} MAD)`);
+        monthsWithSalaryAppliedInWindow.add(yearMonthKey);
+      } else if (
+        dayOfMonth === inferredPaydayDayOfMonth &&
+        !monthsWithExistingPayroll.has(yearMonthKey) &&
+        !monthsWithSalaryAppliedInWindow.has(yearMonthKey)
+      ) {
+        // ONLY project salary if this month has NO scheduled payroll in the database,
+        // and no salary event has been added yet for this month!
+        const totalPay = monthlyIncomeBaseline + whatIf.incomeDeltaMad;
+        dayInflow += totalPay;
+        events.push(`Projected Salary (+${totalPay.toFixed(0)} MAD)`);
+        monthsWithSalaryAppliedInWindow.add(yearMonthKey);
       }
 
-      // Check Subscriptions billing on this date or day-of-month
+      // 2. Check Subscriptions billing on this date or recurrence
       for (const sub of activeSubs) {
-        if (sub.nextBillingDate && sub.nextBillingDate.slice(0, 10) === dateIso) {
+        const subMonthKey = `${sub.id}-${yearMonthKey}`;
+        if (billedSubsInWindow.has(subMonthKey)) continue;
+
+        let isDueToday = false;
+        if (toIsoDateStr(sub.nextBillingDate) === dateIso) {
+          isDueToday = true;
+        } else if (sub.nextBillingDate) {
+          const subDate = new Date(sub.nextBillingDate);
+          if (sub.billingCycle === 'monthly' && subDate.getDate() === dayOfMonth && targetDate >= subDate) {
+            isDueToday = true;
+          }
+        } else if (sub.createdAt) {
+          const createdDay = new Date(sub.createdAt).getDate();
+          if (createdDay === dayOfMonth && sub.billingCycle === 'monthly') {
+            isDueToday = true;
+          }
+        }
+
+        if (isDueToday) {
           const cost = normalizeSubMonthly(sub);
           dayFixedOutflow += cost;
           events.push(`${sub.name} (−${cost.toFixed(0)} MAD)`);
-        } else if (!sub.nextBillingDate && sub.createdAt) {
-          const createdDay = new Date(sub.createdAt).getDate();
-          if (createdDay === dayOfMonth && sub.billingCycle === 'monthly') {
-            const cost = normalizeSubMonthly(sub);
-            dayFixedOutflow += cost;
-            events.push(`${sub.name} (−${cost.toFixed(0)} MAD)`);
-          }
+          billedSubsInWindow.add(subMonthKey);
         }
       }
 
-      // Check Debts due on this date
+      // 3. Check Debts due on this date
       for (const debt of debts) {
-        if (debt.status === 'Pending' && debt.dueDate && debt.dueDate.slice(0, 10) === dateIso) {
+        if (debt.status === 'Pending' && toIsoDateStr(debt.dueDate) === dateIso) {
           const rem = parseFloat(debt.remainingBalance) || 0;
           if (debt.type === 'Payable') {
             dayFixedOutflow += rem;

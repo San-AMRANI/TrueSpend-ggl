@@ -175,14 +175,25 @@ export class CycleRetrospectiveService {
       const amount = Number(tx.amount) || 0;
       const txDateStr = new Date(tx.createdAt).toISOString().split('T')[0];
 
+      const srcWallet = wallets.find((w: any) => w.id === tx.walletId);
+      const destWallet = tx.destinationWalletId ? wallets.find((w: any) => w.id === tx.destinationWalletId) : null;
+      const isFromInvestmentWallet = String(srcWallet?.type || '').toLowerCase() === 'investment';
+      const isToInvestmentWallet = String(destWallet?.type || '').toLowerCase() === 'investment';
+
       if (tx.type === 'Income') {
         // Only count if not duplicate of already counted payroll
         if (!tx.payrollId || (!cyclePayroll && configuredSalary === 0)) {
           totalInflow += amount;
         }
-      } else if (tx.type === 'Expense') {
-        if (isInvestmentCategory(tx.category)) {
+      } else if (tx.type === 'Transfer') {
+        if ((isToInvestmentWallet || isInvestmentCategory(tx.category)) && !isFromInvestmentWallet) {
           totalInvested += amount;
+        }
+      } else if (tx.type === 'Expense') {
+        if (isInvestmentCategory(tx.category) || isFromInvestmentWallet) {
+          if (!isFromInvestmentWallet) {
+            totalInvested += amount;
+          }
         } else {
           const effective = netExpenseOf(tx);
           totalOutflow += effective;
