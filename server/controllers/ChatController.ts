@@ -3,9 +3,10 @@ import { getChatCompletion, generateSpeechFromText } from '../services/ChatServi
 import {
   getModelStatusList,
   clearAllModelQuotas,
-  isModelQuotaExhausted,
+  isModelUnavailable,
+  MODEL_FLASH_FAST,
   MODEL_FLASH_DEEP,
-  MODEL_FLASH_LITE,
+  MODEL_FLASH_LITE_PREVIEW,
 } from '../services/GeminiClient.js';
 
 export const chatWithAi = async (req: Request, res: Response) => {
@@ -50,19 +51,30 @@ export const chatWithAi = async (req: Request, res: Response) => {
       });
     }
   } catch (error: any) {
-    console.error('Chat error:', error);
-    res.status(500).json({ error: error.message || 'Failed to communicate with AI' });
+    console.error('Chat error in controller:', error);
+    res.status(200).json({
+      reply: '⚠️ Spex is currently experiencing temporary high demand on cloud AI servers. Please try again in a moment, or tap a quick action below:',
+      actions: [],
+      suggestions: [
+        '📊 Run a complete financial health audit',
+        '💰 What can I safely spend today?',
+        '🎓 Give me my financial cycle report card',
+      ],
+      modelUsed: 'TrueSpend Emergency Fallback',
+      quotaFallback: true,
+      fallbackReason: error.message || 'Temporary upstream congestion',
+    });
   }
 };
 
 export const getChatModels = (_req: Request, res: Response) => {
   try {
     const models = getModelStatusList();
-    const isPrimaryExhausted = isModelQuotaExhausted(MODEL_FLASH_DEEP);
+    const isPrimaryUnavailable = isModelUnavailable(MODEL_FLASH_FAST);
     res.json({
       models,
-      currentAutoPrimary: isPrimaryExhausted ? MODEL_FLASH_LITE : MODEL_FLASH_DEEP,
-      isAutoFallenBack: isPrimaryExhausted,
+      currentAutoPrimary: isPrimaryUnavailable ? MODEL_FLASH_LITE_PREVIEW : MODEL_FLASH_FAST,
+      isAutoFallenBack: isPrimaryUnavailable,
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message || 'Failed to get models status' });

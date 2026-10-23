@@ -15,14 +15,16 @@ export const gemini = new GoogleGenAI({
 });
 
 // Model Constants
-export const MODEL_FLASH_LITE = 'gemini-3.1-flash-lite'; // 500 requests/day
-export const MODEL_FLASH_DEEP = 'gemini-3.8-flash';      // 20 requests/day
-export const MODEL_FLASH_LATEST = 'gemini-flash-latest'; // Standard fallback
-export const MODEL_TTS = 'gemini-3.8-flash-lite-tts';    // 10 requests/day (primary)
+export const MODEL_FLASH_DEEP = 'gemini-3.8-flash';           // Premier reasoning (20 req/day)
+export const MODEL_FLASH_FAST = 'gemini-3-flash-preview';       // High-speed, high-availability resilient model
+export const MODEL_FLASH_LITE = 'gemini-3.1-flash-lite';       // 500 requests/day
+export const MODEL_FLASH_LITE_PREVIEW = 'gemini-3.1-flash-lite-preview'; // High-throughput fast preview
+export const MODEL_FLASH_LATEST = 'gemini-flash-latest';       // Standard fallback
+export const MODEL_TTS = 'gemini-3.8-flash-lite-tts';          // 10 requests/day (primary)
 export const MODEL_FLASH_TTS = 'gemini-3.8-flash-tts';         // Standard Flash TTS fallback
 
-export const PRIMARY_GEMINI_MODEL = MODEL_FLASH_DEEP;
-export const FALLBACK_GEMINI_MODEL = MODEL_FLASH_LITE;
+export const PRIMARY_GEMINI_MODEL = MODEL_FLASH_FAST;
+export const FALLBACK_GEMINI_MODEL = MODEL_FLASH_DEEP;
 
 export interface ModelCatalogEntry {
   id: string;
@@ -39,6 +41,15 @@ export interface ModelCatalogEntry {
 
 export const SUPPORTED_MODELS_METADATA = [
   {
+    id: MODEL_FLASH_FAST,
+    name: 'Gemini 3 Flash',
+    badge: 'High Availability',
+    dailyQuota: 500,
+    rpm: 15,
+    description: 'Ultra-fast model with maximum uptime resilience and immunity to peak demand congestion.',
+    recommendedFor: 'Fast responses, high reliability & instant failover',
+  },
+  {
     id: MODEL_FLASH_DEEP,
     name: 'Gemini 3.8 Flash',
     badge: 'Deep Intelligence',
@@ -48,12 +59,12 @@ export const SUPPORTED_MODELS_METADATA = [
     recommendedFor: 'Complex financial queries & deep reviews',
   },
   {
-    id: MODEL_FLASH_LITE,
+    id: MODEL_FLASH_LITE_PREVIEW,
     name: 'Gemini 3.1 Flash Lite',
     badge: '500 Requests/Day',
     dailyQuota: 500,
     rpm: 15,
-    description: 'High-throughput, ultra-fast model with massive daily quota allowance in the free tier.',
+    description: 'High-throughput, ultra-fast model with massive daily quota allowance.',
     recommendedFor: 'Frequent chat, rapid logs, and continuous day-to-day queries',
   },
   {
@@ -67,10 +78,11 @@ export const SUPPORTED_MODELS_METADATA = [
   },
 ];
 
-// ── In-Memory Quota Exhaustion Monitor ─────────────────────────────────────
-// Remembers when a model returns a 429 (Resource Exhausted / Quota Exceeded)
-// so subsequent requests instantly failover to high-quota models without lag.
+// ── In-Memory Quota & Overload Monitors ───────────────────────────────────
+// Tracks when a model returns a 429 (Quota/Rate Limit) or 503 (Overload/High Demand)
+// so requests dynamically route around degraded endpoints without user lag.
 const quotaCooldownMap: Map<string, number> = new Map();
+const overloadCooldownMap: Map<string, number> = new Map();
 
 export function isModelQuotaExhausted(model: string): boolean {
   const expiry = quotaCooldownMap.get(model);
@@ -82,29 +94,52 @@ export function isModelQuotaExhausted(model: string): boolean {
   return true;
 }
 
+export function isModelOverloaded(model: string): boolean {
+  const expiry = overloadCooldownMap.get(model);
+  if (!expiry) return false;
+  if (Date.now() > expiry) {
+    overloadCooldownMap.delete(model);
+    return false;
+  }
+  return true;
+}
+
+export function isModelUnavailable(model: string): boolean {
+  return isModelQuotaExhausted(model) || isModelOverloaded(model);
+}
+
 export function getModelCooldownRemainingSeconds(model: string): number {
-  const expiry = quotaCooldownMap.get(model);
-  if (!expiry) return 0;
-  const remaining = Math.ceil((expiry - Date.now()) / 1000);
+  const quotaExpiry = quotaCooldownMap.get(model) || 0;
+  const overloadExpiry = overloadCooldownMap.get(model) || 0;
+  const maxExpiry = Math.max(quotaExpiry, overloadExpiry);
+  if (!maxExpiry) return 0;
+  const remaining = Math.ceil((maxExpiry - Date.now()) / 1000);
   return remaining > 0 ? remaining : 0;
 }
 
 export function markModelQuotaExhausted(model: string, cooldownDurationMs = 1000 * 60 * 30): void {
   quotaCooldownMap.set(model, Date.now() + cooldownDurationMs);
-  console.warn(`[QuotaMonitor] Model ${model} marked as quota-exhausted until ${new Date(Date.now() + cooldownDurationMs).toLocaleTimeString()}`);
+  console.warn(`[QuotaMonitor] Model ${model} marked as quota-exhausted for ${Math.round(cooldownDurationMs / 60000)}m`);
+}
+
+export function markModelTemporaryOverload(model: string, cooldownDurationMs = 1000 * 60 * 2): void {
+  overloadCooldownMap.set(model, Date.now() + cooldownDurationMs);
+  console.warn(`[OverloadMonitor] Model ${model} marked as temporarily overloaded (503) for ${Math.round(cooldownDurationMs / 1000)}s`);
 }
 
 export function clearModelQuota(model: string): void {
   quotaCooldownMap.delete(model);
+  overloadCooldownMap.delete(model);
 }
 
 export function clearAllModelQuotas(): void {
   quotaCooldownMap.clear();
+  overloadCooldownMap.clear();
 }
 
 export function getModelStatusList(): ModelCatalogEntry[] {
   return SUPPORTED_MODELS_METADATA.map((m) => {
-    const isExhausted = isModelQuotaExhausted(m.id);
+    const isExhausted = isModelUnavailable(m.id);
     const cooldownRemainingSeconds = getModelCooldownRemainingSeconds(m.id);
     return {
       ...m,

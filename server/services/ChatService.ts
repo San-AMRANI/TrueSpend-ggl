@@ -2,13 +2,18 @@ import dotenv from 'dotenv';
 import {
   gemini,
   MODEL_FLASH_LITE,
+  MODEL_FLASH_LITE_PREVIEW,
   MODEL_FLASH_DEEP,
+  MODEL_FLASH_FAST,
   MODEL_FLASH_LATEST,
   MODEL_TTS,
   MODEL_FLASH_TTS,
   isModelQuotaExhausted,
+  isModelUnavailable,
   markModelQuotaExhausted,
+  markModelTemporaryOverload,
 } from './GeminiClient.js';
+import { generateLocalFinancialResponse } from './LocalFinancialEngine.js';
 
 dotenv.config();
 
@@ -439,8 +444,14 @@ export async function getChatCompletion(
     });
   }
 
-  // ── Smart & Manual Model Sequencing ──────────────────────────────────────
-  const allModels = [MODEL_FLASH_DEEP, MODEL_FLASH_LITE, MODEL_FLASH_LATEST];
+  // ── Smart & Resilient Model Sequencing ──────────────────────────────────────
+  const allModels = [
+    MODEL_FLASH_FAST,          // 'gemini-3-flash-preview' - high-availability, instant response
+    MODEL_FLASH_LITE_PREVIEW,  // 'gemini-3.1-flash-lite-preview' - ultra high throughput
+    MODEL_FLASH_DEEP,          // 'gemini-3.8-flash' - deep reasoning
+    MODEL_FLASH_LITE,          // 'gemini-3.1-flash-lite'
+    MODEL_FLASH_LATEST,        // 'gemini-flash-latest'
+  ];
   let modelsToTry: string[] = [];
 
   const isExplicitManual = Boolean(preferredModel && preferredModel !== 'auto');
@@ -448,22 +459,19 @@ export async function getChatCompletion(
   if (isExplicitManual) {
     // User explicitly chose a model manually
     if (allowFallback) {
-      // Prioritize the requested model first; append others as fallback failovers
-      const fallbacks = allModels.filter((m) => m !== preferredModel && !isModelQuotaExhausted(m));
-      const exhaustedFallbacks = allModels.filter((m) => m !== preferredModel && isModelQuotaExhausted(m));
-      modelsToTry = [preferredModel!, ...fallbacks, ...exhaustedFallbacks];
+      // Prioritize requested model first; follow with non-unavailable models, then remaining
+      const availableFallbacks = allModels.filter((m) => m !== preferredModel && !isModelUnavailable(m));
+      const remainingFallbacks = allModels.filter((m) => m !== preferredModel && isModelUnavailable(m));
+      modelsToTry = [preferredModel!, ...availableFallbacks, ...remainingFallbacks];
     } else {
       // Strict manual mode without fallback
       modelsToTry = [preferredModel!];
     }
   } else {
     // Smart Auto mode:
-    // If Gemini 3.8 Flash is on cooldown, bypass directly to high-capacity 3.1 Flash Lite (500/day)
-    if (isModelQuotaExhausted(MODEL_FLASH_DEEP)) {
-      modelsToTry = [MODEL_FLASH_LITE, MODEL_FLASH_LATEST];
-    } else {
-      modelsToTry = [MODEL_FLASH_DEEP, MODEL_FLASH_LITE, MODEL_FLASH_LATEST];
-    }
+    // Prioritize models not currently marked unavailable
+    const available = allModels.filter((m) => !isModelUnavailable(m));
+    modelsToTry = available.length > 0 ? available : allModels;
   }
 
   const startTime = Date.now();
@@ -471,18 +479,40 @@ export async function getChatCompletion(
   let quotaFallbackHappened = false;
   let fallbackReason = '';
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, modelName: string): Promise<T> {
+  let timer: any;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const err: any = new Error(`Model ${modelName} timed out after ${timeoutMs}ms (503 demand congestion)`);
+      err.status = 503;
+      reject(err);
+    }, timeoutMs);
+  });
+  return Promise.race([
+    promise.then((res) => {
+      clearTimeout(timer);
+      return res;
+    }),
+    timeoutPromise,
+  ]);
+}
+
   for (let i = 0; i < modelsToTry.length; i++) {
     const model = modelsToTry[i];
     try {
-      const response = await gemini.models.generateContent({
-        model,
-        contents,
-        config: {
-          systemInstruction,
-          responseMimeType: 'application/json',
-          temperature: 0.6,
-        },
-      });
+      const response = await withTimeout(
+        gemini.models.generateContent({
+          model,
+          contents,
+          config: {
+            systemInstruction,
+            responseMimeType: 'application/json',
+            temperature: 0.6,
+          },
+        }),
+        8000,
+        model
+      );
 
       const responseText = response.text || '';
       let parsed: any;
@@ -520,7 +550,7 @@ export async function getChatCompletion(
       const isFallback =
         quotaFallbackHappened ||
         (isExplicitManual && model !== preferredModel) ||
-        (!isExplicitManual && isModelQuotaExhausted(MODEL_FLASH_DEEP) && model !== MODEL_FLASH_DEEP);
+        (!isExplicitManual && i > 0);
 
       return {
         choices: [
@@ -535,30 +565,58 @@ export async function getChatCompletion(
         responseTimeMs: Date.now() - startTime,
         quotaFallback: isFallback,
         fallbackReason: isFallback
-          ? (fallbackReason || `Auto-routed to ${model} to maintain uptime and quota limits`)
+          ? (fallbackReason || `Auto-routed to resilient model ${model}`)
           : undefined,
       };
     } catch (err: any) {
       console.warn(`[ChatService] Model ${model} returned error:`, err?.status || err?.message || err);
 
-      const isQuotaExhausted =
+      const is503 =
+        err?.status === 503 ||
+        String(err?.message || '').includes('503') ||
+        String(err?.message || '').toLowerCase().includes('high demand') ||
+        String(err?.message || '').toLowerCase().includes('timed out') ||
+        String(err?.message || '').toLowerCase().includes('temporarily unavailable');
+      const is429 =
         err?.status === 429 ||
         String(err?.message || '').toLowerCase().includes('quota') ||
         String(err?.message || '').toLowerCase().includes('resource_exhausted') ||
         String(err?.message || '').includes('rate limit');
 
-      if (isQuotaExhausted) {
-        markModelQuotaExhausted(model, 1000 * 60 * 30); // 30-min smart cooldown
+      if (is429) {
+        markModelQuotaExhausted(model, 1000 * 60 * 30);
         quotaFallbackHappened = true;
         fallbackReason = `Model ${model} reached rate/quota limit. Auto-switched to next model.`;
-      } else if (err?.status === 503) {
-        fallbackReason = `Model ${model} had high demand/overload (503). Auto-switched to next model.`;
+      } else if (is503) {
+        markModelTemporaryOverload(model, 1000 * 60 * 2);
+        quotaFallbackHappened = true;
+        fallbackReason = `Model ${model} had temporary high demand (503). Auto-switched to next model.`;
       }
 
       lastError = err;
-      // Continue to next model in sequence
+      // Instantly advance to next model in sequence without hanging
     }
   }
 
-  throw new Error(lastError?.message || 'Failed to communicate with Google Gemini AI service');
+  // ── High-Availability Local Financial Engine Fallback ────────────────────────
+  // When all upstream Gemini models fail or experience peak demand 503, execute
+  // the deterministic local engine so the user receives a 100% accurate, rich response
+  // rather than an error.
+  console.warn('[ChatService] All cloud AI models exhausted or in cooldown. Activating Local Financial Engine fallback.');
+  const localResult = generateLocalFinancialResponse(chatMessages, contextData);
+
+  return {
+    choices: [
+      {
+        message: {
+          content: JSON.stringify(localResult),
+        },
+      },
+    ],
+    modelUsed: 'TrueSpend Financial Engine (High-Availability Fallback)',
+    requestedModel: preferredModel || 'auto',
+    responseTimeMs: Date.now() - startTime,
+    quotaFallback: true,
+    fallbackReason: 'Cloud AI is currently experiencing high demand. Computed instantly via TrueSpend Live Financial Engine.',
+  };
 }

@@ -186,7 +186,15 @@ export const AVAILABLE_MODELS: ModelOption[] = [
     shortName: 'Smart Auto',
     badge: 'Recommended',
     quotaSummary: 'Dynamic • Auto failover',
-    description: 'Prioritizes Gemini 3.8 Flash; instantly auto-switches to Gemini 3.1 Flash Lite (500 req/day) if rate-limited or quota is reached.',
+    description: 'Prioritizes high-speed Gemini 3 Flash and auto-cascades to Gemini 3.8 Flash & Flash Lite with local engine failover.',
+  },
+  {
+    id: 'gemini-3-flash-preview',
+    name: 'Gemini 3 Flash',
+    shortName: '3 Flash',
+    badge: 'High Availability',
+    quotaSummary: '500 req/day (Free Tier)',
+    description: 'Ultra-responsive, high-capacity model with exceptional resilience during peak traffic and demand spikes.',
   },
   {
     id: 'gemini-3.8-flash',
@@ -197,7 +205,7 @@ export const AVAILABLE_MODELS: ModelOption[] = [
     description: 'Deep financial reasoning, scenario forecasting, safe-to-invest runway simulations, and high accuracy receipt parsing.',
   },
   {
-    id: 'gemini-3.1-flash-lite',
+    id: 'gemini-3.1-flash-lite-preview',
     name: 'Gemini 3.1 Flash Lite',
     shortName: '3.1 Flash Lite',
     badge: '500 req/day',
@@ -926,11 +934,33 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         }
       } catch (error: any) {
         console.error('Chat error:', error);
-        const errorMessage =
+        let userFacingError =
           error.message && error.message !== 'Failed to fetch'
-            ? `⚠️ ${error.message}`
-            : '⚠️ Sorry, I ran into an error communicating with Gemini. Please try again.';
-        setMessages((prev) => [...prev, { role: 'assistant', content: errorMessage, timestamp: Date.now() }]);
+            ? error.message
+            : 'Sorry, I ran into a temporary error communicating with Gemini. Please try again.';
+        try {
+          const raw = String(userFacingError).replace(/^⚠️\s*/, '').trim();
+          if (raw.startsWith('{') && raw.endsWith('}')) {
+            const parsed = JSON.parse(raw);
+            if (parsed?.error?.message) {
+              userFacingError = parsed.error.message;
+            }
+          }
+        } catch {}
+        const errorMessage = `⚠️ ${userFacingError}`;
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: errorMessage,
+            timestamp: Date.now(),
+            suggestions: [
+              '📊 Run a complete financial health audit',
+              '💰 What can I safely spend today?',
+              '🎓 Give me my financial cycle report card',
+            ],
+          },
+        ]);
       } finally {
         setIsLoading(false);
       }
