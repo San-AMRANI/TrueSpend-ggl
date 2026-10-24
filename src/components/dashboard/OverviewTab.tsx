@@ -14,9 +14,11 @@ import { computeHolisticForecast } from '../../lib/predictiveEngine';
 import {
   AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
   Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap,
-  Target, ChevronRight, Plus, Repeat, Snowflake, ShieldCheck, Coins
+  Target, ChevronRight, Plus, Repeat, Snowflake, ShieldCheck, Coins,
+  Calculator, Search, Flame, Scale, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { normalizeCategory } from '../../lib/categories';
 
 interface OverviewTabProps {
   kpis: KPI | null;
@@ -33,6 +35,9 @@ interface OverviewTabProps {
   handleCreateWallet?: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   handleUpdateWallet?: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   handleDeleteWallet?: (id: string, reassignToWalletId?: string) => Promise<any>;
+  onOpenQuickTransaction?: (type: 'Expense' | 'Income' | 'Transfer') => void;
+  onOpenSmartCalculator?: () => void;
+  onOpenCommandPalette?: () => void;
 }
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
@@ -50,9 +55,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   handleCreateWallet,
   handleUpdateWallet,
   handleDeleteWallet,
+  onOpenQuickTransaction,
+  onOpenSmartCalculator,
+  onOpenCommandPalette,
 }) => {
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
   const [showWalletsModal, setShowWalletsModal] = useState(false);
+  const [showWaterfall, setShowWaterfall] = useState(false);
   const [insightModalType, setInsightModalType] = useState<'forecast' | 'health' | null>(null);
   
   const currentFm = getCurrentFinancialMonth(payrolls);
@@ -120,6 +129,135 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     [kpis, transactions, payrolls, budgets, subscriptions, debts, goals, investmentsData]
   );
 
+  // Behavioral Memory: Discipline Streak, 50/30/20 Macro Benchmark & Anomaly Radar
+  const behavioralInsights = useMemo(() => {
+    const allowance = kpis?.dailyAllowance && kpis.dailyAllowance > 0 ? kpis.dailyAllowance : 200;
+    const now = new Date();
+    const dailySpendMap = new Map<string, number>();
+
+    transactions.forEach((tx) => {
+      if (tx.type !== 'Expense') return;
+      const dayKey = new Date(tx.createdAt).toISOString().slice(0, 10);
+      dailySpendMap.set(dayKey, (dailySpendMap.get(dayKey) || 0) + netExpenseOf(tx));
+    });
+
+    // Consecutive days under daily allowance (looking back up to 30 days)
+    let streakDays = 0;
+    let daysUnderIn30d = 0;
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(now.getTime() - i * 86400000);
+      const key = d.toISOString().slice(0, 10);
+      const spent = dailySpendMap.get(key) || 0;
+      if (spent <= allowance) {
+        daysUnderIn30d++;
+        if (streakDays === i) {
+          streakDays++;
+        }
+      }
+    }
+
+    // 50/30/20 Macro Split for current financial cycle
+    const needsCats = new Set([
+      '🏢 Housing & Utilities',
+      '🛒 Groceries',
+      '🚗 Transportation',
+      '🩺 Health & Medical',
+      '📱 Telecom & Subscriptions',
+      '🛡️ Insurance / Annual Costs',
+      '🏠 Household & Family',
+    ]);
+    const savingsAndDebtCats = new Set([
+      '🛟 Emergency & goals Fund',
+      '📈 Investments',
+      '💳 Debt & Obligations',
+    ]);
+
+    let needsAmt = 0;
+    let wantsAmt = 0;
+    let savingsAmt = Math.max(0, (kpis?.monthlyIncome ?? 0) - (kpis?.monthlyExpenses ?? 0));
+
+    const cycleTxs = transactions.filter(
+      (tx) => currentFm && isInMonth(tx, year, month, payrolls)
+    );
+
+    cycleTxs.forEach((tx) => {
+      if (tx.type === 'Expense') {
+        const norm = normalizeCategory(tx.category);
+        const amt = netExpenseOf(tx);
+        if (savingsAndDebtCats.has(norm)) {
+          savingsAmt += amt;
+        } else if (needsCats.has(norm)) {
+          needsAmt += amt;
+        } else {
+          wantsAmt += amt;
+        }
+      }
+    });
+
+    const totalMacroDenominator = Math.max(1, needsAmt + wantsAmt + savingsAmt);
+    const needsPct = Math.round((needsAmt / totalMacroDenominator) * 100);
+    const wantsPct = Math.round((wantsAmt / totalMacroDenominator) * 100);
+    const savingsPct = Math.max(0, 100 - needsPct - wantsPct);
+
+    // Anomaly Detector: Find transactions in current cycle that are > 2.2x category average and >= 150 MAD
+    const catStats = new Map<string, { sum: number; count: number }>();
+    transactions.forEach((tx) => {
+      if (tx.type !== 'Expense') return;
+      const norm = normalizeCategory(tx.category) || 'Uncategorized';
+      const amt = netExpenseOf(tx);
+      if (amt <= 0) return;
+      const cur = catStats.get(norm) || { sum: 0, count: 0 };
+      cur.sum += amt;
+      cur.count += 1;
+      catStats.set(norm, cur);
+    });
+
+    const anomalies: {
+      txId: string;
+      title: string;
+      category: string;
+      amount: number;
+      categoryAvg: number;
+      multiplier: number;
+      dateLabel: string;
+    }[] = [];
+
+    cycleTxs.forEach((tx) => {
+      if (tx.type !== 'Expense') return;
+      const norm = normalizeCategory(tx.category) || 'Uncategorized';
+      const amt = netExpenseOf(tx);
+      const stat = catStats.get(norm);
+      if (stat && stat.count >= 2 && amt >= 150) {
+        const avg = stat.sum / stat.count;
+        if (avg > 0 && amt >= avg * 2.1) {
+          anomalies.push({
+            txId: tx.id,
+            title: tx.notes || norm,
+            category: norm,
+            amount: amt,
+            categoryAvg: avg,
+            multiplier: Number((amt / avg).toFixed(1)),
+            dateLabel: format(new Date(tx.createdAt), 'MMM d'),
+          });
+        }
+      }
+    });
+
+    anomalies.sort((a, b) => b.amount - a.amount);
+
+    return {
+      streakDays,
+      daysUnderIn30d,
+      needsPct,
+      wantsPct,
+      savingsPct,
+      needsAmt,
+      wantsAmt,
+      savingsAmt,
+      anomalies: anomalies.slice(0, 3),
+    };
+  }, [kpis, transactions, currentFm, year, month, payrolls]);
+
   // Health score ring color
   const healthColor = (score: number) =>
     score >= 75 ? 'text-emerald-500' : score >= 50 ? 'text-amber-500' : 'text-red-500';
@@ -135,6 +273,86 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       {/* Spex Daily AI Pulse Banner */}
       <SpexAiPulseBanner kpis={kpis} setActiveTab={setActiveTab} />
 
+      {/* Executive Quick Action Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3.5 py-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              onOpenQuickTransaction
+                ? onOpenQuickTransaction('Expense')
+                : setActiveTab('transactions')
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-white px-3 py-1.5 text-xs font-semibold text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors whitespace-nowrap shrink-0"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Log Expense</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onOpenQuickTransaction
+                ? onOpenQuickTransaction('Income')
+                : setActiveTab('transactions')
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/50 transition-colors whitespace-nowrap shrink-0"
+          >
+            <ArrowDownRight className="h-3.5 w-3.5" />
+            <span>Log Income</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onOpenQuickTransaction
+                ? onOpenQuickTransaction('Transfer')
+                : setActiveTab('transactions')
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50/70 dark:bg-blue-950/30 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/50 transition-colors whitespace-nowrap shrink-0"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            <span>Transfer</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onOpenSmartCalculator
+                ? onOpenSmartCalculator()
+                : setActiveTab('calculators')
+            }
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/80 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors whitespace-nowrap shrink-0"
+          >
+            <Calculator className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+            <span>Smart Calculator</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('calculators')}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/80 px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors whitespace-nowrap shrink-0"
+          >
+            <Scale className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+            <span>What-If &amp; Tax Simulators</span>
+          </button>
+        </div>
+
+        {onOpenCommandPalette && (
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            className="hidden sm:inline-flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 px-3 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span>Search or jump to...</span>
+            <kbd className="rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5 py-0.5 text-[10px] font-mono text-gray-600 dark:text-gray-300">
+              ⌘K
+            </kbd>
+          </button>
+        )}
+      </div>
+
       {/* Row 1 – Safe to Spend Hero + Daily Allowance + Runway */}
       <div className="grid min-w-0 grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
         {/* Safe to Spend — Hero Card */}
@@ -143,22 +361,40 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-gray-400">
               <Shield className="h-4 w-4 text-indigo-400" /> Safe to Spend
             </CardTitle>
-            {handleCreateWallet && (
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => setShowWalletsModal(true)}
-                className="text-xs font-medium text-indigo-300 hover:text-white bg-indigo-900/40 hover:bg-indigo-900/80 border border-indigo-700/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                onClick={() => setShowWaterfall((prev) => !prev)}
+                className="text-xs font-medium text-gray-300 hover:text-white bg-gray-800/80 hover:bg-gray-800 border border-gray-700 px-2 py-1 rounded-lg transition-colors flex items-center gap-1"
+                title="View Liquidity-to-Safe-to-Spend Waterfall Math"
               >
-                <WalletCards className="h-3.5 w-3.5" /> Manage Wallets
+                <span>Waterfall</span>
+                {showWaterfall ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               </button>
-            )}
+              {handleCreateWallet && (
+                <button
+                  type="button"
+                  onClick={() => setShowWalletsModal(true)}
+                  className="text-xs font-medium text-indigo-300 hover:text-white bg-indigo-900/40 hover:bg-indigo-900/80 border border-indigo-700/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                >
+                  <WalletCards className="h-3.5 w-3.5" /> Wallets
+                </button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="break-words text-2xl font-bold sm:text-3xl font-mono tabular-nums">
-              {(kpis?.safeToSpend ?? 0).toFixed(2)} <span className="text-lg text-gray-400">MAD</span>
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="break-words text-2xl font-bold sm:text-3xl font-mono tabular-nums">
+                {(kpis?.safeToSpend ?? 0).toFixed(2)} <span className="text-lg text-gray-400">MAD</span>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="text-xs font-mono tabular-nums font-semibold text-indigo-300">
+                  {kpis?.runwayDays ?? 0}d runway
+                </span>
+              </div>
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-400">
+              <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-400 font-mono tabular-nums">
                 {kpis?.accounts?.map((acc) => {
                   const accCommitted = subscriptions
                     .filter((s) => s.status === 'active' && (s.walletId === acc.id || (!s.walletId && acc.isMain)))
@@ -175,14 +411,45 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 })}
               </p>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-wider text-gray-500">
-              <span>Liquidity {(kpis?.totalLiquidity ?? 0).toFixed(0)}</span>
-              {stockPortfolioMad > 0 && <span className="text-emerald-400">· Stocks +{stockPortfolioMad.toFixed(0)}</span>}
-              <span>· Buffer −{(kpis?.emergencyBuffer ?? 0).toFixed(0)}</span>
-              {(kpis?.investmentReserve ?? 0) > 0 && <span className="text-amber-400">· Inv Reserve −{(kpis?.investmentReserve ?? 0).toFixed(0)}</span>}
-              {monthlySubBurn > 0 && <span className="text-purple-400">· Committed Bills −{monthlySubBurn.toFixed(0)}</span>}
-              {(kpis?.pendingPayables ?? 0) > 0 && <span>· Payables −{(kpis?.pendingPayables ?? 0).toFixed(0)}</span>}
-            </div>
+
+            {showWaterfall ? (
+              <div className="mt-3 rounded-xl border border-gray-800 bg-gray-950/70 p-3 space-y-1.5 text-xs font-mono tabular-nums animate-in fade-in">
+                <div className="flex justify-between text-gray-300">
+                  <span>Total Liquid Accounts</span>
+                  <span className="font-semibold text-white">{(kpis?.totalLiquidity ?? 0).toFixed(2)} MAD</span>
+                </div>
+                <div className="flex justify-between text-gray-400">
+                  <span>− Emergency Safety Buffer</span>
+                  <span className="text-amber-300">−{(kpis?.emergencyBuffer ?? 0).toFixed(2)} MAD</span>
+                </div>
+                {(kpis?.investmentReserve ?? 0) > 0 && (
+                  <div className="flex justify-between text-gray-400">
+                    <span>− Brokerage Capital Reserve</span>
+                    <span className="text-amber-300">−{(kpis?.investmentReserve ?? 0).toFixed(2)} MAD</span>
+                  </div>
+                )}
+                {(kpis?.pendingPayables ?? 0) > 0 && (
+                  <div className="flex justify-between text-gray-400">
+                    <span>− Pending Debt Payables</span>
+                    <span className="text-rose-300">−{(kpis?.pendingPayables ?? 0).toFixed(2)} MAD</span>
+                  </div>
+                )}
+                <div className="border-t border-gray-800 pt-1.5 flex justify-between font-bold text-indigo-300">
+                  <span>= True Safe to Spend</span>
+                  <span>{(kpis?.safeToSpend ?? 0).toFixed(2)} MAD</span>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-mono tabular-nums text-gray-400">
+                <span>Liquidity {(kpis?.totalLiquidity ?? 0).toFixed(0)}</span>
+                {stockPortfolioMad > 0 && <span className="text-emerald-400">· Stocks +{stockPortfolioMad.toFixed(0)}</span>}
+                <span>· Buffer −{(kpis?.emergencyBuffer ?? 0).toFixed(0)}</span>
+                {(kpis?.investmentReserve ?? 0) > 0 && <span className="text-amber-400">· Inv Reserve −{(kpis?.investmentReserve ?? 0).toFixed(0)}</span>}
+                {monthlySubBurn > 0 && <span className="text-purple-400">· Subs {monthlySubBurn.toFixed(0)}/mo</span>}
+                {(kpis?.pendingPayables ?? 0) > 0 && <span>· Payables −{(kpis?.pendingPayables ?? 0).toFixed(0)}</span>}
+              </div>
+            )}
+
             {/* Net Worth Badge */}
             <div className="mt-4 pt-3 border-t border-gray-800 flex items-center justify-between gap-2">
               <div>
@@ -203,31 +470,197 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
         {/* Daily Allowance */}
         <Card className="min-w-0">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-xs font-medium text-gray-500 dark:text-gray-400 sm:text-sm">Daily Allowance</CardTitle>
+            <span className="text-[11px] font-mono tabular-nums text-gray-400">
+              {kpis?.daysUntilPayday ?? 0}d to payday
+            </span>
           </CardHeader>
           <CardContent>
-            <div className={`break-words text-xl font-bold sm:text-3xl ${dailyStatusStyles[kpis?.dailyStatus || 'on_track']}`}>
+            <div className={`break-words text-xl font-bold font-mono tabular-nums sm:text-3xl ${dailyStatusStyles[kpis?.dailyStatus || 'on_track']}`}>
               {kpis?.dailyRemaining.toFixed(2) || '0.00'} <span className="text-sm sm:text-base">MAD</span>
             </div>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{kpis?.dailySpent.toFixed(2) || '0.00'} spent of {kpis?.dailyAllowance.toFixed(2) || '0.00'}</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+              {kpis?.dailySpent.toFixed(2) || '0.00'} spent of {kpis?.dailyAllowance.toFixed(2) || '0.00'} MAD
+            </p>
+            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  (kpis?.dailyUsagePercent ?? 0) > 100
+                    ? 'bg-red-500'
+                    : (kpis?.dailyUsagePercent ?? 0) > 80
+                    ? 'bg-amber-500'
+                    : 'bg-blue-600'
+                }`}
+                style={{ width: `${Math.min(100, kpis?.dailyUsagePercent ?? 0)}%` }}
+              />
+            </div>
           </CardContent>
         </Card>
 
         {/* Adjusted True Spend */}
         <Card className="min-w-0">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 sm:text-sm">
               <User className="h-3.5 w-3.5" /> Adjusted True Spend
             </CardTitle>
+            <span className="text-[11px] font-mono tabular-nums text-gray-400">
+              {(kpis?.avgDailySpend ?? 0).toFixed(0)} MAD/day
+            </span>
           </CardHeader>
           <CardContent>
-            <div className="break-words text-xl font-bold text-gray-900 dark:text-gray-100 sm:text-3xl">
+            <div className="break-words text-xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100 sm:text-3xl">
               {kpis?.adjustedTrueSpend?.toFixed(2) || '0.00'} <span className="text-sm sm:text-base font-normal text-gray-500">MAD</span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Total expenses minus reimbursements & debts
+              Total expenses minus reimbursements &amp; debts
             </p>
+            <div className="mt-2.5 flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+              <span>Cycle Inflow: +{(kpis?.monthlyIncome ?? 0).toFixed(0)} MAD</span>
+              <span>Runway: {kpis?.runwayDays ?? 0}d</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Behavioral Memory: Discipline Streak, 50/30/20 Macro Benchmark & Anomaly Detector */}
+      <div className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3">
+        {/* Card 1: Spending Discipline Streak */}
+        <Card className="min-w-0 border-gray-200 dark:border-gray-800">
+          <CardContent className="p-4 flex flex-col justify-between h-full">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                  <Flame className="h-4 w-4 text-amber-500" />
+                  <span>Daily Allowance Discipline</span>
+                </p>
+                <div className="mt-1.5 flex items-baseline gap-2">
+                  <span className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-white">
+                    {behavioralInsights.streakDays} {behavioralInsights.streakDays === 1 ? 'Day' : 'Days'}
+                  </span>
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                    active streak
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('reports')}
+                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
+              >
+                Report Card →
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              Stayed within your <span className="font-mono tabular-nums font-medium text-gray-700 dark:text-gray-300">{(kpis?.dailyAllowance ?? 0).toFixed(0)} MAD/day</span> cap on{' '}
+              <span className="font-mono tabular-nums font-semibold text-gray-900 dark:text-white">{behavioralInsights.daysUnderIn30d} of the last 30 days</span>.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Card 2: Live 50/30/20 Macro Benchmark */}
+        <Card className="min-w-0 border-gray-200 dark:border-gray-800">
+          <CardContent className="p-4 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                <Scale className="h-4 w-4 text-indigo-500" />
+                <span>Macro Split vs 50/30/20 Target</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab('budgets')}
+                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
+              >
+                Adjust Rule →
+              </button>
+            </div>
+
+            <div className="mt-2.5">
+              <div className="flex justify-between text-xs font-mono tabular-nums font-semibold text-gray-900 dark:text-white">
+                <span>Needs {behavioralInsights.needsPct}%</span>
+                <span>·</span>
+                <span>Wants {behavioralInsights.wantsPct}%</span>
+                <span>·</span>
+                <span className="text-emerald-600 dark:text-emerald-400">Save {behavioralInsights.savingsPct}%</span>
+              </div>
+              <div className="mt-1.5 flex h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                <div
+                  className="bg-indigo-500 transition-all"
+                  style={{ width: `${behavioralInsights.needsPct}%` }}
+                  title={`Needs: ${behavioralInsights.needsPct}%`}
+                />
+                <div
+                  className="bg-amber-500 transition-all"
+                  style={{ width: `${behavioralInsights.wantsPct}%` }}
+                  title={`Wants: ${behavioralInsights.wantsPct}%`}
+                />
+                <div
+                  className="bg-emerald-500 transition-all"
+                  style={{ width: `${behavioralInsights.savingsPct}%` }}
+                  title={`Savings & Invest: ${behavioralInsights.savingsPct}%`}
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                Benchmark: 50% Needs · 30% Wants · 20% Savings &amp; Invest
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Card 3: Automated Spending Anomaly Detector */}
+        <Card className="min-w-0 border-gray-200 dark:border-gray-800">
+          <CardContent className="p-4 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                {behavioralInsights.anomalies.length > 0 ? (
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                )}
+                <span>Spending Anomaly Radar</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab('analytics')}
+                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
+              >
+                Analytics →
+              </button>
+            </div>
+
+            {behavioralInsights.anomalies.length > 0 ? (
+              <div className="mt-2 space-y-1.5">
+                {behavioralInsights.anomalies.slice(0, 2).map((anom) => (
+                  <button
+                    key={anom.txId}
+                    type="button"
+                    onClick={() => openTransaction(anom.txId)}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg bg-amber-50/70 dark:bg-amber-950/25 px-2.5 py-1.5 text-left text-xs hover:bg-amber-100/70 dark:hover:bg-amber-950/40 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-gray-900 dark:text-white">
+                        {anom.title}
+                      </p>
+                      <p className="truncate text-[10px] text-gray-500 dark:text-gray-400">
+                        {anom.dateLabel} · {anom.multiplier}× typical ({anom.categoryAvg.toFixed(0)} MAD avg)
+                      </p>
+                    </div>
+                    <span className="font-mono tabular-nums font-bold text-amber-700 dark:text-amber-300 shrink-0">
+                      {anom.amount.toFixed(0)} MAD
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-2">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Zero Unusual Spikes Detected
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  All expenses this cycle are tracking within normal category ticket sizes.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

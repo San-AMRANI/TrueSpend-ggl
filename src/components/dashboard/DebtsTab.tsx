@@ -4,7 +4,9 @@ import DebtForm from '../DebtForm';
 import { SettleDebtModal } from '../SettleDebtModal';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { CheckCircle2, ArrowDownRight, ArrowUpRight, Edit2, Trash2, History, Plus, Zap, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Input } from '../ui/Input';
+import { Select } from '../ui/Select';
+import { CheckCircle2, ArrowDownRight, ArrowUpRight, Edit2, Trash2, History, Plus, Zap, AlertTriangle, ExternalLink, X, Calculator } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface DebtsTabProps {
@@ -31,10 +33,35 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
   setActiveTab: setDashboardTab,
 }) => {
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
+  const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
+  const [editContact, setEditContact] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editType, setEditType] = useState<'Receivable' | 'Payable'>('Receivable');
+  const [isUpdatingDebt, setIsUpdatingDebt] = useState(false);
+  const [deletingDebt, setDeletingDebt] = useState<Debt | null>(null);
   const [activeTab, setActiveTab] = useState<'receivable' | 'payable' | 'cleared' | 'all'>('receivable');
   const [showAddForm, setShowAddForm] = useState(false);
   const [reservingInBudget, setReservingInBudget] = useState(false);
   const [budgetSuccessMsg, setBudgetSuccessMsg] = useState<string | null>(null);
+
+  const openEditModal = (debt: Debt) => {
+    setEditingDebt(debt);
+    setEditContact(debt.contactName);
+    setEditAmount(debt.originalAmount);
+    setEditType(debt.type);
+  };
+
+  const submitEditDebt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDebt) return;
+    setIsUpdatingDebt(true);
+    try {
+      await handleEditDebt(editingDebt.id, editAmount, editContact.trim(), editType);
+      setEditingDebt(null);
+    } finally {
+      setIsUpdatingDebt(false);
+    }
+  };
 
   const { totalReceivable, totalPayable, filteredDebts } = useMemo(() => {
     const pendingReceivables = debts.filter(d => d.type === 'Receivable' && d.status === 'Pending');
@@ -328,7 +355,7 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
                           size="icon"
                           variant="ghost"
                           className="h-8 w-8 text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10"
-                          onClick={() => handleEditDebt(debt.id, debt.originalAmount, debt.contactName, debt.type)}
+                          onClick={() => openEditModal(debt)}
                           title="Edit Debt"
                         >
                           <Edit2 className="h-4 w-4" />
@@ -337,7 +364,7 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
                           size="icon"
                           variant="ghost"
                           className="h-8 w-8 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
-                          onClick={() => handleDeleteDebt(debt.id)}
+                          onClick={() => setDeletingDebt(debt)}
                           title="Delete Debt"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -398,6 +425,109 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
           await handleSettle(debtId, amount, category, walletId);
         }}
       />
+
+      {/* Edit Debt Modal */}
+      {editingDebt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                Edit Debt Record
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingDebt(null)}
+                className="p-1 rounded-md text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <form onSubmit={submitEditDebt} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Contact / Counterparty Name
+                </label>
+                <Input
+                  type="text"
+                  required
+                  value={editContact}
+                  onChange={(e) => setEditContact(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Original Amount (MAD)
+                </label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  required
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Debt Direction
+                </label>
+                <Select
+                  value={editType}
+                  onChange={(e) => setEditType(e.target.value as 'Receivable' | 'Payable')}
+                >
+                  <option value="Receivable">Owed to You (Receivable)</option>
+                  <option value="Payable">You Owe (Payable)</option>
+                </Select>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => setEditingDebt(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={isUpdatingDebt}>
+                  {isUpdatingDebt ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Debt Confirmation Modal */}
+      {deletingDebt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 shrink-0">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                  Delete Debt with {deletingDebt.contactName}?
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  This will remove the {parseFloat(deletingDebt.remainingBalance).toFixed(2)} MAD {deletingDebt.type.toLowerCase()} record.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setDeletingDebt(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 text-white"
+                onClick={async () => {
+                  const id = deletingDebt.id;
+                  setDeletingDebt(null);
+                  await handleDeleteDebt(id);
+                }}
+              >
+                Delete Record
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

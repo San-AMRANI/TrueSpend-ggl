@@ -48,16 +48,17 @@ const mainTabs: NavTabItem[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'investments', label: 'Stocks', icon: TrendingUp },
   { id: 'forecast', label: 'Forecast', icon: Sparkles },
-  { id: 'calendar', label: 'Calendar & Cash Flow', icon: CalendarDays },
+  { id: 'calculators', label: 'Simulators', icon: Calculator },
+  { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
   { id: 'budgets', label: 'Budgets', icon: WalletCards },
   { id: 'analytics', label: 'Analytics', icon: BarChart2 },
-  { id: 'reports', label: 'Reports', icon: FileBarChart },
-  { id: 'contexts', label: 'Contexts', icon: Map },
   { id: 'chat', label: 'Spex AI', icon: SpexNavIcon },
 ];
 
 const moreTabs: NavTabItem[] = [
+  { id: 'reports', label: 'Reports & Retro', icon: FileBarChart },
+  { id: 'contexts', label: 'Contexts', icon: Map },
   { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
   { id: 'goals', label: 'Goals', icon: Target },
   { id: 'debts', label: 'Debts & Splits', icon: Users },

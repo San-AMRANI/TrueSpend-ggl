@@ -12,7 +12,7 @@ import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 import { DesktopHeaderNav } from './components/dashboard/DesktopHeaderNav';
 import type { DashboardTab } from './types';
-import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins, Sparkles } from 'lucide-react';
+import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins, Sparkles, Search, Map } from 'lucide-react';
 
 import { SpexAvatar } from './components/common/SpexAvatar';
 
@@ -54,10 +54,12 @@ function AppContent() {
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'investments', label: 'Stocks & Equities', icon: TrendingUp },
     { id: 'forecast', label: 'Predictive Forecast', icon: Sparkles },
+    { id: 'calculators', label: 'Calculators & Simulators', icon: Calculator },
     { id: 'calendar', label: 'Calendar & Cash Flow', icon: CalendarDays },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },
     { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
     { id: 'budgets', label: 'Budgets', icon: WalletCards },
+    { id: 'contexts', label: 'Contexts', icon: Map },
     { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
     { id: 'goals', label: 'Goals', icon: Target },
     { id: 'debts', label: 'Debts & Splits', icon: Users },
@@ -190,7 +192,7 @@ function AppContent() {
       )}
       {/* Header — hidden on mobile when the chat tab is active (chat becomes a full-screen overlay) */}
       <header className={`sticky top-0 z-30 border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md px-4 py-2.5 sm:px-6 lg:px-8 ${isChatOnMobile ? 'hidden sm:block' : ''}`}>
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
           <div className="flex items-center gap-2 shrink-0">
             <button className="md:hidden p-1.5 -ml-1.5 rounded-md text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" onClick={() => setIsSidebarOpen(true)}>
               <Menu className="h-5 w-5" />
@@ -198,7 +200,21 @@ function AppContent() {
             <img src={appIconSrc} alt="TrueSpend Logo" className="h-8 w-8" />
             <span className="text-lg font-bold tracking-tight text-gray-900 dark:text-white">TrueSpend</span>
           </div>
-          <DesktopHeaderNav activeTab={activeTab} onSelectTab={handleSelectTab} />
+          <div className="flex items-center gap-2">
+            <DesktopHeaderNav activeTab={activeTab} onSelectTab={handleSelectTab} />
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('truespend:openCommandPalette'))}
+              title="Universal Search & Command Palette (⌘K)"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-medium transition-colors shrink-0"
+            >
+              <Search className="h-3.5 w-3.5 text-gray-400" />
+              <span className="hidden xl:inline text-gray-500 dark:text-gray-400">Search</span>
+              <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded text-gray-500 dark:text-gray-400">
+                ⌘K
+              </kbd>
+            </button>
+          </div>
         </div>
       </header>
       <main className={`mx-auto min-w-0 overflow-x-hidden ${isChatOnMobile ? 'w-full max-w-none p-0 sm:px-3 sm:py-3 sm:pb-24 md:pb-4 lg:px-5' : 'max-w-7xl p-3 pb-24 sm:p-6 sm:pb-24 md:pb-6 lg:p-8'}`}>

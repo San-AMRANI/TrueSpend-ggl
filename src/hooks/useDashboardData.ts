@@ -165,26 +165,23 @@ export function useDashboardData(token: string | null) {
     }
   };
 
-  const handleEditDebt = async (debtId: string, currentAmount: string, currentContact: string, currentType: string) => {
-    const newAmountStr = prompt('Enter the updated original amount:', currentAmount);
-    if (newAmountStr === null) return;
-    const newContact = prompt('Enter the updated contact name:', currentContact);
-    if (newContact === null) return;
-
+  const handleEditDebt = async (debtId: string, updatedAmount: string, updatedContact: string, updatedType: string) => {
     try {
       await dashboardService.updateDebt(
         debtId,
         {
-          amount: parseFloat(newAmountStr),
-          contact: newContact,
-          type: currentType,
+          amount: parseFloat(updatedAmount),
+          contact: updatedContact,
+          type: updatedType,
         },
         token
       );
       await fetchData();
+      window.dispatchEvent(new CustomEvent('truespend:toast', { detail: { message: 'Debt record updated successfully.', type: 'success' } }));
     } catch (e: any) {
       console.error('Error updating debt:', e);
-      alert(e?.message || 'Failed to update debt.');
+      window.dispatchEvent(new CustomEvent('truespend:toast', { detail: { message: e?.message || 'Failed to update debt.', type: 'error' } }));
+      throw e;
     }
   };
 
@@ -253,12 +250,12 @@ export function useDashboardData(token: string | null) {
       await dashboardService.updateSettings(payload, token);
       await fetchData();
       if (notifyUser) {
-        alert('Settings saved successfully!');
+        window.dispatchEvent(new CustomEvent('truespend:toast', { detail: { message: 'Settings saved successfully!', type: 'success' } }));
       }
     } catch (e) {
       console.error('Error saving settings:', e);
       if (notifyUser) {
-        alert('Failed to save settings.');
+        window.dispatchEvent(new CustomEvent('truespend:toast', { detail: { message: 'Failed to save settings.', type: 'error' } }));
       }
     } finally {
       setIsSaving(false);

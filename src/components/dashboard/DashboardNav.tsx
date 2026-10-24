@@ -17,6 +17,7 @@ import {
   TrendingUp,
   ShieldCheck,
   Sparkles,
+  Calculator,
 } from 'lucide-react';
 import { SpexAvatar } from '../common/SpexAvatar';
 
@@ -35,6 +36,7 @@ const tabs: { id: DashboardTab; label: string; shortLabel: string; icon: React.F
   { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
   { id: 'investments', label: 'Stocks & Equities', shortLabel: 'Stocks', icon: TrendingUp },
   { id: 'forecast', label: 'Predictive Forecast', shortLabel: 'Forecast', icon: Sparkles },
+  { id: 'calculators', label: 'Calculators & Simulators', shortLabel: 'Simulators', icon: Calculator },
   { id: 'calendar', label: 'Calendar & Cash Flow', shortLabel: 'Calendar', icon: CalendarDays },
   { id: 'analytics', label: 'Analytics', shortLabel: 'Analytics', icon: BarChart2 },
   { id: 'transactions', label: 'Transactions', shortLabel: 'Transactions', icon: ArrowRightLeft },

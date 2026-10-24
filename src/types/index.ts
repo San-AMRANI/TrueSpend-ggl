@@ -254,6 +254,7 @@ export type DashboardTab =
   | 'overview'
   | 'investments'
   | 'forecast'
+  | 'calculators'
   | 'calendar'
   | 'transactions'
   | 'budgets'

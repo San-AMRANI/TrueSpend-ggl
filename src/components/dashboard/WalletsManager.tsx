@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Landmark, Banknote, Wallet as WalletIcon, Plus, Edit2, Trash2, Star, Check, AlertCircle, X, TrendingUp, Repeat, ShieldAlert, ChevronDown, ChevronUp, Zap } from 'lucide-react';
+import { Landmark, Banknote, Wallet as WalletIcon, Plus, Edit2, Trash2, Star, Check, AlertCircle, X, TrendingUp, Repeat, ShieldAlert, ChevronDown, ChevronUp, Zap, Scale, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Wallet, Subscription, Debt, InvestmentsData } from '../../types';
+import { dashboardService } from '../../services/api/dashboardService';
+import { useAuth } from '../../context/AuthContext';
 
 interface WalletsManagerProps {
   wallets: Wallet[];
@@ -33,8 +35,12 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   onClose,
   isModal = false,
 }) => {
+  const { token } = useAuth();
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingWallet, setEditingWallet] = useState<Wallet | null>(null);
+  const [reconcilingWallet, setReconcilingWallet] = useState<Wallet | null>(null);
+  const [actualStatementBalance, setActualStatementBalance] = useState<string>('');
+  const [reconcileNotice, setReconcileNotice] = useState<string | null>(null);
   const [deletingWallet, setDeletingWallet] = useState<Wallet | null>(null);
   const [reassignTargetId, setReassignTargetId] = useState<string>('');
   const [expandedWalletBills, setExpandedWalletBills] = useState<Record<string, boolean>>({});
@@ -50,6 +56,65 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const openReconcileForm = (wallet: Wallet) => {
+    setShowAddForm(false);
+    setEditingWallet(null);
+    setReconcilingWallet(wallet);
+    setActualStatementBalance((wallet.balance ?? 0).toFixed(2));
+    setError(null);
+  };
+
+  const handleResolveReconciliation = async (mode: 'adjust_baseline' | 'log_transaction') => {
+    if (!reconcilingWallet) return;
+    const actual = parseFloat(actualStatementBalance);
+    if (!Number.isFinite(actual)) {
+      setError('Please enter a valid actual balance.');
+      return;
+    }
+    const recorded = reconcilingWallet.balance ?? 0;
+    const diff = Number((actual - recorded).toFixed(2));
+    if (Math.abs(diff) < 0.01) {
+      setReconcilingWallet(null);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      if (mode === 'adjust_baseline') {
+        const currentInit = parseFloat(reconcilingWallet.initialBalance || '0') || 0;
+        const nextInit = Number((currentInit + diff).toFixed(2));
+        await onUpdateWallet(reconcilingWallet.id, { initialBalance: nextInit });
+        setReconcileNotice(
+          `Reconciled ${reconcilingWallet.name} to ${actual.toFixed(2)} MAD via baseline adjustment (${diff >= 0 ? '+' : ''}${diff.toFixed(2)} MAD).`
+        );
+      } else {
+        await dashboardService.createTransaction(
+          {
+            amount: Math.abs(diff),
+            type: diff > 0 ? 'Income' : 'Expense',
+            walletId: reconcilingWallet.id,
+            category: diff > 0 ? '📥 Income' : '⚠️ Unexpected',
+            notes: `Account Reconciliation Adjustment (${reconcilingWallet.name})`,
+            transaction_date: new Date().toISOString().slice(0, 10),
+          },
+          token
+        );
+        // Trigger parent refresh by touching wallet update with existing name
+        await onUpdateWallet(reconcilingWallet.id, { name: reconcilingWallet.name });
+        setReconcileNotice(
+          `Logged ${Math.abs(diff).toFixed(2)} MAD ${diff > 0 ? 'Income' : 'Expense'} reconciliation adjustment for ${reconcilingWallet.name}.`
+        );
+      }
+      setReconcilingWallet(null);
+      setTimeout(() => setReconcileNotice(null), 5000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to reconcile wallet balance');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const openAddForm = () => {
     setEditingWallet(null);
@@ -121,7 +186,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
     try {
       await onUpdateWallet(wallet.id, { isMain: true });
     } catch (err: any) {
-      alert(err.message || 'Failed to update primary wallet');
+      setError(err.message || 'Failed to update primary wallet');
     } finally {
       setLoading(false);
     }
@@ -129,7 +194,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
 
   const openDeleteModal = (wallet: Wallet) => {
     if (wallets.length <= 1) {
-      alert('You must have at least one wallet. Cannot delete your only wallet.');
+      setError('You must have at least one wallet. Cannot delete your only wallet.');
       return;
     }
     const otherWallets = wallets.filter(w => w.id !== wallet.id);
@@ -282,6 +347,137 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
         </form>
       )}
 
+      {reconcileNotice && (
+        <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/30 p-3.5 text-xs font-medium text-emerald-800 dark:text-emerald-200 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+            <span>{reconcileNotice}</span>
+          </div>
+          <button type="button" onClick={() => setReconcileNotice(null)} className="text-emerald-600 hover:text-emerald-800">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Account Reconciliation Panel */}
+      {reconcilingWallet && (() => {
+        const recorded = reconcilingWallet.balance ?? 0;
+        const actual = parseFloat(actualStatementBalance);
+        const isValid = Number.isFinite(actual);
+        const diff = isValid ? Number((actual - recorded).toFixed(2)) : 0;
+        const isBalanced = isValid && Math.abs(diff) < 0.01;
+
+        return (
+          <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 sm:p-5 space-y-4 animate-in fade-in">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                  <Scale className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>Reconcile Balance: {reconcilingWallet.name}</span>
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Compare your TrueSpend ledger against your real bank statement or physical cash count.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReconcilingWallet(null)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">TrueSpend Recorded Balance</p>
+                <p className="text-lg font-bold font-mono tabular-nums text-gray-900 dark:text-white mt-1">
+                  {recorded.toFixed(2)} MAD
+                </p>
+              </div>
+
+              <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900 p-3">
+                <label className="block text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                  Actual Bank / Physical Balance (MAD)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={actualStatementBalance}
+                  onChange={(e) => setActualStatementBalance(e.target.value)}
+                  className="mt-1 w-full bg-transparent text-lg font-bold font-mono tabular-nums text-gray-900 dark:text-white focus:outline-none border-b border-indigo-300 dark:border-indigo-700"
+                />
+              </div>
+
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">Unaccounted Discrepancy</p>
+                <p
+                  className={`text-lg font-bold font-mono tabular-nums mt-1 ${
+                    isBalanced
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : diff > 0
+                      ? 'text-blue-600 dark:text-blue-400'
+                      : 'text-rose-600 dark:text-rose-400'
+                  }`}
+                >
+                  {isBalanced ? '0.00 MAD (Matched)' : `${diff > 0 ? '+' : ''}${diff.toFixed(2)} MAD`}
+                </p>
+              </div>
+            </div>
+
+            {error && (
+              <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                <AlertCircle className="h-3.5 w-3.5" />
+                {error}
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {isBalanced
+                  ? 'Your recorded balance matches your actual statement exactly.'
+                  : diff < 0
+                  ? `You have ${Math.abs(diff).toFixed(2)} MAD less than recorded (unlogged expense or fee).`
+                  : `You have ${diff.toFixed(2)} MAD more than recorded (unlogged inflow).`}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setReconcilingWallet(null)}
+                >
+                  Close
+                </Button>
+                {!isBalanced && isValid && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={loading}
+                      onClick={() => handleResolveReconciliation('adjust_baseline')}
+                      className="text-xs border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300"
+                    >
+                      Adjust Baseline ({diff >= 0 ? '+' : ''}{diff.toFixed(2)} MAD)
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={loading}
+                      onClick={() => handleResolveReconciliation('log_transaction')}
+                      className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      Log {diff > 0 ? 'Income' : 'Expense'} Adjustment
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Wallets Grid / List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {wallets.map((wallet) => (
@@ -329,6 +525,14 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => openReconcileForm(wallet)}
+                    className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    title="Reconcile Balance"
+                  >
+                    <Scale className="h-3.5 w-3.5" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => openEditForm(wallet)}
