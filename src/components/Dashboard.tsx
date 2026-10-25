@@ -542,10 +542,18 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       {isWalletsModalOpen && (
         <WalletsManager
           wallets={kpis?.accounts || []}
+          subscriptions={subscriptions}
+          debts={debts}
+          investmentsData={investmentsData}
+          onOpenInvestments={() => {
+            setIsWalletsModalOpen(false);
+            setActiveTab('investments');
+          }}
           onClose={() => setIsWalletsModalOpen(false)}
-          onCreate={handleCreateWallet}
-          onUpdate={handleUpdateWallet}
-          onDelete={handleDeleteWallet}
+          isModal={true}
+          onCreateWallet={handleCreateWallet}
+          onUpdateWallet={handleUpdateWallet}
+          onDeleteWallet={handleDeleteWallet}
         />
       )}
     </div>
