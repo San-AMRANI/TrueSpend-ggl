@@ -398,7 +398,7 @@ export class BinanceService {
       return {
         code: 'BINANCE_REGION_RESTRICTED',
         message:
-          'Binance returned HTTP 451 from this server IP. Deploying with vercel.json Europe regions ("fra1", "cdg1") routes serverless execution through Frankfurt/Paris.',
+          'Binance returned HTTP 451 from this server IP. Deploying with vercel.json Europe region ("fra1") routes serverless execution through Frankfurt.',
       };
     }
     if (status === 429 || status === 418) {

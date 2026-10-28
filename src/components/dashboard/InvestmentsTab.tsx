@@ -974,7 +974,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                   European Serverless Routing
                 </div>
                 <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
-                  Configured via <code className="font-mono">vercel.json</code> to execute in Frankfurt (<code className="font-mono">fra1</code>) and Paris (<code className="font-mono">cdg1</code>), fully compliant with Binance geographic availability.
+                  Configured via <code className="font-mono">vercel.json</code> to execute in Frankfurt (<code className="font-mono">fra1</code>), fully compliant with Binance geographic availability.
                 </p>
               </div>
             </div>
