@@ -15,10 +15,12 @@ import {
   AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
   Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap,
   Target, ChevronRight, Plus, Repeat, Snowflake, ShieldCheck, Coins,
-  Calculator, Search, Flame, Scale, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2
+  Calculator, Search, Flame, Scale, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2,
+  Eye, EyeOff
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { normalizeCategory } from '../../lib/categories';
+import { usePrivacy } from '../../context/PrivacyContext';
 
 interface OverviewTabProps {
   kpis: KPI | null;
@@ -59,6 +61,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   onOpenSmartCalculator,
   onOpenCommandPalette,
 }) => {
+  const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
   const [showWalletsModal, setShowWalletsModal] = useState(false);
   const [showWaterfall, setShowWaterfall] = useState(false);
@@ -336,6 +339,28 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <Scale className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
             <span>What-If &amp; Tax Simulators</span>
           </button>
+          <button
+            type="button"
+            onClick={togglePrivacyMode}
+            title={isPrivacyMode ? 'Show Balances' : 'Hide Balances (******)'}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+              isPrivacyMode
+                ? 'border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60'
+                : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/80 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+          >
+            {isPrivacyMode ? (
+              <>
+                <EyeOff className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Show Balances</span>
+              </>
+            ) : (
+              <>
+                <Eye className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                <span>Hide Balances</span>
+              </>
+            )}
+          </button>
         </div>
 
         {onOpenCommandPalette && (
@@ -360,6 +385,18 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-gray-400">
               <Shield className="h-4 w-4 text-indigo-400" /> Safe to Spend
+              <button
+                type="button"
+                onClick={togglePrivacyMode}
+                title={isPrivacyMode ? 'Click to show balances' : 'Click to hide balances with stars'}
+                className="ml-1 p-1 rounded-md text-gray-400 hover:text-white hover:bg-gray-800/80 transition-colors"
+              >
+                {isPrivacyMode ? (
+                  <EyeOff className="h-4 w-4 text-amber-400" />
+                ) : (
+                  <Eye className="h-4 w-4 text-gray-400 hover:text-white" />
+                )}
+              </button>
             </CardTitle>
             <div className="flex items-center gap-1.5">
               <button
@@ -385,7 +422,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <CardContent>
             <div className="flex items-baseline justify-between gap-2">
               <div className="break-words text-2xl font-bold sm:text-3xl font-mono tabular-nums">
-                {(kpis?.safeToSpend ?? 0).toFixed(2)} <span className="text-lg text-gray-400">MAD</span>
+                {isPrivacyMode ? '******' : (kpis?.safeToSpend ?? 0).toFixed(2)} <span className="text-lg text-gray-400">MAD</span>
               </div>
               <div className="text-right shrink-0">
                 <span className="text-xs font-mono tabular-nums font-semibold text-indigo-300">

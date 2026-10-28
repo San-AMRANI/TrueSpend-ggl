@@ -59,7 +59,10 @@ import {
   Scale,
   Award,
   Clock,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
+import { usePrivacy } from '../../context/PrivacyContext';
 
 interface InvestmentsTabProps {
   investmentsData: InvestmentsData | null;
@@ -209,6 +212,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   onRefresh,
   setActiveTab,
 }) => {
+  const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
   const [activeSubView, setActiveSubView] = useState<ActiveSubView>('spot');
   const [walletScopeFilter, setWalletScopeFilter] = useState<WalletScopeFilterType>('ALL');
   const [spotFilter, setSpotFilter] = useState<SpotFilterType>('ALL');
@@ -1001,6 +1005,29 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={togglePrivacyMode}
+              title={isPrivacyMode ? 'Click to reveal investment balances' : 'Click to hide balances with stars (******)'}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                isPrivacyMode
+                  ? 'border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100'
+                  : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              {isPrivacyMode ? (
+                <>
+                  <EyeOff className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>Show Balances</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                  <span>Hide Balances</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowAnalyticsPanel((prev) => !prev)}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/80 transition-colors"
             >
@@ -1187,7 +1214,21 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
         {/* Card 1: Live Binance & Portfolio Position (USD & MAD) */}
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-            <span className="font-semibold uppercase tracking-wider">Live Binance &amp; Portfolio</span>
+            <span className="font-semibold uppercase tracking-wider flex items-center gap-1.5">
+              Live Binance &amp; Portfolio
+              <button
+                type="button"
+                onClick={togglePrivacyMode}
+                title={isPrivacyMode ? 'Show balances' : 'Hide balances with stars'}
+                className="p-0.5 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              >
+                {isPrivacyMode ? (
+                  <EyeOff className="h-3.5 w-3.5 text-amber-500" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}
+              </button>
+            </span>
             <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
               {binance?.connected ? `${binance.balances.length} Live Assets` : 'Local Ledger'}
             </span>

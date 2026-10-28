@@ -8,11 +8,12 @@ import React from 'react';
 import { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { PrivacyProvider, usePrivacy } from './context/PrivacyContext';
 import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 import { DesktopHeaderNav } from './components/dashboard/DesktopHeaderNav';
 import type { DashboardTab } from './types';
-import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins, Sparkles, Search, Map } from 'lucide-react';
+import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins, Sparkles, Search, Map, Eye, EyeOff } from 'lucide-react';
 
 import { SpexAvatar } from './components/common/SpexAvatar';
 
@@ -28,6 +29,7 @@ const SpexNavIcon: React.FC<{ className?: string }> = ({ className = 'h-5 w-5' }
 
 function AppContent() {
   const { user, loading, signIn, switchUserSession } = useAuth();
+  const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -204,6 +206,29 @@ function AppContent() {
             <DesktopHeaderNav activeTab={activeTab} onSelectTab={handleSelectTab} />
             <button
               type="button"
+              onClick={togglePrivacyMode}
+              aria-pressed={isPrivacyMode}
+              title={isPrivacyMode ? 'Balances Hidden (Click to show amounts)' : 'Hide Balances & Amounts (Privacy Mode)'}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors shrink-0 ${
+                isPrivacyMode
+                  ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60'
+                  : 'border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'
+              }`}
+            >
+              {isPrivacyMode ? (
+                <>
+                  <EyeOff className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                  <span className="hidden lg:inline">Hidden</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                  <span className="hidden lg:inline">Privacy</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('truespend:openCommandPalette'))}
               title="Universal Search & Command Palette (⌘K)"
               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-medium transition-colors shrink-0"
@@ -257,9 +282,11 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
+      <PrivacyProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </PrivacyProvider>
     </ThemeProvider>
   );
 }
