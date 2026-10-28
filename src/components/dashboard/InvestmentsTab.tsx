@@ -30,6 +30,9 @@ import {
   Briefcase,
   Filter,
   ChevronRight,
+  ExternalLink,
+  Key,
+  Globe,
 } from 'lucide-react';
 
 interface InvestmentsTabProps {
@@ -780,33 +783,109 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           </div>
         )}
 
-        {/* Connection Error or Unconfigured Env Banner */}
-        {(!binance?.connected || showSetupGuide) && (
+        {/* Case 1: Credentials configured but connection failed (Diagnostic & Troubleshooting) */}
+        {binance?.isConfigured && !binance?.connected && (
+          <div className="mt-4 p-4 rounded-xl border border-amber-300 dark:border-amber-800/80 bg-amber-50/70 dark:bg-amber-950/30 space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                      Binance Connection Diagnostic
+                    </h3>
+                    <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 font-bold">
+                      {binance?.errorCode || 'CONNECTION_FAILED'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                    {binance?.statusMessage}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleTriggerRefresh}
+                  disabled={isRefreshingLive}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50 transition-colors shadow-xs"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isRefreshingLive ? 'animate-spin' : ''}`} />
+                  {isRefreshingLive ? 'Testing...' : 'Retry Connection'}
+                </button>
+                <a
+                  href="https://www.binance.com/en/my/settings/api-management"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-300 dark:border-amber-700 bg-white/80 dark:bg-gray-900 text-amber-900 dark:text-amber-200 hover:bg-amber-100/50 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <span>Binance API Console</span>
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            </div>
+
+            {/* Step-by-Step Remediation Cards */}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-xs pt-1 border-t border-amber-200/70 dark:border-amber-900/50">
+              <div className="p-3 rounded-lg bg-white/90 dark:bg-gray-900/90 border border-amber-200 dark:border-amber-900/40">
+                <div className="flex items-center gap-1.5 font-bold text-gray-900 dark:text-white mb-1">
+                  <Globe className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>1. IP Access Restriction</span>
+                </div>
+                <p className="text-gray-600 dark:text-gray-400 text-[11px] leading-relaxed">
+                  Binance defaults to restricting IPs. Because Vercel serverless runs on dynamic cloud IPs, in Binance API Management set IP Access to <strong>&ldquo;Unrestricted (Less Secure)&rdquo;</strong>.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-white/90 dark:bg-gray-900/90 border border-amber-200 dark:border-amber-900/40">
+                <div className="flex items-center gap-1.5 font-bold text-gray-900 dark:text-white mb-1">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>2. Read-Only Permission</span>
+                </div>
+                <p className="text-gray-600 dark:text-gray-400 text-[11px] leading-relaxed">
+                  Verify <strong>&ldquo;Enable Reading&rdquo;</strong> is checked. Ensure Trading, Withdrawals, and Margin are <strong>unchecked</strong>. Setting Unrestricted IP is safe when read-only.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-white/90 dark:bg-gray-900/90 border border-amber-200 dark:border-amber-900/40">
+                <div className="flex items-center gap-1.5 font-bold text-gray-900 dark:text-white mb-1">
+                  <Key className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>3. Ed25519 Key Pair Match</span>
+                </div>
+                <p className="text-gray-600 dark:text-gray-400 text-[11px] leading-relaxed">
+                  Ensure <code className="font-mono text-indigo-600 dark:text-indigo-400">BINANCE_ED25519_PRIVATE_KEY_B64</code> matches the public key uploaded to Binance. If in doubt, generate a fresh key pair.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg bg-white/90 dark:bg-gray-900/90 border border-amber-200 dark:border-amber-900/40">
+                <div className="flex items-center gap-1.5 font-bold text-gray-900 dark:text-white mb-1">
+                  <Terminal className="h-3.5 w-3.5 text-gray-600 dark:text-gray-400" />
+                  <span>4. Base64 &amp; Vercel Region</span>
+                </div>
+                <p className="text-gray-600 dark:text-gray-400 text-[11px] leading-relaxed">
+                  Encode with <code className="font-mono">base64 -w 0 private_key.pem</code>. Our <code className="font-mono">vercel.json</code> routes to Europe (<code className="font-mono">fra1</code>) to prevent US IP blocks.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Case 2: Credentials NOT configured at all */}
+        {!binance?.isConfigured && (
           <div className="mt-4 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-950/60 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-2.5">
                 <Terminal className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-gray-900 dark:text-white">
-                    {binance?.connected
-                      ? 'Server-Side Ed25519 Security Architecture'
-                      : 'Server-Side Binance Ed25519 Configuration Required'}
+                    Server-Side Binance Ed25519 Configuration Required
                   </h3>
                   <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                    {binance?.statusMessage ||
-                      'All Binance authentication and Ed25519 cryptographic signing run exclusively on the server (/api/investments/binance/*). Credentials are never exposed to the browser.'}
+                    All Binance authentication and Ed25519 cryptographic signing run exclusively on the server (/api/investments/binance/*). Credentials are never exposed to the browser.
                   </p>
                 </div>
               </div>
-              {showSetupGuide && (
-                <button
-                  type="button"
-                  onClick={() => setShowSetupGuide(false)}
-                  className="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
-                >
-                  Close
-                </button>
-              )}
             </div>
 
             <div className="grid gap-3 md:grid-cols-3 text-xs">
@@ -843,6 +922,59 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                   Keep your Binance API key restricted to <strong>Enable Reading</strong> only. This app only queries{' '}
                   <code className="font-mono">GET /api/v3/account</code> and{' '}
                   <code className="font-mono">GET /api/v3/myTrades</code>.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Case 3: Connected but user toggled Security Spec guide */}
+        {binance?.connected && showSetupGuide && (
+          <div className="mt-4 p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-950/60 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <Terminal className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-900 dark:text-white">
+                    Server-Side Ed25519 Security Architecture
+                  </h3>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Connected to Binance Spot with Ed25519 asymmetric cryptography. Private keys and API secrets are never transmitted over the network or exposed to client-side code.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSetupGuide(false)}
+                className="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3 text-xs">
+              <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200/80 dark:border-gray-800">
+                <div className="font-semibold text-gray-900 dark:text-white mb-1">
+                  Zero Trading by Design
+                </div>
+                <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
+                  The backend whitelist strictly allows <code className="font-mono">/api/v3/account</code> and <code className="font-mono">/api/v3/myTrades</code>. Trading orders and withdrawal routes are not implemented.
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200/80 dark:border-gray-800">
+                <div className="font-semibold text-gray-900 dark:text-white mb-1">
+                  Private Cache Control
+                </div>
+                <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
+                  All financial telemetry responses return <code className="font-mono">Cache-Control: private, no-store</code> to prevent edge CDN or intermediary caching of your balances.
+                </p>
+              </div>
+              <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200/80 dark:border-gray-800">
+                <div className="font-semibold text-gray-900 dark:text-white mb-1">
+                  European Serverless Routing
+                </div>
+                <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
+                  Configured via <code className="font-mono">vercel.json</code> to execute in Frankfurt (<code className="font-mono">fra1</code>) and Paris (<code className="font-mono">cdg1</code>), fully compliant with Binance geographic availability.
                 </p>
               </div>
             </div>

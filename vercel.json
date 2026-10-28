@@ -1,4 +1,5 @@
 {
+  "regions": ["fra1", "cdg1"],
   "rewrites": [
     {
       "source": "/api/(.*)",

@@ -163,11 +163,25 @@ export class BinanceService {
 
   /**
    * Read server-side credentials exclusively from environment variables.
+   * Tolerates fallback variable names, quotes, whitespace, and escaped newlines.
    * Never expose, log, or return these values.
    */
   private getServerCredentials(): { apiKey: string; privateKeyB64: string } | null {
-    const apiKey = (process.env.BINANCE_API_KEY || '').trim();
-    const privateKeyB64 = (process.env.BINANCE_ED25519_PRIVATE_KEY_B64 || '').trim();
+    const rawApiKey =
+      process.env.BINANCE_API_KEY ||
+      process.env.BINANCE_KEY ||
+      process.env.BINANCE_APIKEY ||
+      '';
+    const rawPrivateKey =
+      process.env.BINANCE_ED25519_PRIVATE_KEY_B64 ||
+      process.env.BINANCE_ED25519_PRIVATE_KEY ||
+      process.env.BINANCE_PRIVATE_KEY ||
+      process.env.BINANCE_ED25519_KEY ||
+      '';
+
+    const apiKey = rawApiKey.trim().replace(/^["']|["']$/g, '');
+    const privateKeyB64 = rawPrivateKey.trim().replace(/^["']|["']$/g, '');
+
     if (!apiKey || !privateKeyB64) {
       return null;
     }
@@ -180,32 +194,82 @@ export class BinanceService {
 
   /**
    * Decode BINANCE_ED25519_PRIVATE_KEY_B64 into PEM format and construct a verified Ed25519 KeyObject.
-   * Supports:
-   *  1. Base64-encoded full PEM file (containing -----BEGIN PRIVATE KEY-----)
-   *  2. Base64-encoded PKCS#8 DER Ed25519 key body (48 bytes)
-   *  3. Base64-encoded raw 32-byte Ed25519 seed (wrapped with PKCS#8 ASN.1 header)
-   *  4. Raw PEM string with escaped newlines
+   * Resiliently handles:
+   *  1. Base64-encoded PKCS#8 PEM (output of `base64 -w 0 private_key.pem`)
+   *  2. OpenSSL-style `BEGIN ED25519 PRIVATE KEY` -> normalized to PKCS#8 `BEGIN PRIVATE KEY`
+   *  3. Raw PEM strings with escaped (`\n` / `\r\n`) or unescaped newlines
+   *  4. URL-encoded strings (%2B, %2F, %3D)
+   *  5. Raw 32-byte Ed25519 seed (base64-encoded, wrapped with standard ASN.1 PKCS#8 prefix)
+   *  6. Raw 64-byte secret key (seed + pubkey, standard in sodium/PyNaCl, first 32 bytes extracted)
+   *  7. Raw 48-byte PKCS#8 DER binary (base64-encoded)
+   *  8. Hex-encoded seed (64 or 128 hex characters)
    */
   private decodeEd25519PrivateKey(rawEnvValue: string): crypto.KeyObject {
-    const cleaned = rawEnvValue.trim().replace(/^["']|["']$/g, '');
+    let cleaned = rawEnvValue.trim().replace(/^["']|["']$/g, '');
+
+    // Handle potential URL-encoded strings
+    if (cleaned.includes('%')) {
+      try {
+        cleaned = decodeURIComponent(cleaned);
+      } catch {
+        // Continue with original cleaned string
+      }
+    }
+
     let pemString = '';
 
+    // Check if it already contains PEM boundaries
     if (cleaned.includes('-----BEGIN')) {
-      pemString = cleaned.replace(/\\n/g, '\n');
+      pemString = cleaned
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\n')
+        .replace(/-----BEGIN [A-Z0-9 _-]*PRIVATE KEY-----/g, '-----BEGIN PRIVATE KEY-----')
+        .replace(/-----END [A-Z0-9 _-]*PRIVATE KEY-----/g, '-----END PRIVATE KEY-----');
     } else {
-      const normalizedB64 = cleaned.replace(/\s+/g, '');
-      const decodedBuf = Buffer.from(normalizedB64, 'base64');
-      const decodedUtf8 = decodedBuf.toString('utf8').trim();
-
-      if (decodedUtf8.includes('-----BEGIN')) {
-        pemString = decodedUtf8.replace(/\\n/g, '\n');
-      } else if (decodedBuf.length === 32) {
-        const pkcs8Der = Buffer.concat([ED25519_PKCS8_PREFIX, decodedBuf]);
-        const b64Body = pkcs8Der.toString('base64');
-        pemString = `-----BEGIN PRIVATE KEY-----\n${b64Body}\n-----END PRIVATE KEY-----`;
+      const hexCandidate = cleaned.replace(/\s+/g, '');
+      if (/^[0-9a-fA-F]{64}$/.test(hexCandidate)) {
+        const seedBuf = Buffer.from(hexCandidate, 'hex');
+        const pkcs8Der = Buffer.concat([ED25519_PKCS8_PREFIX, seedBuf]);
+        pemString = `-----BEGIN PRIVATE KEY-----\n${pkcs8Der.toString('base64')}\n-----END PRIVATE KEY-----`;
+      } else if (/^[0-9a-fA-F]{128}$/.test(hexCandidate)) {
+        const seedBuf = Buffer.from(hexCandidate.slice(0, 64), 'hex');
+        const pkcs8Der = Buffer.concat([ED25519_PKCS8_PREFIX, seedBuf]);
+        pemString = `-----BEGIN PRIVATE KEY-----\n${pkcs8Der.toString('base64')}\n-----END PRIVATE KEY-----`;
       } else {
-        const b64Lines = normalizedB64.match(/.{1,64}/g)?.join('\n') || normalizedB64;
-        pemString = `-----BEGIN PRIVATE KEY-----\n${b64Lines}\n-----END PRIVATE KEY-----`;
+        const normalizedB64 = cleaned.replace(/\s+/g, '');
+        let decodedBuf: Buffer;
+        try {
+          decodedBuf = Buffer.from(normalizedB64, 'base64');
+        } catch {
+          const err = new Error(
+            'Failed to parse BINANCE_ED25519_PRIVATE_KEY_B64: Invalid Base64 or PEM encoding.'
+          );
+          (err as any).code = 'INVALID_KEY_FORMAT';
+          throw err;
+        }
+
+        const decodedUtf8 = decodedBuf.toString('utf8').trim();
+
+        if (decodedUtf8.includes('-----BEGIN')) {
+          pemString = decodedUtf8
+            .replace(/\\r\\n/g, '\n')
+            .replace(/\\n/g, '\n')
+            .replace(/\\r/g, '\n')
+            .replace(/-----BEGIN [A-Z0-9 _-]*PRIVATE KEY-----/g, '-----BEGIN PRIVATE KEY-----')
+            .replace(/-----END [A-Z0-9 _-]*PRIVATE KEY-----/g, '-----END PRIVATE KEY-----');
+        } else if (decodedBuf.length === 32) {
+          const pkcs8Der = Buffer.concat([ED25519_PKCS8_PREFIX, decodedBuf]);
+          pemString = `-----BEGIN PRIVATE KEY-----\n${pkcs8Der.toString('base64')}\n-----END PRIVATE KEY-----`;
+        } else if (decodedBuf.length === 64) {
+          const pkcs8Der = Buffer.concat([ED25519_PKCS8_PREFIX, decodedBuf.slice(0, 32)]);
+          pemString = `-----BEGIN PRIVATE KEY-----\n${pkcs8Der.toString('base64')}\n-----END PRIVATE KEY-----`;
+        } else if (decodedBuf.length === 48 && decodedBuf.slice(0, 16).equals(ED25519_PKCS8_PREFIX)) {
+          pemString = `-----BEGIN PRIVATE KEY-----\n${decodedBuf.toString('base64')}\n-----END PRIVATE KEY-----`;
+        } else {
+          const b64Lines = normalizedB64.match(/.{1,64}/g)?.join('\n') || normalizedB64;
+          pemString = `-----BEGIN PRIVATE KEY-----\n${b64Lines}\n-----END PRIVATE KEY-----`;
+        }
       }
     }
 
@@ -215,16 +279,20 @@ export class BinanceService {
         key: pemString,
         format: 'pem',
       });
-    } catch {
-      throw new Error(
-        'Invalid Ed25519 private key format in BINANCE_ED25519_PRIVATE_KEY_B64. Ensure it is a valid Base64-encoded Ed25519 PKCS#8 private key.'
+    } catch (e: any) {
+      const err = new Error(
+        `Invalid Ed25519 private key: Node.js crypto decoder error (${e?.message || 'DECODER unsupported'}). Please verify that BINANCE_ED25519_PRIVATE_KEY_B64 contains a valid Base64-encoded Ed25519 PKCS#8 private key (base64 -w 0 private_key.pem).`
       );
+      (err as any).code = 'INVALID_KEY_FORMAT';
+      throw err;
     }
 
     if (keyObject.asymmetricKeyType !== 'ed25519') {
-      throw new Error(
-        `Unsupported key algorithm "${keyObject.asymmetricKeyType || 'unknown'}". Binance Ed25519 integration requires an Ed25519 private key.`
+      const err = new Error(
+        `Unsupported key algorithm "${keyObject.asymmetricKeyType || 'unknown'}". Binance requires an Ed25519 key pair.`
       );
+      (err as any).code = 'UNSUPPORTED_KEY_ALGORITHM';
+      throw err;
     }
 
     return keyObject;
@@ -293,18 +361,25 @@ export class BinanceService {
    * Sanitize Binance API errors so credentials, signatures, or sensitive account details are never leaked.
    */
   private sanitizeBinanceError(status: number, errorCode?: number, rawMsg?: string): { code: string; message: string } {
-    if (errorCode === -2015 || errorCode === -2014) {
+    if (errorCode === -2015) {
       return {
         code: 'BINANCE_AUTH_FAILED',
         message:
-          'Binance rejected the API key or IP permissions (-2015). Verify BINANCE_API_KEY has "Enable Reading" checked and IP restrictions allow your server.',
+          'Binance rejected the API key or IP permissions (-2015). On Binance API Management: ensure "Enable Reading" is checked, and select "Unrestricted" IP access (Vercel serverless uses dynamic cloud IPs).',
+      };
+    }
+    if (errorCode === -2014) {
+      return {
+        code: 'BINANCE_APIKEY_FORMAT_INVALID',
+        message:
+          'Binance API Key format is invalid (-2014). Check BINANCE_API_KEY for extra spaces, quotes, or incomplete characters.',
       };
     }
     if (errorCode === -1022) {
       return {
         code: 'BINANCE_SIGNATURE_INVALID',
         message:
-          'Binance Ed25519 signature verification failed (-1022). Ensure BINANCE_ED25519_PRIVATE_KEY_B64 matches the public key registered on your Binance API key.',
+          'Binance Ed25519 signature verification failed (-1022). The private key in BINANCE_ED25519_PRIVATE_KEY_B64 does not match the public key registered on your Binance API key.',
       };
     }
     if (errorCode === -1021) {
@@ -323,7 +398,7 @@ export class BinanceService {
       return {
         code: 'BINANCE_REGION_RESTRICTED',
         message:
-          'Binance returned HTTP 451 from this serverless region. Consider configuring your Vercel Function region to Europe (e.g. fra1 / lhr1) or Asia (sin1 / hnd1).',
+          'Binance returned HTTP 451 from this server IP. Deploying with vercel.json Europe regions ("fra1", "cdg1") routes serverless execution through Frankfurt/Paris.',
       };
     }
     if (status === 429 || status === 418) {
@@ -1068,6 +1143,7 @@ export class BinanceService {
 
       return overview;
     } catch (err: any) {
+      console.error('[BinanceService] Connection error:', err?.message, err?.code || 'NO_CODE');
       return {
         isConfigured: true,
         connected: false,
