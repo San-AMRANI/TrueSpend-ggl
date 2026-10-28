@@ -31,12 +31,19 @@ const BINANCE_PUBLIC_ENDPOINTS = [
  * Strictly whitelisted read-only Binance endpoints.
  * Trading, withdrawals, transfers, and generic proxy endpoints are strictly prohibited.
  */
-type AllowedSignedEndpoint = '/api/v3/account' | '/api/v3/myTrades';
+type AllowedSignedEndpoint =
+  | '/api/v3/account'
+  | '/api/v3/myTrades'
+  | '/sapi/v1/account/apiRestrictions'
+  | '/sapi/v1/asset/get-funding-asset';
+
 type AllowedPublicEndpoint = '/api/v3/time' | '/api/v3/ticker/24hr' | '/api/v3/ticker/price';
 
 const ALLOWED_SIGNED_ENDPOINTS = new Set<AllowedSignedEndpoint>([
   '/api/v3/account',
   '/api/v3/myTrades',
+  '/sapi/v1/account/apiRestrictions',
+  '/sapi/v1/asset/get-funding-asset',
 ]);
 
 const ALLOWED_PUBLIC_ENDPOINTS = new Set<AllowedPublicEndpoint>([
@@ -51,6 +58,7 @@ const ALLOWED_PUBLIC_ENDPOINTS = new Set<AllowedPublicEndpoint>([
 const ED25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
 
 const ASSET_METADATA: Record<string, { name: string; category: BinanceAssetCategory }> = {
+  // Stablecoins & Fiat
   USDT: { name: 'Tether USD', category: 'Stablecoin / Fiat Reserve' },
   USDC: { name: 'USD Coin', category: 'Stablecoin / Fiat Reserve' },
   FDUSD: { name: 'First Digital USD', category: 'Stablecoin / Fiat Reserve' },
@@ -59,6 +67,31 @@ const ASSET_METADATA: Record<string, { name: string; category: BinanceAssetCateg
   EUR: { name: 'Euro', category: 'Stablecoin / Fiat Reserve' },
   AEUR: { name: 'Anchored Coins EUR', category: 'Stablecoin / Fiat Reserve' },
   USD: { name: 'US Dollar', category: 'Stablecoin / Fiat Reserve' },
+
+  // Tokenized Stocks & Equities (Funding Wallet & Spot)
+  TSLA: { name: 'Tesla Inc.', category: 'Tokenized Stocks & Equities' },
+  AAPL: { name: 'Apple Inc.', category: 'Tokenized Stocks & Equities' },
+  NVDA: { name: 'NVIDIA Corp.', category: 'Tokenized Stocks & Equities' },
+  MSFT: { name: 'Microsoft Corp.', category: 'Tokenized Stocks & Equities' },
+  AMZN: { name: 'Amazon.com Inc.', category: 'Tokenized Stocks & Equities' },
+  GOOGL: { name: 'Alphabet Inc.', category: 'Tokenized Stocks & Equities' },
+  GOOG: { name: 'Alphabet Inc. (Class C)', category: 'Tokenized Stocks & Equities' },
+  META: { name: 'Meta Platforms Inc.', category: 'Tokenized Stocks & Equities' },
+  COIN: { name: 'Coinbase Global', category: 'Tokenized Stocks & Equities' },
+  MSTR: { name: 'MicroStrategy Inc.', category: 'Tokenized Stocks & Equities' },
+  SPY: { name: 'SPDR S&P 500 ETF Trust', category: 'Tokenized Stocks & Equities' },
+  QQQ: { name: 'Invesco QQQ Trust', category: 'Tokenized Stocks & Equities' },
+  BABA: { name: 'Alibaba Group Holding', category: 'Tokenized Stocks & Equities' },
+  NFLX: { name: 'Netflix Inc.', category: 'Tokenized Stocks & Equities' },
+  AMD: { name: 'Advanced Micro Devices', category: 'Tokenized Stocks & Equities' },
+  INTC: { name: 'Intel Corp.', category: 'Tokenized Stocks & Equities' },
+  PLTR: { name: 'Palantir Technologies', category: 'Tokenized Stocks & Equities' },
+  DIS: { name: 'Walt Disney Co.', category: 'Tokenized Stocks & Equities' },
+  PYPL: { name: 'PayPal Holdings', category: 'Tokenized Stocks & Equities' },
+  V: { name: 'Visa Inc.', category: 'Tokenized Stocks & Equities' },
+  MA: { name: 'Mastercard Inc.', category: 'Tokenized Stocks & Equities' },
+
+  // Layer 1 Core
   BTC: { name: 'Bitcoin', category: 'Layer 1 Core' },
   ETH: { name: 'Ethereum', category: 'Layer 1 Core' },
   BNB: { name: 'BNB', category: 'Layer 1 Core' },
@@ -75,6 +108,8 @@ const ASSET_METADATA: Record<string, { name: string; category: BinanceAssetCateg
   TRX: { name: 'TRON', category: 'Layer 1 Core' },
   LTC: { name: 'Litecoin', category: 'Layer 1 Core' },
   BCH: { name: 'Bitcoin Cash', category: 'Layer 1 Core' },
+
+  // DeFi & Infrastructure
   LINK: { name: 'Chainlink', category: 'DeFi & Infrastructure' },
   UNI: { name: 'Uniswap', category: 'DeFi & Infrastructure' },
   AAVE: { name: 'Aave', category: 'DeFi & Infrastructure' },
@@ -85,21 +120,29 @@ const ASSET_METADATA: Record<string, { name: string; category: BinanceAssetCateg
   JUP: { name: 'Jupiter', category: 'DeFi & Infrastructure' },
   PENDLE: { name: 'Pendle', category: 'DeFi & Infrastructure' },
   RUNE: { name: 'THORChain', category: 'DeFi & Infrastructure' },
+
+  // Layer 2 & Scaling
   ARB: { name: 'Arbitrum', category: 'Layer 2 & Scaling' },
   OP: { name: 'Optimism', category: 'Layer 2 & Scaling' },
   POL: { name: 'Polygon Ecosystem Token', category: 'Layer 2 & Scaling' },
   MATIC: { name: 'Polygon', category: 'Layer 2 & Scaling' },
   STRK: { name: 'Starknet', category: 'Layer 2 & Scaling' },
   IMX: { name: 'Immutable', category: 'Layer 2 & Scaling' },
+
+  // AI & Compute
   FET: { name: 'Artificial Superintelligence Alliance', category: 'AI & Compute' },
   RENDER: { name: 'Render', category: 'AI & Compute' },
   RNDR: { name: 'Render Token', category: 'AI & Compute' },
   TAO: { name: 'Bittensor', category: 'AI & Compute' },
   WLD: { name: 'Worldcoin', category: 'AI & Compute' },
   GRT: { name: 'The Graph', category: 'AI & Compute' },
+
+  // Real World Assets
   PAXG: { name: 'PAX Gold (Physical Gold)', category: 'Real World Assets' },
   ONDO: { name: 'Ondo Finance', category: 'Real World Assets' },
   OM: { name: 'MANTRA', category: 'Real World Assets' },
+
+  // Digital Assets
   DOGE: { name: 'Dogecoin', category: 'Digital Assets' },
   SHIB: { name: 'Shiba Inu', category: 'Digital Assets' },
   PEPE: { name: 'Pepe', category: 'Digital Assets' },
@@ -419,9 +462,10 @@ export class BinanceService {
   }
 
   /**
-   * Execute a signed GET request to a strictly whitelisted read-only Binance USER_DATA endpoint.
+   * Execute a signed GET or POST request to a strictly whitelisted read-only Binance USER_DATA endpoint.
    */
-  private async signedGet<T>(
+  private async signedRequest<T>(
+    method: 'GET' | 'POST',
     endpoint: AllowedSignedEndpoint,
     params: Record<string, string | number | boolean | undefined> = {},
     isRetryAfterTimeSync = false
@@ -446,7 +490,7 @@ export class BinanceService {
 
     const queryString = this.serializeParams(fullParams);
     const signatureBase64 = this.signQueryString(queryString, privateKey);
-    const signedQuery = `${queryString}&signature=${encodeURIComponent(signatureBase64)}`;
+    const signedPayload = `${queryString}&signature=${encodeURIComponent(signatureBase64)}`;
 
     const candidateHosts = [
       this.preferredPrivateHost,
@@ -457,14 +501,39 @@ export class BinanceService {
 
     for (const host of candidateHosts) {
       try {
-        const res = await fetch(`${host}${endpoint}?${signedQuery}`, {
-          method: 'GET',
-          headers: {
-            'X-MBX-APIKEY': creds.apiKey,
-            Accept: 'application/json',
-          },
+        const url = method === 'GET' ? `${host}${endpoint}?${signedPayload}` : `${host}${endpoint}`;
+        const headers: Record<string, string> = {
+          'X-MBX-APIKEY': creds.apiKey,
+          Accept: 'application/json',
+        };
+
+        let body: string | undefined = undefined;
+        if (method === 'POST') {
+          headers['Content-Type'] = 'application/x-www-form-urlencoded';
+          body = signedPayload;
+        }
+
+        let res = await fetch(url, {
+          method,
+          headers,
+          body,
           signal: AbortSignal.timeout(7000),
         });
+
+        // If POST with body encountered cluster proxy or 400/404, retry with query-string
+        if (method === 'POST' && (res.status === 400 || res.status === 404)) {
+          const fallbackRes = await fetch(`${host}${endpoint}?${signedPayload}`, {
+            method: 'POST',
+            headers: {
+              'X-MBX-APIKEY': creds.apiKey,
+              Accept: 'application/json',
+            },
+            signal: AbortSignal.timeout(7000),
+          });
+          if (fallbackRes.ok) {
+            res = fallbackRes;
+          }
+        }
 
         if (res.ok) {
           this.preferredPrivateHost = host;
@@ -483,7 +552,7 @@ export class BinanceService {
         const errBody = await res.json().catch(() => ({}));
         // Automatic retry once if timestamp drifted (-1021)
         if (errBody?.code === -1021 && !isRetryAfterTimeSync) {
-          return await this.signedGet<T>(endpoint, params, true);
+          return await this.signedRequest<T>(method, endpoint, params, true);
         }
 
         const sanitized = this.sanitizeBinanceError(res.status, errBody?.code, errBody?.msg);
@@ -494,11 +563,27 @@ export class BinanceService {
         if (e?.code && !String(e.code).includes('REGION_RESTRICTED')) {
           throw e;
         }
-        lastError = e instanceof Error ? e : new Error('Failed to reach Binance Spot API');
+        lastError = e instanceof Error ? e : new Error(`Failed to reach Binance API (${endpoint})`);
       }
     }
 
-    throw lastError || new Error('Unable to connect to Binance Spot API');
+    throw lastError || new Error(`Unable to connect to Binance API (${endpoint})`);
+  }
+
+  private async signedGet<T>(
+    endpoint: AllowedSignedEndpoint,
+    params: Record<string, string | number | boolean | undefined> = {},
+    isRetryAfterTimeSync = false
+  ): Promise<T> {
+    return this.signedRequest<T>('GET', endpoint, params, isRetryAfterTimeSync);
+  }
+
+  private async signedPost<T>(
+    endpoint: AllowedSignedEndpoint,
+    params: Record<string, string | number | boolean | undefined> = {},
+    isRetryAfterTimeSync = false
+  ): Promise<T> {
+    return this.signedRequest<T>('POST', endpoint, params, isRetryAfterTimeSync);
   }
 
   /**
@@ -866,6 +951,12 @@ export class BinanceService {
         lastSyncedAt: null,
         totalSpotValueUsd: 0,
         totalSpotValueMad: 0,
+        totalFundingValueUsd: 0,
+        totalFundingValueMad: 0,
+        totalCombinedValueUsd: 0,
+        totalCombinedValueMad: 0,
+        stockEquityUsd: 0,
+        stockEquityMad: 0,
         cryptoEquityUsd: 0,
         cryptoEquityMad: 0,
         stablecoinReserveUsd: 0,
@@ -881,6 +972,7 @@ export class BinanceService {
         totalRealizedPnlMad: 0,
         totalFeesPaidMad: 0,
         balances: [],
+        fundingBalances: [],
         recentTrades: [],
         symbolSummaries: [],
         availableSymbols: DEFAULT_POPULAR_SYMBOLS,
@@ -909,43 +1001,151 @@ export class BinanceService {
     }
 
     try {
-      const [accountData, tickers] = await Promise.all([
+      const [accountData, fundingData, apiRestrictionsData, tickers] = await Promise.all([
         this.signedGet<any>('/api/v3/account', { omitZeroBalances: true }),
+        this.signedPost<any[]>('/sapi/v1/asset/get-funding-asset', { needBtcValuation: 'true' }).catch((err) => {
+          console.warn('[BinanceService] Funding wallet query warning (falling back to Spot only):', err?.message);
+          return [] as any[];
+        }),
+        this.signedGet<any>('/sapi/v1/account/apiRestrictions').catch((err) => {
+          console.warn('[BinanceService] apiRestrictions query notice:', err?.message);
+          return null;
+        }),
         this.fetchPublicTickers(),
       ]);
 
+      interface AggregateAssetEntry {
+        asset: string;
+        spotFree: number;
+        spotLocked: number;
+        spotTotal: number;
+        fundingFree: number;
+        fundingLocked: number;
+        fundingTotal: number;
+        total: number;
+        free: number;
+        locked: number;
+        btcValuation: number;
+      }
+
+      const assetMap = new Map<string, AggregateAssetEntry>();
+
+      function getOrCreateEntry(asset: string): AggregateAssetEntry {
+        const clean = asset.trim().toUpperCase();
+        let entry = assetMap.get(clean);
+        if (!entry) {
+          entry = {
+            asset: clean,
+            spotFree: 0,
+            spotLocked: 0,
+            spotTotal: 0,
+            fundingFree: 0,
+            fundingLocked: 0,
+            fundingTotal: 0,
+            total: 0,
+            free: 0,
+            locked: 0,
+            btcValuation: 0,
+          };
+          assetMap.set(clean, entry);
+        }
+        return entry;
+      }
+
       const rawBalances = Array.isArray(accountData?.balances) ? accountData.balances : [];
-      const nonZeroBalances = rawBalances
-        .map((b: any) => {
-          const asset = String(b.asset || '').toUpperCase();
-          const free = parseFloat(b.free) || 0;
-          const locked = parseFloat(b.locked) || 0;
-          const total = free + locked;
-          return { asset, free, locked, total };
-        })
-        .filter((b: { asset: string; total: number }) => b.asset && b.total > 0);
+      for (const b of rawBalances) {
+        const asset = String(b.asset || '').toUpperCase();
+        if (!asset) continue;
+        const free = parseFloat(b.free) || 0;
+        const locked = parseFloat(b.locked) || 0;
+        const total = free + locked;
+        if (total > 0) {
+          const entry = getOrCreateEntry(asset);
+          entry.spotFree += free;
+          entry.spotLocked += locked;
+          entry.spotTotal += total;
+          entry.free += free;
+          entry.locked += locked;
+          entry.total += total;
+        }
+      }
+
+      const rawFunding = Array.isArray(fundingData) ? fundingData : [];
+      for (const f of rawFunding) {
+        const asset = String(f.asset || '').toUpperCase();
+        if (!asset) continue;
+        const free = parseFloat(f.free) || 0;
+        const locked =
+          (parseFloat(f.locked) || 0) +
+          (parseFloat(f.freeze) || 0) +
+          (parseFloat(f.withdrawing) || 0);
+        const total = free + locked;
+        const btcValuation = parseFloat(f.btcValuation) || 0;
+        if (total > 0 || btcValuation > 0) {
+          const entry = getOrCreateEntry(asset);
+          entry.fundingFree += free;
+          entry.fundingLocked += locked;
+          entry.fundingTotal += total;
+          entry.free += free;
+          entry.locked += locked;
+          entry.total += total;
+          entry.btcValuation += btcValuation;
+        }
+      }
+
+      const btcUsdtPrice = tickers.get('BTCUSDT')?.lastPrice || 0;
 
       let totalSpotValueUsd = 0;
+      let totalFundingValueUsd = 0;
+      let stockEquityUsd = 0;
       let cryptoEquityUsd = 0;
       let stablecoinReserveUsd = 0;
       let lockedValueUsd = 0;
       let weightedPrev24hUsd = 0;
 
-      const preliminaryBalances = nonZeroBalances.map((b) => {
-        const cleanAsset = b.asset.replace(/^LD/, '');
+      const preliminaryBalances: BinanceSpotAssetBalance[] = [];
+
+      for (const entry of assetMap.values()) {
+        if (entry.total <= 0) continue;
+
+        const cleanAsset = entry.asset.replace(/^LD/, '');
         const meta = ASSET_METADATA[cleanAsset] || {
-          name: b.asset.startsWith('LD') ? `${cleanAsset} (Simple Earn)` : b.asset,
+          name: entry.asset.startsWith('LD') ? `${cleanAsset} (Simple Earn)` : cleanAsset,
           category: 'Digital Assets' as BinanceAssetCategory,
         };
-        const val = this.resolveAssetValuation(b.asset, tickers, rates);
-        const valueUsd = b.total * val.priceUsd;
-        const valueMad = valueUsd * rates.USD_TO_MAD;
-        const lockedUsd = b.locked * val.priceUsd;
 
-        totalSpotValueUsd += valueUsd;
+        let val = this.resolveAssetValuation(entry.asset, tickers, rates);
+
+        // If ticker was not found (e.g. for tokenized stocks or funding assets), use Binance's btcValuation
+        if (val.priceUsd <= 0 && entry.btcValuation > 0 && btcUsdtPrice > 0) {
+          const totalValUsd = entry.btcValuation * btcUsdtPrice;
+          const priceUsd = entry.total > 0 ? totalValUsd / entry.total : 0;
+          val = {
+            priceUsd,
+            priceMad: priceUsd * rates.USD_TO_MAD,
+            change24hPercent: 0,
+            high24hUsd: priceUsd,
+            low24hUsd: priceUsd,
+            defaultSymbol: null,
+            isStablecoinOrFiat: USD_PEGGED_STABLECOINS.has(cleanAsset),
+          };
+        }
+
+        const valueUsd = entry.total * val.priceUsd;
+        const valueMad = valueUsd * rates.USD_TO_MAD;
+        const lockedUsd = entry.locked * val.priceUsd;
+        const spotValUsd = entry.spotTotal * val.priceUsd;
+        const fundingValUsd = entry.fundingTotal * val.priceUsd;
+
+        totalSpotValueUsd += spotValUsd;
+        totalFundingValueUsd += fundingValUsd;
         lockedValueUsd += lockedUsd;
 
-        if (val.isStablecoinOrFiat) {
+        const isStock = meta.category === 'Tokenized Stocks & Equities';
+
+        if (isStock) {
+          stockEquityUsd += valueUsd;
+        } else if (val.isStablecoinOrFiat) {
           stablecoinReserveUsd += valueUsd;
         } else {
           cryptoEquityUsd += valueUsd;
@@ -955,25 +1155,67 @@ export class BinanceService {
           val.change24hPercent !== -100
             ? val.priceUsd / (1 + val.change24hPercent / 100)
             : val.priceUsd;
-        weightedPrev24hUsd += b.total * prevPriceUsd;
+        weightedPrev24hUsd += entry.total * prevPriceUsd;
 
-        return {
-          ...b,
-          assetName: b.asset.startsWith('LD') ? `${meta.name} (Earn)` : meta.name,
+        let walletType: 'SPOT' | 'FUNDING' | 'BOTH' = 'SPOT';
+        if (entry.spotTotal > 0 && entry.fundingTotal > 0) {
+          walletType = 'BOTH';
+        } else if (entry.fundingTotal > 0) {
+          walletType = 'FUNDING';
+        }
+
+        preliminaryBalances.push({
+          asset: entry.asset,
+          assetName: entry.asset.startsWith('LD') ? `${meta.name} (Earn)` : meta.name,
           category: meta.category,
           isStablecoinOrFiat: val.isStablecoinOrFiat,
-          priceUsd: val.priceUsd,
-          priceMad: val.priceMad,
-          change24hPercent: val.change24hPercent,
-          high24hUsd: val.high24hUsd,
-          low24hUsd: val.low24hUsd,
-          valueUsd,
-          valueMad,
+          walletType,
+          spotFree: Math.round(entry.spotFree * 1e8) / 1e8,
+          spotLocked: Math.round(entry.spotLocked * 1e8) / 1e8,
+          spotTotal: Math.round(entry.spotTotal * 1e8) / 1e8,
+          fundingFree: Math.round(entry.fundingFree * 1e8) / 1e8,
+          fundingLocked: Math.round(entry.fundingLocked * 1e8) / 1e8,
+          fundingTotal: Math.round(entry.fundingTotal * 1e8) / 1e8,
+          free: Math.round(entry.free * 1e8) / 1e8,
+          locked: Math.round(entry.locked * 1e8) / 1e8,
+          total: Math.round(entry.total * 1e8) / 1e8,
+          priceUsd: Math.round(val.priceUsd * 1e6) / 1e6,
+          priceMad: Math.round(val.priceMad * 1e4) / 1e4,
+          change24hPercent: Math.round(val.change24hPercent * 100) / 100,
+          high24hUsd: Math.round(val.high24hUsd * 1e6) / 1e6,
+          low24hUsd: Math.round(val.low24hUsd * 1e6) / 1e6,
+          valueUsd: Math.round(valueUsd * 100) / 100,
+          valueMad: Math.round(valueMad * 100) / 100,
+          portfolioWeightPercent: 0,
           defaultSymbol: val.defaultSymbol,
-        };
-      });
+          avgBuyPriceUsd: null,
+          costBasisUsd: null,
+          costBasisMad: null,
+          unrealizedPnlUsd: null,
+          unrealizedPnlMad: null,
+          unrealizedPnlPercent: null,
+          realizedPnlUsd: null,
+          realizedPnlMad: null,
+          tradeCount: 0,
+        });
+      }
 
-      // Sort by USD value descending
+      const totalCombinedValueUsd = totalSpotValueUsd + totalFundingValueUsd;
+      const totalCombinedValueMad = totalCombinedValueUsd * rates.USD_TO_MAD;
+      const totalSpotValueMad = totalSpotValueUsd * rates.USD_TO_MAD;
+      const totalFundingValueMad = totalFundingValueUsd * rates.USD_TO_MAD;
+      const stockEquityMad = stockEquityUsd * rates.USD_TO_MAD;
+      const cryptoEquityMad = cryptoEquityUsd * rates.USD_TO_MAD;
+      const stablecoinReserveMad = stablecoinReserveUsd * rates.USD_TO_MAD;
+      const lockedValueMad = lockedValueUsd * rates.USD_TO_MAD;
+
+      // Calculate portfolio weights and sort by USD value descending
+      for (const b of preliminaryBalances) {
+        b.portfolioWeightPercent =
+          totalCombinedValueUsd > 0
+            ? Math.round((b.valueUsd / totalCombinedValueUsd) * 10000) / 100
+            : 0;
+      }
       preliminaryBalances.sort((a, b) => b.valueUsd - a.valueUsd);
 
       // Fetch personal trade history for the top non-stablecoin crypto holdings (up to 6 pairs in parallel)
@@ -998,7 +1240,7 @@ export class BinanceService {
               allRecentTrades.push(...trades);
             }
           } catch {
-            // Ignore individual pair trade lookup failures (e.g. if asset was acquired via EUR/BTC pair or convert)
+            // Ignore individual pair trade lookup failures
           }
         })
       );
@@ -1017,7 +1259,6 @@ export class BinanceService {
       }
 
       const enrichedBalances: BinanceSpotAssetBalance[] = preliminaryBalances.map((b) => {
-        const weight = totalSpotValueUsd > 0 ? (b.valueUsd / totalSpotValueUsd) * 100 : 0;
         const summary = tradeSummariesByAsset.get(b.asset);
 
         let avgBuyPriceUsd: number | null = null;
@@ -1040,22 +1281,7 @@ export class BinanceService {
         }
 
         return {
-          asset: b.asset,
-          assetName: b.assetName,
-          category: b.category,
-          isStablecoinOrFiat: b.isStablecoinOrFiat,
-          free: Math.round(b.free * 1e8) / 1e8,
-          locked: Math.round(b.locked * 1e8) / 1e8,
-          total: Math.round(b.total * 1e8) / 1e8,
-          priceUsd: Math.round(b.priceUsd * 1e6) / 1e6,
-          priceMad: Math.round(b.priceMad * 1e4) / 1e4,
-          change24hPercent: Math.round(b.change24hPercent * 100) / 100,
-          high24hUsd: Math.round(b.high24hUsd * 1e6) / 1e6,
-          low24hUsd: Math.round(b.low24hUsd * 1e6) / 1e6,
-          valueUsd: Math.round(b.valueUsd * 100) / 100,
-          valueMad: Math.round(b.valueMad * 100) / 100,
-          portfolioWeightPercent: Math.round(weight * 100) / 100,
-          defaultSymbol: b.defaultSymbol,
+          ...b,
           avgBuyPriceUsd: avgBuyPriceUsd !== null ? Math.round(avgBuyPriceUsd * 1e4) / 1e4 : null,
           costBasisUsd: costBasisUsd !== null ? Math.round(costBasisUsd * 100) / 100 : null,
           costBasisMad: costBasisMad !== null ? Math.round(costBasisMad * 100) / 100 : null,
@@ -1069,12 +1295,7 @@ export class BinanceService {
         };
       });
 
-      const totalSpotValueMad = totalSpotValueUsd * rates.USD_TO_MAD;
-      const cryptoEquityMad = cryptoEquityUsd * rates.USD_TO_MAD;
-      const stablecoinReserveMad = stablecoinReserveUsd * rates.USD_TO_MAD;
-      const lockedValueMad = lockedValueUsd * rates.USD_TO_MAD;
-
-      const change24hUsd = totalSpotValueUsd - weightedPrev24hUsd;
+      const change24hUsd = totalCombinedValueUsd - weightedPrev24hUsd;
       const change24hMad = change24hUsd * rates.USD_TO_MAD;
       const change24hPercent =
         weightedPrev24hUsd > 0 ? (change24hUsd / weightedPrev24hUsd) * 100 : 0;
@@ -1091,26 +1312,59 @@ export class BinanceService {
         .filter((s): s is string => Boolean(s));
       const availableSymbols = Array.from(new Set([...heldSymbols, ...DEFAULT_POPULAR_SYMBOLS]));
 
-      const canTrade = Boolean(accountData?.canTrade);
-      const canWithdraw = Boolean(accountData?.canWithdraw);
-      const canDeposit = Boolean(accountData?.canDeposit);
+      // Evaluate actual API Key permissions
+      let isReadOnlySafe = true;
+      let apiKeyReadingEnabled = true;
+      let apiKeyTradingEnabled = false;
+      let apiKeyWithdrawalsEnabled = false;
+      let apiKeyUniversalTransferEnabled = false;
+      let ipRestrict = false;
+
+      if (apiRestrictionsData && typeof apiRestrictionsData === 'object') {
+        apiKeyReadingEnabled = Boolean(apiRestrictionsData.enableReading);
+        apiKeyTradingEnabled = Boolean(
+          apiRestrictionsData.enableSpotAndMarginTrading ||
+          apiRestrictionsData.enableMargin ||
+          apiRestrictionsData.enableFutures
+        );
+        apiKeyWithdrawalsEnabled = Boolean(apiRestrictionsData.enableWithdrawals);
+        apiKeyUniversalTransferEnabled = Boolean(apiRestrictionsData.permitsUniversalTransfer);
+        ipRestrict = Boolean(apiRestrictionsData.ipRestrict);
+
+        // Key is strictly read-only if trading, withdrawals, and universal transfers are not enabled
+        isReadOnlySafe = !apiKeyTradingEnabled && !apiKeyWithdrawalsEnabled && !apiKeyUniversalTransferEnabled;
+      } else {
+        // Architecture is read-only by design. Do NOT falsely alarm user based on account.canTrade or account.canWithdraw.
+        isReadOnlySafe = true;
+      }
 
       const overview: BinanceAccountOverview = {
         isConfigured: true,
         connected: true,
-        statusMessage: 'Connected to Binance Spot via server-side Ed25519 signature authentication.',
+        statusMessage: 'Connected to Binance Spot & Funding Wallets via server-side Ed25519 signature authentication.',
         errorCode: null,
         accountType: String(accountData?.accountType || 'SPOT'),
         permissions: {
           canRead: true,
-          canTrade,
-          canWithdraw,
-          canDeposit,
-          isReadOnlySafe: !canWithdraw,
+          canTrade: Boolean(accountData?.canTrade),
+          canWithdraw: Boolean(accountData?.canWithdraw),
+          canDeposit: Boolean(accountData?.canDeposit),
+          isReadOnlySafe,
+          apiKeyReadingEnabled,
+          apiKeyTradingEnabled,
+          apiKeyWithdrawalsEnabled,
+          apiKeyUniversalTransferEnabled,
+          ipRestrict,
         },
         lastSyncedAt: new Date().toISOString(),
         totalSpotValueUsd: Math.round(totalSpotValueUsd * 100) / 100,
         totalSpotValueMad: Math.round(totalSpotValueMad * 100) / 100,
+        totalFundingValueUsd: Math.round(totalFundingValueUsd * 100) / 100,
+        totalFundingValueMad: Math.round(totalFundingValueMad * 100) / 100,
+        totalCombinedValueUsd: Math.round(totalCombinedValueUsd * 100) / 100,
+        totalCombinedValueMad: Math.round(totalCombinedValueMad * 100) / 100,
+        stockEquityUsd: Math.round(stockEquityUsd * 100) / 100,
+        stockEquityMad: Math.round(stockEquityMad * 100) / 100,
         cryptoEquityUsd: Math.round(cryptoEquityUsd * 100) / 100,
         cryptoEquityMad: Math.round(cryptoEquityMad * 100) / 100,
         stablecoinReserveUsd: Math.round(stablecoinReserveUsd * 100) / 100,
@@ -1126,6 +1380,7 @@ export class BinanceService {
         totalRealizedPnlMad: Math.round(totalRealizedPnlMad * 100) / 100,
         totalFeesPaidMad: Math.round(totalFeesPaidMad * 100) / 100,
         balances: enrichedBalances,
+        fundingBalances: enrichedBalances.filter((b) => b.fundingTotal > 0),
         recentTrades: allRecentTrades.slice(0, 80),
         symbolSummaries,
         availableSymbols,
@@ -1147,7 +1402,7 @@ export class BinanceService {
       return {
         isConfigured: true,
         connected: false,
-        statusMessage: err?.message || 'Unable to authenticate with Binance Spot API.',
+        statusMessage: err?.message || 'Unable to authenticate with Binance API.',
         errorCode: err?.code || 'BINANCE_CONNECTION_ERROR',
         accountType: 'SPOT',
         permissions: {
@@ -1160,6 +1415,12 @@ export class BinanceService {
         lastSyncedAt: new Date().toISOString(),
         totalSpotValueUsd: 0,
         totalSpotValueMad: 0,
+        totalFundingValueUsd: 0,
+        totalFundingValueMad: 0,
+        totalCombinedValueUsd: 0,
+        totalCombinedValueMad: 0,
+        stockEquityUsd: 0,
+        stockEquityMad: 0,
         cryptoEquityUsd: 0,
         cryptoEquityMad: 0,
         stablecoinReserveUsd: 0,
@@ -1175,6 +1436,7 @@ export class BinanceService {
         totalRealizedPnlMad: 0,
         totalFeesPaidMad: 0,
         balances: [],
+        fundingBalances: [],
         recentTrades: [],
         symbolSummaries: [],
         availableSymbols: DEFAULT_POPULAR_SYMBOLS,

@@ -115,7 +115,8 @@ interface InvestmentsTabProps {
 }
 
 type ActiveSubView = 'spot' | 'trades' | 'wallets' | 'ledger';
-type SpotFilterType = 'ALL' | 'CRYPTO' | 'STABLECOIN' | 'LOCKED';
+type SpotFilterType = 'ALL' | 'STOCKS' | 'CRYPTO' | 'STABLECOIN' | 'LOCKED';
+type WalletScopeFilterType = 'ALL' | 'SPOT' | 'FUNDING';
 
 function formatMad(value: number | undefined | null, decimals = 2): string {
   const num = Number(value || 0);
@@ -166,6 +167,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   setActiveTab,
 }) => {
   const [activeSubView, setActiveSubView] = useState<ActiveSubView>('spot');
+  const [walletScopeFilter, setWalletScopeFilter] = useState<WalletScopeFilterType>('ALL');
   const [spotFilter, setSpotFilter] = useState<SpotFilterType>('ALL');
   const [spotSearch, setSpotSearch] = useState('');
   const [showSetupGuide, setShowSetupGuide] = useState(false);
@@ -323,9 +325,16 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   const filteredSpotBalances = useMemo(() => {
     const list = binance?.balances || [];
     return list.filter((b) => {
-      if (spotFilter === 'CRYPTO' && b.isStablecoinOrFiat) return false;
+      // Wallet scope filter
+      if (walletScopeFilter === 'SPOT' && (b.spotTotal ?? 0) <= 0) return false;
+      if (walletScopeFilter === 'FUNDING' && (b.fundingTotal ?? 0) <= 0) return false;
+
+      // Asset category filter
+      if (spotFilter === 'STOCKS' && b.category !== 'Tokenized Stocks & Equities') return false;
+      if (spotFilter === 'CRYPTO' && (b.isStablecoinOrFiat || b.category === 'Tokenized Stocks & Equities')) return false;
       if (spotFilter === 'STABLECOIN' && !b.isStablecoinOrFiat) return false;
       if (spotFilter === 'LOCKED' && b.locked <= 0) return false;
+
       if (spotSearch.trim()) {
         const q = spotSearch.trim().toLowerCase();
         return (
@@ -336,7 +345,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       }
       return true;
     });
-  }, [binance?.balances, spotFilter, spotSearch]);
+  }, [binance?.balances, walletScopeFilter, spotFilter, spotSearch]);
 
   const manualPositions = useMemo(
     () => (investmentsData?.positions || []).filter((p) => p.source !== 'binance'),
@@ -648,8 +657,14 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   };
 
   // Core KPIs
+  const totalCombinedBinanceValueMad = binance?.totalCombinedValueMad ?? binance?.totalSpotValueMad ?? 0;
+  const totalCombinedBinanceValueUsd = binance?.totalCombinedValueUsd ?? binance?.totalSpotValueUsd ?? 0;
   const totalSpotValueMad = binance?.totalSpotValueMad ?? 0;
   const totalSpotValueUsd = binance?.totalSpotValueUsd ?? 0;
+  const totalFundingValueMad = binance?.totalFundingValueMad ?? 0;
+  const totalFundingValueUsd = binance?.totalFundingValueUsd ?? 0;
+  const stockEquityMad = binance?.stockEquityMad ?? 0;
+  const stockEquityUsd = binance?.stockEquityUsd ?? 0;
   const cryptoEquityMad = binance?.cryptoEquityMad ?? 0;
   const stablecoinReserveMad = binance?.stablecoinReserveMad ?? 0;
   const change24hMad = binance?.change24hMad ?? 0;
@@ -673,7 +688,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
             <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
               <span className="inline-flex items-center gap-1.5 text-gray-900 dark:text-gray-100 font-semibold">
                 <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                Binance Spot Read-Only Telemetry
+                Binance Spot &amp; Funding Telemetry
               </span>
               <span>·</span>
               <span>Ed25519 Server-Signed</span>
@@ -689,10 +704,10 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
               )}
             </div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-              Investments &amp; Binance Spot Position
+              Investments &amp; Binance Position
             </h1>
             <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 max-w-3xl">
-              Live read-only Binance Spot balances (<code className="font-mono text-xs">/api/v3/account</code>) and personal trade executions (<code className="font-mono text-xs">/api/v3/myTrades</code>) integrated with TrueSpend Investment Wallets and Safe-to-Spend protection.
+              Live read-only Binance Spot &amp; Funding balances (<code className="font-mono text-xs">/api/v3/account</code> &amp; <code className="font-mono text-xs">/sapi/v1/asset/get-funding-asset</code>) and personal trade executions integrated with TrueSpend Investment Wallets and Safe-to-Spend protection.
             </p>
           </div>
 
@@ -763,16 +778,25 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <span>Cache-Control: private, no-store</span>
             <span>·</span>
             <span className="text-emerald-600 dark:text-emerald-400 font-medium">
               Trading &amp; Withdrawals Disabled by Architecture
             </span>
+            {binance?.connected && binance.permissions.isReadOnlySafe && (
+              <>
+                <span>·</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium inline-flex items-center gap-1">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Read-Only Key Verified
+                </span>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Warning if API key has broader permissions on Binance side */}
+        {/* Warning ONLY if Binance reports that the API key actually has trading or withdrawal permissions enabled */}
         {binance?.connected && !binance.permissions.isReadOnlySafe && (
           <div className="mt-3 p-3 rounded-lg border border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/30 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-300">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
@@ -1008,20 +1032,20 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           </div>
         </div>
 
-        {/* Card 2: Live Binance Spot Value & 24h Change */}
+        {/* Card 2: Live Binance Position Value & 24h Change */}
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-            <span className="font-semibold uppercase tracking-wider">Binance Spot Balance</span>
+            <span className="font-semibold uppercase tracking-wider">Binance Live Position</span>
             <span className="font-mono text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
               {binance?.connected ? `${binance.balances.length} Assets` : 'Offline'}
             </span>
           </div>
           <div className="mt-3">
             <div className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-white">
-              {formatMad(totalSpotValueMad, 2)}
+              {formatMad(totalCombinedBinanceValueMad, 2)}
             </div>
             <div className="mt-1 flex items-center gap-2 text-xs font-mono tabular-nums">
-              <span className="text-gray-500 dark:text-gray-400">{formatUsd(totalSpotValueUsd)}</span>
+              <span className="text-gray-500 dark:text-gray-400">{formatUsd(totalCombinedBinanceValueUsd)}</span>
               <span>·</span>
               <span
                 className={`inline-flex items-center gap-0.5 font-semibold ${
@@ -1040,11 +1064,10 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
               </span>
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-800/80 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-            <span>Crypto vs. Stablecoins</span>
-            <span className="font-mono tabular-nums text-gray-800 dark:text-gray-200">
-              {formatMad(cryptoEquityMad, 0)} / {formatMad(stablecoinReserveMad, 0)}
-            </span>
+          <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-800/80 flex flex-wrap items-center justify-between gap-1 text-xs text-gray-500 dark:text-gray-400">
+            <span>Spot: {formatMad(totalSpotValueMad, 0)}</span>
+            <span>·</span>
+            <span>Funding (Stocks): {formatMad(totalFundingValueMad, 0)}</span>
           </div>
         </div>
 
@@ -1125,7 +1148,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
             }`}
           >
-            Binance Spot Holdings ({binance?.balances?.length || 0})
+            Binance Holdings ({binance?.balances?.length || 0})
           </button>
           <button
             type="button"
@@ -1175,42 +1198,67 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       </div>
 
       {/* ===================================================================
-          VIEW 1: BINANCE SPOT HOLDINGS & PORTFOLIO ALLOCATION
+          VIEW 1: BINANCE SPOT & FUNDING HOLDINGS (STOCKS & CRYPTO)
          =================================================================== */}
       {activeSubView === 'spot' && (
         <div className="space-y-6">
           {/* Filter & Search Bar */}
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
               <div>
                 <h2 className="text-sm font-bold text-gray-900 dark:text-white">
-                  Binance Spot Account Balances
+                  Binance Live Holdings (Spot &amp; Funding Wallets)
                 </h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Non-zero Spot balances with live USD/MAD conversion and Weighted Average Cost (WAC) derived from your personal trade history.
+                  Non-zero Spot &amp; Funding Wallet balances (including tokenized stocks and fiat reserves) with live valuation and Weighted Average Cost (WAC).
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {/* Wallet Scope: All / Spot / Funding */}
                 <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-950 text-xs">
-                  {(['ALL', 'CRYPTO', 'STABLECOIN', 'LOCKED'] as SpotFilterType[]).map((f) => (
+                  {(['ALL', 'SPOT', 'FUNDING'] as WalletScopeFilterType[]).map((scope) => (
+                    <button
+                      key={scope}
+                      type="button"
+                      onClick={() => setWalletScopeFilter(scope)}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                        walletScopeFilter === scope
+                          ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs font-semibold'
+                          : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      {scope === 'ALL'
+                        ? 'All Wallets'
+                        : scope === 'SPOT'
+                        ? 'Spot Wallet'
+                        : 'Funding Wallet (Stocks)'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Asset Class Filter */}
+                <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-950 text-xs">
+                  {(['ALL', 'STOCKS', 'CRYPTO', 'STABLECOIN', 'LOCKED'] as SpotFilterType[]).map((f) => (
                     <button
                       key={f}
                       type="button"
                       onClick={() => setSpotFilter(f)}
                       className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
                         spotFilter === f
-                          ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs'
+                          ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs font-semibold'
                           : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-300'
                       }`}
                     >
                       {f === 'ALL'
-                        ? 'All Assets'
+                        ? 'All Classes'
+                        : f === 'STOCKS'
+                        ? 'Stocks'
                         : f === 'CRYPTO'
-                        ? 'Crypto Equity'
+                        ? 'Crypto'
                         : f === 'STABLECOIN'
                         ? 'Stablecoins'
-                        : 'In Earn / Locked'}
+                        : 'Locked / Earn'}
                     </button>
                   ))}
                 </div>
@@ -1221,7 +1269,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                     type="text"
                     value={spotSearch}
                     onChange={(e) => setSpotSearch(e.target.value)}
-                    placeholder="Filter asset (BTC, USDT...)"
+                    placeholder="Filter asset (TSLA, BTC...)"
                     className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -1273,18 +1321,38 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                         >
                           <td className="py-3.5 pl-4 pr-3">
                             <div className="flex items-center gap-2.5">
-                              <div className="h-8 w-8 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center font-mono font-bold text-xs text-gray-900 dark:text-white">
+                              <div className="h-8 w-8 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center font-mono font-bold text-xs text-gray-900 dark:text-white shrink-0">
                                 {b.asset.slice(0, 4)}
                               </div>
                               <div>
-                                <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                                <div className="font-bold text-gray-900 dark:text-white flex items-center gap-1.5 flex-wrap">
                                   <span>{b.asset}</span>
                                   <span className="text-[11px] font-normal text-gray-500 dark:text-gray-400">
                                     · {b.assetName}
                                   </span>
+                                  <span
+                                    className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-semibold ${
+                                      b.walletType === 'FUNDING'
+                                        ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800'
+                                        : b.walletType === 'BOTH'
+                                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                        : 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                    }`}
+                                  >
+                                    {b.walletType === 'FUNDING'
+                                      ? 'Funding'
+                                      : b.walletType === 'BOTH'
+                                      ? 'Spot + Fund'
+                                      : 'Spot'}
+                                  </span>
                                 </div>
-                                <div className="text-[11px] text-gray-400 dark:text-gray-500">
-                                  {b.category}
+                                <div className="text-[11px] text-gray-400 dark:text-gray-500 flex items-center gap-1.5 flex-wrap">
+                                  <span>{b.category}</span>
+                                  {(b.spotTotal ?? 0) > 0 && (b.fundingTotal ?? 0) > 0 && (
+                                    <span className="font-mono text-[10px] text-gray-500 dark:text-gray-400">
+                                      (Spot: {formatQty(b.spotTotal)} · Fund: {formatQty(b.fundingTotal)})
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>

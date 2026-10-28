@@ -724,14 +724,24 @@ export class InvestmentService {
         const unrealizedPnlMad = b.unrealizedPnlMad ?? 0;
         const unrealizedPnlPercent = b.unrealizedPnlPercent ?? 0;
 
+        const walletLabel =
+          b.walletType === 'FUNDING'
+            ? 'Funding Wallet'
+            : b.walletType === 'BOTH'
+            ? 'Spot & Funding'
+            : 'Spot';
+
+        const market: StockMarketType =
+          b.category === 'Tokenized Stocks & Equities' ? 'GLOBAL' : 'BINANCE';
+
         return {
-          id: `binance-spot-${b.asset}`,
+          id: `binance-${(b.walletType || 'spot').toLowerCase()}-${b.asset}`,
           userId,
           walletId: linkedBinanceAcc?.id || null,
-          walletName: linkedBinanceAcc?.name || 'Binance Spot',
+          walletName: linkedBinanceAcc?.name || `Binance ${walletLabel}`,
           ticker: b.asset,
-          companyName: `${b.assetName} (Binance Spot)`,
-          market: 'BINANCE' as StockMarketType,
+          companyName: `${b.assetName} (Binance ${walletLabel})`,
+          market,
           sector: b.category,
           shares: b.total.toString(),
           avgCostPerShare: avgCostUsd.toFixed(4),
@@ -739,9 +749,12 @@ export class InvestmentService {
           currency: 'USD',
           annualDividendPerShare: '0',
           targetWeightPercent: b.portfolioWeightPercent.toFixed(1),
-          convictionThesis: b.isStablecoinOrFiat
-            ? `Binance Spot Liquidity Reserve (${b.free} free${b.locked > 0 ? `, ${b.locked} locked` : ''})`
-            : `Live Binance Spot Position (${b.free} free${b.locked > 0 ? `, ${b.locked} locked` : ''})`,
+          convictionThesis:
+            b.category === 'Tokenized Stocks & Equities'
+              ? `Binance Stock Token (${b.free} free${b.locked > 0 ? `, ${b.locked} locked` : ''} in ${walletLabel})`
+              : b.isStablecoinOrFiat
+              ? `Binance Liquidity Reserve (${b.free} free${b.locked > 0 ? `, ${b.locked} locked` : ''} in ${walletLabel})`
+              : `Live Binance Position (${b.free} free${b.locked > 0 ? `, ${b.locked} locked` : ''} in ${walletLabel})`,
           isWatchlistOnly: false,
           createdAt: binanceOverview.lastSyncedAt || new Date().toISOString(),
           updatedAt: binanceOverview.lastSyncedAt || new Date().toISOString(),

@@ -271,6 +271,8 @@ export type DashboardTab =
 export type StockMarketType = 'US' | 'BVC' | 'ETF' | 'GLOBAL' | 'BINANCE' | 'CRYPTO';
 export type StockOrderAction = 'BUY' | 'SELL' | 'DIVIDEND';
 
+export type BinanceWalletType = 'SPOT' | 'FUNDING' | 'BOTH' | 'UNIFIED';
+
 export type BinanceAssetCategory =
   | 'Stablecoin / Fiat Reserve'
   | 'Layer 1 Core'
@@ -278,6 +280,7 @@ export type BinanceAssetCategory =
   | 'Layer 2 & Scaling'
   | 'AI & Compute'
   | 'Real World Assets'
+  | 'Tokenized Stocks & Equities'
   | 'Digital Assets';
 
 export interface BinanceSpotAssetBalance {
@@ -285,6 +288,13 @@ export interface BinanceSpotAssetBalance {
   assetName: string;
   category: BinanceAssetCategory;
   isStablecoinOrFiat: boolean;
+  walletType: BinanceWalletType;
+  spotFree: number;
+  spotLocked: number;
+  spotTotal: number;
+  fundingFree: number;
+  fundingLocked: number;
+  fundingTotal: number;
   free: number;
   locked: number;
   total: number;
@@ -362,10 +372,21 @@ export interface BinanceAccountOverview {
     canWithdraw: boolean;
     canDeposit: boolean;
     isReadOnlySafe: boolean;
+    apiKeyReadingEnabled?: boolean;
+    apiKeyTradingEnabled?: boolean;
+    apiKeyWithdrawalsEnabled?: boolean;
+    apiKeyUniversalTransferEnabled?: boolean;
+    ipRestrict?: boolean;
   };
   lastSyncedAt: string | null;
   totalSpotValueUsd: number;
   totalSpotValueMad: number;
+  totalFundingValueUsd: number;
+  totalFundingValueMad: number;
+  totalCombinedValueUsd: number;
+  totalCombinedValueMad: number;
+  stockEquityUsd: number;
+  stockEquityMad: number;
   cryptoEquityUsd: number;
   cryptoEquityMad: number;
   stablecoinReserveUsd: number;
@@ -381,6 +402,7 @@ export interface BinanceAccountOverview {
   totalRealizedPnlMad: number;
   totalFeesPaidMad: number;
   balances: BinanceSpotAssetBalance[];
+  fundingBalances: BinanceSpotAssetBalance[];
   recentTrades: BinancePersonalTrade[];
   symbolSummaries: BinanceSymbolTradeSummary[];
   availableSymbols: string[];
