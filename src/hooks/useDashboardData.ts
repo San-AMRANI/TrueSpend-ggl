@@ -725,6 +725,66 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleRefreshInvestments = async (forceRefresh: boolean = true) => {
+    if (!token) return null;
+    setIsSaving(true);
+    try {
+      const [invData, kpiData, txData] = await Promise.all([
+        dashboardService.getInvestmentsData(token, forceRefresh),
+        dashboardService.getKpis(token),
+        dashboardService.getTransactions(token),
+      ]);
+      setInvestmentsData(invData || null);
+      if (kpiData) setKpis(kpiData);
+      if (txData) setTransactions(txData);
+      return invData;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSyncBinanceWallet = async (payload: {
+    walletId?: string;
+    mode?: 'stablecoins_only' | 'full_spot_balance';
+  }) => {
+    if (!token) return null;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.syncBinanceWallet(payload, token);
+      await fetchData();
+      return res;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleLogWalletCapitalTransfer = async (payload: {
+    direction: 'deposit' | 'withdrawal';
+    bankWalletId?: string;
+    investmentWalletId?: string;
+    amountMad: number;
+    notes?: string;
+  }) => {
+    if (!token) return null;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.logWalletCapitalTransfer(payload, token);
+      await fetchData();
+      return res;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleFetchBinanceTrades = async (params: {
+    symbol: string;
+    limit?: number;
+    refresh?: boolean;
+  }) => {
+    if (!token) throw new Error('Authentication required');
+    return await dashboardService.getBinanceTrades(params, token);
+  };
+
   const syncedGoals = useMemo(() => {
     if (!goals) return [];
     if (!kpis?.accounts) return goals;
@@ -805,6 +865,11 @@ export function useDashboardData(token: string | null) {
     handleExecutePaydayAllocation,
     handleFundInvestmentWallet,
     handleSearchStocks,
+    handleRefreshInvestments,
+    handleSyncBinanceWallet,
+    handleLogWalletCapitalTransfer,
+    handleFetchBinanceTrades,
     notifications,
   };
 }
+

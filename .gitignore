@@ -16,3 +16,6 @@ verify_db.js
 .env*
 !.env.example
 .aistudio/
+bun.lock
+bun.lockb
+

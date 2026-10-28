@@ -562,25 +562,42 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 if (wallet.type === 'Investment') {
                   const invWallets = wallets.filter((w) => w.type === 'Investment');
                   const isFirstInvWallet = invWallets[0]?.id === wallet.id;
+                  const invSummary = investmentsData?.investmentWallets?.find((iw) => iw.walletId === wallet.id);
+                  const isBinanceLinked =
+                    invSummary?.isBinanceLinked ??
+                    (wallet.name.toLowerCase().includes('binance') || isFirstInvWallet);
+
                   const linkedStocks = (investmentsData?.positions || []).filter(
-                    (p) => !p.isWatchlistOnly && p.sharesNum > 0 && (p.walletId === wallet.id || (!p.walletId && isFirstInvWallet))
+                    (p) =>
+                      !p.isWatchlistOnly &&
+                      p.sharesNum > 0 &&
+                      p.source !== 'binance' &&
+                      (p.walletId === wallet.id || (!p.walletId && isFirstInvWallet))
                   );
                   const uninvestedCashMad = wallet.balance ?? 0;
-                  const linkedStockValueMad = linkedStocks.reduce((sum, p) => sum + p.marketValueMad, 0);
+                  const binanceCryptoMad = isBinanceLinked
+                    ? investmentsData?.binance?.cryptoEquityMad ?? 0
+                    : 0;
+                  const linkedStockValueMad =
+                    linkedStocks.reduce((sum, p) => sum + p.marketValueMad, 0) + binanceCryptoMad;
                   const totalBrokerageMad = uninvestedCashMad + linkedStockValueMad;
 
                   return (
                     <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800/80 space-y-2.5">
                       <div className="flex items-baseline justify-between">
                         <div>
-                          <p className="text-[11px] text-gray-500 dark:text-gray-400">Uninvested Brokerage Cash</p>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                            {isBinanceLinked ? 'Protected Cash / Stablecoin Reserve' : 'Uninvested Brokerage Cash'}
+                          </p>
                           <div className="text-xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
                             {uninvestedCashMad.toFixed(2)}{' '}
                             <span className="text-xs font-medium text-gray-500">MAD</span>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-[11px] text-gray-500 dark:text-gray-400">Linked Stock Equity</p>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                            {isBinanceLinked ? 'Binance Spot & Equity' : 'Linked Stock Equity'}
+                          </p>
                           <div className="text-base font-bold font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
                             {linkedStockValueMad.toFixed(2)}{' '}
                             <span className="text-[10px] font-medium text-gray-400">MAD</span>
@@ -591,12 +608,46 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                       <div className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/50">
                         <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
                           <TrendingUp className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                          <span>Total Brokerage Value:</span>
+                          <span>Total Account Position:</span>
                         </div>
                         <span className="font-bold font-mono tabular-nums text-amber-900 dark:text-amber-200">
-                          {totalBrokerageMad.toFixed(2)} MAD ({linkedStocks.length} stock{linkedStocks.length === 1 ? '' : 's'})
+                          {totalBrokerageMad.toFixed(2)} MAD
                         </span>
                       </div>
+
+                      {isBinanceLinked && investmentsData?.binance?.connected && (
+                        <div className="flex items-center justify-between gap-2 pt-0.5">
+                          <span className="text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+                            Binance Stablecoins: {(investmentsData.binance.stablecoinReserveMad || 0).toFixed(0)} MAD
+                          </span>
+                          <button
+                            type="button"
+                            disabled={loading}
+                            onClick={async () => {
+                              setLoading(true);
+                              setError(null);
+                              try {
+                                const res = await dashboardService.syncBinanceWallet(
+                                  { walletId: wallet.id, mode: 'stablecoins_only' },
+                                  token
+                                );
+                                await onUpdateWallet(wallet.id, { name: wallet.name });
+                                setReconcileNotice(
+                                  `Synced ${wallet.name} with Binance Spot Stablecoin Reserve (${res.syncedBalanceMad.toFixed(2)} MAD).`
+                                );
+                                setTimeout(() => setReconcileNotice(null), 5000);
+                              } catch (err: any) {
+                                setError(err?.message || 'Failed to sync with Binance Spot');
+                              } finally {
+                                setLoading(false);
+                              }
+                            }}
+                            className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                          >
+                            Sync Binance Cash
+                          </button>
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 pt-0.5">
                         <span>Protected Reserve (excluded from Safe-to-Spend)</span>
@@ -609,7 +660,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                             }}
                             className="font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
                           >
-                            Manage Stocks →
+                            Open Investments →
                           </button>
                         )}
                       </div>

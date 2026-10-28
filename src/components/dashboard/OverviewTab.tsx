@@ -665,7 +665,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </Card>
       </div>
 
-      {/* Stock Portfolio & Buying Power Pulse Strip */}
+      {/* Binance Spot & Investment Portfolio Pulse Strip */}
       <Card className="min-w-0 overflow-hidden border-emerald-200/70 dark:border-emerald-900/40 bg-gradient-to-r from-white via-emerald-50/20 to-indigo-50/20 dark:from-gray-900 dark:via-emerald-950/15 dark:to-indigo-950/15">
         <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
@@ -674,10 +674,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                <span className="text-sm font-bold text-gray-900 dark:text-white">Equities &amp; Stock Portfolio</span>
+                <span className="text-sm font-bold text-gray-900 dark:text-white">
+                  Binance Spot &amp; Investment Portfolio
+                </span>
                 <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">·</span>
                 <span className="text-xs font-mono tabular-nums font-semibold text-gray-800 dark:text-gray-200">
-                  {stockPortfolioMad.toLocaleString(undefined, { maximumFractionDigits: 0 })} MAD
+                  {(
+                    stockPortfolioMad + (investmentsData?.buyingPower?.investmentWalletBalanceMad ?? 0)
+                  ).toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
+                  MAD
                 </span>
                 {investmentsData && investmentsData.totalUnrealizedPnlMad !== 0 && (
                   <span
@@ -691,11 +696,17 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                     {investmentsData.totalUnrealizedPnlPercent.toFixed(1)}%)
                   </span>
                 )}
+                <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">·</span>
+                <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                  {investmentsData?.binance?.connected
+                    ? `Binance Ed25519 Read-Only (${investmentsData.binance.balances.length} Spot Assets)`
+                    : 'Protected Wallet Reserve'}
+                </span>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
                 {activeStockPositions.length > 0
-                  ? `${activeStockPositions.map((p) => p.ticker).slice(0, 5).join(' · ')} · Safe Buying Power: ${(investmentsData?.buyingPower.deployableSurplusMad ?? 0).toFixed(0)} MAD`
-                  : `Synced with TrueSpend Wallets & Safe-to-Spend · Recommended Stock Buying Power: ${(investmentsData?.buyingPower.deployableSurplusMad ?? 0).toFixed(0)} MAD`}
+                  ? `${activeStockPositions.map((p) => p.ticker).slice(0, 6).join(' · ')} · Shielded Wallet Reserve: ${(investmentsData?.buyingPower?.investmentWalletBalanceMad ?? 0).toFixed(0)} MAD`
+                  : `Read-only Binance Spot balances & personal trade history synced with TrueSpend Wallets · Safe Surplus: ${(investmentsData?.buyingPower?.deployableSurplusMad ?? 0).toFixed(0)} MAD`}
               </p>
             </div>
           </div>
@@ -706,7 +717,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             onClick={() => setActiveTab('investments')}
             className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 self-start sm:self-auto"
           >
-            <span>Open Stock Portfolio</span>
+            <span>Open Investments &amp; Binance</span>
             <ChevronRight className="h-3.5 w-3.5" />
           </Button>
         </CardContent>
