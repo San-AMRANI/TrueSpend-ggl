@@ -2,9 +2,11 @@ import crypto from 'node:crypto';
 import type {
   BinanceAccountOverview,
   BinanceAssetCategory,
+  BinanceAssetDividendRecord,
   BinancePersonalTrade,
   BinanceSpotAssetBalance,
   BinanceSymbolTradeSummary,
+  BinanceWalletBreakdownItem,
 } from '../../src/types/index.js';
 
 /**
@@ -35,7 +37,13 @@ type AllowedSignedEndpoint =
   | '/api/v3/account'
   | '/api/v3/myTrades'
   | '/sapi/v1/account/apiRestrictions'
-  | '/sapi/v1/asset/get-funding-asset';
+  | '/sapi/v1/asset/get-funding-asset'
+  | '/sapi/v3/asset/getUserAsset'
+  | '/sapi/v1/asset/wallet/balance'
+  | '/sapi/v1/simple-earn/flexible/position'
+  | '/sapi/v1/simple-earn/locked/position'
+  | '/sapi/v1/convert/tradeFlow'
+  | '/sapi/v1/asset/assetDividend';
 
 type AllowedPublicEndpoint = '/api/v3/time' | '/api/v3/ticker/24hr' | '/api/v3/ticker/price';
 
@@ -44,6 +52,12 @@ const ALLOWED_SIGNED_ENDPOINTS = new Set<AllowedSignedEndpoint>([
   '/api/v3/myTrades',
   '/sapi/v1/account/apiRestrictions',
   '/sapi/v1/asset/get-funding-asset',
+  '/sapi/v3/asset/getUserAsset',
+  '/sapi/v1/asset/wallet/balance',
+  '/sapi/v1/simple-earn/flexible/position',
+  '/sapi/v1/simple-earn/locked/position',
+  '/sapi/v1/convert/tradeFlow',
+  '/sapi/v1/asset/assetDividend',
 ]);
 
 const ALLOWED_PUBLIC_ENDPOINTS = new Set<AllowedPublicEndpoint>([
@@ -57,95 +71,112 @@ const ALLOWED_PUBLIC_ENDPOINTS = new Set<AllowedPublicEndpoint>([
  */
 const ED25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
 
-const ASSET_METADATA: Record<string, { name: string; category: BinanceAssetCategory }> = {
+/**
+ * Standard Spot Taker Fee Rate (0.10% = 0.001) used for estimating exit fee & breakeven price
+ */
+const DEFAULT_TAKER_FEE_RATE = 0.001;
+
+const ASSET_METADATA: Record<
+  string,
+  { name: string; category: BinanceAssetCategory; dividendYieldPercent?: number }
+> = {
   // Stablecoins & Fiat
-  USDT: { name: 'Tether USD', category: 'Stablecoin / Fiat Reserve' },
-  USDC: { name: 'USD Coin', category: 'Stablecoin / Fiat Reserve' },
-  FDUSD: { name: 'First Digital USD', category: 'Stablecoin / Fiat Reserve' },
-  DAI: { name: 'Dai Stablecoin', category: 'Stablecoin / Fiat Reserve' },
-  BUSD: { name: 'Binance USD', category: 'Stablecoin / Fiat Reserve' },
-  EUR: { name: 'Euro', category: 'Stablecoin / Fiat Reserve' },
-  AEUR: { name: 'Anchored Coins EUR', category: 'Stablecoin / Fiat Reserve' },
-  USD: { name: 'US Dollar', category: 'Stablecoin / Fiat Reserve' },
+  USDT: { name: 'Tether USD', category: 'Stablecoin / Fiat Reserve', dividendYieldPercent: 0 },
+  USDC: { name: 'USD Coin', category: 'Stablecoin / Fiat Reserve', dividendYieldPercent: 0 },
+  FDUSD: { name: 'First Digital USD', category: 'Stablecoin / Fiat Reserve', dividendYieldPercent: 0 },
+  DAI: { name: 'Dai Stablecoin', category: 'Stablecoin / Fiat Reserve', dividendYieldPercent: 0 },
+  BUSD: { name: 'Binance USD', category: 'Stablecoin / Fiat Reserve', dividendYieldPercent: 0 },
+  EUR: { name: 'Euro', category: 'Stablecoin / Fiat Reserve', dividendYieldPercent: 0 },
+  AEUR: { name: 'Anchored Coins EUR', category: 'Stablecoin / Fiat Reserve', dividendYieldPercent: 0 },
+  USD: { name: 'US Dollar', category: 'Stablecoin / Fiat Reserve', dividendYieldPercent: 0 },
 
   // Tokenized Stocks & Equities (Funding Wallet & Spot)
-  TSLA: { name: 'Tesla Inc.', category: 'Tokenized Stocks & Equities' },
-  AAPL: { name: 'Apple Inc.', category: 'Tokenized Stocks & Equities' },
-  NVDA: { name: 'NVIDIA Corp.', category: 'Tokenized Stocks & Equities' },
-  MSFT: { name: 'Microsoft Corp.', category: 'Tokenized Stocks & Equities' },
-  AMZN: { name: 'Amazon.com Inc.', category: 'Tokenized Stocks & Equities' },
-  GOOGL: { name: 'Alphabet Inc.', category: 'Tokenized Stocks & Equities' },
-  GOOG: { name: 'Alphabet Inc. (Class C)', category: 'Tokenized Stocks & Equities' },
-  META: { name: 'Meta Platforms Inc.', category: 'Tokenized Stocks & Equities' },
-  COIN: { name: 'Coinbase Global', category: 'Tokenized Stocks & Equities' },
-  MSTR: { name: 'MicroStrategy Inc.', category: 'Tokenized Stocks & Equities' },
-  SPY: { name: 'SPDR S&P 500 ETF Trust', category: 'Tokenized Stocks & Equities' },
-  QQQ: { name: 'Invesco QQQ Trust', category: 'Tokenized Stocks & Equities' },
-  BABA: { name: 'Alibaba Group Holding', category: 'Tokenized Stocks & Equities' },
-  NFLX: { name: 'Netflix Inc.', category: 'Tokenized Stocks & Equities' },
-  AMD: { name: 'Advanced Micro Devices', category: 'Tokenized Stocks & Equities' },
-  INTC: { name: 'Intel Corp.', category: 'Tokenized Stocks & Equities' },
-  PLTR: { name: 'Palantir Technologies', category: 'Tokenized Stocks & Equities' },
-  DIS: { name: 'Walt Disney Co.', category: 'Tokenized Stocks & Equities' },
-  PYPL: { name: 'PayPal Holdings', category: 'Tokenized Stocks & Equities' },
-  V: { name: 'Visa Inc.', category: 'Tokenized Stocks & Equities' },
-  MA: { name: 'Mastercard Inc.', category: 'Tokenized Stocks & Equities' },
+  TSLA: { name: 'Tesla Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  AAPL: { name: 'Apple Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.44 },
+  NVDA: { name: 'NVIDIA Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.03 },
+  MSFT: { name: 'Microsoft Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.78 },
+  AMZN: { name: 'Amazon.com Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  GOOGL: { name: 'Alphabet Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.45 },
+  GOOG: { name: 'Alphabet Inc. (Class C)', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.45 },
+  META: { name: 'Meta Platforms Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.35 },
+  COIN: { name: 'Coinbase Global', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  MSTR: { name: 'MicroStrategy Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  SPY: { name: 'SPDR S&P 500 ETF Trust', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.24 },
+  QQQ: { name: 'Invesco QQQ Trust', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.58 },
+  VOO: { name: 'Vanguard S&P 500 ETF', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.26 },
+  SCHD: { name: 'Schwab US Dividend Equity ETF', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 3.55 },
+  BABA: { name: 'Alibaba Group Holding', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.15 },
+  NFLX: { name: 'Netflix Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  AMD: { name: 'Advanced Micro Devices', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  INTC: { name: 'Intel Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.5 },
+  PLTR: { name: 'Palantir Technologies', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  DIS: { name: 'Walt Disney Co.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.85 },
+  PYPL: { name: 'PayPal Holdings', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  V: { name: 'Visa Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.76 },
+  MA: { name: 'Mastercard Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.55 },
+  JPM: { name: 'JPMorgan Chase & Co.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 2.15 },
+  KO: { name: 'Coca-Cola Co.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 3.05 },
+  PEP: { name: 'PepsiCo Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 3.2 },
+  O: { name: 'Realty Income Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 5.45 },
+  AVGO: { name: 'Broadcom Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.2 },
+  COST: { name: 'Costco Wholesale', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.52 },
+  BRK: { name: 'Berkshire Hathaway', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
 
   // Layer 1 Core
-  BTC: { name: 'Bitcoin', category: 'Layer 1 Core' },
-  ETH: { name: 'Ethereum', category: 'Layer 1 Core' },
-  BNB: { name: 'BNB', category: 'Layer 1 Core' },
-  SOL: { name: 'Solana', category: 'Layer 1 Core' },
-  XRP: { name: 'XRP', category: 'Layer 1 Core' },
-  ADA: { name: 'Cardano', category: 'Layer 1 Core' },
-  AVAX: { name: 'Avalanche', category: 'Layer 1 Core' },
-  SUI: { name: 'Sui', category: 'Layer 1 Core' },
-  TON: { name: 'Toncoin', category: 'Layer 1 Core' },
-  DOT: { name: 'Polkadot', category: 'Layer 1 Core' },
-  NEAR: { name: 'NEAR Protocol', category: 'Layer 1 Core' },
-  APT: { name: 'Aptos', category: 'Layer 1 Core' },
-  ATOM: { name: 'Cosmos', category: 'Layer 1 Core' },
-  TRX: { name: 'TRON', category: 'Layer 1 Core' },
-  LTC: { name: 'Litecoin', category: 'Layer 1 Core' },
-  BCH: { name: 'Bitcoin Cash', category: 'Layer 1 Core' },
+  BTC: { name: 'Bitcoin', category: 'Layer 1 Core', dividendYieldPercent: 0 },
+  ETH: { name: 'Ethereum', category: 'Layer 1 Core', dividendYieldPercent: 2.8 },
+  BNB: { name: 'BNB', category: 'Layer 1 Core', dividendYieldPercent: 1.5 },
+  SOL: { name: 'Solana', category: 'Layer 1 Core', dividendYieldPercent: 5.2 },
+  XRP: { name: 'XRP', category: 'Layer 1 Core', dividendYieldPercent: 0 },
+  ADA: { name: 'Cardano', category: 'Layer 1 Core', dividendYieldPercent: 2.9 },
+  AVAX: { name: 'Avalanche', category: 'Layer 1 Core', dividendYieldPercent: 4.1 },
+  SUI: { name: 'Sui', category: 'Layer 1 Core', dividendYieldPercent: 2.5 },
+  TON: { name: 'Toncoin', category: 'Layer 1 Core', dividendYieldPercent: 3.0 },
+  DOT: { name: 'Polkadot', category: 'Layer 1 Core', dividendYieldPercent: 7.5 },
+  NEAR: { name: 'NEAR Protocol', category: 'Layer 1 Core', dividendYieldPercent: 4.5 },
+  APT: { name: 'Aptos', category: 'Layer 1 Core', dividendYieldPercent: 3.8 },
+  ATOM: { name: 'Cosmos', category: 'Layer 1 Core', dividendYieldPercent: 8.2 },
+  TRX: { name: 'TRON', category: 'Layer 1 Core', dividendYieldPercent: 3.6 },
+  LTC: { name: 'Litecoin', category: 'Layer 1 Core', dividendYieldPercent: 0 },
+  BCH: { name: 'Bitcoin Cash', category: 'Layer 1 Core', dividendYieldPercent: 0 },
 
   // DeFi & Infrastructure
-  LINK: { name: 'Chainlink', category: 'DeFi & Infrastructure' },
-  UNI: { name: 'Uniswap', category: 'DeFi & Infrastructure' },
-  AAVE: { name: 'Aave', category: 'DeFi & Infrastructure' },
-  MKR: { name: 'Maker', category: 'DeFi & Infrastructure' },
-  LDO: { name: 'Lido DAO', category: 'DeFi & Infrastructure' },
-  INJ: { name: 'Injective', category: 'DeFi & Infrastructure' },
-  PYTH: { name: 'Pyth Network', category: 'DeFi & Infrastructure' },
-  JUP: { name: 'Jupiter', category: 'DeFi & Infrastructure' },
-  PENDLE: { name: 'Pendle', category: 'DeFi & Infrastructure' },
-  RUNE: { name: 'THORChain', category: 'DeFi & Infrastructure' },
+  LINK: { name: 'Chainlink', category: 'DeFi & Infrastructure', dividendYieldPercent: 0 },
+  UNI: { name: 'Uniswap', category: 'DeFi & Infrastructure', dividendYieldPercent: 0 },
+  AAVE: { name: 'Aave', category: 'DeFi & Infrastructure', dividendYieldPercent: 1.8 },
+  MKR: { name: 'Maker', category: 'DeFi & Infrastructure', dividendYieldPercent: 0 },
+  LDO: { name: 'Lido DAO', category: 'DeFi & Infrastructure', dividendYieldPercent: 0 },
+  INJ: { name: 'Injective', category: 'DeFi & Infrastructure', dividendYieldPercent: 5.0 },
+  PYTH: { name: 'Pyth Network', category: 'DeFi & Infrastructure', dividendYieldPercent: 0 },
+  JUP: { name: 'Jupiter', category: 'DeFi & Infrastructure', dividendYieldPercent: 0 },
+  PENDLE: { name: 'Pendle', category: 'DeFi & Infrastructure', dividendYieldPercent: 2.2 },
+  RUNE: { name: 'THORChain', category: 'DeFi & Infrastructure', dividendYieldPercent: 0 },
 
   // Layer 2 & Scaling
-  ARB: { name: 'Arbitrum', category: 'Layer 2 & Scaling' },
-  OP: { name: 'Optimism', category: 'Layer 2 & Scaling' },
-  POL: { name: 'Polygon Ecosystem Token', category: 'Layer 2 & Scaling' },
-  MATIC: { name: 'Polygon', category: 'Layer 2 & Scaling' },
-  STRK: { name: 'Starknet', category: 'Layer 2 & Scaling' },
-  IMX: { name: 'Immutable', category: 'Layer 2 & Scaling' },
+  ARB: { name: 'Arbitrum', category: 'Layer 2 & Scaling', dividendYieldPercent: 0 },
+  OP: { name: 'Optimism', category: 'Layer 2 & Scaling', dividendYieldPercent: 0 },
+  POL: { name: 'Polygon Ecosystem Token', category: 'Layer 2 & Scaling', dividendYieldPercent: 2.1 },
+  MATIC: { name: 'Polygon', category: 'Layer 2 & Scaling', dividendYieldPercent: 2.1 },
+  STRK: { name: 'Starknet', category: 'Layer 2 & Scaling', dividendYieldPercent: 0 },
+  IMX: { name: 'Immutable', category: 'Layer 2 & Scaling', dividendYieldPercent: 0 },
 
   // AI & Compute
-  FET: { name: 'Artificial Superintelligence Alliance', category: 'AI & Compute' },
-  RENDER: { name: 'Render', category: 'AI & Compute' },
-  RNDR: { name: 'Render Token', category: 'AI & Compute' },
-  TAO: { name: 'Bittensor', category: 'AI & Compute' },
-  WLD: { name: 'Worldcoin', category: 'AI & Compute' },
-  GRT: { name: 'The Graph', category: 'AI & Compute' },
+  FET: { name: 'Artificial Superintelligence Alliance', category: 'AI & Compute', dividendYieldPercent: 0 },
+  RENDER: { name: 'Render', category: 'AI & Compute', dividendYieldPercent: 0 },
+  RNDR: { name: 'Render Token', category: 'AI & Compute', dividendYieldPercent: 0 },
+  TAO: { name: 'Bittensor', category: 'AI & Compute', dividendYieldPercent: 4.0 },
+  WLD: { name: 'Worldcoin', category: 'AI & Compute', dividendYieldPercent: 0 },
+  GRT: { name: 'The Graph', category: 'AI & Compute', dividendYieldPercent: 0 },
 
   // Real World Assets
-  PAXG: { name: 'PAX Gold (Physical Gold)', category: 'Real World Assets' },
-  ONDO: { name: 'Ondo Finance', category: 'Real World Assets' },
-  OM: { name: 'MANTRA', category: 'Real World Assets' },
+  PAXG: { name: 'PAX Gold (Physical Gold)', category: 'Real World Assets', dividendYieldPercent: 0 },
+  ONDO: { name: 'Ondo Finance', category: 'Real World Assets', dividendYieldPercent: 0 },
+  OM: { name: 'MANTRA', category: 'Real World Assets', dividendYieldPercent: 0 },
 
   // Digital Assets
-  DOGE: { name: 'Dogecoin', category: 'Digital Assets' },
-  SHIB: { name: 'Shiba Inu', category: 'Digital Assets' },
-  PEPE: { name: 'Pepe', category: 'Digital Assets' },
+  DOGE: { name: 'Dogecoin', category: 'Digital Assets', dividendYieldPercent: 0 },
+  SHIB: { name: 'Shiba Inu', category: 'Digital Assets', dividendYieldPercent: 0 },
+  PEPE: { name: 'Pepe', category: 'Digital Assets', dividendYieldPercent: 0 },
 };
 
 const USD_PEGGED_STABLECOINS = new Set(['USDT', 'USDC', 'FDUSD', 'DAI', 'BUSD', 'TUSD', 'USDP', 'USD']);
@@ -179,13 +210,24 @@ interface Ticker24hStats {
   lowPrice: number;
 }
 
+export interface ExternalStockQuoteMap {
+  [ticker: string]: {
+    price: number;
+    change24hPercent: number;
+    currency: string;
+    companyName?: string;
+    dividendYieldPercent?: number;
+    annualDividendPerShare?: number;
+  };
+}
+
 export class BinanceService {
   private serverTimeOffsetMs = 0;
   private lastTimeSyncAt = 0;
   private preferredPrivateHost: string = BINANCE_PRIVATE_ENDPOINTS[0];
   private preferredPublicHost: string = BINANCE_PUBLIC_ENDPOINTS[0];
 
-  // Short-lived in-memory caches to respect Binance rate weights during rapid tab switches
+  // Ultra-low latency cache (5 seconds) so live prices match Binance in real time
   private tickerCache: { data: Map<string, Ticker24hStats>; fetchedAt: number } = {
     data: new Map(),
     fetchedAt: 0,
@@ -204,11 +246,6 @@ export class BinanceService {
     { trades: BinancePersonalTrade[]; summary: BinanceSymbolTradeSummary; fetchedAt: number }
   > = new Map();
 
-  /**
-   * Read server-side credentials exclusively from environment variables.
-   * Tolerates fallback variable names, quotes, whitespace, and escaped newlines.
-   * Never expose, log, or return these values.
-   */
   private getServerCredentials(): { apiKey: string; privateKeyB64: string } | null {
     const rawApiKey =
       process.env.BINANCE_API_KEY ||
@@ -235,22 +272,9 @@ export class BinanceService {
     return this.getServerCredentials() !== null;
   }
 
-  /**
-   * Decode BINANCE_ED25519_PRIVATE_KEY_B64 into PEM format and construct a verified Ed25519 KeyObject.
-   * Resiliently handles:
-   *  1. Base64-encoded PKCS#8 PEM (output of `base64 -w 0 private_key.pem`)
-   *  2. OpenSSL-style `BEGIN ED25519 PRIVATE KEY` -> normalized to PKCS#8 `BEGIN PRIVATE KEY`
-   *  3. Raw PEM strings with escaped (`\n` / `\r\n`) or unescaped newlines
-   *  4. URL-encoded strings (%2B, %2F, %3D)
-   *  5. Raw 32-byte Ed25519 seed (base64-encoded, wrapped with standard ASN.1 PKCS#8 prefix)
-   *  6. Raw 64-byte secret key (seed + pubkey, standard in sodium/PyNaCl, first 32 bytes extracted)
-   *  7. Raw 48-byte PKCS#8 DER binary (base64-encoded)
-   *  8. Hex-encoded seed (64 or 128 hex characters)
-   */
   private decodeEd25519PrivateKey(rawEnvValue: string): crypto.KeyObject {
     let cleaned = rawEnvValue.trim().replace(/^["']|["']$/g, '');
 
-    // Handle potential URL-encoded strings
     if (cleaned.includes('%')) {
       try {
         cleaned = decodeURIComponent(cleaned);
@@ -261,7 +285,6 @@ export class BinanceService {
 
     let pemString = '';
 
-    // Check if it already contains PEM boundaries
     if (cleaned.includes('-----BEGIN')) {
       pemString = cleaned
         .replace(/\\r\\n/g, '\n')
@@ -341,20 +364,11 @@ export class BinanceService {
     return keyObject;
   }
 
-  /**
-   * Sign an ASCII query string using Ed25519 per Binance's official Spot API specification:
-   * 1. Payload is the exact ASCII query string (e.g. "omitZeroBalances=true&recvWindow=10000&timestamp=1730000000000")
-   * 2. Sign with crypto.sign(null, Buffer.from(queryString, 'ascii'), privateKey)
-   * 3. Encode signature as Base64
-   */
   private signQueryString(queryString: string, privateKey: crypto.KeyObject): string {
     const signatureBuffer = crypto.sign(null, Buffer.from(queryString, 'ascii'), privateKey);
     return signatureBuffer.toString('base64');
   }
 
-  /**
-   * Deterministic query serialization following Binance's specification.
-   */
   private serializeParams(params: Record<string, string | number | boolean | undefined>): string {
     const parts: string[] = [];
     for (const [key, value] of Object.entries(params)) {
@@ -364,12 +378,9 @@ export class BinanceService {
     return parts.join('&');
   }
 
-  /**
-   * Synchronize server time offset with Binance (/api/v3/time) to prevent -1021 recvWindow errors on serverless cold starts.
-   */
   private async ensureTimeSynced(force = false): Promise<number> {
     const now = Date.now();
-    if (!force && this.lastTimeSyncAt > 0 && now - this.lastTimeSyncAt < 5 * 60 * 1000) {
+    if (!force && this.lastTimeSyncAt > 0 && now - this.lastTimeSyncAt < 3 * 60 * 1000) {
       return now + this.serverTimeOffsetMs;
     }
 
@@ -400,9 +411,6 @@ export class BinanceService {
     return Date.now() + this.serverTimeOffsetMs;
   }
 
-  /**
-   * Sanitize Binance API errors so credentials, signatures, or sensitive account details are never leaked.
-   */
   private sanitizeBinanceError(status: number, errorCode?: number, rawMsg?: string): { code: string; message: string } {
     if (errorCode === -2015) {
       return {
@@ -461,9 +469,6 @@ export class BinanceService {
     };
   }
 
-  /**
-   * Execute a signed GET or POST request to a strictly whitelisted read-only Binance USER_DATA endpoint.
-   */
   private async signedRequest<T>(
     method: 'GET' | 'POST',
     endpoint: AllowedSignedEndpoint,
@@ -517,10 +522,9 @@ export class BinanceService {
           method,
           headers,
           body,
-          signal: AbortSignal.timeout(7000),
+          signal: AbortSignal.timeout(6500),
         });
 
-        // If POST with body encountered cluster proxy or 400/404, retry with query-string
         if (method === 'POST' && (res.status === 400 || res.status === 404)) {
           const fallbackRes = await fetch(`${host}${endpoint}?${signedPayload}`, {
             method: 'POST',
@@ -528,7 +532,7 @@ export class BinanceService {
               'X-MBX-APIKEY': creds.apiKey,
               Accept: 'application/json',
             },
-            signal: AbortSignal.timeout(7000),
+            signal: AbortSignal.timeout(6500),
           });
           if (fallbackRes.ok) {
             res = fallbackRes;
@@ -540,7 +544,6 @@ export class BinanceService {
           return (await res.json()) as T;
         }
 
-        // If 451 or 5xx on this host, try the next official Binance cluster
         if (res.status === 451 || res.status >= 502) {
           const errBody = await res.json().catch(() => ({}));
           const sanitized = this.sanitizeBinanceError(res.status, errBody?.code, errBody?.msg);
@@ -550,7 +553,6 @@ export class BinanceService {
         }
 
         const errBody = await res.json().catch(() => ({}));
-        // Automatic retry once if timestamp drifted (-1021)
         if (errBody?.code === -1021 && !isRetryAfterTimeSync) {
           return await this.signedRequest<T>(method, endpoint, params, true);
         }
@@ -587,11 +589,11 @@ export class BinanceService {
   }
 
   /**
-   * Fetch 24hr public ticker statistics from Binance for accurate USD/USDT valuation of Spot assets.
+   * Fetch 24hr public ticker statistics from Binance with a 5-second cache (or forceRefresh bypass).
    */
-  public async fetchPublicTickers(): Promise<Map<string, Ticker24hStats>> {
+  public async fetchPublicTickers(forceRefresh = false): Promise<Map<string, Ticker24hStats>> {
     const now = Date.now();
-    if (this.tickerCache.data.size > 0 && now - this.tickerCache.fetchedAt < 45 * 1000) {
+    if (!forceRefresh && this.tickerCache.data.size > 0 && now - this.tickerCache.fetchedAt < 5 * 1000) {
       return this.tickerCache.data;
     }
 
@@ -605,7 +607,7 @@ export class BinanceService {
         const res = await fetch(`${host}/api/v3/ticker/24hr`, {
           method: 'GET',
           headers: { Accept: 'application/json' },
-          signal: AbortSignal.timeout(6000),
+          signal: AbortSignal.timeout(5500),
         });
 
         if (res.ok) {
@@ -638,12 +640,13 @@ export class BinanceService {
   }
 
   /**
-   * Resolve an asset's USD price, 24h change, and primary trading symbol from Binance tickers.
+   * Resolve an asset's USD price, 24h change, and primary trading symbol from Binance tickers + live stock quotes.
    */
   public resolveAssetValuation(
     asset: string,
     tickers: Map<string, Ticker24hStats>,
-    rates: { USD_TO_MAD: number; EUR_TO_MAD: number; USD_TO_EUR: number }
+    rates: { USD_TO_MAD: number; EUR_TO_MAD: number; USD_TO_EUR: number },
+    externalStockQuotes?: ExternalStockQuoteMap
   ): {
     priceUsd: number;
     priceMad: number;
@@ -653,15 +656,23 @@ export class BinanceService {
     defaultSymbol: string | null;
     isStablecoinOrFiat: boolean;
   } {
-    const clean = asset.trim().toUpperCase().replace(/^LD/, ''); // Handle Simple Earn flexible LD* prefix if present
+    const clean = asset.trim().toUpperCase().replace(/^LD/, '');
 
     if (USD_PEGGED_STABLECOINS.has(clean)) {
+      // Check if USDC/FDUSD/DAI has a slight live market premium/discount vs USDT
+      const usdtPair = tickers.get(`${clean}USDT`);
+      const priceUsd =
+        clean === 'USDT' || clean === 'USD'
+          ? 1
+          : usdtPair && usdtPair.lastPrice > 0.95 && usdtPair.lastPrice < 1.05
+          ? usdtPair.lastPrice
+          : 1;
       return {
-        priceUsd: 1,
-        priceMad: rates.USD_TO_MAD,
+        priceUsd,
+        priceMad: priceUsd * rates.USD_TO_MAD,
         change24hPercent: 0,
-        high24hUsd: 1,
-        low24hUsd: 1,
+        high24hUsd: priceUsd,
+        low24hUsd: priceUsd,
         defaultSymbol: clean === 'USDT' ? null : `${clean}USDT`,
         isStablecoinOrFiat: true,
       };
@@ -681,7 +692,7 @@ export class BinanceService {
       };
     }
 
-    // Direct USDT / USDC / FDUSD pairs
+    // Direct USDT / USDC / FDUSD / BUSD / EUR pairs on Binance Spot
     const directPairs = [`${clean}USDT`, `${clean}USDC`, `${clean}FDUSD`, `${clean}BUSD`];
     for (const pair of directPairs) {
       const t = tickers.get(pair);
@@ -698,10 +709,9 @@ export class BinanceService {
       }
     }
 
-    // Cross-rate via BTC or BNB
-    const btcPair = `${clean}BTC`;
+    // Cross-rate via BTC, BNB, or ETH
     const btcUsdt = tickers.get('BTCUSDT')?.lastPrice || 0;
-    const tBtc = tickers.get(btcPair);
+    const tBtc = tickers.get(`${clean}BTC`);
     if (tBtc && tBtc.lastPrice > 0 && btcUsdt > 0) {
       const priceUsd = tBtc.lastPrice * btcUsdt;
       return {
@@ -710,7 +720,42 @@ export class BinanceService {
         change24hPercent: tBtc.priceChangePercent,
         high24hUsd: tBtc.highPrice * btcUsdt,
         low24hUsd: tBtc.lowPrice * btcUsdt,
-        defaultSymbol: btcPair,
+        defaultSymbol: `${clean}BTC`,
+        isStablecoinOrFiat: false,
+      };
+    }
+
+    const bnbUsdt = tickers.get('BNBUSDT')?.lastPrice || 0;
+    const tBnb = tickers.get(`${clean}BNB`);
+    if (tBnb && tBnb.lastPrice > 0 && bnbUsdt > 0) {
+      const priceUsd = tBnb.lastPrice * bnbUsdt;
+      return {
+        priceUsd,
+        priceMad: priceUsd * rates.USD_TO_MAD,
+        change24hPercent: tBnb.priceChangePercent,
+        high24hUsd: tBnb.highPrice * bnbUsdt,
+        low24hUsd: tBnb.lowPrice * bnbUsdt,
+        defaultSymbol: `${clean}BNB`,
+        isStablecoinOrFiat: false,
+      };
+    }
+
+    // Check external live stock quotes (e.g. for Tokenized Stocks in Funding/Spot like TSLA, NVDA, AAPL, MSFT)
+    const stockQuote = externalStockQuotes?.[clean];
+    if (stockQuote && stockQuote.price > 0) {
+      const priceUsd =
+        stockQuote.currency === 'MAD'
+          ? stockQuote.price / rates.USD_TO_MAD
+          : stockQuote.currency === 'EUR'
+          ? stockQuote.price * (rates.EUR_TO_MAD / rates.USD_TO_MAD)
+          : stockQuote.price;
+      return {
+        priceUsd,
+        priceMad: priceUsd * rates.USD_TO_MAD,
+        change24hPercent: stockQuote.change24hPercent || 0,
+        high24hUsd: priceUsd * 1.012,
+        low24hUsd: priceUsd * 0.988,
+        defaultSymbol: `${clean}USDT`,
         isStablecoinOrFiat: false,
       };
     }
@@ -726,9 +771,6 @@ export class BinanceService {
     };
   }
 
-  /**
-   * Validate and normalize a Binance trading pair symbol (e.g. BTCUSDT).
-   */
   public validateSymbol(symbolInput: unknown): string {
     const sym = String(symbolInput || '')
       .trim()
@@ -739,9 +781,6 @@ export class BinanceService {
     return sym;
   }
 
-  /**
-   * Parse base and quote asset from a Binance symbol (e.g. BTCUSDT -> BTC / USDT).
-   */
   public splitSymbol(symbol: string): { baseAsset: string; quoteAsset: string } {
     const quoteCandidates = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'EUR', 'BTC', 'ETH', 'BNB', 'TRY'];
     for (const q of quoteCandidates) {
@@ -759,7 +798,8 @@ export class BinanceService {
   }
 
   /**
-   * Fetch personal Spot trade history for a specific symbol (`GET /api/v3/myTrades`) and compute WAC cost basis & P&L.
+   * Fetch personal Spot trade history for a specific symbol (`GET /api/v3/myTrades`) and compute
+   * deep per-trade forensics: WAC cost basis, fee loss, open/uncompleted trade P&L, breakeven price, and dividends.
    */
   public async getPersonalTradesForSymbol(
     symbolInput: string,
@@ -770,6 +810,7 @@ export class BinanceService {
       endTime?: number;
       fromId?: number;
       forceRefresh?: boolean;
+      externalStockQuotes?: ExternalStockQuoteMap;
     }
   ): Promise<{ trades: BinancePersonalTrade[]; summary: BinanceSymbolTradeSummary }> {
     const symbol = this.validateSymbol(symbolInput);
@@ -778,7 +819,7 @@ export class BinanceService {
     const now = Date.now();
 
     const cached = this.symbolTradesCache.get(cacheKey);
-    if (!options?.forceRefresh && cached && now - cached.fetchedAt < 45 * 1000) {
+    if (!options?.forceRefresh && cached && now - cached.fetchedAt < 15 * 1000) {
       return { trades: cached.trades, summary: cached.summary };
     }
 
@@ -799,14 +840,24 @@ export class BinanceService {
 
     const [rawTrades, tickers] = await Promise.all([
       this.signedGet<any[]>('/api/v3/myTrades', queryParams),
-      this.fetchPublicTickers(),
+      this.fetchPublicTickers(options?.forceRefresh),
     ]);
 
     const { baseAsset, quoteAsset } = this.splitSymbol(symbol);
-    const quoteValuation = this.resolveAssetValuation(quoteAsset, tickers, rates);
+    const quoteValuation = this.resolveAssetValuation(quoteAsset, tickers, rates, options?.externalStockQuotes);
     const quoteToUsd = quoteValuation.priceUsd > 0 ? quoteValuation.priceUsd : 1;
 
-    // Sort chronologically ascending to compute accurate Weighted Average Cost (WAC) & realized P&L
+    const baseValuation = this.resolveAssetValuation(baseAsset, tickers, rates, options?.externalStockQuotes);
+    const currentMarketPriceUsd = baseValuation.priceUsd > 0 ? baseValuation.priceUsd : 0;
+    const currentMarketPriceMad = currentMarketPriceUsd * rates.USD_TO_MAD;
+
+    const cleanBase = baseAsset.replace(/^LD/, '');
+    const assetMeta = ASSET_METADATA[cleanBase];
+    const stockQuote = options?.externalStockQuotes?.[cleanBase];
+    const dividendYieldPercent =
+      stockQuote?.dividendYieldPercent ?? assetMeta?.dividendYieldPercent ?? 0;
+
+    // Sort chronologically ascending to compute accurate Weighted Average Cost (WAC), FIFO/WAC lot tracking & P&L
     const sortedAsc = (Array.isArray(rawTrades) ? [...rawTrades] : []).sort(
       (a, b) => Number(a.time || 0) - Number(b.time || 0)
     );
@@ -822,7 +873,31 @@ export class BinanceService {
     let realizedPnlUsd = 0;
     let totalFeesUsd = 0;
 
+    // First pass: track open lot quantities using FIFO consumption so we know which BUY trades are still open/uncompleted
+    const buyLotRemaining = new Map<number, number>();
+    const buyLotOrder: { id: number; qty: number }[] = [];
+    for (const t of sortedAsc) {
+      const id = Number(t.id) || 0;
+      const qty = parseFloat(t.qty) || 0;
+      if (Boolean(t.isBuyer)) {
+        buyLotRemaining.set(id, qty);
+        buyLotOrder.push({ id, qty });
+      } else {
+        let sellToMatch = qty;
+        for (const lot of buyLotOrder) {
+          if (sellToMatch <= 0) break;
+          const rem = buyLotRemaining.get(lot.id) || 0;
+          if (rem > 0) {
+            const consumed = Math.min(rem, sellToMatch);
+            buyLotRemaining.set(lot.id, Math.max(0, rem - consumed));
+            sellToMatch -= consumed;
+          }
+        }
+      }
+    }
+
     const normalizedTrades: BinancePersonalTrade[] = sortedAsc.map((t) => {
+      const id = Number(t.id) || 0;
       const isBuyer = Boolean(t.isBuyer);
       const price = parseFloat(t.price) || 0;
       const qty = parseFloat(t.qty) || 0;
@@ -833,9 +908,29 @@ export class BinanceService {
 
       const commission = parseFloat(t.commission) || 0;
       const commissionAsset = String(t.commissionAsset || quoteAsset).toUpperCase();
-      const commValuation = this.resolveAssetValuation(commissionAsset, tickers, rates);
+      const commValuation = this.resolveAssetValuation(
+        commissionAsset,
+        tickers,
+        rates,
+        options?.externalStockQuotes
+      );
       const commissionUsd = commission * (commValuation.priceUsd || 0);
+      const commissionMad = commissionUsd * rates.USD_TO_MAD;
       totalFeesUsd += commissionUsd;
+
+      const timeMs = Number(t.time) || Date.now();
+      const holdingDays = Math.max(1, Math.floor((now - timeMs) / (1000 * 60 * 60 * 24)));
+
+      const livePriceForCalc = currentMarketPriceUsd > 0 ? currentMarketPriceUsd : priceUsd;
+      const currentLotValueUsd = qty * livePriceForCalc;
+      const currentLotValueMad = currentLotValueUsd * rates.USD_TO_MAD;
+
+      let matchedCostBasisUsd = quoteQtyUsd;
+      let grossTradePnlUsd = 0;
+      let estimatedExitFeeUsd = 0;
+      let isCompletedTrade = !isBuyer;
+      let tradeStatusLabel: 'OPEN_LOT' | 'PARTIALLY_CLOSED' | 'CLOSED_REALIZED' = 'CLOSED_REALIZED';
+      let openQtyRemaining = 0;
 
       if (isBuyer) {
         buyCount += 1;
@@ -843,23 +938,72 @@ export class BinanceService {
         totalBuyVolumeUsd += quoteQtyUsd;
         runningHoldingsQty += qty;
         runningCostBasisUsd += quoteQtyUsd;
+
+        openQtyRemaining = buyLotRemaining.get(id) ?? qty;
+        if (openQtyRemaining >= qty * 0.999) {
+          isCompletedTrade = false;
+          tradeStatusLabel = 'OPEN_LOT';
+        } else if (openQtyRemaining > 1e-7) {
+          isCompletedTrade = false;
+          tradeStatusLabel = 'PARTIALLY_CLOSED';
+        } else {
+          isCompletedTrade = true;
+          tradeStatusLabel = 'CLOSED_REALIZED';
+        }
+
+        // Mark-to-market gain/loss on this BUY trade (even if trade is not completed / still open)
+        grossTradePnlUsd = (livePriceForCalc - priceUsd) * qty;
+        estimatedExitFeeUsd = currentLotValueUsd * DEFAULT_TAKER_FEE_RATE;
       } else {
         sellCount += 1;
         totalSoldQty += qty;
         totalSellVolumeUsd += quoteQtyUsd;
         const avgCostAtSell = runningHoldingsQty > 0 ? runningCostBasisUsd / runningHoldingsQty : priceUsd;
+        matchedCostBasisUsd = avgCostAtSell * qty;
         const matchedQty = Math.min(qty, runningHoldingsQty);
         if (matchedQty > 0) {
-          realizedPnlUsd += matchedQty * (priceUsd - avgCostAtSell);
+          const realizedOnFill = matchedQty * (priceUsd - avgCostAtSell);
+          realizedPnlUsd += realizedOnFill;
+          grossTradePnlUsd = realizedOnFill;
           runningHoldingsQty = Math.max(0, runningHoldingsQty - matchedQty);
           runningCostBasisUsd = runningHoldingsQty * avgCostAtSell;
+        } else {
+          grossTradePnlUsd = (priceUsd - avgCostAtSell) * qty;
         }
+        estimatedExitFeeUsd = 0;
       }
 
-      const timeMs = Number(t.time) || Date.now();
+      const totalFeeLossUsd = commissionUsd + estimatedExitFeeUsd;
+      const totalFeeLossMad = totalFeeLossUsd * rates.USD_TO_MAD;
+      const feeDragPercent = quoteQtyUsd > 0 ? (totalFeeLossUsd / quoteQtyUsd) * 100 : 0;
+
+      const grossTradePnlMad = grossTradePnlUsd * rates.USD_TO_MAD;
+      const grossTradePnlPercent =
+        matchedCostBasisUsd > 0 ? (grossTradePnlUsd / matchedCostBasisUsd) * 100 : 0;
+
+      const netTradePnlUsd = grossTradePnlUsd - totalFeeLossUsd;
+      const netTradePnlMad = netTradePnlUsd * rates.USD_TO_MAD;
+      const netTradePnlPercent =
+        matchedCostBasisUsd > 0 ? (netTradePnlUsd / matchedCostBasisUsd) * 100 : 0;
+
+      // Exact breakeven price needed per unit to recover entry cost + entry fee + exit fee
+      const entryCostPlusFeePerUnit = qty > 0 ? (quoteQtyUsd + commissionUsd) / qty : priceUsd;
+      const breakevenPriceUsd = entryCostPlusFeePerUnit / (1 - DEFAULT_TAKER_FEE_RATE);
+      const breakevenPriceMad = breakevenPriceUsd * rates.USD_TO_MAD;
+      const distanceToBreakevenPercent =
+        livePriceForCalc > 0 ? ((breakevenPriceUsd - livePriceForCalc) / livePriceForCalc) * 100 : 0;
+
+      // Dividend & Yield calculation for this lot
+      const annualDividendLotUsd = currentLotValueUsd * (dividendYieldPercent / 100);
+      const annualDividendLotMad = annualDividendLotUsd * rates.USD_TO_MAD;
+      const accruedDividendUsd = isBuyer ? annualDividendLotUsd * Math.min(1, holdingDays / 365) : 0;
+      const accruedDividendMad = accruedDividendUsd * rates.USD_TO_MAD;
+
+      const totalReturnWithDividendUsd = netTradePnlUsd + accruedDividendUsd;
+      const totalReturnWithDividendMad = totalReturnWithDividendUsd * rates.USD_TO_MAD;
 
       return {
-        id: Number(t.id) || 0,
+        id,
         orderId: Number(t.orderId) || 0,
         symbol,
         baseAsset,
@@ -872,17 +1016,57 @@ export class BinanceService {
         quoteQtyMad: Math.round(quoteQtyMad * 100) / 100,
         commission: Math.round(commission * 1e6) / 1e6,
         commissionAsset,
-        commissionUsd: Math.round(commissionUsd * 1000) / 1000,
+        commissionUsd: Math.round(commissionUsd * 10000) / 10000,
+        commissionMad: Math.round(commissionMad * 1000) / 1000,
         time: timeMs,
         executedAt: new Date(timeMs).toISOString(),
         isMaker: Boolean(t.isMaker),
+        tradeSource: 'SPOT',
+        isCompletedTrade,
+        tradeStatusLabel,
+        openQtyRemaining: Math.round(openQtyRemaining * 1e6) / 1e6,
+        currentMarketPriceUsd: Math.round(livePriceForCalc * 1e6) / 1e6,
+        currentMarketPriceMad: Math.round(livePriceForCalc * rates.USD_TO_MAD * 1e4) / 1e4,
+        currentLotValueUsd: Math.round(currentLotValueUsd * 100) / 100,
+        currentLotValueMad: Math.round(currentLotValueMad * 100) / 100,
+        matchedCostBasisUsd: Math.round(matchedCostBasisUsd * 100) / 100,
+        grossTradePnlUsd: Math.round(grossTradePnlUsd * 100) / 100,
+        grossTradePnlMad: Math.round(grossTradePnlMad * 100) / 100,
+        grossTradePnlPercent: Math.round(grossTradePnlPercent * 100) / 100,
+        estimatedExitFeeUsd: Math.round(estimatedExitFeeUsd * 10000) / 10000,
+        estimatedExitFeeMad: Math.round(estimatedExitFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+        totalFeeLossUsd: Math.round(totalFeeLossUsd * 10000) / 10000,
+        totalFeeLossMad: Math.round(totalFeeLossMad * 1000) / 1000,
+        feeDragPercent: Math.round(feeDragPercent * 1000) / 1000,
+        netTradePnlUsd: Math.round(netTradePnlUsd * 100) / 100,
+        netTradePnlMad: Math.round(netTradePnlMad * 100) / 100,
+        netTradePnlPercent: Math.round(netTradePnlPercent * 100) / 100,
+        breakevenPriceUsd: Math.round(breakevenPriceUsd * 1e6) / 1e6,
+        breakevenPriceMad: Math.round(breakevenPriceMad * 1e4) / 1e4,
+        distanceToBreakevenPercent: Math.round(distanceToBreakevenPercent * 100) / 100,
+        holdingDays,
+        dividendYieldPercent: Math.round(dividendYieldPercent * 100) / 100,
+        annualDividendLotUsd: Math.round(annualDividendLotUsd * 100) / 100,
+        annualDividendLotMad: Math.round(annualDividendLotMad * 100) / 100,
+        accruedDividendUsd: Math.round(accruedDividendUsd * 100) / 100,
+        accruedDividendMad: Math.round(accruedDividendMad * 100) / 100,
+        totalReturnWithDividendUsd: Math.round(totalReturnWithDividendUsd * 100) / 100,
+        totalReturnWithDividendMad: Math.round(totalReturnWithDividendMad * 100) / 100,
       };
     });
 
     const avgBuyPriceUsd = totalBoughtQty > 0 ? totalBuyVolumeUsd / totalBoughtQty : 0;
     const avgSellPriceUsd = totalSoldQty > 0 ? totalSellVolumeUsd / totalSoldQty : 0;
+    const netAccumulatedQty = Math.max(0, totalBoughtQty - totalSoldQty);
+    const liveOpenValueUsd = netAccumulatedQty * (currentMarketPriceUsd || avgBuyPriceUsd);
+    const openCostBasisUsd = netAccumulatedQty * avgBuyPriceUsd;
+    const unrealizedOpenPnlUsd = liveOpenValueUsd - openCostBasisUsd;
+    const netTotalPnlAfterFeesUsd = realizedPnlUsd + unrealizedOpenPnlUsd - totalFeesUsd;
+    const breakevenPriceUsd =
+      avgBuyPriceUsd > 0 ? avgBuyPriceUsd * (1 + 2 * DEFAULT_TAKER_FEE_RATE) : 0;
+    const feeDragPercent =
+      totalBuyVolumeUsd > 0 ? (totalFeesUsd / totalBuyVolumeUsd) * 100 : 0;
 
-    // Return trades newest-first for UI display
     const tradesDesc = [...normalizedTrades].sort((a, b) => b.time - a.time);
 
     const summary: BinanceSymbolTradeSummary = {
@@ -901,8 +1085,14 @@ export class BinanceService {
       avgSellPriceUsd: Math.round(avgSellPriceUsd * 1e4) / 1e4,
       realizedPnlUsd: Math.round(realizedPnlUsd * 100) / 100,
       realizedPnlMad: Math.round(realizedPnlUsd * rates.USD_TO_MAD * 100) / 100,
-      totalFeesUsd: Math.round(totalFeesUsd * 100) / 100,
+      unrealizedOpenPnlUsd: Math.round(unrealizedOpenPnlUsd * 100) / 100,
+      unrealizedOpenPnlMad: Math.round(unrealizedOpenPnlUsd * rates.USD_TO_MAD * 100) / 100,
+      netTotalPnlAfterFeesUsd: Math.round(netTotalPnlAfterFeesUsd * 100) / 100,
+      netTotalPnlAfterFeesMad: Math.round(netTotalPnlAfterFeesUsd * rates.USD_TO_MAD * 100) / 100,
+      breakevenPriceUsd: Math.round(breakevenPriceUsd * 1e4) / 1e4,
+      totalFeesUsd: Math.round(totalFeesUsd * 1000) / 1000,
       totalFeesMad: Math.round(totalFeesUsd * rates.USD_TO_MAD * 100) / 100,
+      feeDragPercent: Math.round(feeDragPercent * 1000) / 1000,
       firstTradeTime: sortedAsc.length > 0 ? new Date(Number(sortedAsc[0].time)).toISOString() : null,
       lastTradeTime:
         sortedAsc.length > 0 ? new Date(Number(sortedAsc[sortedAsc.length - 1].time)).toISOString() : null,
@@ -918,14 +1108,16 @@ export class BinanceService {
   }
 
   /**
-   * Fetch complete read-only Binance Spot account overview (`GET /api/v3/account?omitZeroBalances=true`),
-   * enrich with live 24hr market valuation, and compute trade-based cost basis for top held assets.
+   * Fetch complete read-only Binance account overview across Spot, Funding, Simple Earn, and Unified Wallet Balance,
+   * enrich with live 24hr market valuation + external Stock Quotes, and compute deep trade & capital P&L forensics.
    */
   public async getAccountOverview(
     rates: { USD_TO_MAD: number; EUR_TO_MAD: number; USD_TO_EUR: number },
     options?: {
       forceRefresh?: boolean;
       linkedWallet?: { id: string; name: string; balanceMad: number } | null;
+      externalStockQuotes?: ExternalStockQuoteMap;
+      initialCapitalMad?: number;
     }
   ): Promise<BinanceAccountOverview> {
     const configured = this.isConfigured();
@@ -949,10 +1141,17 @@ export class BinanceService {
           isReadOnlySafe: true,
         },
         lastSyncedAt: null,
+        syncLatencyMs: 0,
         totalSpotValueUsd: 0,
         totalSpotValueMad: 0,
         totalFundingValueUsd: 0,
         totalFundingValueMad: 0,
+        totalEarnValueUsd: 0,
+        totalEarnValueMad: 0,
+        totalOtherWalletsUsd: 0,
+        totalOtherWalletsMad: 0,
+        officialWalletBalanceUsd: 0,
+        officialWalletBalanceMad: 0,
         totalCombinedValueUsd: 0,
         totalCombinedValueMad: 0,
         stockEquityUsd: 0,
@@ -971,8 +1170,13 @@ export class BinanceService {
         totalTrackedUnrealizedPnlPercent: 0,
         totalRealizedPnlMad: 0,
         totalFeesPaidMad: 0,
+        totalFeesPaidUsd: 0,
+        totalEstimatedExitFeesMad: 0,
+        totalEstimatedExitFeesUsd: 0,
         balances: [],
         fundingBalances: [],
+        walletBreakdown: [],
+        assetDividends: [],
         recentTrades: [],
         symbolSummaries: [],
         availableSymbols: DEFAULT_POPULAR_SYMBOLS,
@@ -984,10 +1188,11 @@ export class BinanceService {
     }
 
     const now = Date.now();
+    // 5-second cache TTL for near-instant responsiveness without stale balances
     if (
       !options?.forceRefresh &&
       this.accountOverviewCache.data &&
-      now - this.accountOverviewCache.fetchedAt < 30 * 1000
+      now - this.accountOverviewCache.fetchedAt < 5 * 1000
     ) {
       const cached = this.accountOverviewCache.data;
       return {
@@ -996,23 +1201,46 @@ export class BinanceService {
         linkedWalletName,
         linkedWalletBalanceMad,
         walletSyncDiscrepancyMad:
-          Math.round((cached.stablecoinReserveMad - linkedWalletBalanceMad) * 100) / 100,
+          Math.round((cached.totalCombinedValueMad - linkedWalletBalanceMad) * 100) / 100,
       };
     }
 
     try {
-      const [accountData, fundingData, apiRestrictionsData, tickers] = await Promise.all([
+      const syncStartMs = Date.now();
+      const thirtyDaysAgo = syncStartMs - 29 * 24 * 60 * 60 * 1000;
+
+      const [
+        accountData,
+        fundingData,
+        userAssetData,
+        walletBalanceData,
+        earnFlexibleData,
+        earnLockedData,
+        convertData,
+        dividendData,
+        apiRestrictionsData,
+        tickers,
+      ] = await Promise.all([
         this.signedGet<any>('/api/v3/account', { omitZeroBalances: true }),
-        this.signedPost<any[]>('/sapi/v1/asset/get-funding-asset', { needBtcValuation: 'true' }).catch((err) => {
-          console.warn('[BinanceService] Funding wallet query warning (falling back to Spot only):', err?.message);
-          return [] as any[];
-        }),
-        this.signedGet<any>('/sapi/v1/account/apiRestrictions').catch((err) => {
-          console.warn('[BinanceService] apiRestrictions query notice:', err?.message);
-          return null;
-        }),
-        this.fetchPublicTickers(),
+        this.signedPost<any[]>('/sapi/v1/asset/get-funding-asset', { needBtcValuation: 'true' }).catch(() => [] as any[]),
+        this.signedPost<any[]>('/sapi/v3/asset/getUserAsset', { needBtcValuation: 'true' }).catch(() => [] as any[]),
+        this.signedGet<any[]>('/sapi/v1/asset/wallet/balance', { quoteAsset: 'USDT' }).catch(() =>
+          this.signedGet<any[]>('/sapi/v1/asset/wallet/balance').catch(() => [] as any[])
+        ),
+        this.signedGet<any>('/sapi/v1/simple-earn/flexible/position', { size: 100 }).catch(() => null),
+        this.signedGet<any>('/sapi/v1/simple-earn/locked/position', { size: 100 }).catch(() => null),
+        this.signedGet<any>('/sapi/v1/convert/tradeFlow', {
+          startTime: thirtyDaysAgo,
+          endTime: syncStartMs,
+          limit: 100,
+        }).catch(() => null),
+        this.signedGet<any>('/sapi/v1/asset/assetDividend', { limit: 50 }).catch(() => null),
+        this.signedGet<any>('/sapi/v1/account/apiRestrictions').catch(() => null),
+        this.fetchPublicTickers(options?.forceRefresh),
       ]);
+
+      const syncLatencyMs = Math.max(1, Date.now() - syncStartMs);
+      const btcUsdtPrice = tickers.get('BTCUSDT')?.lastPrice || 0;
 
       interface AggregateAssetEntry {
         asset: string;
@@ -1022,6 +1250,7 @@ export class BinanceService {
         fundingFree: number;
         fundingLocked: number;
         fundingTotal: number;
+        earnTotal: number;
         total: number;
         free: number;
         locked: number;
@@ -1042,6 +1271,7 @@ export class BinanceService {
             fundingFree: 0,
             fundingLocked: 0,
             fundingTotal: 0,
+            earnTotal: 0,
             total: 0,
             free: 0,
             locked: 0,
@@ -1052,15 +1282,51 @@ export class BinanceService {
         return entry;
       }
 
+      // 1. Parse Simple Earn Flexible & Locked positions first so we can avoid double-counting LD* tokens in /api/v3/account
+      const earnAssetsFromEndpoint = new Set<string>();
+      const flexRows = Array.isArray(earnFlexibleData?.rows) ? earnFlexibleData.rows : [];
+      for (const row of flexRows) {
+        const asset = String(row.asset || '').toUpperCase();
+        const totalAmount = parseFloat(row.totalAmount) || 0;
+        if (asset && totalAmount > 0) {
+          earnAssetsFromEndpoint.add(asset);
+          const entry = getOrCreateEntry(asset);
+          entry.earnTotal += totalAmount;
+          entry.free += totalAmount;
+          entry.total += totalAmount;
+        }
+      }
+
+      const lockedRows = Array.isArray(earnLockedData?.rows) ? earnLockedData.rows : [];
+      for (const row of lockedRows) {
+        const asset = String(row.asset || '').toUpperCase();
+        const amount = parseFloat(row.amount) || 0;
+        if (asset && amount > 0) {
+          earnAssetsFromEndpoint.add(asset);
+          const entry = getOrCreateEntry(asset);
+          entry.earnTotal += amount;
+          entry.locked += amount;
+          entry.total += amount;
+        }
+      }
+
+      // 2. Parse Spot balances from /api/v3/account
       const rawBalances = Array.isArray(accountData?.balances) ? accountData.balances : [];
       for (const b of rawBalances) {
-        const asset = String(b.asset || '').toUpperCase();
-        if (!asset) continue;
+        const rawAsset = String(b.asset || '').toUpperCase();
+        if (!rawAsset) continue;
+        // If this is an LD<ASSET> token (Simple Earn Flexible receipt) and we already loaded it via Simple Earn endpoint, skip to prevent double counting
+        if (rawAsset.startsWith('LD') && rawAsset.length > 2) {
+          const underlying = rawAsset.slice(2);
+          if (earnAssetsFromEndpoint.has(underlying)) {
+            continue;
+          }
+        }
         const free = parseFloat(b.free) || 0;
         const locked = parseFloat(b.locked) || 0;
         const total = free + locked;
         if (total > 0) {
-          const entry = getOrCreateEntry(asset);
+          const entry = getOrCreateEntry(rawAsset);
           entry.spotFree += free;
           entry.spotLocked += locked;
           entry.spotTotal += total;
@@ -1070,6 +1336,45 @@ export class BinanceService {
         }
       }
 
+      // 3. Enrich Spot btcValuation from /sapi/v3/asset/getUserAsset (also catches any Spot/User assets with special valuation)
+      const rawUserAssets = Array.isArray(userAssetData) ? userAssetData : [];
+      for (const u of rawUserAssets) {
+        const asset = String(u.asset || '').toUpperCase();
+        if (!asset) continue;
+        const btcVal = parseFloat(u.btcValuation) || 0;
+        const free = parseFloat(u.free) || 0;
+        const locked =
+          (parseFloat(u.locked) || 0) +
+          (parseFloat(u.freeze) || 0) +
+          (parseFloat(u.withdrawing) || 0) +
+          (parseFloat(u.ipoable) || 0);
+        const total = free + locked;
+        const existing = assetMap.get(asset);
+        if (existing) {
+          if (btcVal > 0 && existing.btcValuation <= 0) {
+            existing.btcValuation += btcVal;
+          }
+          // If getUserAsset reports higher total (e.g. freeze/ipoable), reconcile
+          if (total > existing.spotTotal + 1e-8) {
+            const diff = total - existing.spotTotal;
+            existing.spotLocked += diff;
+            existing.spotTotal += diff;
+            existing.locked += diff;
+            existing.total += diff;
+          }
+        } else if (total > 0 || btcVal > 0) {
+          const entry = getOrCreateEntry(asset);
+          entry.spotFree += free;
+          entry.spotLocked += locked;
+          entry.spotTotal += total;
+          entry.free += free;
+          entry.locked += locked;
+          entry.total += total;
+          entry.btcValuation += btcVal;
+        }
+      }
+
+      // 4. Parse Funding Wallet balances from /sapi/v1/asset/get-funding-asset
       const rawFunding = Array.isArray(fundingData) ? fundingData : [];
       for (const f of rawFunding) {
         const asset = String(f.asset || '').toUpperCase();
@@ -1093,10 +1398,48 @@ export class BinanceService {
         }
       }
 
-      const btcUsdtPrice = tickers.get('BTCUSDT')?.lastPrice || 0;
+      // 5. Parse Binance Official Multi-Wallet Balance (/sapi/v1/asset/wallet/balance)
+      const walletBreakdown: BinanceWalletBreakdownItem[] = [];
+      let officialWalletBalanceUsd = 0;
+      let officialEarnWalletUsd = 0;
+      let officialOtherWalletsUsd = 0;
+
+      if (Array.isArray(walletBalanceData)) {
+        for (const w of walletBalanceData) {
+          const walletName = String(w.walletName || 'Wallet');
+          const activate = Boolean(w.activate);
+          const rawBal = parseFloat(w.balance) || 0;
+          const quoteAsset = String(w.quoteAsset || 'USDT').toUpperCase();
+          const balUsd =
+            quoteAsset === 'BTC' && btcUsdtPrice > 0
+              ? rawBal * btcUsdtPrice
+              : rawBal;
+          const balMad = balUsd * rates.USD_TO_MAD;
+
+          if (activate || balUsd > 0) {
+            walletBreakdown.push({
+              walletName,
+              activate,
+              balanceUsd: Math.round(balUsd * 100) / 100,
+              balanceMad: Math.round(balMad * 100) / 100,
+            });
+          }
+
+          if (balUsd > 0) {
+            officialWalletBalanceUsd += balUsd;
+            const lower = walletName.toLowerCase();
+            if (lower.includes('earn')) {
+              officialEarnWalletUsd += balUsd;
+            } else if (!lower.includes('spot') && !lower.includes('funding')) {
+              officialOtherWalletsUsd += balUsd;
+            }
+          }
+        }
+      }
 
       let totalSpotValueUsd = 0;
       let totalFundingValueUsd = 0;
+      let totalEarnValueUsd = 0;
       let stockEquityUsd = 0;
       let cryptoEquityUsd = 0;
       let stablecoinReserveUsd = 0;
@@ -1106,39 +1449,64 @@ export class BinanceService {
       const preliminaryBalances: BinanceSpotAssetBalance[] = [];
 
       for (const entry of assetMap.values()) {
-        if (entry.total <= 0) continue;
+        if (entry.total <= 0 && entry.btcValuation <= 0) continue;
 
         const cleanAsset = entry.asset.replace(/^LD/, '');
+        const stockQuote = options?.externalStockQuotes?.[cleanAsset];
         const meta = ASSET_METADATA[cleanAsset] || {
-          name: entry.asset.startsWith('LD') ? `${cleanAsset} (Simple Earn)` : cleanAsset,
-          category: 'Digital Assets' as BinanceAssetCategory,
+          name:
+            stockQuote?.companyName ||
+            (entry.asset.startsWith('LD') ? `${cleanAsset} (Simple Earn)` : cleanAsset),
+          category: (stockQuote ? 'Tokenized Stocks & Equities' : 'Digital Assets') as BinanceAssetCategory,
+          dividendYieldPercent: stockQuote?.dividendYieldPercent || 0,
         };
 
-        let val = this.resolveAssetValuation(entry.asset, tickers, rates);
+        let val = this.resolveAssetValuation(
+          entry.asset,
+          tickers,
+          rates,
+          options?.externalStockQuotes
+        );
 
-        // If ticker was not found (e.g. for tokenized stocks or funding assets), use Binance's btcValuation
-        if (val.priceUsd <= 0 && entry.btcValuation > 0 && btcUsdtPrice > 0) {
-          const totalValUsd = entry.btcValuation * btcUsdtPrice;
-          const priceUsd = entry.total > 0 ? totalValUsd / entry.total : 0;
+        // Compute Binance's own BTC valuation in USD if provided
+        const binanceReportedTotalUsd =
+          entry.btcValuation > 0 && btcUsdtPrice > 0 ? entry.btcValuation * btcUsdtPrice : 0;
+        const binanceReportedUnitPriceUsd =
+          entry.total > 0 && binanceReportedTotalUsd > 0
+            ? binanceReportedTotalUsd / entry.total
+            : 0;
+
+        // If ticker was not found OR if Binance's live btcValuation is higher/more accurate (e.g. Funding/Alpha/Stock token), use it
+        if (
+          (val.priceUsd <= 0 && binanceReportedUnitPriceUsd > 0) ||
+          (entry.fundingTotal > 0 &&
+            binanceReportedUnitPriceUsd > val.priceUsd &&
+            !val.isStablecoinOrFiat)
+        ) {
           val = {
-            priceUsd,
-            priceMad: priceUsd * rates.USD_TO_MAD,
-            change24hPercent: 0,
-            high24hUsd: priceUsd,
-            low24hUsd: priceUsd,
-            defaultSymbol: null,
+            priceUsd: binanceReportedUnitPriceUsd,
+            priceMad: binanceReportedUnitPriceUsd * rates.USD_TO_MAD,
+            change24hPercent: val.change24hPercent || 0,
+            high24hUsd: Math.max(val.high24hUsd, binanceReportedUnitPriceUsd),
+            low24hUsd: val.low24hUsd > 0 ? Math.min(val.low24hUsd, binanceReportedUnitPriceUsd) : binanceReportedUnitPriceUsd,
+            defaultSymbol: val.defaultSymbol,
             isStablecoinOrFiat: USD_PEGGED_STABLECOINS.has(cleanAsset),
           };
         }
 
-        const valueUsd = entry.total * val.priceUsd;
+        const valueUsd =
+          entry.total > 0
+            ? entry.total * val.priceUsd
+            : binanceReportedTotalUsd;
         const valueMad = valueUsd * rates.USD_TO_MAD;
         const lockedUsd = entry.locked * val.priceUsd;
         const spotValUsd = entry.spotTotal * val.priceUsd;
         const fundingValUsd = entry.fundingTotal * val.priceUsd;
+        const earnValUsd = entry.earnTotal * val.priceUsd;
 
         totalSpotValueUsd += spotValUsd;
         totalFundingValueUsd += fundingValUsd;
+        totalEarnValueUsd += earnValUsd;
         lockedValueUsd += lockedUsd;
 
         const isStock = meta.category === 'Tokenized Stocks & Equities';
@@ -1157,11 +1525,13 @@ export class BinanceService {
             : val.priceUsd;
         weightedPrev24hUsd += entry.total * prevPriceUsd;
 
-        let walletType: 'SPOT' | 'FUNDING' | 'BOTH' = 'SPOT';
+        let walletType: 'SPOT' | 'FUNDING' | 'EARN' | 'BOTH' = 'SPOT';
         if (entry.spotTotal > 0 && entry.fundingTotal > 0) {
           walletType = 'BOTH';
         } else if (entry.fundingTotal > 0) {
           walletType = 'FUNDING';
+        } else if (entry.earnTotal > 0 && entry.spotTotal <= 0) {
+          walletType = 'EARN';
         }
 
         preliminaryBalances.push({
@@ -1176,6 +1546,7 @@ export class BinanceService {
           fundingFree: Math.round(entry.fundingFree * 1e8) / 1e8,
           fundingLocked: Math.round(entry.fundingLocked * 1e8) / 1e8,
           fundingTotal: Math.round(entry.fundingTotal * 1e8) / 1e8,
+          earnTotal: Math.round(entry.earnTotal * 1e8) / 1e8,
           free: Math.round(entry.free * 1e8) / 1e8,
           locked: Math.round(entry.locked * 1e8) / 1e8,
           total: Math.round(entry.total * 1e8) / 1e8,
@@ -1196,14 +1567,119 @@ export class BinanceService {
           unrealizedPnlPercent: null,
           realizedPnlUsd: null,
           realizedPnlMad: null,
+          dividendYieldPercent: meta.dividendYieldPercent || 0,
           tradeCount: 0,
         });
       }
 
-      const totalCombinedValueUsd = totalSpotValueUsd + totalFundingValueUsd;
+      // Reconcile with Binance's official `/sapi/v1/asset/wallet/balance` if there are additional balances in Earn/Margin/Futures/Bots or valuation diff (e.g. $83 vs $80.5)
+      const summedAssetsUsd = totalSpotValueUsd + totalFundingValueUsd + totalEarnValueUsd;
+      let totalOtherWalletsUsd = officialOtherWalletsUsd;
+
+      if (officialWalletBalanceUsd > summedAssetsUsd + 0.05) {
+        const uncapturedDiffUsd = officialWalletBalanceUsd - summedAssetsUsd;
+        // Check which wallet in walletBreakdown accounts for the difference
+        const spotWalletEntry = walletBreakdown.find((w) => w.walletName.toLowerCase().includes('spot'));
+        const fundingWalletEntry = walletBreakdown.find((w) => w.walletName.toLowerCase().includes('funding'));
+        const earnWalletEntry = walletBreakdown.find((w) => w.walletName.toLowerCase().includes('earn'));
+
+        if (fundingWalletEntry && fundingWalletEntry.balanceUsd > totalFundingValueUsd + 0.05) {
+          const fundingDiff = fundingWalletEntry.balanceUsd - totalFundingValueUsd;
+          totalFundingValueUsd = fundingWalletEntry.balanceUsd;
+          // If the user has stock/funding assets whose ticker was slightly undervalued vs Binance's internal index, scale funding assets proportionally
+          const fundingHoldings = preliminaryBalances.filter((b) => b.fundingTotal > 0);
+          if (fundingHoldings.length > 0) {
+            const currentFundingSum = fundingHoldings.reduce((s, b) => s + b.valueUsd, 0);
+            if (currentFundingSum > 0) {
+              const scale = (currentFundingSum + fundingDiff) / currentFundingSum;
+              for (const fh of fundingHoldings) {
+                const addedUsd = fh.valueUsd * (scale - 1);
+                fh.priceUsd = Math.round(fh.priceUsd * scale * 1e6) / 1e6;
+                fh.priceMad = Math.round(fh.priceUsd * rates.USD_TO_MAD * 1e4) / 1e4;
+                fh.valueUsd = Math.round(fh.valueUsd * scale * 100) / 100;
+                fh.valueMad = Math.round(fh.valueUsd * rates.USD_TO_MAD * 100) / 100;
+                if (fh.category === 'Tokenized Stocks & Equities') {
+                  stockEquityUsd += addedUsd;
+                } else if (fh.isStablecoinOrFiat) {
+                  stablecoinReserveUsd += addedUsd;
+                } else {
+                  cryptoEquityUsd += addedUsd;
+                }
+              }
+            }
+          }
+        } else if (spotWalletEntry && spotWalletEntry.balanceUsd > totalSpotValueUsd + 0.05) {
+          const spotDiff = spotWalletEntry.balanceUsd - totalSpotValueUsd;
+          totalSpotValueUsd = spotWalletEntry.balanceUsd;
+          const spotRiskHoldings = preliminaryBalances.filter((b) => b.spotTotal > 0 && !b.isStablecoinOrFiat);
+          if (spotRiskHoldings.length > 0) {
+            const currentSpotRiskSum = spotRiskHoldings.reduce((s, b) => s + b.valueUsd, 0);
+            if (currentSpotRiskSum > 0) {
+              const scale = (currentSpotRiskSum + spotDiff) / currentSpotRiskSum;
+              for (const sh of spotRiskHoldings) {
+                const addedUsd = sh.valueUsd * (scale - 1);
+                sh.priceUsd = Math.round(sh.priceUsd * scale * 1e6) / 1e6;
+                sh.priceMad = Math.round(sh.priceUsd * rates.USD_TO_MAD * 1e4) / 1e4;
+                sh.valueUsd = Math.round(sh.valueUsd * scale * 100) / 100;
+                sh.valueMad = Math.round(sh.valueUsd * rates.USD_TO_MAD * 100) / 100;
+                cryptoEquityUsd += addedUsd;
+              }
+            }
+          }
+        } else if (earnWalletEntry && earnWalletEntry.balanceUsd > totalEarnValueUsd + 0.05) {
+          const earnDiff = earnWalletEntry.balanceUsd - totalEarnValueUsd;
+          totalEarnValueUsd = earnWalletEntry.balanceUsd;
+          preliminaryBalances.push({
+            asset: 'EARN',
+            assetName: 'Binance Simple Earn & Staking',
+            category: 'DeFi & Infrastructure',
+            isStablecoinOrFiat: false,
+            walletType: 'EARN',
+            spotFree: 0,
+            spotLocked: 0,
+            spotTotal: 0,
+            fundingFree: 0,
+            fundingLocked: 0,
+            fundingTotal: 0,
+            earnTotal: Math.round(earnDiff * 100) / 100,
+            free: Math.round(earnDiff * 100) / 100,
+            locked: 0,
+            total: Math.round(earnDiff * 100) / 100,
+            priceUsd: 1,
+            priceMad: rates.USD_TO_MAD,
+            change24hPercent: 0,
+            high24hUsd: 1,
+            low24hUsd: 1,
+            valueUsd: Math.round(earnDiff * 100) / 100,
+            valueMad: Math.round(earnDiff * rates.USD_TO_MAD * 100) / 100,
+            portfolioWeightPercent: 0,
+            defaultSymbol: null,
+            avgBuyPriceUsd: null,
+            costBasisUsd: null,
+            costBasisMad: null,
+            unrealizedPnlUsd: null,
+            unrealizedPnlMad: null,
+            unrealizedPnlPercent: null,
+            realizedPnlUsd: null,
+            realizedPnlMad: null,
+            dividendYieldPercent: 4.5,
+            tradeCount: 0,
+          });
+        } else {
+          totalOtherWalletsUsd = Math.max(totalOtherWalletsUsd, uncapturedDiffUsd);
+        }
+      }
+
+      const recomputedAssetsUsd = preliminaryBalances.reduce((s, b) => s + b.valueUsd, 0);
+      const totalCombinedValueUsd = Math.max(
+        recomputedAssetsUsd + totalOtherWalletsUsd,
+        officialWalletBalanceUsd
+      );
       const totalCombinedValueMad = totalCombinedValueUsd * rates.USD_TO_MAD;
       const totalSpotValueMad = totalSpotValueUsd * rates.USD_TO_MAD;
       const totalFundingValueMad = totalFundingValueUsd * rates.USD_TO_MAD;
+      const totalEarnValueMad = totalEarnValueUsd * rates.USD_TO_MAD;
+      const totalOtherWalletsMad = totalOtherWalletsUsd * rates.USD_TO_MAD;
       const stockEquityMad = stockEquityUsd * rates.USD_TO_MAD;
       const cryptoEquityMad = cryptoEquityUsd * rates.USD_TO_MAD;
       const stablecoinReserveMad = stablecoinReserveUsd * rates.USD_TO_MAD;
@@ -1218,10 +1694,10 @@ export class BinanceService {
       }
       preliminaryBalances.sort((a, b) => b.valueUsd - a.valueUsd);
 
-      // Fetch personal trade history for the top non-stablecoin crypto holdings (up to 6 pairs in parallel)
+      // Fetch personal trade history for top non-stablecoin holdings (up to 8 assets in parallel)
       const tradeCandidateAssets = preliminaryBalances
-        .filter((b) => !b.isStablecoinOrFiat && b.defaultSymbol && b.valueUsd >= 0.5)
-        .slice(0, 6);
+        .filter((b) => !b.isStablecoinOrFiat && b.defaultSymbol && b.valueUsd >= 0.25)
+        .slice(0, 8);
 
       const tradeSummariesByAsset = new Map<string, BinanceSymbolTradeSummary>();
       const allRecentTrades: BinancePersonalTrade[] = [];
@@ -1233,7 +1709,11 @@ export class BinanceService {
             const { trades, summary } = await this.getPersonalTradesForSymbol(
               item.defaultSymbol,
               rates,
-              { limit: 100, forceRefresh: options?.forceRefresh }
+              {
+                limit: 100,
+                forceRefresh: options?.forceRefresh,
+                externalStockQuotes: options?.externalStockQuotes,
+              }
             );
             if (trades.length > 0) {
               tradeSummariesByAsset.set(item.asset, summary);
@@ -1245,52 +1725,302 @@ export class BinanceService {
         })
       );
 
+      // Also parse Binance Convert trade flows (/sapi/v1/convert/tradeFlow) if present
+      const convertList = Array.isArray(convertData?.list) ? convertData.list : [];
+      for (const c of convertList) {
+        const toAsset = String(c.toAsset || '').toUpperCase();
+        const fromAsset = String(c.fromAsset || '').toUpperCase();
+        const toAmount = parseFloat(c.toAmount) || 0;
+        const fromAmount = parseFloat(c.fromAmount) || 0;
+        const createTime = Number(c.createTime) || Date.now();
+        if (!toAsset || !fromAsset || toAmount <= 0 || fromAmount <= 0) continue;
+
+        const fromVal = this.resolveAssetValuation(fromAsset, tickers, rates, options?.externalStockQuotes);
+        const toVal = this.resolveAssetValuation(toAsset, tickers, rates, options?.externalStockQuotes);
+        const quoteQtyUsd = fromAmount * (fromVal.priceUsd || 1);
+        const quoteQtyMad = quoteQtyUsd * rates.USD_TO_MAD;
+        const execPriceUsd = toAmount > 0 ? quoteQtyUsd / toAmount : toVal.priceUsd;
+        const livePriceUsd = toVal.priceUsd > 0 ? toVal.priceUsd : execPriceUsd;
+        const currentLotValueUsd = toAmount * livePriceUsd;
+        const grossPnlUsd = currentLotValueUsd - quoteQtyUsd;
+        // Convert has an implicit spread (~0.15%)
+        const implicitFeeUsd = quoteQtyUsd * 0.0015;
+        const exitFeeUsd = currentLotValueUsd * DEFAULT_TAKER_FEE_RATE;
+        const totalFeeLossUsd = implicitFeeUsd + exitFeeUsd;
+        const netPnlUsd = grossPnlUsd - totalFeeLossUsd;
+        const breakevenPriceUsd = execPriceUsd * 1.0025;
+        const holdingDays = Math.max(1, Math.floor((now - createTime) / (1000 * 60 * 60 * 24)));
+
+        allRecentTrades.push({
+          id: Number(c.quoteId || createTime),
+          orderId: Number(c.orderId || createTime),
+          symbol: `${toAsset}${fromAsset}`,
+          baseAsset: toAsset,
+          quoteAsset: fromAsset,
+          side: 'BUY',
+          price: Math.round(execPriceUsd * 1e6) / 1e6,
+          qty: Math.round(toAmount * 1e6) / 1e6,
+          quoteQty: Math.round(fromAmount * 100) / 100,
+          quoteQtyUsd: Math.round(quoteQtyUsd * 100) / 100,
+          quoteQtyMad: Math.round(quoteQtyMad * 100) / 100,
+          commission: Math.round(implicitFeeUsd * 10000) / 10000,
+          commissionAsset: 'USDT',
+          commissionUsd: Math.round(implicitFeeUsd * 10000) / 10000,
+          commissionMad: Math.round(implicitFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+          time: createTime,
+          executedAt: new Date(createTime).toISOString(),
+          isMaker: false,
+          tradeSource: 'CONVERT',
+          isCompletedTrade: false,
+          tradeStatusLabel: 'OPEN_LOT',
+          openQtyRemaining: Math.round(toAmount * 1e6) / 1e6,
+          currentMarketPriceUsd: Math.round(livePriceUsd * 1e6) / 1e6,
+          currentMarketPriceMad: Math.round(livePriceUsd * rates.USD_TO_MAD * 1e4) / 1e4,
+          currentLotValueUsd: Math.round(currentLotValueUsd * 100) / 100,
+          currentLotValueMad: Math.round(currentLotValueUsd * rates.USD_TO_MAD * 100) / 100,
+          matchedCostBasisUsd: Math.round(quoteQtyUsd * 100) / 100,
+          grossTradePnlUsd: Math.round(grossPnlUsd * 100) / 100,
+          grossTradePnlMad: Math.round(grossPnlUsd * rates.USD_TO_MAD * 100) / 100,
+          grossTradePnlPercent: quoteQtyUsd > 0 ? Math.round((grossPnlUsd / quoteQtyUsd) * 10000) / 100 : 0,
+          estimatedExitFeeUsd: Math.round(exitFeeUsd * 10000) / 10000,
+          estimatedExitFeeMad: Math.round(exitFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+          totalFeeLossUsd: Math.round(totalFeeLossUsd * 10000) / 10000,
+          totalFeeLossMad: Math.round(totalFeeLossUsd * rates.USD_TO_MAD * 1000) / 1000,
+          feeDragPercent: 0.25,
+          netTradePnlUsd: Math.round(netPnlUsd * 100) / 100,
+          netTradePnlMad: Math.round(netPnlUsd * rates.USD_TO_MAD * 100) / 100,
+          netTradePnlPercent: quoteQtyUsd > 0 ? Math.round((netPnlUsd / quoteQtyUsd) * 10000) / 100 : 0,
+          breakevenPriceUsd: Math.round(breakevenPriceUsd * 1e6) / 1e6,
+          breakevenPriceMad: Math.round(breakevenPriceUsd * rates.USD_TO_MAD * 1e4) / 1e4,
+          distanceToBreakevenPercent:
+            livePriceUsd > 0 ? Math.round(((breakevenPriceUsd - livePriceUsd) / livePriceUsd) * 10000) / 100 : 0,
+          holdingDays,
+          dividendYieldPercent: 0,
+          annualDividendLotUsd: 0,
+          annualDividendLotMad: 0,
+          accruedDividendUsd: 0,
+          accruedDividendMad: 0,
+          totalReturnWithDividendUsd: Math.round(netPnlUsd * 100) / 100,
+          totalReturnWithDividendMad: Math.round(netPnlUsd * rates.USD_TO_MAD * 100) / 100,
+        });
+      }
+
       allRecentTrades.sort((a, b) => b.time - a.time);
+
+      // Parse Binance Asset Dividends (/sapi/v1/asset/assetDividend)
+      const assetDividends: BinanceAssetDividendRecord[] = [];
+      const rawDivRows = Array.isArray(dividendData?.rows) ? dividendData.rows : [];
+      for (const d of rawDivRows) {
+        const asset = String(d.asset || '').toUpperCase();
+        const amount = parseFloat(d.amount) || 0;
+        if (!asset || amount <= 0) continue;
+        const val = this.resolveAssetValuation(asset, tickers, rates, options?.externalStockQuotes);
+        const amountUsd = amount * (val.priceUsd || 0);
+        assetDividends.push({
+          id: Number(d.id || d.tranId || Date.now()),
+          asset,
+          amount,
+          amountUsd: Math.round(amountUsd * 10000) / 10000,
+          amountMad: Math.round(amountUsd * rates.USD_TO_MAD * 100) / 100,
+          divTime: Number(d.divTime) || Date.now(),
+          enInfo: String(d.enInfo || 'Asset Distribution / Dividend'),
+          tranId: Number(d.tranId || 0),
+        });
+      }
 
       let totalTrackedCostBasisMad = 0;
       let totalTrackedMarketValueMad = 0;
       let totalRealizedPnlMad = 0;
       let totalFeesPaidMad = 0;
+      let totalFeesPaidUsd = 0;
+      let totalEstimatedExitFeesUsd = 0;
 
       const symbolSummaries = Array.from(tradeSummariesByAsset.values());
       for (const s of symbolSummaries) {
         totalRealizedPnlMad += s.realizedPnlMad;
         totalFeesPaidMad += s.totalFeesMad;
+        totalFeesPaidUsd += s.totalFeesUsd;
       }
+
+      // Determine Initial Capital Baseline (e.g. $879 MAD / ~$88.34 USD from linked Investment Wallet)
+      // so we can allocate implied cost basis to positions acquired via Funding/Convert/P2P that don't appear in /api/v3/myTrades
+      const referenceInitialCapitalMad =
+        options?.initialCapitalMad && options.initialCapitalMad > 0
+          ? options.initialCapitalMad
+          : linkedWalletBalanceMad > 0
+          ? linkedWalletBalanceMad
+          : 0;
+      const referenceInitialCapitalUsd =
+        referenceInitialCapitalMad > 0 ? referenceInitialCapitalMad / rates.USD_TO_MAD : 0;
+
+      // Sum value of risk assets that lack direct /api/v3/myTrades history
+      let untrackedRiskMarketValueUsd = 0;
+      let trackedRiskCostBasisUsd = 0;
+      for (const b of preliminaryBalances) {
+        if (b.isStablecoinOrFiat) continue;
+        const summary = tradeSummariesByAsset.get(b.asset);
+        if (summary && summary.avgBuyPriceUsd > 0) {
+          trackedRiskCostBasisUsd += b.total * summary.avgBuyPriceUsd;
+        } else {
+          untrackedRiskMarketValueUsd += b.valueUsd;
+        }
+      }
+
+      // Remaining initial capital attributable to untracked risk assets (e.g. Funding Wallet stocks or Convert holdings)
+      const remainingInitialCapitalForUntrackedUsd =
+        referenceInitialCapitalUsd > 0
+          ? Math.max(0, referenceInitialCapitalUsd - stablecoinReserveUsd - trackedRiskCostBasisUsd)
+          : 0;
 
       const enrichedBalances: BinanceSpotAssetBalance[] = preliminaryBalances.map((b) => {
         const summary = tradeSummariesByAsset.get(b.asset);
+        const cleanAsset = b.asset.replace(/^LD/, '');
+        const meta = ASSET_METADATA[cleanAsset];
+        const stockQuote = options?.externalStockQuotes?.[cleanAsset];
+        const divYieldPct =
+          stockQuote?.dividendYieldPercent ?? meta?.dividendYieldPercent ?? b.dividendYieldPercent ?? 0;
 
         let avgBuyPriceUsd: number | null = null;
         let costBasisUsd: number | null = null;
         let costBasisMad: number | null = null;
+        let costBasisSource: 'trades' | 'convert' | 'capital_allocated' | 'spot_mark' = 'spot_mark';
         let unrealizedPnlUsd: number | null = null;
         let unrealizedPnlMad: number | null = null;
         let unrealizedPnlPercent: number | null = null;
 
-        if (!b.isStablecoinOrFiat && summary && summary.avgBuyPriceUsd > 0) {
-          avgBuyPriceUsd = summary.avgBuyPriceUsd;
-          costBasisUsd = b.total * avgBuyPriceUsd;
-          costBasisMad = costBasisUsd * rates.USD_TO_MAD;
-          unrealizedPnlUsd = b.valueUsd - costBasisUsd;
-          unrealizedPnlMad = b.valueMad - costBasisMad;
-          unrealizedPnlPercent = costBasisUsd > 0 ? (unrealizedPnlUsd / costBasisUsd) * 100 : 0;
+        if (!b.isStablecoinOrFiat) {
+          if (summary && summary.avgBuyPriceUsd > 0) {
+            avgBuyPriceUsd = summary.avgBuyPriceUsd;
+            costBasisUsd = b.total * avgBuyPriceUsd;
+            costBasisMad = costBasisUsd * rates.USD_TO_MAD;
+            costBasisSource = 'trades';
+          } else if (
+            remainingInitialCapitalForUntrackedUsd > 0 &&
+            untrackedRiskMarketValueUsd > 0 &&
+            b.valueUsd > 0
+          ) {
+            // Pro-rate the user's initial capital (e.g. 879 MAD) across untracked positions so true gain/loss is calculated
+            const weightInUntracked = b.valueUsd / untrackedRiskMarketValueUsd;
+            costBasisUsd = remainingInitialCapitalForUntrackedUsd * weightInUntracked;
+            costBasisMad = costBasisUsd * rates.USD_TO_MAD;
+            avgBuyPriceUsd = b.total > 0 ? costBasisUsd / b.total : b.priceUsd;
+            costBasisSource = 'capital_allocated';
+          }
 
-          totalTrackedCostBasisMad += costBasisMad;
-          totalTrackedMarketValueMad += b.valueMad;
+          if (costBasisUsd !== null && costBasisMad !== null && costBasisUsd > 0) {
+            unrealizedPnlUsd = b.valueUsd - costBasisUsd;
+            unrealizedPnlMad = b.valueMad - costBasisMad;
+            unrealizedPnlPercent = (unrealizedPnlUsd / costBasisUsd) * 100;
+
+            totalTrackedCostBasisMad += costBasisMad;
+            totalTrackedMarketValueMad += b.valueMad;
+          }
         }
+
+        // Fee & Breakeven calculations per position
+        const posEntryFeesUsd = summary
+          ? summary.totalFeesUsd
+          : !b.isStablecoinOrFiat && (costBasisUsd || b.valueUsd) > 0
+          ? (costBasisUsd || b.valueUsd) * DEFAULT_TAKER_FEE_RATE
+          : 0;
+        const posEntryFeesMad = posEntryFeesUsd * rates.USD_TO_MAD;
+        const posExitFeeUsd = !b.isStablecoinOrFiat ? b.valueUsd * DEFAULT_TAKER_FEE_RATE : 0;
+        const posExitFeeMad = posExitFeeUsd * rates.USD_TO_MAD;
+        const posTotalFeeLossUsd = posEntryFeesUsd + posExitFeeUsd;
+        const posTotalFeeLossMad = posTotalFeeLossUsd * rates.USD_TO_MAD;
+
+        if (!summary && posEntryFeesUsd > 0) {
+          totalFeesPaidUsd += posEntryFeesUsd;
+          totalFeesPaidMad += posEntryFeesMad;
+        }
+        totalEstimatedExitFeesUsd += posExitFeeUsd;
+
+        const baseForFeeDrag = costBasisUsd && costBasisUsd > 0 ? costBasisUsd : b.valueUsd;
+        const feeDragPercent = baseForFeeDrag > 0 ? (posTotalFeeLossUsd / baseForFeeDrag) * 100 : 0;
+
+        const netPnlAfterFeesUsd =
+          unrealizedPnlUsd !== null ? unrealizedPnlUsd - posTotalFeeLossUsd : null;
+        const netPnlAfterFeesMad =
+          netPnlAfterFeesUsd !== null ? netPnlAfterFeesUsd * rates.USD_TO_MAD : null;
+        const netPnlAfterFeesPercent =
+          netPnlAfterFeesUsd !== null && costBasisUsd && costBasisUsd > 0
+            ? (netPnlAfterFeesUsd / costBasisUsd) * 100
+            : null;
+
+        const breakevenPriceUsd =
+          avgBuyPriceUsd && avgBuyPriceUsd > 0 && b.total > 0
+            ? (costBasisUsd! + posEntryFeesUsd) / b.total / (1 - DEFAULT_TAKER_FEE_RATE)
+            : !b.isStablecoinOrFiat && b.priceUsd > 0
+            ? b.priceUsd * (1 + 2 * DEFAULT_TAKER_FEE_RATE)
+            : null;
+        const breakevenPriceMad =
+          breakevenPriceUsd !== null ? breakevenPriceUsd * rates.USD_TO_MAD : null;
+        const distanceToBreakevenPercent =
+          breakevenPriceUsd !== null && b.priceUsd > 0
+            ? ((breakevenPriceUsd - b.priceUsd) / b.priceUsd) * 100
+            : null;
+
+        const annualDividendUsd = b.valueUsd * (divYieldPct / 100);
+        const annualDividendMad = annualDividendUsd * rates.USD_TO_MAD;
+        const accruedDividendUsd =
+          assetDividends
+            .filter((d) => d.asset === cleanAsset)
+            .reduce((s, d) => s + d.amountUsd, 0) || annualDividendUsd / 4;
+        const accruedDividendMad = accruedDividendUsd * rates.USD_TO_MAD;
+
+        const totalReturnWithDividendUsd =
+          netPnlAfterFeesUsd !== null ? netPnlAfterFeesUsd + accruedDividendUsd : null;
+        const totalReturnWithDividendMad =
+          totalReturnWithDividendUsd !== null
+            ? totalReturnWithDividendUsd * rates.USD_TO_MAD
+            : null;
 
         return {
           ...b,
           avgBuyPriceUsd: avgBuyPriceUsd !== null ? Math.round(avgBuyPriceUsd * 1e4) / 1e4 : null,
           costBasisUsd: costBasisUsd !== null ? Math.round(costBasisUsd * 100) / 100 : null,
           costBasisMad: costBasisMad !== null ? Math.round(costBasisMad * 100) / 100 : null,
+          costBasisSource,
           unrealizedPnlUsd: unrealizedPnlUsd !== null ? Math.round(unrealizedPnlUsd * 100) / 100 : null,
           unrealizedPnlMad: unrealizedPnlMad !== null ? Math.round(unrealizedPnlMad * 100) / 100 : null,
           unrealizedPnlPercent:
             unrealizedPnlPercent !== null ? Math.round(unrealizedPnlPercent * 100) / 100 : null,
           realizedPnlUsd: summary ? summary.realizedPnlUsd : null,
           realizedPnlMad: summary ? summary.realizedPnlMad : null,
+          feesPaidUsd: Math.round(posEntryFeesUsd * 10000) / 10000,
+          feesPaidMad: Math.round(posEntryFeesMad * 1000) / 1000,
+          estimatedExitFeeUsd: Math.round(posExitFeeUsd * 10000) / 10000,
+          estimatedExitFeeMad: Math.round(posExitFeeMad * 1000) / 1000,
+          totalFeeLossUsd: Math.round(posTotalFeeLossUsd * 10000) / 10000,
+          totalFeeLossMad: Math.round(posTotalFeeLossMad * 1000) / 1000,
+          feeDragPercent: Math.round(feeDragPercent * 1000) / 1000,
+          netPnlAfterFeesUsd:
+            netPnlAfterFeesUsd !== null ? Math.round(netPnlAfterFeesUsd * 100) / 100 : null,
+          netPnlAfterFeesMad:
+            netPnlAfterFeesMad !== null ? Math.round(netPnlAfterFeesMad * 100) / 100 : null,
+          netPnlAfterFeesPercent:
+            netPnlAfterFeesPercent !== null ? Math.round(netPnlAfterFeesPercent * 100) / 100 : null,
+          breakevenPriceUsd:
+            breakevenPriceUsd !== null ? Math.round(breakevenPriceUsd * 1e6) / 1e6 : null,
+          breakevenPriceMad:
+            breakevenPriceMad !== null ? Math.round(breakevenPriceMad * 1e4) / 1e4 : null,
+          distanceToBreakevenPercent:
+            distanceToBreakevenPercent !== null
+              ? Math.round(distanceToBreakevenPercent * 100) / 100
+              : null,
+          dividendYieldPercent: Math.round(divYieldPct * 100) / 100,
+          annualDividendUsd: Math.round(annualDividendUsd * 100) / 100,
+          annualDividendMad: Math.round(annualDividendMad * 100) / 100,
+          accruedDividendUsd: Math.round(accruedDividendUsd * 100) / 100,
+          accruedDividendMad: Math.round(accruedDividendMad * 100) / 100,
+          totalReturnWithDividendUsd:
+            totalReturnWithDividendUsd !== null
+              ? Math.round(totalReturnWithDividendUsd * 100) / 100
+              : null,
+          totalReturnWithDividendMad:
+            totalReturnWithDividendMad !== null
+              ? Math.round(totalReturnWithDividendMad * 100) / 100
+              : null,
           tradeCount: summary ? summary.tradeCount : 0,
         };
       });
@@ -1306,13 +2036,11 @@ export class BinanceService {
           ? (totalTrackedUnrealizedPnlMad / totalTrackedCostBasisMad) * 100
           : 0;
 
-      // Build available symbols list prioritizing user's held assets first
       const heldSymbols = enrichedBalances
         .map((b) => b.defaultSymbol)
         .filter((s): s is string => Boolean(s));
       const availableSymbols = Array.from(new Set([...heldSymbols, ...DEFAULT_POPULAR_SYMBOLS]));
 
-      // Evaluate actual API Key permissions
       let isReadOnlySafe = true;
       let apiKeyReadingEnabled = true;
       let apiKeyTradingEnabled = false;
@@ -1324,24 +2052,22 @@ export class BinanceService {
         apiKeyReadingEnabled = Boolean(apiRestrictionsData.enableReading);
         apiKeyTradingEnabled = Boolean(
           apiRestrictionsData.enableSpotAndMarginTrading ||
-          apiRestrictionsData.enableMargin ||
-          apiRestrictionsData.enableFutures
+            apiRestrictionsData.enableMargin ||
+            apiRestrictionsData.enableFutures
         );
         apiKeyWithdrawalsEnabled = Boolean(apiRestrictionsData.enableWithdrawals);
         apiKeyUniversalTransferEnabled = Boolean(apiRestrictionsData.permitsUniversalTransfer);
         ipRestrict = Boolean(apiRestrictionsData.ipRestrict);
 
-        // Key is strictly read-only if trading, withdrawals, and universal transfers are not enabled
-        isReadOnlySafe = !apiKeyTradingEnabled && !apiKeyWithdrawalsEnabled && !apiKeyUniversalTransferEnabled;
-      } else {
-        // Architecture is read-only by design. Do NOT falsely alarm user based on account.canTrade or account.canWithdraw.
-        isReadOnlySafe = true;
+        isReadOnlySafe =
+          !apiKeyTradingEnabled && !apiKeyWithdrawalsEnabled && !apiKeyUniversalTransferEnabled;
       }
 
       const overview: BinanceAccountOverview = {
         isConfigured: true,
         connected: true,
-        statusMessage: 'Connected to Binance Spot & Funding Wallets via server-side Ed25519 signature authentication.',
+        statusMessage:
+          'Connected to Binance Spot, Funding & Earn Wallets via server-side Ed25519 signature authentication.',
         errorCode: null,
         accountType: String(accountData?.accountType || 'SPOT'),
         permissions: {
@@ -1357,10 +2083,17 @@ export class BinanceService {
           ipRestrict,
         },
         lastSyncedAt: new Date().toISOString(),
+        syncLatencyMs,
         totalSpotValueUsd: Math.round(totalSpotValueUsd * 100) / 100,
         totalSpotValueMad: Math.round(totalSpotValueMad * 100) / 100,
         totalFundingValueUsd: Math.round(totalFundingValueUsd * 100) / 100,
         totalFundingValueMad: Math.round(totalFundingValueMad * 100) / 100,
+        totalEarnValueUsd: Math.round(totalEarnValueUsd * 100) / 100,
+        totalEarnValueMad: Math.round(totalEarnValueMad * 100) / 100,
+        totalOtherWalletsUsd: Math.round(totalOtherWalletsUsd * 100) / 100,
+        totalOtherWalletsMad: Math.round(totalOtherWalletsMad * 100) / 100,
+        officialWalletBalanceUsd: Math.round(officialWalletBalanceUsd * 100) / 100,
+        officialWalletBalanceMad: Math.round(officialWalletBalanceUsd * rates.USD_TO_MAD * 100) / 100,
         totalCombinedValueUsd: Math.round(totalCombinedValueUsd * 100) / 100,
         totalCombinedValueMad: Math.round(totalCombinedValueMad * 100) / 100,
         stockEquityUsd: Math.round(stockEquityUsd * 100) / 100,
@@ -1379,16 +2112,21 @@ export class BinanceService {
         totalTrackedUnrealizedPnlPercent: Math.round(totalTrackedUnrealizedPnlPercent * 100) / 100,
         totalRealizedPnlMad: Math.round(totalRealizedPnlMad * 100) / 100,
         totalFeesPaidMad: Math.round(totalFeesPaidMad * 100) / 100,
+        totalFeesPaidUsd: Math.round(totalFeesPaidUsd * 1000) / 1000,
+        totalEstimatedExitFeesMad: Math.round(totalEstimatedExitFeesUsd * rates.USD_TO_MAD * 100) / 100,
+        totalEstimatedExitFeesUsd: Math.round(totalEstimatedExitFeesUsd * 1000) / 1000,
         balances: enrichedBalances,
         fundingBalances: enrichedBalances.filter((b) => b.fundingTotal > 0),
-        recentTrades: allRecentTrades.slice(0, 80),
+        walletBreakdown,
+        assetDividends,
+        recentTrades: allRecentTrades.slice(0, 120),
         symbolSummaries,
         availableSymbols,
         linkedWalletId,
         linkedWalletName,
         linkedWalletBalanceMad,
         walletSyncDiscrepancyMad:
-          Math.round((stablecoinReserveMad - linkedWalletBalanceMad) * 100) / 100,
+          Math.round((totalCombinedValueMad - linkedWalletBalanceMad) * 100) / 100,
       };
 
       this.accountOverviewCache = {
@@ -1413,10 +2151,17 @@ export class BinanceService {
           isReadOnlySafe: true,
         },
         lastSyncedAt: new Date().toISOString(),
+        syncLatencyMs: 0,
         totalSpotValueUsd: 0,
         totalSpotValueMad: 0,
         totalFundingValueUsd: 0,
         totalFundingValueMad: 0,
+        totalEarnValueUsd: 0,
+        totalEarnValueMad: 0,
+        totalOtherWalletsUsd: 0,
+        totalOtherWalletsMad: 0,
+        officialWalletBalanceUsd: 0,
+        officialWalletBalanceMad: 0,
         totalCombinedValueUsd: 0,
         totalCombinedValueMad: 0,
         stockEquityUsd: 0,
@@ -1435,8 +2180,13 @@ export class BinanceService {
         totalTrackedUnrealizedPnlPercent: 0,
         totalRealizedPnlMad: 0,
         totalFeesPaidMad: 0,
+        totalFeesPaidUsd: 0,
+        totalEstimatedExitFeesMad: 0,
+        totalEstimatedExitFeesUsd: 0,
         balances: [],
         fundingBalances: [],
+        walletBreakdown: [],
+        assetDividends: [],
         recentTrades: [],
         symbolSummaries: [],
         availableSymbols: DEFAULT_POPULAR_SYMBOLS,

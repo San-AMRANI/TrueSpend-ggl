@@ -271,7 +271,7 @@ export type DashboardTab =
 export type StockMarketType = 'US' | 'BVC' | 'ETF' | 'GLOBAL' | 'BINANCE' | 'CRYPTO';
 export type StockOrderAction = 'BUY' | 'SELL' | 'DIVIDEND';
 
-export type BinanceWalletType = 'SPOT' | 'FUNDING' | 'BOTH' | 'UNIFIED';
+export type BinanceWalletType = 'SPOT' | 'FUNDING' | 'EARN' | 'BOTH' | 'UNIFIED';
 
 export type BinanceAssetCategory =
   | 'Stablecoin / Fiat Reserve'
@@ -282,6 +282,24 @@ export type BinanceAssetCategory =
   | 'Real World Assets'
   | 'Tokenized Stocks & Equities'
   | 'Digital Assets';
+
+export interface BinanceWalletBreakdownItem {
+  walletName: string;
+  activate: boolean;
+  balanceUsd: number;
+  balanceMad: number;
+}
+
+export interface BinanceAssetDividendRecord {
+  id: number;
+  asset: string;
+  amount: number;
+  amountUsd: number;
+  amountMad: number;
+  divTime: number;
+  enInfo: string;
+  tranId: number;
+}
 
 export interface BinanceSpotAssetBalance {
   asset: string;
@@ -295,6 +313,7 @@ export interface BinanceSpotAssetBalance {
   fundingFree: number;
   fundingLocked: number;
   fundingTotal: number;
+  earnTotal?: number;
   free: number;
   locked: number;
   total: number;
@@ -310,11 +329,33 @@ export interface BinanceSpotAssetBalance {
   avgBuyPriceUsd: number | null;
   costBasisUsd: number | null;
   costBasisMad: number | null;
+  costBasisSource?: 'trades' | 'convert' | 'capital_allocated' | 'spot_mark';
   unrealizedPnlUsd: number | null;
   unrealizedPnlMad: number | null;
   unrealizedPnlPercent: number | null;
   realizedPnlUsd: number | null;
   realizedPnlMad: number | null;
+  // Enhanced Fee, Breakeven & Dividend Telemetry
+  feesPaidUsd?: number;
+  feesPaidMad?: number;
+  estimatedExitFeeUsd?: number;
+  estimatedExitFeeMad?: number;
+  totalFeeLossUsd?: number;
+  totalFeeLossMad?: number;
+  feeDragPercent?: number;
+  netPnlAfterFeesUsd?: number | null;
+  netPnlAfterFeesMad?: number | null;
+  netPnlAfterFeesPercent?: number | null;
+  breakevenPriceUsd?: number | null;
+  breakevenPriceMad?: number | null;
+  distanceToBreakevenPercent?: number | null;
+  dividendYieldPercent?: number;
+  annualDividendUsd?: number;
+  annualDividendMad?: number;
+  accruedDividendUsd?: number;
+  accruedDividendMad?: number;
+  totalReturnWithDividendUsd?: number | null;
+  totalReturnWithDividendMad?: number | null;
   tradeCount: number;
 }
 
@@ -333,9 +374,42 @@ export interface BinancePersonalTrade {
   commission: number;
   commissionAsset: string;
   commissionUsd: number;
+  commissionMad?: number;
   time: number;
   executedAt: string;
   isMaker: boolean;
+  // Deep Per-Trade Telemetry (Fees, Open/Closed Position P&L, Breakeven, Dividends)
+  tradeSource?: 'SPOT' | 'CONVERT' | 'MANUAL';
+  isCompletedTrade?: boolean;
+  tradeStatusLabel?: 'OPEN_LOT' | 'PARTIALLY_CLOSED' | 'CLOSED_REALIZED';
+  openQtyRemaining?: number;
+  currentMarketPriceUsd?: number;
+  currentMarketPriceMad?: number;
+  currentLotValueUsd?: number;
+  currentLotValueMad?: number;
+  matchedCostBasisUsd?: number;
+  grossTradePnlUsd?: number;
+  grossTradePnlMad?: number;
+  grossTradePnlPercent?: number;
+  estimatedExitFeeUsd?: number;
+  estimatedExitFeeMad?: number;
+  totalFeeLossUsd?: number;
+  totalFeeLossMad?: number;
+  feeDragPercent?: number;
+  netTradePnlUsd?: number;
+  netTradePnlMad?: number;
+  netTradePnlPercent?: number;
+  breakevenPriceUsd?: number;
+  breakevenPriceMad?: number;
+  distanceToBreakevenPercent?: number;
+  holdingDays?: number;
+  dividendYieldPercent?: number;
+  annualDividendLotUsd?: number;
+  annualDividendLotMad?: number;
+  accruedDividendUsd?: number;
+  accruedDividendMad?: number;
+  totalReturnWithDividendUsd?: number;
+  totalReturnWithDividendMad?: number;
 }
 
 export interface BinanceSymbolTradeSummary {
@@ -354,8 +428,14 @@ export interface BinanceSymbolTradeSummary {
   avgSellPriceUsd: number;
   realizedPnlUsd: number;
   realizedPnlMad: number;
+  unrealizedOpenPnlUsd?: number;
+  unrealizedOpenPnlMad?: number;
+  netTotalPnlAfterFeesUsd?: number;
+  netTotalPnlAfterFeesMad?: number;
+  breakevenPriceUsd?: number;
   totalFeesUsd: number;
   totalFeesMad: number;
+  feeDragPercent?: number;
   firstTradeTime: string | null;
   lastTradeTime: string | null;
 }
@@ -379,10 +459,17 @@ export interface BinanceAccountOverview {
     ipRestrict?: boolean;
   };
   lastSyncedAt: string | null;
+  syncLatencyMs?: number;
   totalSpotValueUsd: number;
   totalSpotValueMad: number;
   totalFundingValueUsd: number;
   totalFundingValueMad: number;
+  totalEarnValueUsd?: number;
+  totalEarnValueMad?: number;
+  totalOtherWalletsUsd?: number;
+  totalOtherWalletsMad?: number;
+  officialWalletBalanceUsd?: number;
+  officialWalletBalanceMad?: number;
   totalCombinedValueUsd: number;
   totalCombinedValueMad: number;
   stockEquityUsd: number;
@@ -401,8 +488,13 @@ export interface BinanceAccountOverview {
   totalTrackedUnrealizedPnlPercent: number;
   totalRealizedPnlMad: number;
   totalFeesPaidMad: number;
+  totalFeesPaidUsd?: number;
+  totalEstimatedExitFeesMad?: number;
+  totalEstimatedExitFeesUsd?: number;
   balances: BinanceSpotAssetBalance[];
   fundingBalances: BinanceSpotAssetBalance[];
+  walletBreakdown?: BinanceWalletBreakdownItem[];
+  assetDividends?: BinanceAssetDividendRecord[];
   recentTrades: BinancePersonalTrade[];
   symbolSummaries: BinanceSymbolTradeSummary[];
   availableSymbols: string[];
@@ -468,6 +560,39 @@ export interface StockPosition {
   dividendYieldPercent: number;
   affordableSharesFromSurplus: number;
   source?: 'manual' | 'binance';
+  // Deep Stock & Position Intelligence
+  costBasisUsd?: number;
+  marketValueUsd?: number;
+  unrealizedPnlUsd?: number;
+  feesPaidMad?: number;
+  feesPaidUsd?: number;
+  estimatedExitFeeMad?: number;
+  estimatedExitFeeUsd?: number;
+  totalFeeLossMad?: number;
+  totalFeeLossUsd?: number;
+  feeDragPercent?: number;
+  netPnlAfterFeesMad?: number;
+  netPnlAfterFeesUsd?: number;
+  netPnlAfterFeesPercent?: number;
+  breakevenPriceNative?: number;
+  breakevenPriceUsd?: number;
+  breakevenPriceMad?: number;
+  distanceToBreakevenPercent?: number;
+  yieldOnCostPercent?: number;
+  quarterlyDividendMad?: number;
+  quarterlyDividendUsd?: number;
+  monthlyDividendMad?: number;
+  accruedDividendMad?: number;
+  accruedDividendUsd?: number;
+  totalReturnWithDividendMad?: number;
+  totalReturnWithDividendUsd?: number;
+  totalReturnPercent?: number;
+  drip5YearProjectedValueMad?: number;
+  drip5YearProjectedIncomeMad?: number;
+  weightDriftPercent?: number;
+  rebalanceActionMad?: number;
+  holdingDays?: number;
+  costBasisSource?: 'trades' | 'convert' | 'capital_allocated' | 'manual' | 'spot_mark';
 }
 
 export interface StockOrder {
@@ -489,6 +614,23 @@ export interface StockOrder {
   realizedPnlMad: string;
   notes?: string | null;
   executedAt: string;
+  // Enhanced Order Telemetry
+  currentPriceNative?: number;
+  currentValueMad?: number;
+  currentValueUsd?: number;
+  feeMad?: number;
+  feeUsd?: number;
+  feeDragPercent?: number;
+  grossOrderPnlMad?: number;
+  grossOrderPnlUsd?: number;
+  netOrderPnlMad?: number;
+  netOrderPnlUsd?: number;
+  netOrderPnlPercent?: number;
+  breakevenPriceNative?: number;
+  accruedDividendMad?: number;
+  totalReturnMad?: number;
+  isOpenLot?: boolean;
+  holdingDays?: number;
 }
 
 export interface StockCatalogItem {
@@ -533,8 +675,77 @@ export interface InvestmentWalletSummary {
   isBinanceLinked?: boolean;
   binanceSpotCryptoMad?: number;
   binanceStablecoinCashMad?: number;
+  binanceFundingStocksMad?: number;
   loggedPositionsValueMad?: number;
   netCapitalDepositedMad?: number;
+  initialCapitalReservedMad?: number;
+  liveValuationMad?: number;
+  netWalletPnlMad?: number;
+  netWalletPnlUsd?: number;
+  netWalletPnlPercent?: number;
+}
+
+export interface CapitalReconciliationSnapshot {
+  initialCapitalMad: number;
+  initialCapitalUsd: number;
+  currentLiveValueMad: number;
+  currentLiveValueUsd: number;
+  netCapitalPnlMad: number;
+  netCapitalPnlUsd: number;
+  netCapitalPnlPercent: number;
+  isGain: boolean;
+  grossMarketPnlMad: number;
+  grossMarketPnlUsd: number;
+  totalFeesPaidMad: number;
+  totalFeesPaidUsd: number;
+  estimatedExitFeesMad: number;
+  estimatedExitFeesUsd: number;
+  totalFeeDragMad: number;
+  totalFeeDragUsd: number;
+  feeDragPercentOfCapital: number;
+  fxAndFundingSpreadMad: number;
+  fxAndFundingSpreadUsd: number;
+  dividendsEarnedMad: number;
+  dividendsEarnedUsd: number;
+  accruedDividendsMad: number;
+  accruedDividendsUsd: number;
+  totalReturnWithDividendsMad: number;
+  totalReturnWithDividendsUsd: number;
+  totalReturnWithDividendsPercent: number;
+  breakevenPortfolioValueMad: number;
+  breakevenPortfolioValueUsd: number;
+  recoveryNeededMad: number;
+  recoveryNeededUsd: number;
+  recoveryNeededPercent: number;
+}
+
+export interface PortfolioHistoryPoint {
+  timestamp: number;
+  dateLabel: string;
+  shortLabel: string;
+  portfolioValueMad: number;
+  portfolioValueUsd: number;
+  initialCapitalMad: number;
+  initialCapitalUsd: number;
+  costBasisMad: number;
+  costBasisUsd: number;
+  netPnlMad: number;
+  netPnlUsd: number;
+  netPnlPercent: number;
+  cumulativeFeesMad: number;
+  cumulativeFeesUsd: number;
+  cumulativeDividendsMad: number;
+  eventLabel?: string | null;
+}
+
+export interface SmartInvestmentInsight {
+  id: string;
+  category: 'CAPITAL_PNL' | 'FEE_DRAG' | 'BREAKEVEN' | 'DIVIDEND' | 'ALLOCATION' | 'STOCK_SIGNAL';
+  severity: 'positive' | 'warning' | 'critical' | 'neutral';
+  title: string;
+  metricLabel: string;
+  detail: string;
+  actionLabel?: string;
 }
 
 export interface InvestmentsData {
@@ -546,6 +757,9 @@ export interface InvestmentsData {
   binance?: BinanceAccountOverview;
   walletCapitalFlows?: WalletCapitalFlowEntry[];
   netCapitalContributedMad?: number;
+  capitalReconciliation?: CapitalReconciliationSnapshot;
+  portfolioHistory?: PortfolioHistoryPoint[];
+  smartInsights?: SmartInvestmentInsight[];
   rates: {
     USD_TO_MAD: number;
     EUR_TO_MAD: number;
@@ -559,10 +773,13 @@ export interface InvestmentsData {
   totalUnrealizedPnlMad: number;
   totalUnrealizedPnlPercent: number;
   totalRealizedPnlMad: number;
+  totalFeesPaidMad?: number;
+  totalFeesPaidUsd?: number;
   totalDividendsCollectedMad: number;
   annualPassiveIncomeMad: number;
   monthlyPassiveIncomeMad: number;
   portfolioYieldPercent: number;
+  yieldOnCostPercent?: number;
   subscriptionCoveragePercent: number;
   livingExpenseCoveragePercent: number;
   sectorBreakdown: { sector: string; valueMad: number; weightPercent: number }[];
