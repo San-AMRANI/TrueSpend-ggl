@@ -268,8 +268,146 @@ export type DashboardTab =
   | 'reports'
   | 'contexts';
 
-export type StockMarketType = 'US' | 'BVC' | 'ETF' | 'GLOBAL';
+export type StockMarketType = 'US' | 'BVC' | 'ETF' | 'GLOBAL' | 'BINANCE' | 'CRYPTO';
 export type StockOrderAction = 'BUY' | 'SELL' | 'DIVIDEND';
+
+export type BinanceAssetCategory =
+  | 'Stablecoin / Fiat Reserve'
+  | 'Layer 1 Core'
+  | 'DeFi & Infrastructure'
+  | 'Layer 2 & Scaling'
+  | 'AI & Compute'
+  | 'Real World Assets'
+  | 'Digital Assets';
+
+export interface BinanceSpotAssetBalance {
+  asset: string;
+  assetName: string;
+  category: BinanceAssetCategory;
+  isStablecoinOrFiat: boolean;
+  free: number;
+  locked: number;
+  total: number;
+  priceUsd: number;
+  priceMad: number;
+  change24hPercent: number;
+  high24hUsd: number;
+  low24hUsd: number;
+  valueUsd: number;
+  valueMad: number;
+  portfolioWeightPercent: number;
+  defaultSymbol: string | null;
+  avgBuyPriceUsd: number | null;
+  costBasisUsd: number | null;
+  costBasisMad: number | null;
+  unrealizedPnlUsd: number | null;
+  unrealizedPnlMad: number | null;
+  unrealizedPnlPercent: number | null;
+  realizedPnlUsd: number | null;
+  realizedPnlMad: number | null;
+  tradeCount: number;
+}
+
+export interface BinancePersonalTrade {
+  id: number;
+  orderId: number;
+  symbol: string;
+  baseAsset: string;
+  quoteAsset: string;
+  side: 'BUY' | 'SELL';
+  price: number;
+  qty: number;
+  quoteQty: number;
+  quoteQtyUsd: number;
+  quoteQtyMad: number;
+  commission: number;
+  commissionAsset: string;
+  commissionUsd: number;
+  time: number;
+  executedAt: string;
+  isMaker: boolean;
+}
+
+export interface BinanceSymbolTradeSummary {
+  symbol: string;
+  baseAsset: string;
+  quoteAsset: string;
+  tradeCount: number;
+  buyCount: number;
+  sellCount: number;
+  totalBoughtQty: number;
+  totalSoldQty: number;
+  netAccumulatedQty: number;
+  totalBuyVolumeUsd: number;
+  totalSellVolumeUsd: number;
+  avgBuyPriceUsd: number;
+  avgSellPriceUsd: number;
+  realizedPnlUsd: number;
+  realizedPnlMad: number;
+  totalFeesUsd: number;
+  totalFeesMad: number;
+  firstTradeTime: string | null;
+  lastTradeTime: string | null;
+}
+
+export interface BinanceAccountOverview {
+  isConfigured: boolean;
+  connected: boolean;
+  statusMessage: string;
+  errorCode?: string | null;
+  accountType: string;
+  permissions: {
+    canRead: boolean;
+    canTrade: boolean;
+    canWithdraw: boolean;
+    canDeposit: boolean;
+    isReadOnlySafe: boolean;
+  };
+  lastSyncedAt: string | null;
+  totalSpotValueUsd: number;
+  totalSpotValueMad: number;
+  cryptoEquityUsd: number;
+  cryptoEquityMad: number;
+  stablecoinReserveUsd: number;
+  stablecoinReserveMad: number;
+  lockedValueUsd: number;
+  lockedValueMad: number;
+  change24hUsd: number;
+  change24hMad: number;
+  change24hPercent: number;
+  totalTrackedCostBasisMad: number;
+  totalTrackedUnrealizedPnlMad: number;
+  totalTrackedUnrealizedPnlPercent: number;
+  totalRealizedPnlMad: number;
+  totalFeesPaidMad: number;
+  balances: BinanceSpotAssetBalance[];
+  recentTrades: BinancePersonalTrade[];
+  symbolSummaries: BinanceSymbolTradeSummary[];
+  availableSymbols: string[];
+  linkedWalletId: string | null;
+  linkedWalletName: string | null;
+  linkedWalletBalanceMad: number;
+  walletSyncDiscrepancyMad: number;
+}
+
+export interface WalletCapitalFlowEntry {
+  id: string;
+  createdAt: string;
+  type: 'Income' | 'Expense' | 'Transfer' | 'Debt Repayment';
+  direction:
+    | 'DEPOSIT_TO_INVESTMENT'
+    | 'WITHDRAWAL_TO_BANK'
+    | 'DIRECT_ASSET_PURCHASE'
+    | 'DIVIDEND_OR_YIELD';
+  amountMad: number;
+  amountUsd: number;
+  sourceWalletId: string | null;
+  sourceWalletName: string;
+  destinationWalletId: string | null;
+  destinationWalletName: string | null;
+  category: string;
+  notes: string;
+}
 
 export interface StockPosition {
   id: string;
@@ -307,6 +445,7 @@ export interface StockPosition {
   annualDividendMad: number;
   dividendYieldPercent: number;
   affordableSharesFromSurplus: number;
+  source?: 'manual' | 'binance';
 }
 
 export interface StockOrder {
@@ -369,6 +508,11 @@ export interface InvestmentWalletSummary {
   investedStockValueMad: number;
   totalAccountValueMad: number;
   positionsCount: number;
+  isBinanceLinked?: boolean;
+  binanceSpotCryptoMad?: number;
+  binanceStablecoinCashMad?: number;
+  loggedPositionsValueMad?: number;
+  netCapitalDepositedMad?: number;
 }
 
 export interface InvestmentsData {
@@ -377,6 +521,9 @@ export interface InvestmentsData {
   orders: StockOrder[];
   catalog: StockCatalogItem[];
   investmentWallets?: InvestmentWalletSummary[];
+  binance?: BinanceAccountOverview;
+  walletCapitalFlows?: WalletCapitalFlowEntry[];
+  netCapitalContributedMad?: number;
   rates: {
     USD_TO_MAD: number;
     EUR_TO_MAD: number;

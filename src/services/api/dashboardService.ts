@@ -12,6 +12,9 @@ import {
   Subscription,
   DetectedSubscription,
   InvestmentsData,
+  BinanceAccountOverview,
+  BinancePersonalTrade,
+  BinanceSymbolTradeSummary,
   StockPosition,
   StockOrder,
   StockCatalogItem,
@@ -154,8 +157,71 @@ export const dashboardService = {
     apiClient.post<{ success: boolean; message: string; restored: Record<string, number> }>('/api/settings/import-sql', { sql }, token),
   seedData: (token: string | null) => apiClient.post<{ success: boolean }>('/api/seed', {}, token),
 
-  // Stock Portfolio & Equities APIs
-  getInvestmentsData: (token: string | null) => apiClient.get<InvestmentsData>('/api/investments', token),
+  // Binance Spot Read-Only & Stock Portfolio APIs
+  getInvestmentsData: (token: string | null, forceRefresh?: boolean) =>
+    apiClient.get<InvestmentsData>(`/api/investments${forceRefresh ? '?refresh=true' : ''}`, token),
+  getBinanceAccount: (token: string | null, forceRefresh?: boolean) =>
+    apiClient.get<BinanceAccountOverview>(`/api/investments/binance/account${forceRefresh ? '?refresh=true' : ''}`, token),
+  getBinanceTrades: (
+    params: {
+      symbol: string;
+      limit?: number;
+      startTime?: number;
+      endTime?: number;
+      fromId?: number;
+      refresh?: boolean;
+    },
+    token: string | null
+  ) => {
+    const query = new URLSearchParams();
+    query.set('symbol', params.symbol.trim().toUpperCase());
+    if (params.limit !== undefined) query.set('limit', String(params.limit));
+    if (params.startTime !== undefined) query.set('startTime', String(params.startTime));
+    if (params.endTime !== undefined) query.set('endTime', String(params.endTime));
+    if (params.fromId !== undefined) query.set('fromId', String(params.fromId));
+    if (params.refresh) query.set('refresh', 'true');
+    return apiClient.get<{ trades: BinancePersonalTrade[]; summary: BinanceSymbolTradeSummary }>(
+      `/api/investments/binance/trades?${query.toString()}`,
+      token
+    );
+  },
+  syncBinanceWallet: (
+    payload: {
+      walletId?: string;
+      mode?: 'stablecoins_only' | 'full_spot_balance';
+    },
+    token: string | null
+  ) =>
+    apiClient.post<{
+      success: boolean;
+      walletId: string;
+      walletName: string;
+      mode: 'stablecoins_only' | 'full_spot_balance';
+      previousBalanceMad: number;
+      syncedBalanceMad: number;
+      deltaMad: number;
+      binanceSpotValueMad: number;
+      binanceStablecoinReserveMad: number;
+      message: string;
+    }>('/api/investments/binance/sync-wallet', payload, token),
+  logWalletCapitalTransfer: (
+    payload: {
+      direction: 'deposit' | 'withdrawal';
+      bankWalletId?: string;
+      investmentWalletId?: string;
+      amountMad: number;
+      notes?: string;
+    },
+    token: string | null
+  ) =>
+    apiClient.post<{
+      success: boolean;
+      direction: 'deposit' | 'withdrawal';
+      amountMad: number;
+      transaction: Transaction;
+      bankWallet: Wallet;
+      investmentWallet: Wallet;
+    }>('/api/investments/wallet-transfer', payload, token),
   searchStocks: (q: string, token: string | null) =>
     apiClient.get<StockCatalogItem[]>(`/api/investments/stocks/search?q=${encodeURIComponent(q)}`, token),
   upsertStockPosition: (

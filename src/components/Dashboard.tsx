@@ -93,6 +93,10 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleExecutePaydayAllocation,
     handleFundInvestmentWallet,
     handleSearchStocks,
+    handleRefreshInvestments,
+    handleSyncBinanceWallet,
+    handleLogWalletCapitalTransfer,
+    handleFetchBinanceTrades,
     handleCreateContext,
     handleUpdateContext,
     handleDeleteContext,
@@ -242,6 +246,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
             <InvestmentsTab
               investmentsData={investmentsData}
               wallets={kpis?.accounts || []}
+              kpis={kpis}
               isSaving={isSaving}
               onUpsertPosition={handleUpsertStockPosition}
               onUpdatePosition={handleUpdateStockPosition}
@@ -250,6 +255,10 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               onDeleteOrder={handleDeleteStockOrder}
               onExecutePaydayAllocation={handleExecutePaydayAllocation}
               onFundInvestmentWallet={handleFundInvestmentWallet}
+              onSyncBinanceWallet={handleSyncBinanceWallet}
+              onLogWalletCapitalTransfer={handleLogWalletCapitalTransfer}
+              onFetchBinanceTrades={handleFetchBinanceTrades}
+              onRefreshInvestments={handleRefreshInvestments}
               onCreateWallet={handleCreateWallet}
               onSearchStocks={handleSearchStocks}
               onRefresh={fetchData}

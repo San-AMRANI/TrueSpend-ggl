@@ -3,11 +3,14 @@ import { walletRepository } from '../repositories/WalletRepository.js';
 import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { subscriptionRepository } from '../repositories/SubscriptionRepository.js';
 import { kpiService } from './KpiService.js';
+import { binanceService } from './BinanceService.js';
 import { userRepository } from '../repositories/UserRepository.js';
 import type {
   StockCatalogItem,
   StockMarketType,
   StockOrderAction,
+  StockPosition,
+  WalletCapitalFlowEntry,
 } from '../../src/types/index.js';
 
 export const CURATED_STOCK_CATALOG: Omit<StockCatalogItem, 'priceInMad' | 'inPortfolio' | 'inWatchlist'>[] = [
@@ -515,18 +518,19 @@ export class InvestmentService {
   }
 
   /**
-   * Complete, deeply integrated Stock Portfolio & Buying Power payload for TrueSpend
+   * Complete, deeply integrated Binance Spot + Portfolio & TrueSpend Wallet Buying Power payload
    */
-  async getInvestmentsData(userId: string) {
-    const [rawPositions, orders, rates, dbUser, subscriptions] = await Promise.all([
+  async getInvestmentsData(userId: string, options?: { forceRefresh?: boolean }) {
+    const [rawPositions, orders, rates, dbUser, subscriptions, allTransactions] = await Promise.all([
       investmentRepository.findAllPositionsByUserId(userId),
       investmentRepository.findAllOrdersByUserId(userId),
       this.getExchangeRates(),
       userRepository.findById(userId),
       subscriptionRepository.findAllByUserId(userId),
+      transactionRepository.findAllByUserId(userId),
     ]);
 
-    // Fetch live quotes for user positions + top catalog items
+    // Fetch live quotes for manual user positions
     const userTickers = rawPositions.map((p) => p.ticker);
     const liveQuotes = await this.fetchLiveStockQuotes(userTickers);
 
@@ -543,16 +547,18 @@ export class InvestmentService {
     let pendingPayablesMad = 0;
     let fixedObligationsMad = 0;
     let variableSpendPaceMad = 0;
+    let kpiAccounts: any[] = [];
 
     if (dbUser) {
       try {
         const kpis = await kpiService.getKpisForUser(dbUser);
+        kpiAccounts = kpis.accounts || [];
         safeToSpendMad = Math.max(0, Math.round((kpis.safeToSpend || 0) * 100) / 100);
         investmentWalletBalanceMad = Math.max(0, Math.round((kpis.investmentReserve || 0) * 100) / 100);
         monthlyIncomeMad =
-          (kpis.currentFinancialAmount && kpis.currentFinancialAmount > 0
+          kpis.currentFinancialAmount && kpis.currentFinancialAmount > 0
             ? kpis.currentFinancialAmount
-            : kpis.monthlyIncome || parseFloat((dbUser.salary as any) || '0') || 0);
+            : kpis.monthlyIncome || parseFloat((dbUser.salary as any) || '0') || 0;
         monthlyInvestmentBudgetMad = Math.round(((kpis as any).totalInvestmentBudget || 0) * 100) / 100;
         investedThisCycleMad = Math.round(((kpis as any).monthlyInvestmentFunded || 0) * 100) / 100;
         daysUntilPayday = kpis.daysUntilPayday || 0;
@@ -573,6 +579,26 @@ export class InvestmentService {
       }
     }
 
+    // Identify linked Binance Investment Wallet among TrueSpend wallets
+    const invAccounts = kpiAccounts.filter((a) => a.type === 'Investment');
+    const linkedBinanceAcc =
+      invAccounts.find((a) => a.name.toLowerCase().includes('binance')) ||
+      invAccounts.find((a) => a.name.toLowerCase().includes('crypto')) ||
+      invAccounts[0] ||
+      null;
+
+    // Fetch live read-only Binance Spot overview & trade analytics
+    const binanceOverview = await binanceService.getAccountOverview(rates, {
+      forceRefresh: options?.forceRefresh,
+      linkedWallet: linkedBinanceAcc
+        ? {
+            id: linkedBinanceAcc.id,
+            name: linkedBinanceAcc.name,
+            balanceMad: Number(linkedBinanceAcc.balance) || 0,
+          }
+        : null,
+    });
+
     const remainingInvestmentBudgetMad =
       monthlyInvestmentBudgetMad > 0
         ? Math.max(0, Math.round((monthlyInvestmentBudgetMad - investedThisCycleMad) * 100) / 100)
@@ -592,22 +618,22 @@ export class InvestmentService {
 
     let guidanceText = '';
     if (!emergencyBufferIntact) {
-      guidanceText = `Your emergency buffer is ${emergencyDeficitMad.toLocaleString()} MAD below target. Consider topping up your Savings vault before adding aggressive stock positions.`;
+      guidanceText = `Your emergency buffer is ${emergencyDeficitMad.toLocaleString()} MAD below target. Consider topping up your Savings vault before allocating additional capital.`;
     } else if (deployableSurplusMad > 0) {
       guidanceText =
         monthlyInvestmentBudgetMad > 0
-          ? `You have ${deployableSurplusMad.toLocaleString()} MAD ($${deployableSurplusUsd.toLocaleString()}) ready to deploy into stocks this cycle while keeping your daily allowance and emergency buffer 100% protected.`
-          : `Based on your live TrueSpend cash flow, you can safely deploy up to ${deployableSurplusMad.toLocaleString()} MAD ($${deployableSurplusUsd.toLocaleString()}) into equities without impacting your daily allowance.`;
+          ? `You have ${deployableSurplusMad.toLocaleString()} MAD ($${deployableSurplusUsd.toLocaleString()}) in protected investment reserve & cycle budget while keeping your daily allowance and emergency buffer 100% intact.`
+          : `Based on your live TrueSpend cash flow, you have ${deployableSurplusMad.toLocaleString()} MAD ($${deployableSurplusUsd.toLocaleString()}) in protected investment capacity without impacting your daily allowance.`;
     } else {
-      guidanceText = `Your liquid cash is currently reserved for this cycle's living expenses. Fund an Investment Wallet or wait for your next payday in ${daysUntilPayday} days.`;
+      guidanceText = `Your liquid checking cash is reserved for this cycle's living expenses. Next payday is in ${daysUntilPayday} days.`;
     }
 
-    // Separate active holdings from radar/watchlist-only items
-    let totalPortfolioValueMad = 0;
-    let totalCostBasisMad = 0;
+    // Process manual logged positions
+    let manualPortfolioValueMad = 0;
+    let manualCostBasisMad = 0;
     let annualPassiveIncomeMad = 0;
 
-    const enrichedAll = rawPositions.map((pos) => {
+    const enrichedManual = rawPositions.map((pos) => {
       const ticker = pos.ticker.toUpperCase();
       const live = liveQuotes[ticker];
       const catalogItem = CURATED_STOCK_CATALOG.find((c) => c.ticker === ticker);
@@ -653,8 +679,8 @@ export class InvestmentService {
       const isWatchlistOnly = Boolean(pos.isWatchlistOnly) || sharesNum <= 0;
 
       if (!isWatchlistOnly) {
-        totalPortfolioValueMad += marketValueMad;
-        totalCostBasisMad += costBasisMad;
+        manualPortfolioValueMad += marketValueMad;
+        manualCostBasisMad += costBasisMad;
         annualPassiveIncomeMad += annualDividendMad;
       }
 
@@ -678,29 +704,104 @@ export class InvestmentService {
         costBasisMad: Math.round(costBasisMad * 100) / 100,
         marketValueMad: Math.round(marketValueMad * 100) / 100,
         unrealizedPnlMad: Math.round(unrealizedPnlMad * 100) / 100,
-        actualWeightPercent: 0, // computed below once totalPortfolioValueMad is known
+        actualWeightPercent: 0,
         annualDividendNative: Math.round(annualDividendNative * 100) / 100,
         annualDividendMad: Math.round(annualDividendMad * 100) / 100,
         dividendYieldPercent: Math.round(dividendYieldPercent * 100) / 100,
         affordableSharesFromSurplus,
+        source: 'manual' as const,
       };
     });
 
-    // Compute actual portfolio weights
-    const activePositions = enrichedAll
-      .filter((p) => !p.isWatchlistOnly && p.sharesNum > 0)
+    // Map live Binance Spot holdings into unified StockPosition format so all app charts, Net Worth, and Command Palette work seamlessly
+    const binanceDerivedPositions: StockPosition[] = binanceOverview.balances
+      .filter((b) => b.valueMad >= 0.1)
+      .map((b) => {
+        const avgCostUsd = b.avgBuyPriceUsd ?? b.priceUsd;
+        const costBasisUsd = b.costBasisUsd ?? b.valueUsd;
+        const costBasisMad = b.costBasisMad ?? b.valueMad;
+        const unrealizedPnlUsd = b.unrealizedPnlUsd ?? 0;
+        const unrealizedPnlMad = b.unrealizedPnlMad ?? 0;
+        const unrealizedPnlPercent = b.unrealizedPnlPercent ?? 0;
+
+        return {
+          id: `binance-spot-${b.asset}`,
+          userId,
+          walletId: linkedBinanceAcc?.id || null,
+          walletName: linkedBinanceAcc?.name || 'Binance Spot',
+          ticker: b.asset,
+          companyName: `${b.assetName} (Binance Spot)`,
+          market: 'BINANCE' as StockMarketType,
+          sector: b.category,
+          shares: b.total.toString(),
+          avgCostPerShare: avgCostUsd.toFixed(4),
+          currentPrice: b.priceUsd.toFixed(4),
+          currency: 'USD',
+          annualDividendPerShare: '0',
+          targetWeightPercent: b.portfolioWeightPercent.toFixed(1),
+          convictionThesis: b.isStablecoinOrFiat
+            ? `Binance Spot Liquidity Reserve (${b.free} free${b.locked > 0 ? `, ${b.locked} locked` : ''})`
+            : `Live Binance Spot Position (${b.free} free${b.locked > 0 ? `, ${b.locked} locked` : ''})`,
+          isWatchlistOnly: false,
+          createdAt: binanceOverview.lastSyncedAt || new Date().toISOString(),
+          updatedAt: binanceOverview.lastSyncedAt || new Date().toISOString(),
+          sharesNum: b.total,
+          avgCostNum: avgCostUsd,
+          currentPriceNum: b.priceUsd,
+          change24hPercent: b.change24hPercent,
+          costBasisNative: costBasisUsd,
+          marketValueNative: b.valueUsd,
+          unrealizedPnlNative: unrealizedPnlUsd,
+          unrealizedPnlPercent,
+          costBasisMad,
+          marketValueMad: b.valueMad,
+          unrealizedPnlMad,
+          actualWeightPercent: 0,
+          annualDividendNative: 0,
+          annualDividendMad: 0,
+          dividendYieldPercent: 0,
+          affordableSharesFromSurplus:
+            b.priceMad > 0 ? Math.floor((deployableSurplusMad / b.priceMad) * 10000) / 10000 : 0,
+          source: 'binance' as const,
+        };
+      });
+
+    // Combine manual active positions + live Binance Spot positions
+    const manualActive = enrichedManual.filter((p) => !p.isWatchlistOnly && p.sharesNum > 0);
+    const combinedRawActive = [...binanceDerivedPositions, ...manualActive];
+
+    const combinedGrossValueMad = combinedRawActive.reduce((s, p) => s + p.marketValueMad, 0);
+
+    // Avoid double-counting in Unified Net Worth if the linked Binance Investment wallet already holds cash/stablecoin balance in kpis.totalLiquidity
+    const linkedBinanceCashAlreadyInLiquidity = linkedBinanceAcc
+      ? Math.max(0, Math.min(Number(linkedBinanceAcc.balance) || 0, binanceOverview.totalSpotValueMad))
+      : 0;
+
+    const totalPortfolioValueMad = Math.max(
+      0,
+      manualPortfolioValueMad +
+        Math.max(0, binanceOverview.totalSpotValueMad - linkedBinanceCashAlreadyInLiquidity)
+    );
+
+    const totalCostBasisMad =
+      manualCostBasisMad +
+      (binanceOverview.totalTrackedCostBasisMad > 0
+        ? binanceOverview.totalTrackedCostBasisMad + binanceOverview.stablecoinReserveMad
+        : binanceOverview.totalSpotValueMad);
+
+    const activePositions = combinedRawActive
       .map((p) => ({
         ...p,
         actualWeightPercent:
-          totalPortfolioValueMad > 0
-            ? Math.round((p.marketValueMad / totalPortfolioValueMad) * 1000) / 10
+          combinedGrossValueMad > 0
+            ? Math.round((p.marketValueMad / combinedGrossValueMad) * 1000) / 10
             : 0,
       }))
       .sort((a, b) => b.marketValueMad - a.marketValueMad);
 
-    const watchlistPositions = enrichedAll.filter((p) => p.isWatchlistOnly || p.sharesNum <= 0);
+    const watchlistPositions = enrichedManual.filter((p) => p.isWatchlistOnly || p.sharesNum <= 0);
 
-    // Sector & Market Breakdown
+    // Sector & Market Breakdown across both Binance Spot and manual positions
     const sectorMap: Record<string, number> = {};
     const marketMap: Record<string, number> = {};
     for (const pos of activePositions) {
@@ -713,8 +814,8 @@ export class InvestmentService {
         sector,
         valueMad: Math.round(valueMad * 100) / 100,
         weightPercent:
-          totalPortfolioValueMad > 0
-            ? Math.round((valueMad / totalPortfolioValueMad) * 1000) / 10
+          combinedGrossValueMad > 0
+            ? Math.round((valueMad / combinedGrossValueMad) * 1000) / 10
             : 0,
       }))
       .sort((a, b) => b.valueMad - a.valueMad);
@@ -724,14 +825,14 @@ export class InvestmentService {
         market,
         valueMad: Math.round(valueMad * 100) / 100,
         weightPercent:
-          totalPortfolioValueMad > 0
-            ? Math.round((valueMad / totalPortfolioValueMad) * 1000) / 10
+          combinedGrossValueMad > 0
+            ? Math.round((valueMad / combinedGrossValueMad) * 1000) / 10
             : 0,
       }))
       .sort((a, b) => b.valueMad - a.valueMad);
 
-    // Realized P&L & Dividends collected from order history
-    let totalRealizedPnlMad = 0;
+    // Realized P&L & Dividends collected from manual order history + Binance personal trades
+    let totalRealizedPnlMad = binanceOverview.totalRealizedPnlMad || 0;
     let totalDividendsCollectedMad = 0;
     for (const ord of orders) {
       if (ord.action === 'SELL') {
@@ -741,7 +842,7 @@ export class InvestmentService {
       }
     }
 
-    // Monthly subscriptions burn in MAD for dividend coverage comparison
+    // Monthly subscriptions burn in MAD for passive income coverage comparison
     const monthlySubsMad = subscriptions
       .filter((s) => s.status === 'active')
       .reduce((sum, s) => {
@@ -763,11 +864,13 @@ export class InvestmentService {
         ? Math.round((monthlyPassiveIncomeMad / monthlyLivingExpensesMad) * 1000) / 10
         : 0;
 
-    const totalUnrealizedPnlMad = totalPortfolioValueMad - totalCostBasisMad;
+    const manualUnrealizedPnlMad = manualPortfolioValueMad - manualCostBasisMad;
+    const totalUnrealizedPnlMad =
+      manualUnrealizedPnlMad + (binanceOverview.totalTrackedUnrealizedPnlMad || 0);
     const totalUnrealizedPnlPercent =
       totalCostBasisMad > 0 ? (totalUnrealizedPnlMad / totalCostBasisMad) * 100 : 0;
     const portfolioYieldPercent =
-      totalPortfolioValueMad > 0 ? (annualPassiveIncomeMad / totalPortfolioValueMad) * 100 : 0;
+      combinedGrossValueMad > 0 ? (annualPassiveIncomeMad / combinedGrossValueMad) * 100 : 0;
 
     // Enrich catalog with portfolio/watchlist flags
     const heldSet = new Set(activePositions.map((p) => p.ticker));
@@ -787,44 +890,147 @@ export class InvestmentService {
       };
     });
 
-    // Compute per-Investment-wallet summary (Uninvested Brokerage Cash + Linked Stock Holdings)
-    let investmentWallets: {
-      walletId: string;
-      name: string;
-      type: 'Investment';
-      uninvestedCashMad: number;
-      investedStockValueMad: number;
-      totalAccountValueMad: number;
-      positionsCount: number;
-    }[] = [];
+    // Compute TrueSpend Wallet Capital Flows (Transfers & Investment transactions across wallets)
+    const walletById = new Map(kpiAccounts.map((w) => [w.id, w]));
+    const invWalletIds = new Set(invAccounts.map((w) => w.id));
+    const investmentCategorySet = new Set([
+      '📈 Investments',
+      'Investments & Brokerage',
+      'Investments',
+      'Investment',
+      'Stocks & Crypto',
+      'Investment Funding',
+      'Trading',
+      'Crypto Purchase',
+      'Investment Returns & Capital Gains',
+      '📈 Investment Returns / Dividends',
+    ]);
 
-    if (dbUser) {
-      try {
-        const kpis = await kpiService.getKpisForUser(dbUser);
-        const accounts = kpis.accounts || [];
-        const invAccounts = accounts.filter((a) => a.type === 'Investment');
-        investmentWallets = invAccounts.map((acc, idx) => {
-          const linkedPositions = activePositions.filter(
-            (p) => p.walletId === acc.id || (!p.walletId && idx === 0)
-          );
-          const uninvestedCashMad = Math.round((acc.balance || 0) * 100) / 100;
-          const investedStockValueMad = Math.round(
-            linkedPositions.reduce((s, p) => s + p.marketValueMad, 0) * 100
-          ) / 100;
-          return {
-            walletId: acc.id,
-            name: acc.name,
-            type: 'Investment' as const,
-            uninvestedCashMad,
-            investedStockValueMad,
-            totalAccountValueMad: Math.round((uninvestedCashMad + investedStockValueMad) * 100) / 100,
-            positionsCount: linkedPositions.length,
-          };
+    const walletCapitalFlows: WalletCapitalFlowEntry[] = [];
+    let netCapitalContributedMad = 0;
+    const netDepositedByWalletId: Record<string, number> = {};
+
+    for (const tx of allTransactions) {
+      const amt = parseFloat(String(tx.amount || '0')) || 0;
+      if (amt <= 0) continue;
+
+      const srcId = tx.walletId || null;
+      const dstId = (tx as any).destinationWalletId || (tx as any).toWalletId || null;
+      const srcWallet = srcId ? walletById.get(srcId) : null;
+      const dstWallet = dstId ? walletById.get(dstId) : null;
+      const isInvCat = investmentCategorySet.has(tx.category || '');
+
+      if (tx.type === 'Transfer' && dstId && invWalletIds.has(dstId) && (!srcId || !invWalletIds.has(srcId))) {
+        netCapitalContributedMad += amt;
+        netDepositedByWalletId[dstId] = (netDepositedByWalletId[dstId] || 0) + amt;
+        walletCapitalFlows.push({
+          id: tx.id,
+          createdAt: new Date(tx.createdAt || Date.now()).toISOString(),
+          type: 'Transfer',
+          direction: 'DEPOSIT_TO_INVESTMENT',
+          amountMad: Math.round(amt * 100) / 100,
+          amountUsd: Math.round((amt / rates.USD_TO_MAD) * 100) / 100,
+          sourceWalletId: srcId,
+          sourceWalletName: srcWallet?.name || tx.sourceWallet || 'Bank Account',
+          destinationWalletId: dstId,
+          destinationWalletName: dstWallet?.name || 'Investment Wallet',
+          category: tx.category || '📈 Investments',
+          notes: tx.notes || `Capital Transfer to ${dstWallet?.name || 'Investment Wallet'}`,
         });
-      } catch {
-        // Ignore if KPI lookup fails
+      } else if (tx.type === 'Transfer' && srcId && invWalletIds.has(srcId) && (!dstId || !invWalletIds.has(dstId))) {
+        netCapitalContributedMad -= amt;
+        netDepositedByWalletId[srcId] = (netDepositedByWalletId[srcId] || 0) - amt;
+        walletCapitalFlows.push({
+          id: tx.id,
+          createdAt: new Date(tx.createdAt || Date.now()).toISOString(),
+          type: 'Transfer',
+          direction: 'WITHDRAWAL_TO_BANK',
+          amountMad: Math.round(amt * 100) / 100,
+          amountUsd: Math.round((amt / rates.USD_TO_MAD) * 100) / 100,
+          sourceWalletId: srcId,
+          sourceWalletName: srcWallet?.name || 'Investment Wallet',
+          destinationWalletId: dstId,
+          destinationWalletName: dstWallet?.name || 'Bank Account',
+          category: tx.category || '🔄 Transfer',
+          notes: tx.notes || `Capital Withdrawal from ${srcWallet?.name || 'Investment Wallet'}`,
+        });
+      } else if (tx.type === 'Expense' && (isInvCat || (srcId && invWalletIds.has(srcId)))) {
+        if (!srcId || !invWalletIds.has(srcId)) {
+          netCapitalContributedMad += amt;
+        }
+        walletCapitalFlows.push({
+          id: tx.id,
+          createdAt: new Date(tx.createdAt || Date.now()).toISOString(),
+          type: 'Expense',
+          direction: 'DIRECT_ASSET_PURCHASE',
+          amountMad: Math.round(amt * 100) / 100,
+          amountUsd: Math.round((amt / rates.USD_TO_MAD) * 100) / 100,
+          sourceWalletId: srcId,
+          sourceWalletName: srcWallet?.name || tx.sourceWallet || 'Primary Account',
+          destinationWalletId: null,
+          destinationWalletName: null,
+          category: tx.category || '📈 Investments',
+          notes: tx.notes || 'Asset Allocation / Purchase',
+        });
+      } else if (tx.type === 'Income' && (isInvCat || (srcId && invWalletIds.has(srcId)))) {
+        walletCapitalFlows.push({
+          id: tx.id,
+          createdAt: new Date(tx.createdAt || Date.now()).toISOString(),
+          type: 'Income',
+          direction: 'DIVIDEND_OR_YIELD',
+          amountMad: Math.round(amt * 100) / 100,
+          amountUsd: Math.round((amt / rates.USD_TO_MAD) * 100) / 100,
+          sourceWalletId: srcId,
+          sourceWalletName: srcWallet?.name || 'Investment Account',
+          destinationWalletId: null,
+          destinationWalletName: null,
+          category: tx.category || '📈 Investment Returns / Dividends',
+          notes: tx.notes || 'Investment Return / Dividend',
+        });
       }
     }
+
+    walletCapitalFlows.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    // Compute per-Investment-wallet summary (Uninvested Cash + Live Binance Spot + Linked Manual Holdings)
+    const investmentWallets = invAccounts.map((acc, idx) => {
+      const isBinanceLinked = linkedBinanceAcc ? linkedBinanceAcc.id === acc.id : idx === 0;
+      const linkedManualPositions = manualActive.filter(
+        (p) => p.walletId === acc.id || (!p.walletId && idx === 0)
+      );
+      const uninvestedCashMad = Math.round((acc.balance || 0) * 100) / 100;
+      const loggedPositionsValueMad =
+        Math.round(linkedManualPositions.reduce((s, p) => s + p.marketValueMad, 0) * 100) / 100;
+      const binanceSpotCryptoMad = isBinanceLinked ? binanceOverview.cryptoEquityMad : 0;
+      const binanceStablecoinCashMad = isBinanceLinked ? binanceOverview.stablecoinReserveMad : 0;
+
+      // Avoid double counting if uninvestedCashMad was synced with binanceStablecoinCashMad
+      const effectiveBinanceAddition = isBinanceLinked
+        ? Math.max(0, binanceOverview.totalSpotValueMad - Math.min(uninvestedCashMad, binanceOverview.totalSpotValueMad))
+        : 0;
+
+      const investedStockValueMad =
+        Math.round((loggedPositionsValueMad + effectiveBinanceAddition) * 100) / 100;
+
+      return {
+        walletId: acc.id,
+        name: acc.name,
+        type: 'Investment' as const,
+        uninvestedCashMad,
+        investedStockValueMad,
+        totalAccountValueMad: Math.round((uninvestedCashMad + investedStockValueMad) * 100) / 100,
+        positionsCount:
+          linkedManualPositions.length +
+          (isBinanceLinked ? binanceOverview.balances.filter((b) => !b.isStablecoinOrFiat).length : 0),
+        isBinanceLinked,
+        binanceSpotCryptoMad,
+        binanceStablecoinCashMad,
+        loggedPositionsValueMad,
+        netCapitalDepositedMad: Math.round((netDepositedByWalletId[acc.id] || 0) * 100) / 100,
+      };
+    });
 
     return {
       positions: activePositions,
@@ -832,6 +1038,9 @@ export class InvestmentService {
       orders,
       catalog,
       investmentWallets,
+      binance: binanceOverview,
+      walletCapitalFlows: walletCapitalFlows.slice(0, 100),
+      netCapitalContributedMad: Math.round(netCapitalContributedMad * 100) / 100,
       rates,
       buyingPower: {
         safeToSpendMad,
@@ -877,6 +1086,221 @@ export class InvestmentService {
         recommendationText: guidanceText,
         riskAppetiteMax: deployableSurplusMad,
       },
+    };
+  }
+
+  /**
+   * Read-only Binance Spot account overview endpoint handler
+   */
+  async getBinanceAccountOverview(userId: string, forceRefresh = false) {
+    const [rates, dbUser] = await Promise.all([
+      this.getExchangeRates(),
+      userRepository.findById(userId),
+    ]);
+
+    let linkedWallet: { id: string; name: string; balanceMad: number } | null = null;
+    if (dbUser) {
+      try {
+        const kpis = await kpiService.getKpisForUser(dbUser);
+        const invAccounts = (kpis.accounts || []).filter((a) => a.type === 'Investment');
+        const target =
+          invAccounts.find((a) => a.name.toLowerCase().includes('binance')) ||
+          invAccounts.find((a) => a.name.toLowerCase().includes('crypto')) ||
+          invAccounts[0];
+        if (target) {
+          linkedWallet = {
+            id: target.id,
+            name: target.name,
+            balanceMad: Number(target.balance) || 0,
+          };
+        }
+      } catch {
+        // Ignore KPI lookup failure
+      }
+    }
+
+    return await binanceService.getAccountOverview(rates, {
+      forceRefresh,
+      linkedWallet,
+    });
+  }
+
+  /**
+   * Read-only Binance personal trade history for a specific validated pair (`GET /api/v3/myTrades`)
+   */
+  async getBinanceSymbolTrades(
+    symbol: string,
+    options?: {
+      limit?: number;
+      startTime?: number;
+      endTime?: number;
+      fromId?: number;
+      forceRefresh?: boolean;
+    }
+  ) {
+    const rates = await this.getExchangeRates();
+    return await binanceService.getPersonalTradesForSymbol(symbol, rates, options);
+  }
+
+  /**
+   * Synchronize a TrueSpend Investment Wallet with the user's live Binance Spot balance.
+   * Modes:
+   *  - 'stablecoins_only' (Recommended): Syncs the wallet's cash reserve to match Binance Spot free Stablecoins/Fiat (USDT/USDC/FDUSD/EUR in MAD)
+   *  - 'full_spot_balance': Syncs the wallet's balance to match the entire Binance Spot account value in MAD
+   */
+  async syncBinanceWithWallet(
+    userId: string,
+    payload: {
+      walletId?: string;
+      mode?: 'stablecoins_only' | 'full_spot_balance';
+    }
+  ) {
+    const [rates, dbUser] = await Promise.all([
+      this.getExchangeRates(),
+      userRepository.findById(userId),
+    ]);
+    if (!dbUser) {
+      throw new Error('User record not found.');
+    }
+
+    const overview = await binanceService.getAccountOverview(rates, { forceRefresh: true });
+    if (!overview.isConfigured || !overview.connected) {
+      throw new Error(
+        overview.statusMessage ||
+          'Binance Spot API is not connected. Configure BINANCE_API_KEY and BINANCE_ED25519_PRIVATE_KEY_B64 on the server first.'
+      );
+    }
+
+    const mode = payload.mode === 'full_spot_balance' ? 'full_spot_balance' : 'stablecoins_only';
+    const targetBalanceMad =
+      mode === 'full_spot_balance' ? overview.totalSpotValueMad : overview.stablecoinReserveMad;
+
+    let allWallets = await walletRepository.findAllByUserId(userId);
+    let targetWallet = payload.walletId
+      ? allWallets.find((w) => w.id === payload.walletId)
+      : allWallets.find((w) => w.type === 'Investment' && w.name.toLowerCase().includes('binance')) ||
+        allWallets.find((w) => w.type === 'Investment');
+
+    if (!targetWallet) {
+      targetWallet = await walletRepository.create({
+        userId,
+        name: 'Binance Spot',
+        type: 'Investment',
+        isMain: false,
+        initialBalance: targetBalanceMad.toFixed(2),
+      });
+      return {
+        success: true,
+        wallet: targetWallet,
+        syncedBalanceMad: Math.round(targetBalanceMad * 100) / 100,
+        mode,
+        message: `Created "Binance Spot" Investment wallet and synced to ${targetBalanceMad.toFixed(2)} MAD.`,
+      };
+    }
+
+    // Compute current ledger balance via KpiService so we adjust initialBalance accurately
+    const kpis = await kpiService.getKpisForUser(dbUser);
+    const kpiAcc = (kpis.accounts || []).find((a) => a.id === targetWallet!.id);
+    const currentRecordedMad = kpiAcc ? Number(kpiAcc.balance) || 0 : parseFloat(targetWallet.initialBalance || '0') || 0;
+    const currentInitialMad = parseFloat(targetWallet.initialBalance || '0') || 0;
+    const deltaMad = targetBalanceMad - currentRecordedMad;
+    const nextInitialMad = Math.round((currentInitialMad + deltaMad) * 100) / 100;
+
+    const updatedWallet = await walletRepository.update(targetWallet.id, userId, {
+      initialBalance: nextInitialMad.toFixed(2),
+    });
+
+    return {
+      success: true,
+      wallet: updatedWallet,
+      syncedBalanceMad: Math.round(targetBalanceMad * 100) / 100,
+      previousBalanceMad: Math.round(currentRecordedMad * 100) / 100,
+      adjustmentMad: Math.round(deltaMad * 100) / 100,
+      mode,
+      message:
+        mode === 'stablecoins_only'
+          ? `Synced ${targetWallet.name} cash reserve to ${targetBalanceMad.toFixed(2)} MAD (Binance Spot Stablecoins/Fiat).`
+          : `Synced ${targetWallet.name} to ${targetBalanceMad.toFixed(2)} MAD (Full Binance Spot Value).`,
+    };
+  }
+
+  /**
+   * Log a Capital Deposit (Bank/Cash -> Investment Wallet) or Capital Withdrawal (Investment Wallet -> Bank/Cash)
+   * in TrueSpend's transaction ledger so Safe-to-Spend, Daily Allowance, and Investment Budgets stay 100% accurate.
+   */
+  async logWalletCapitalTransfer(
+    userId: string,
+    payload: {
+      direction: 'deposit' | 'withdrawal';
+      bankWalletId?: string;
+      investmentWalletId?: string;
+      amountMad: number;
+      notes?: string;
+    }
+  ) {
+    const amountMad = Math.round((Number(payload.amountMad) || 0) * 100) / 100;
+    if (amountMad <= 0) {
+      throw new Error('Please enter a valid transfer amount greater than 0 MAD.');
+    }
+
+    const direction = payload.direction === 'withdrawal' ? 'withdrawal' : 'deposit';
+    if (direction === 'deposit') {
+      return await this.fundInvestmentWallet(userId, {
+        sourceWalletId: payload.bankWalletId,
+        destinationWalletId: payload.investmentWalletId,
+        amountMad,
+        notes: payload.notes || 'Capital Deposit to Binance / Investment Wallet',
+      });
+    }
+
+    // Withdrawal: Investment Wallet -> Bank/Cash Wallet
+    const allWallets = await walletRepository.findAllByUserId(userId);
+    let invWallet = payload.investmentWalletId
+      ? allWallets.find((w) => w.id === payload.investmentWalletId)
+      : allWallets.find((w) => w.type === 'Investment' && w.name.toLowerCase().includes('binance')) ||
+        allWallets.find((w) => w.type === 'Investment');
+
+    if (!invWallet) {
+      invWallet = await walletRepository.create({
+        userId,
+        name: 'Binance Spot',
+        type: 'Investment',
+        isMain: false,
+        initialBalance: '0',
+      });
+    }
+
+    const bankWallet = payload.bankWalletId
+      ? allWallets.find((w) => w.id === payload.bankWalletId)
+      : allWallets.find((w) => w.type === 'Bank' && w.isMain) ||
+        allWallets.find((w) => w.type === 'Bank') ||
+        allWallets.find((w) => w.type === 'Cash');
+
+    if (!bankWallet) {
+      throw new Error('Destination Bank or Cash wallet not found.');
+    }
+
+    if (invWallet.id === bankWallet.id) {
+      throw new Error('Source Investment wallet and destination Bank wallet must be different.');
+    }
+
+    const tx = await transactionRepository.create({
+      userId,
+      walletId: invWallet.id,
+      destinationWalletId: bankWallet.id,
+      amount: amountMad.toFixed(2),
+      type: 'Transfer',
+      category: '🔄 Transfer',
+      notes:
+        payload.notes ||
+        `Capital Withdrawal: ${invWallet.name} → ${bankWallet.name}`,
+    });
+
+    return {
+      success: true,
+      transaction: tx,
+      sourceWallet: invWallet,
+      destinationWallet: bankWallet,
     };
   }
 

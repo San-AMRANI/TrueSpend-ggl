@@ -90,9 +90,15 @@ export const requireAuth = async (
       permissions,
     };
 
-    // Enforce RBAC permissions on mutating requests
     const method = req.method.toUpperCase();
     const path = req.baseUrl + req.path;
+
+    // Enforce server-side authorization for all private investment & Binance endpoints (GET and mutating)
+    if ((path.includes('/investments') || path.includes('/binance')) && !permissions.canAccessInvestments) {
+      return res.status(403).json({
+        error: 'Permission Denied: Your role does not have permission to access investment or Binance portfolio data.',
+      });
+    }
 
     const isMutatingMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
     const isReadOnlyPostEndpoint =
