@@ -31,6 +31,12 @@ import {
   Target,
   Users,
   SlidersHorizontal,
+  MessageSquare,
+  Plus,
+  Pin,
+  Edit2,
+  Search,
+  FolderOpen,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -441,6 +447,43 @@ interface Message {
   timestamp: number;
 }
 
+export interface ChatConversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  focusScopes: AiDataFocusScope[];
+  responseDepth: AiResponseDepth;
+  pinned?: boolean;
+  messages: Message[];
+}
+
+const CONVERSATIONS_STORAGE_KEY = 'truespend_chat_conversations_v1';
+const ACTIVE_CONVERSATION_STORAGE_KEY = 'truespend_active_conversation_id';
+
+function createDefaultWelcomeMessage(focusScopes: AiDataFocusScope[] = ['all']): Message {
+  const primaryScope =
+    DATA_FOCUS_SCOPES.find((s) => s.id === focusScopes[0]) || DATA_FOCUS_SCOPES[0];
+  return {
+    role: 'assistant',
+    content:
+      "Hey there! 👋 I'm **Spex**, your TrueSpend 360° financial & investment strategist powered by **Google Gemini**.\n\nI have deep, real-time visibility into your **Live Binance Multi-Wallet (Spot, Funding Stocks & Earn)**, **$879 MAD Investment Capital Reconciliation**, **trade fee & breakeven forensics**, **all transactions**, **wallets**, **budgets**, **debts**, and **goals**.\n\n🎯 **Pro Tip:** Use **Conversations** to organize separate threads (e.g., *Binance & Stocks*, *Monthly Budget Audit*, *Debt & Split Planning*) and select your **Context Focus** above!",
+    timestamp: Date.now(),
+    suggestions: primaryScope.prompts,
+  };
+}
+
+function deriveConversationTitle(messages: Message[], fallback = 'New Financial Thread'): string {
+  const firstUserMsg = messages.find((m) => m.role === 'user' && m.content.trim().length > 0);
+  if (!firstUserMsg) return fallback;
+  const cleaned = firstUserMsg.content
+    .replace(/^[^\w\d$€£]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return fallback;
+  return cleaned.length > 44 ? `${cleaned.slice(0, 42)}…` : cleaned;
+}
+
 interface AIChatProps {
   onDataChange?: () => void;
 }
@@ -708,38 +751,6 @@ function MessageBubble({
 }
 
 export function AIChat({ onDataChange }: AIChatProps = {}) {
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const saved = localStorage.getItem('truespend_chat_history_v2');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {
-        console.error('Failed to parse chat history', e);
-      }
-    }
-    return [
-      {
-        role: 'assistant',
-        content:
-          "Hey there! 👋 I'm **Spex**, your TrueSpend 360° financial & investment strategist powered by **Google Gemini**.\n\nI have deep, real-time visibility into your **Live Binance Multi-Wallet (Spot, Funding Stocks & Earn)**, **$879 MAD Investment Capital Reconciliation**, **trade fee & breakeven forensics**, **all transactions**, **wallets**, **budgets**, **debts**, and **goals**.\n\n🎯 **New:** Use the **Data Focus Selector** above to focus me on specific areas (*Stocks & Binance*, *All Transactions*, *Wallets*, *Budgets*, etc. — or *All at Once*), and use **Deep & Creative Mode** for expansive, multi-table analyses!",
-        timestamp: Date.now(),
-        suggestions: DATA_FOCUS_SCOPES[0].prompts,
-      },
-    ];
-  });
-
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [chatSessionId] = useState(getChatSessionId);
-  const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [activeTopic, setActiveTopic] = useState<string>('stocks');
-  const [playingAudioIndex, setPlayingAudioIndex] = useState<number | null>(null);
-  const [audioLoadingIndex, setAudioLoadingIndex] = useState<number | null>(null);
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-  const stopAudioPlayerRef = useRef<(() => void) | null>(null);
-
   // Data Context Focus Selection (supports 'all' or multi-selecting specific scopes)
   const [focusScopes, setFocusScopes] = useState<AiDataFocusScope[]>(() => {
     try {
@@ -761,9 +772,249 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     return 'deep_creative';
   });
 
+  // Multi-Conversation State (with automatic migration from legacy truespend_chat_history_v2)
+  const [conversations, setConversations] = useState<ChatConversation[]>(() => {
+    try {
+      const savedConvs = localStorage.getItem(CONVERSATIONS_STORAGE_KEY);
+      if (savedConvs) {
+        const parsed = JSON.parse(savedConvs);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to parse conversations list', e);
+    }
+
+    // Migrate legacy single-thread history if present
+    let initialMessages: Message[] = [createDefaultWelcomeMessage(['all'])];
+    try {
+      const legacy = localStorage.getItem('truespend_chat_history_v2');
+      if (legacy) {
+        const parsedLegacy = JSON.parse(legacy);
+        if (Array.isArray(parsedLegacy) && parsedLegacy.length > 0) {
+          initialMessages = parsedLegacy;
+        }
+      }
+    } catch {}
+
+    const firstConv: ChatConversation = {
+      id: `conv_${Date.now()}`,
+      title: deriveConversationTitle(initialMessages, '360° Portfolio & Finance Session'),
+      createdAt: initialMessages[0]?.timestamp || Date.now(),
+      updatedAt: initialMessages[initialMessages.length - 1]?.timestamp || Date.now(),
+      focusScopes: ['all'],
+      responseDepth: 'deep_creative',
+      pinned: true,
+      messages: initialMessages,
+    };
+    return [firstConv];
+  });
+
+  const [activeConversationId, setActiveConversationId] = useState<string>(() => {
+    const savedId = localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY);
+    return savedId || '';
+  });
+
+  const activeConversation = useMemo(() => {
+    return (
+      conversations.find((c) => c.id === activeConversationId) ||
+      conversations[0]
+    );
+  }, [conversations, activeConversationId]);
+
+  // Ensure activeConversationId is always valid
+  useEffect(() => {
+    if (activeConversation && activeConversation.id !== activeConversationId) {
+      setActiveConversationId(activeConversation.id);
+    }
+  }, [activeConversation, activeConversationId]);
+
+  useEffect(() => {
+    if (activeConversationId) {
+      try {
+        localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, activeConversationId);
+      } catch {}
+    }
+  }, [activeConversationId]);
+
+  const messages = activeConversation?.messages || [];
+
+  const setMessages = useCallback(
+    (updater: Message[] | ((prev: Message[]) => Message[])) => {
+      setConversations((prevConvs) => {
+        const targetId =
+          prevConvs.find((c) => c.id === activeConversationId)?.id || prevConvs[0]?.id;
+        if (!targetId) return prevConvs;
+
+        return prevConvs.map((conv) => {
+          if (conv.id !== targetId) return conv;
+          const nextMessages =
+            typeof updater === 'function' ? updater(conv.messages) : updater;
+          const isDefaultTitle =
+            conv.title === 'New Financial Thread' ||
+            conv.title === '360° Portfolio & Finance Session' ||
+            conv.title.startsWith('New ');
+          const nextTitle = isDefaultTitle
+            ? deriveConversationTitle(nextMessages, conv.title)
+            : conv.title;
+          return {
+            ...conv,
+            messages: nextMessages,
+            title: nextTitle,
+            updatedAt: Date.now(),
+          };
+        });
+      });
+    },
+    [activeConversationId],
+  );
+
+  // Conversation Sidebar / Drawer UI state
+  const [showConversationsPanel, setShowConversationsPanel] = useState(false);
+  const [conversationSearch, setConversationSearch] = useState('');
+  const [editingConvId, setEditingConvId] = useState<string | null>(null);
+  const [editingConvTitle, setEditingConvTitle] = useState('');
+
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [chatSessionId] = useState(getChatSessionId);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [activeTopic, setActiveTopic] = useState<string>('stocks');
+  const [playingAudioIndex, setPlayingAudioIndex] = useState<number | null>(null);
+  const [audioLoadingIndex, setAudioLoadingIndex] = useState<number | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const stopAudioPlayerRef = useRef<(() => void) | null>(null);
+
   const [isVoiceMode, setIsVoiceMode] = useState<boolean>(() => {
     return localStorage.getItem('truespend_voice_mode') === 'true';
   });
+
+  // Persist all conversations and keep legacy key synced with active thread
+  useEffect(() => {
+    try {
+      localStorage.setItem(CONVERSATIONS_STORAGE_KEY, JSON.stringify(conversations));
+      if (activeConversation?.messages) {
+        localStorage.setItem(
+          'truespend_chat_history_v2',
+          JSON.stringify(activeConversation.messages),
+        );
+      }
+    } catch (e) {
+      console.error('Failed to persist conversations', e);
+    }
+  }, [conversations, activeConversation]);
+
+  const handleCreateNewConversation = useCallback(
+    (presetScopes?: AiDataFocusScope[]) => {
+      if (stopAudioPlayerRef.current) {
+        stopAudioPlayerRef.current();
+        stopAudioPlayerRef.current = null;
+      }
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      setPlayingAudioIndex(null);
+
+      const scopesToUse = presetScopes || focusScopes;
+      const scopeLabel = scopesToUse.includes('all')
+        ? 'New Financial Thread'
+        : `New ${
+            DATA_FOCUS_SCOPES.find((s) => s.id === scopesToUse[0])?.shortLabel || 'Focused'
+          } Thread`;
+
+      const newConv: ChatConversation = {
+        id: `conv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        title: scopeLabel,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        focusScopes: scopesToUse,
+        responseDepth,
+        pinned: false,
+        messages: [createDefaultWelcomeMessage(scopesToUse)],
+      };
+
+      setConversations((prev) => [newConv, ...prev]);
+      setActiveConversationId(newConv.id);
+      setInput('');
+      setEditingConvId(null);
+    },
+    [focusScopes, responseDepth],
+  );
+
+  const handleSelectConversation = useCallback((conv: ChatConversation) => {
+    setActiveConversationId(conv.id);
+    if (conv.focusScopes && conv.focusScopes.length > 0) {
+      setFocusScopes(conv.focusScopes);
+    }
+    if (conv.responseDepth) {
+      setResponseDepth(conv.responseDepth);
+    }
+    setEditingConvId(null);
+  }, []);
+
+  const handleDeleteConversation = useCallback(
+    (convId: string, e?: React.MouseEvent) => {
+      e?.stopPropagation();
+      setConversations((prev) => {
+        const remaining = prev.filter((c) => c.id !== convId);
+        if (remaining.length === 0) {
+          const fresh: ChatConversation = {
+            id: `conv_${Date.now()}`,
+            title: 'New Financial Thread',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            focusScopes,
+            responseDepth,
+            pinned: false,
+            messages: [createDefaultWelcomeMessage(focusScopes)],
+          };
+          setActiveConversationId(fresh.id);
+          return [fresh];
+        }
+        if (convId === activeConversationId) {
+          setActiveConversationId(remaining[0].id);
+        }
+        return remaining;
+      });
+    },
+    [activeConversationId, focusScopes, responseDepth],
+  );
+
+  const handleTogglePinConversation = useCallback((convId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setConversations((prev) =>
+      prev.map((c) => (c.id === convId ? { ...c, pinned: !c.pinned } : c)),
+    );
+  }, []);
+
+  const handleSaveRenameConversation = useCallback((convId: string) => {
+    const trimmed = editingConvTitle.trim();
+    if (trimmed) {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convId ? { ...c, title: trimmed, updatedAt: Date.now() } : c)),
+      );
+    }
+    setEditingConvId(null);
+    setEditingConvTitle('');
+  }, [editingConvTitle]);
+
+  const filteredConversations = useMemo(() => {
+    const q = conversationSearch.trim().toLowerCase();
+    const list = conversations.filter((c) => {
+      if (!q) return true;
+      if (c.title.toLowerCase().includes(q)) return true;
+      return c.messages.some((m) => m.content.toLowerCase().includes(q));
+    });
+    return [...list].sort((a, b) => {
+      if (Boolean(a.pinned) !== Boolean(b.pinned)) {
+        return a.pinned ? -1 : 1;
+      }
+      return b.updatedAt - a.updatedAt;
+    });
+  }, [conversations, conversationSearch]);
 
   const handleToggleFocusScope = (scopeId: AiDataFocusScope) => {
     setFocusScopes((prev) => {
@@ -782,6 +1033,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       try {
         localStorage.setItem('truespend_ai_focus_scopes', JSON.stringify(next));
       } catch {}
+      setConversations((convs) =>
+        convs.map((c) => (c.id === activeConversationId ? { ...c, focusScopes: next } : c)),
+      );
       return next;
     });
   };
@@ -791,6 +1045,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     try {
       localStorage.setItem('truespend_ai_response_depth', depth);
     } catch {}
+    setConversations((convs) =>
+      convs.map((c) => (c.id === activeConversationId ? { ...c, responseDepth: depth } : c)),
+    );
   };
 
   const toggleVoiceMode = () => {
@@ -965,10 +1222,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   useEffect(() => {
     scrollToBottom(messages.length <= 1);
   }, [messages, scrollToBottom]);
-
-  useEffect(() => {
-    localStorage.setItem('truespend_chat_history_v2', JSON.stringify(messages));
-  }, [messages]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -1486,6 +1739,30 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           <div className="flex items-center gap-1">
             <button
               type="button"
+              onClick={() => handleCreateNewConversation()}
+              title="New conversation"
+              className="p-2 rounded-full text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowConversationsPanel((prev) => !prev)}
+              title="Manage conversations"
+              className={cn(
+                'relative p-2 rounded-full transition-colors',
+                showConversationsPanel
+                  ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60'
+                  : 'text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800',
+              )}
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full bg-indigo-600 text-white text-[9px] font-bold flex items-center justify-center px-0.5">
+                {conversations.length}
+              </span>
+            </button>
+            <button
+              type="button"
               onClick={toggleVoiceMode}
               title={
                 isVoiceMode
@@ -1527,7 +1804,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             <button
               type="button"
               onClick={handleReset}
-              title="Clear chat"
+              title="Clear current conversation"
               className="p-2 rounded-full text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             >
               <Trash2 className="w-4 h-4" />
@@ -1555,6 +1832,44 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             </div>
           </div>
           <div className="flex items-center gap-2 relative">
+            {/* Multi-Conversation Controls */}
+            <button
+              type="button"
+              onClick={() => setShowConversationsPanel((prev) => !prev)}
+              title="Open conversations history & threads"
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all border shadow-xs',
+                showConversationsPanel
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200',
+              )}
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+              <span className="max-w-[130px] truncate">
+                {activeConversation?.title || 'Conversations'}
+              </span>
+              <span
+                className={cn(
+                  'rounded-full px-1.5 py-0.2 text-[10px] font-mono',
+                  showConversationsPanel
+                    ? 'bg-white/20 text-white'
+                    : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300',
+                )}
+              >
+                {conversations.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleCreateNewConversation()}
+              title="Start a new conversation thread"
+              className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 text-xs font-semibold transition-colors shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Chat</span>
+            </button>
+
             {/* Response Depth / Size Selector */}
             <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-0.5 text-[11px]">
               {RESPONSE_DEPTH_OPTIONS.map((opt) => {
@@ -1838,52 +2153,235 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           </div>
         </div>
 
-        {/* ─── Messages Area with Centered Background Spex Watermark ─── */}
-        <div className="relative flex-1 overflow-hidden flex flex-col">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-0 overflow-hidden"
-          >
-            <SpexAvatar className="w-60 h-60 sm:w-80 sm:h-80 md:w-96 md:h-96 opacity-[0.11] dark:opacity-[0.14] transition-opacity" />
-          </div>
+        {/* ─── Main Body: Optional Conversations Sidebar + Messages Area ─── */}
+        <div className="relative flex-1 overflow-hidden flex">
+          {/* Collapsible Conversations Drawer / Sidebar */}
+          {showConversationsPanel && (
+            <div className="w-72 sm:w-80 flex-shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col z-20 animate-fadeIn">
+              <div className="p-3 border-b border-gray-100 dark:border-gray-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <span className="text-xs font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                      Conversations ({conversations.length})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleCreateNewConversation()}
+                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 text-[11px] font-semibold transition-colors"
+                    >
+                      <Plus className="w-3 h-3" /> New
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowConversationsPanel(false)}
+                      className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                      title="Close sidebar"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
 
-          <div
-            ref={messagesContainerRef}
-            className="relative z-10 flex-1 overflow-y-auto px-3 py-4 sm:px-5 space-y-4 scroll-smooth"
-            style={{ overscrollBehavior: 'contain' }}
-          >
-            {messages
-              .filter((m) => m.role !== 'system')
-              .map((msg, idx) => (
-                <MessageBubble
-                  key={idx}
-                  msg={msg}
-                  idx={idx}
-                  onAction={handleAction}
-                  onSpeak={handleSpeak}
-                  isPlayingAudio={playingAudioIndex === idx}
-                  isAudioLoading={audioLoadingIndex === idx}
-                />
-              ))}
-
-            {isLoading && (
-              <div className="flex items-start gap-2.5 w-full animate-slideIn">
-                <SpexAvatar className="h-7 w-7 mt-0.5 flex-shrink-0" animated />
-                <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-[2px] border border-gray-200/80 dark:border-gray-700/70 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm flex items-center gap-3">
-                  <TypingDots />
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    Analyzing{' '}
-                    {focusScopes.includes('all')
-                      ? 'all 360° financial & portfolio data'
-                      : focusScopes
-                          .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
-                          .join(' + ')}{' '}
-                    ({responseDepth === 'deep_creative' ? 'Deep & Creative Mode' : 'Standard Mode'})…
-                  </span>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={conversationSearch}
+                    onChange={(e) => setConversationSearch(e.target.value)}
+                    placeholder="Search threads or messages…"
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 pl-8 pr-7 py-1.5 text-xs text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:border-indigo-500"
+                  />
+                  {conversationSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setConversationSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
-            <div ref={messagesEndRef} />
+
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {filteredConversations.map((conv) => {
+                  const isActive = conv.id === activeConversation?.id;
+                  const userMsgCount = conv.messages.filter((m) => m.role === 'user').length;
+                  const lastMsg = conv.messages[conv.messages.length - 1];
+                  const isEditing = editingConvId === conv.id;
+
+                  return (
+                    <div
+                      key={conv.id}
+                      onClick={() => handleSelectConversation(conv)}
+                      className={cn(
+                        'group rounded-xl p-2.5 cursor-pointer transition-all border',
+                        isActive
+                          ? 'bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-800/80 shadow-2xs'
+                          : 'bg-transparent border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/60',
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-1.5">
+                        {isEditing ? (
+                          <div
+                            className="flex items-center gap-1 flex-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="text"
+                              value={editingConvTitle}
+                              onChange={(e) => setEditingConvTitle(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveRenameConversation(conv.id);
+                                if (e.key === 'Escape') setEditingConvId(null);
+                              }}
+                              autoFocus
+                              className="w-full rounded border border-indigo-400 bg-white dark:bg-gray-900 px-1.5 py-0.5 text-xs font-semibold text-gray-900 dark:text-white focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveRenameConversation(conv.id)}
+                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1">
+                              {conv.pinned && (
+                                <Pin className="w-3 h-3 text-amber-500 shrink-0 fill-amber-500" />
+                              )}
+                              <p
+                                className={cn(
+                                  'text-xs font-semibold truncate',
+                                  isActive
+                                    ? 'text-indigo-950 dark:text-indigo-100'
+                                    : 'text-gray-800 dark:text-gray-200',
+                                )}
+                              >
+                                {conv.title}
+                              </p>
+                            </div>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                              {lastMsg?.content.replace(/[#*`]/g, '').slice(0, 60) || 'Empty thread'}
+                            </p>
+                          </div>
+                        )}
+
+                        {!isEditing && (
+                          <div className="flex items-center gap-0.5 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => handleTogglePinConversation(conv.id, e)}
+                              title={conv.pinned ? 'Unpin conversation' : 'Pin conversation'}
+                              className="p-1 rounded hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-amber-500"
+                            >
+                              <Pin className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingConvId(conv.id);
+                                setEditingConvTitle(conv.title);
+                              }}
+                              title="Rename conversation"
+                              className="p-1 rounded hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-indigo-600"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteConversation(conv.id, e)}
+                              title="Delete conversation"
+                              className="p-1 rounded hover:bg-white dark:hover:bg-gray-700 text-gray-400 hover:text-rose-600"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-1.5 flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
+                        <span className="inline-flex items-center gap-1 font-medium text-indigo-600 dark:text-indigo-400">
+                          🎯{' '}
+                          {conv.focusScopes?.includes('all')
+                            ? '360° All'
+                            : (conv.focusScopes || ['all'])
+                                .map(
+                                  (s) =>
+                                    DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s,
+                                )
+                                .join(' + ')}
+                        </span>
+                        <span>
+                          {userMsgCount} prompt{userMsgCount === 1 ? '' : 's'} •{' '}
+                          {formatRelativeTime(conv.updatedAt)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {filteredConversations.length === 0 && (
+                  <div className="py-8 text-center text-xs text-gray-400">
+                    No matching conversations found.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="relative flex-1 overflow-hidden flex flex-col">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-0 overflow-hidden"
+            >
+              <SpexAvatar className="w-60 h-60 sm:w-80 sm:h-80 md:w-96 md:h-96 opacity-[0.11] dark:opacity-[0.14] transition-opacity" />
+            </div>
+
+            <div
+              ref={messagesContainerRef}
+              className="relative z-10 flex-1 overflow-y-auto px-3 py-4 sm:px-5 space-y-4 scroll-smooth"
+              style={{ overscrollBehavior: 'contain' }}
+            >
+              {messages
+                .filter((m) => m.role !== 'system')
+                .map((msg, idx) => (
+                  <MessageBubble
+                    key={idx}
+                    msg={msg}
+                    idx={idx}
+                    onAction={handleAction}
+                    onSpeak={handleSpeak}
+                    isPlayingAudio={playingAudioIndex === idx}
+                    isAudioLoading={audioLoadingIndex === idx}
+                  />
+                ))}
+
+              {isLoading && (
+                <div className="flex items-start gap-2.5 w-full animate-slideIn">
+                  <SpexAvatar className="h-7 w-7 mt-0.5 flex-shrink-0" animated />
+                  <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-[2px] border border-gray-200/80 dark:border-gray-700/70 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm flex items-center gap-3">
+                    <TypingDots />
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Analyzing{' '}
+                      {focusScopes.includes('all')
+                        ? 'all 360° financial & portfolio data'
+                        : focusScopes
+                            .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
+                            .join(' + ')}{' '}
+                      ({responseDepth === 'deep_creative' ? 'Deep & Creative Mode' : 'Standard Mode'})…
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
           </div>
         </div>
 

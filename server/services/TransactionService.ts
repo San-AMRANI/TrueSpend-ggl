@@ -21,8 +21,12 @@ export interface CreateTransactionDTO {
   reimbursable_amount?: number;
   linked_contact_name?: string;
   splits?: SplitInput[];
-  /** When present, this income is money borrowed and creates a payable debt. */
+  /** When present on an Income transaction, this income is money borrowed and creates a payable debt. */
   loan_contact_name?: string;
+  /** When present on an Expense transaction, represents the unpaid portion of a partially paid bill (creates a Payable debt). */
+  unpaid_amount?: number;
+  unpaid_contact_name?: string;
+  unpaid_due_date?: string;
   contextId?: string | null;
 }
 
@@ -58,31 +62,77 @@ export class TransactionService {
           linkedDebtType: linkedDebt?.type ?? null,
           remainingBalance: linkedDebt?.remainingBalance ?? null,
           status: linkedDebt?.status ?? null,
+          originalDebtAmount: linkedDebt?.originalAmount ?? null,
         };
       });
 
-      const firstDebt = mappedSplits[0]?.linkedContactId ? debtById.get(mappedSplits[0].linkedContactId) : null;
-      const isPayableDebt = firstDebt?.type === 'Payable' || transaction.category === 'Debt Repayment';
+      // Detect uncompleted / partial payment split on an Expense transaction:
+      // A Payable split on an Expense with reimbursableAmount > 0 means this Expense was partially paid,
+      // and the user still owes (or owed) the remainder as a Payable debt.
+      const partialPayableSplit =
+        transaction.type === 'Expense' && transaction.category !== 'Debt Repayment'
+          ? mappedSplits.find(
+              (s) =>
+                s.linkedDebtType === 'Payable' &&
+                (parseFloat(s.reimbursableAmount || '0') > 0 ||
+                  parseFloat(s.originalDebtAmount || '0') > 0)
+            )
+          : undefined;
+
+      const receivableSplits = mappedSplits.filter(
+        (s) => s.linkedDebtType === 'Receivable' || (!s.linkedDebtType && transaction.type === 'Expense')
+      );
+
+      const firstDebt = mappedSplits[0]?.linkedContactId
+        ? debtById.get(mappedSplits[0].linkedContactId)
+        : null;
+      const isPayableSettlementOrLoan =
+        (firstDebt?.type === 'Payable' && !partialPayableSplit && receivableSplits.length === 0) ||
+        transaction.category === 'Debt Repayment';
 
       // Total reimbursable amount across all Receivable splits
-      const totalReimbursable = mappedSplits
-        .filter((s) => s.linkedDebtType === 'Receivable' || (!s.linkedDebtType && transaction.type === 'Expense'))
-        .reduce((sum, s) => sum + (parseFloat(s.reimbursableAmount || '0') || 0), 0);
+      const totalReimbursable = receivableSplits.reduce(
+        (sum, s) => sum + (parseFloat(s.reimbursableAmount || '0') || 0),
+        0
+      );
 
-      const contactNames = mappedSplits
+      const contactNames = receivableSplits
         .map((s) => s.linkedContactName)
         .filter(Boolean) as string[];
+
+      const paidNowNum = parseFloat(transaction.amount as unknown as string) || 0;
+      const unpaidOrigNum = partialPayableSplit
+        ? parseFloat(partialPayableSplit.originalDebtAmount || partialPayableSplit.reimbursableAmount || '0') || 0
+        : 0;
 
       return {
         ...transaction,
         category: normalizeCategory(transaction.category),
         // Only Receivable debts represent money that is reimbursable to the user!
-        // A Payable debt settlement or repayment is an out-of-pocket obligation and not reimbursable.
-        reimbursableAmount: isPayableDebt || totalReimbursable <= 0 ? null : String(totalReimbursable),
-        linkedContactId: mappedSplits[0]?.linkedContactId || null,
-        linkedContactName: contactNames.length > 0 ? contactNames.join(', ') : null,
-        linkedDebtType: mappedSplits[0]?.linkedDebtType ?? null,
+        reimbursableAmount:
+          isPayableSettlementOrLoan || totalReimbursable <= 0 ? null : String(totalReimbursable),
+        linkedContactId:
+          receivableSplits[0]?.linkedContactId || mappedSplits[0]?.linkedContactId || null,
+        linkedContactName:
+          contactNames.length > 0
+            ? contactNames.join(', ')
+            : partialPayableSplit?.linkedContactName || mappedSplits[0]?.linkedContactName || null,
+        linkedDebtType:
+          receivableSplits.length > 0
+            ? 'Receivable'
+            : mappedSplits[0]?.linkedDebtType ?? null,
         splits: mappedSplits,
+        // Uncompleted / Partial Payment Telemetry
+        isPartialPayment: Boolean(partialPayableSplit && unpaidOrigNum > 0),
+        unpaidAmount: partialPayableSplit && unpaidOrigNum > 0 ? unpaidOrigNum.toFixed(2) : null,
+        totalBillAmount:
+          partialPayableSplit && unpaidOrigNum > 0
+            ? (paidNowNum + unpaidOrigNum).toFixed(2)
+            : null,
+        unpaidRemainingBalance: partialPayableSplit ? partialPayableSplit.remainingBalance : null,
+        unpaidStatus: partialPayableSplit ? partialPayableSplit.status : null,
+        unpaidDebtId: partialPayableSplit ? partialPayableSplit.linkedContactId : null,
+        unpaidContactName: partialPayableSplit ? partialPayableSplit.linkedContactName : null,
       };
     });
   }
@@ -101,9 +151,10 @@ export class TransactionService {
         if (cashWallet) return cashWallet.id;
       }
 
-      const mainBank = wallets.find((w) => w.type === 'Bank' && w.isMain) 
-        || wallets.find((w) => w.type === 'Bank') 
-        || wallets[0];
+      const mainBank =
+        wallets.find((w) => w.type === 'Bank' && w.isMain) ||
+        wallets.find((w) => w.type === 'Bank') ||
+        wallets[0];
       return mainBank?.id || requestedWalletId || '';
     } catch {
       return requestedWalletId || '';
@@ -123,7 +174,10 @@ export class TransactionService {
         return cashWallet ? cashWallet.id : null;
       }
       if (requestedWalletId === 'Bank') {
-        const bankWallet = wallets.find((w) => w.type === 'Bank' && w.isMain) || wallets.find((w) => w.type === 'Bank') || wallets[0];
+        const bankWallet =
+          wallets.find((w) => w.type === 'Bank' && w.isMain) ||
+          wallets.find((w) => w.type === 'Bank') ||
+          wallets[0];
         return bankWallet ? bankWallet.id : null;
       }
     } catch {
@@ -134,8 +188,8 @@ export class TransactionService {
 
   async createTransaction(userId: string, dto: CreateTransactionDTO) {
     this.validateAmount(dto.amount);
-    
-    // Normalize splits from DTO:
+
+    // Normalize Receivable splits from DTO:
     let splitList: SplitInput[] = [];
     if (Array.isArray(dto.splits) && dto.splits.length > 0) {
       splitList = dto.splits
@@ -146,10 +200,12 @@ export class TransactionService {
         }))
         .filter((s) => s.reimbursable_amount > 0 && s.linked_contact_name.length > 0);
     } else if (dto.reimbursable_amount && dto.reimbursable_amount > 0 && dto.linked_contact_name?.trim()) {
-      splitList = [{
-        reimbursable_amount: Number(dto.reimbursable_amount),
-        linked_contact_name: dto.linked_contact_name.trim(),
-      }];
+      splitList = [
+        {
+          reimbursable_amount: Number(dto.reimbursable_amount),
+          linked_contact_name: dto.linked_contact_name.trim(),
+        },
+      ];
     }
 
     const totalReimbursable = splitList.reduce((sum, s) => sum + s.reimbursable_amount, 0);
@@ -158,14 +214,33 @@ export class TransactionService {
         throw new Error('Only expense transactions can be split or reimbursable');
       }
       if (totalReimbursable > dto.amount) {
-        throw new Error(`Total reimbursable amount (${totalReimbursable.toFixed(2)} MAD) cannot exceed transaction amount (${dto.amount.toFixed(2)} MAD)`);
+        throw new Error(
+          `Total reimbursable amount (${totalReimbursable.toFixed(2)} MAD) cannot exceed transaction amount (${dto.amount.toFixed(2)} MAD)`
+        );
+      }
+    }
+
+    // Validate Uncompleted / Partial Payment on Expense
+    const unpaidAmount = Number(dto.unpaid_amount || 0);
+    const unpaidContactName = (dto.unpaid_contact_name || '').trim();
+    if (unpaidAmount > 0) {
+      if (dto.type !== 'Expense') {
+        throw new Error('Partial / uncompleted payment is only supported for expense transactions');
+      }
+      if (!unpaidContactName) {
+        throw new Error('Please specify who you still owe for the remaining unpaid balance');
       }
     }
 
     const loanContactName = dto.loan_contact_name?.trim();
-    if (loanContactName && dto.type !== 'Income') throw new Error('A loan received must be an income transaction');
-    if (loanContactName && splitList.length > 0) throw new Error('A loan received cannot also be reimbursable');
+    if (loanContactName && dto.type !== 'Income') {
+      throw new Error('A loan received must be an income transaction');
+    }
+    if (loanContactName && splitList.length > 0) {
+      throw new Error('A loan received cannot also be reimbursable');
+    }
     const createdAt = this.parseTransactionDate(dto.transaction_date);
+    const unpaidDueDate = this.parseTransactionDate(dto.unpaid_due_date);
 
     const resolvedWalletId = await this.resolveWalletId(userId, dto.walletId);
     const resolvedDestWalletId = await this.resolveOptionalWalletId(userId, dto.destinationWalletId);
@@ -182,7 +257,11 @@ export class TransactionService {
           assignedCategory = '📈 Investments';
         } else if (destType === 'savings') {
           assignedCategory = '🛟 Emergency & goals Fund';
-        } else if (!assignedCategory || assignedCategory === '📈 Investments' || assignedCategory === '🛟 Emergency & goals Fund') {
+        } else if (
+          !assignedCategory ||
+          assignedCategory === '📈 Investments' ||
+          assignedCategory === '🛟 Emergency & goals Fund'
+        ) {
           assignedCategory = '🔄 Transfer';
         }
       } catch {
@@ -202,6 +281,7 @@ export class TransactionService {
       contextId: dto.contextId || null,
     });
 
+    // Create Receivable debts for fronting / splitting with others
     for (const split of splitList) {
       const newDebt = await debtRepository.create({
         userId,
@@ -220,6 +300,27 @@ export class TransactionService {
       });
     }
 
+    // Create Payable debt for Uncompleted / Partial Payment on an Expense
+    if (unpaidAmount > 0 && unpaidContactName) {
+      const newPayableDebt = await debtRepository.create({
+        userId,
+        contactName: unpaidContactName,
+        type: 'Payable',
+        originalAmount: String(unpaidAmount),
+        remainingBalance: String(unpaidAmount),
+        status: 'Pending',
+        dueDate: unpaidDueDate,
+        createdAt,
+      });
+
+      await transactionRepository.createSplit({
+        transactionId: newTx.id,
+        reimbursableAmount: String(unpaidAmount),
+        linkedContactId: newPayableDebt.id,
+      });
+    }
+
+    // Create Payable debt for Loan Received (Income)
     if (loanContactName) {
       const newDebt = await debtRepository.create({
         userId,
@@ -249,14 +350,32 @@ export class TransactionService {
     this.validateAmount(dto.amount);
 
     const createdAt = this.parseTransactionDate(dto.transaction_date);
+    const unpaidDueDate = this.parseTransactionDate(dto.unpaid_due_date);
     if (current.payrollId) {
       await this.syncPostedPayroll(userId, current.payrollId, dto.amount, createdAt);
     }
 
     const existingSplits = await transactionRepository.findSplitsByTransactionId(transactionId);
+    const allUserDebts = await debtRepository.findAllByUserId(userId);
+    const debtById = new Map(allUserDebts.map((d) => [d.id, d]));
+
+    const existingReceivableSplits = existingSplits.filter((s) => {
+      const d = s.linkedContactId ? debtById.get(s.linkedContactId) : null;
+      return !d || d.type === 'Receivable';
+    });
+
+    const existingPartialPayableSplit = existingSplits.find((s) => {
+      const d = s.linkedContactId ? debtById.get(s.linkedContactId) : null;
+      return d && d.type === 'Payable' && parseFloat(s.reimbursableAmount as unknown as string) > 0;
+    });
+
     const splitsProvided = dto.splits !== undefined || dto.reimbursable_amount !== undefined;
 
-    if (current.type !== 'Expense' && splitsProvided && ((dto.splits && dto.splits.length > 0) || (dto.reimbursable_amount && dto.reimbursable_amount > 0))) {
+    if (
+      current.type !== 'Expense' &&
+      splitsProvided &&
+      ((dto.splits && dto.splits.length > 0) || (dto.reimbursable_amount && dto.reimbursable_amount > 0))
+    ) {
       throw new Error('Only expense transactions can be reimbursable');
     }
 
@@ -272,22 +391,26 @@ export class TransactionService {
           .filter((s) => s.reimbursable_amount > 0 && s.linked_contact_name.length > 0);
       } else if (dto.reimbursable_amount !== undefined) {
         if (dto.reimbursable_amount > 0 && dto.linked_contact_name?.trim()) {
-          updatedSplitsList = [{
-            id: existingSplits[0]?.id,
-            reimbursable_amount: Number(dto.reimbursable_amount),
-            linked_contact_name: dto.linked_contact_name.trim(),
-          }];
+          updatedSplitsList = [
+            {
+              id: existingReceivableSplits[0]?.id,
+              reimbursable_amount: Number(dto.reimbursable_amount),
+              linked_contact_name: dto.linked_contact_name.trim(),
+            },
+          ];
         }
       }
 
       const totalReimbursable = updatedSplitsList.reduce((sum, s) => sum + s.reimbursable_amount, 0);
       if (totalReimbursable > dto.amount) {
-        throw new Error(`Total reimbursable amount (${totalReimbursable.toFixed(2)} MAD) cannot exceed transaction amount (${dto.amount.toFixed(2)} MAD)`);
+        throw new Error(
+          `Total reimbursable amount (${totalReimbursable.toFixed(2)} MAD) cannot exceed transaction amount (${dto.amount.toFixed(2)} MAD)`
+        );
       }
 
-      // Handle removed splits
+      // Handle removed Receivable splits
       const updatedSplitIds = new Set(updatedSplitsList.map((s) => s.id).filter(Boolean));
-      for (const existingSplit of existingSplits) {
+      for (const existingSplit of existingReceivableSplits) {
         if (!updatedSplitIds.has(existingSplit.id)) {
           if (existingSplit.linkedContactId) {
             const debt = await debtRepository.findByIdAndUserId(existingSplit.linkedContactId, userId);
@@ -296,11 +419,15 @@ export class TransactionService {
               const remainingBalance = parseFloat(debt.remainingBalance as unknown as string);
               const settledAmount = originalAmount - remainingBalance;
               if (settledAmount > 0.001) {
-                throw new Error(`Cannot remove split for ${debt.contactName} because a settlement of ${settledAmount.toFixed(2)} MAD has already been received.`);
+                throw new Error(
+                  `Cannot remove split for ${debt.contactName} because a settlement of ${settledAmount.toFixed(2)} MAD has already been recorded.`
+                );
               }
               const linkedSplits = await transactionRepository.findSplitsByDebtId(debt.id);
               if (linkedSplits.some((s) => s.transactionId !== transactionId)) {
-                throw new Error(`This reimbursement for ${debt.contactName} has settlements. Adjust the debt before removing it.`);
+                throw new Error(
+                  `This reimbursement for ${debt.contactName} has settlements. Adjust the debt before removing it.`
+                );
               }
               await transactionRepository.deleteSplitById(existingSplit.id);
               await debtRepository.deleteByIdAndUserId(debt.id, userId);
@@ -313,10 +440,10 @@ export class TransactionService {
         }
       }
 
-      // Handle existing and new splits in updatedSplitsList
+      // Handle existing and new Receivable splits in updatedSplitsList
       for (const splitDto of updatedSplitsList) {
         if (splitDto.id) {
-          const existingSplit = existingSplits.find((s) => s.id === splitDto.id);
+          const existingSplit = existingReceivableSplits.find((s) => s.id === splitDto.id);
           if (existingSplit && existingSplit.linkedContactId) {
             const debt = await debtRepository.findByIdAndUserId(existingSplit.linkedContactId, userId);
             if (debt) {
@@ -325,7 +452,9 @@ export class TransactionService {
               const settledAmount = originalAmount - parseFloat(debt.remainingBalance as unknown as string);
 
               if (splitDto.reimbursable_amount < settledAmount) {
-                throw new Error(`The reimbursement for ${debt.contactName} cannot be lower than the amount already settled (${settledAmount.toFixed(2)} MAD).`);
+                throw new Error(
+                  `The reimbursement for ${debt.contactName} cannot be lower than the amount already settled (${settledAmount.toFixed(2)} MAD).`
+                );
               }
 
               const newOriginalAmount = originalAmount + (splitDto.reimbursable_amount - oldReimbursableAmount);
@@ -341,7 +470,7 @@ export class TransactionService {
             }
           }
         } else {
-          // New split
+          // New Receivable split
           const newDebt = await debtRepository.create({
             userId,
             contactName: splitDto.linked_contact_name,
@@ -356,6 +485,85 @@ export class TransactionService {
             reimbursableAmount: String(splitDto.reimbursable_amount),
             linkedContactId: newDebt.id,
           });
+        }
+      }
+    }
+
+    // Handle Uncompleted / Partial Payment updates on Expense transactions
+    if (current.type === 'Expense' && dto.unpaid_amount !== undefined) {
+      const nextUnpaid = Number(dto.unpaid_amount || 0);
+      const nextUnpaidContact = (dto.unpaid_contact_name || '').trim();
+
+      if (nextUnpaid > 0) {
+        if (!nextUnpaidContact) {
+          throw new Error('Please specify who you still owe for the remaining unpaid balance');
+        }
+        if (existingPartialPayableSplit && existingPartialPayableSplit.linkedContactId) {
+          const debt = await debtRepository.findByIdAndUserId(
+            existingPartialPayableSplit.linkedContactId,
+            userId
+          );
+          if (debt) {
+            const origAmt = parseFloat(debt.originalAmount as unknown as string) || 0;
+            const remAmt = parseFloat(debt.remainingBalance as unknown as string) || 0;
+            const settledAlready = Math.max(0, origAmt - remAmt);
+            if (nextUnpaid < settledAlready - 0.001) {
+              throw new Error(
+                `Unpaid amount cannot be lower than the amount already paid/settled (${settledAlready.toFixed(2)} MAD).`
+              );
+            }
+            const nextRem = Math.max(0, Number((nextUnpaid - settledAlready).toFixed(2)));
+            await debtRepository.update(debt.id, userId, {
+              contactName: nextUnpaidContact,
+              originalAmount: String(nextUnpaid),
+              remainingBalance: nextRem <= 0.001 ? '0' : String(nextRem),
+              status: nextRem <= 0.001 ? 'Cleared' : 'Pending',
+              ...(unpaidDueDate ? { dueDate: unpaidDueDate } : {}),
+            });
+            await transactionRepository.updateSplit(existingPartialPayableSplit.id, {
+              reimbursableAmount: String(nextUnpaid),
+            });
+          }
+        } else {
+          const newPayableDebt = await debtRepository.create({
+            userId,
+            contactName: nextUnpaidContact,
+            type: 'Payable',
+            originalAmount: String(nextUnpaid),
+            remainingBalance: String(nextUnpaid),
+            status: 'Pending',
+            dueDate: unpaidDueDate,
+            createdAt,
+          });
+          await transactionRepository.createSplit({
+            transactionId,
+            reimbursableAmount: String(nextUnpaid),
+            linkedContactId: newPayableDebt.id,
+          });
+        }
+      } else if (existingPartialPayableSplit) {
+        // Removing partial payment Payable debt
+        if (existingPartialPayableSplit.linkedContactId) {
+          const debt = await debtRepository.findByIdAndUserId(
+            existingPartialPayableSplit.linkedContactId,
+            userId
+          );
+          if (debt) {
+            const origAmt = parseFloat(debt.originalAmount as unknown as string) || 0;
+            const remAmt = parseFloat(debt.remainingBalance as unknown as string) || 0;
+            const settledAlready = Math.max(0, origAmt - remAmt);
+            if (settledAlready > 0.001) {
+              throw new Error(
+                `Cannot remove the unpaid balance for ${debt.contactName} because ${settledAlready.toFixed(2)} MAD has already been settled.`
+              );
+            }
+            await transactionRepository.deleteSplitById(existingPartialPayableSplit.id);
+            await debtRepository.deleteByIdAndUserId(debt.id, userId);
+          } else {
+            await transactionRepository.deleteSplitById(existingPartialPayableSplit.id);
+          }
+        } else {
+          await transactionRepository.deleteSplitById(existingPartialPayableSplit.id);
         }
       }
     }
@@ -387,7 +595,10 @@ export class TransactionService {
     if (loanContactName) {
       assignedCategory = '🤝 Loan Received';
     } else if (current.type === 'Transfer' && (dto.destinationWalletId !== undefined || !assignedCategory)) {
-      const targetDestId = dto.destinationWalletId !== undefined ? await this.resolveOptionalWalletId(userId, dto.destinationWalletId) : current.destinationWalletId;
+      const targetDestId =
+        dto.destinationWalletId !== undefined
+          ? await this.resolveOptionalWalletId(userId, dto.destinationWalletId)
+          : current.destinationWalletId;
       if (targetDestId) {
         try {
           const wallets = await walletService.getWallets(userId);
@@ -397,7 +608,11 @@ export class TransactionService {
             assignedCategory = '📈 Investments';
           } else if (destType === 'savings') {
             assignedCategory = '🛟 Emergency & goals Fund';
-          } else if (!assignedCategory || assignedCategory === '📈 Investments' || assignedCategory === '🛟 Emergency & goals Fund') {
+          } else if (
+            !assignedCategory ||
+            assignedCategory === '📈 Investments' ||
+            assignedCategory === '🛟 Emergency & goals Fund'
+          ) {
             assignedCategory = '🔄 Transfer';
           }
         } catch {
@@ -455,11 +670,13 @@ export class TransactionService {
       if (split.linkedContactId) {
         const debt = await debtRepository.findByIdAndUserId(split.linkedContactId, userId);
         if (debt) {
+          const splitReimbNum = parseFloat(split.reimbursableAmount as unknown as string) || 0;
           const isOriginalTransaction =
             (debt.type === 'Receivable' && transaction.type === 'Expense') ||
-            (debt.type === 'Payable' && transaction.type === 'Income');
+            (debt.type === 'Payable' && transaction.type === 'Income') ||
+            (debt.type === 'Payable' && transaction.type === 'Expense' && splitReimbNum > 0);
           if (isOriginalTransaction) {
-            // Deleting the original reimbursable expense or loan receipt deletes its debt and settlements.
+            // Deleting the original reimbursable expense, uncompleted expense, or loan receipt deletes its debt and settlements.
             const linkedSplits = await transactionRepository.findSplitsByDebtId(debt.id);
             for (const linkedSplit of linkedSplits) {
               if (linkedSplit.transactionId !== transactionId) {
@@ -467,7 +684,7 @@ export class TransactionService {
                 await transactionRepository.deleteSplitsByTransactionId(linkedSplit.transactionId);
                 await transactionRepository.deleteByIdAndUserId(linkedSplit.transactionId, userId);
               } else {
-                // Delete the split for this original expense
+                // Delete the split for this original transaction
                 await transactionRepository.deleteSplitById(linkedSplit.id);
               }
             }
@@ -476,8 +693,10 @@ export class TransactionService {
           } else {
             // Deleting a settlement transaction -> restore debt balance
             const currentRemaining = parseFloat(debt.remainingBalance as unknown as string);
-            const splitReimbNum = parseFloat(split.reimbursableAmount as unknown as string);
-            const reimbAmount = splitReimbNum > 0 ? splitReimbNum : (parseFloat(transaction.amount as unknown as string) || 0);
+            const reimbAmount =
+              splitReimbNum > 0
+                ? splitReimbNum
+                : parseFloat(transaction.amount as unknown as string) || 0;
             const originalAmount = parseFloat(debt.originalAmount as unknown as string);
             const newRemaining = Math.min(originalAmount, currentRemaining + reimbAmount);
 
@@ -498,13 +717,6 @@ export class TransactionService {
 
   private validateAmount(amount: number) {
     if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be greater than zero');
-  }
-
-  private validateReimbursement(amount: number, reimbursableAmount?: number) {
-    if (reimbursableAmount === undefined) return;
-    if (!Number.isFinite(reimbursableAmount) || reimbursableAmount < 0 || reimbursableAmount > amount) {
-      throw new Error('Reimbursable amount must be between zero and the transaction amount');
-    }
   }
 
   private async syncPostedPayroll(userId: string, payrollId: string, amount: number, scheduledFor?: Date) {

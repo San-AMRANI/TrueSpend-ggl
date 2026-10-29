@@ -54,6 +54,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     setSelectedTransactionId,
     fetchData,
     handleSettleDebt,
+    handleForgiveDebt,
     handleDeleteDebt,
     handleEditDebt,
     handleDeleteTransaction,
@@ -360,10 +361,12 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               budgets={budgets}
               fetchData={fetchData}
               handleSettle={handleSettleDebt}
+              handleForgive={handleForgiveDebt}
               handleEditDebt={handleEditDebt}
               handleDeleteDebt={handleDeleteDebt}
               onSaveBudget={handleSaveCategoryBudget}
               setActiveTab={setActiveTab}
+              openTransaction={openTransaction}
             />
           )}
 

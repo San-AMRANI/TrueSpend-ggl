@@ -16,13 +16,28 @@ export class DebtController {
   async processDebt(req: AuthRequest, res: Response) {
     try {
       const result = await debtService.processDebt(req.dbUser.id, req.body);
-      res.status(result.id ? 201 : 200).json(result);
+      res.status((result as any).id ? 201 : 200).json(result);
     } catch (e: any) {
       console.error(e);
       if (e.message === 'Debt not found') {
         res.status(404).json({ error: 'Debt not found' });
       } else {
-        res.status(500).json({ error: 'Internal Server Error' });
+        res.status(400).json({ error: e.message || 'Internal Server Error' });
+      }
+    }
+  }
+
+  async forgiveDebt(req: AuthRequest, res: Response) {
+    try {
+      const debtId = req.params.id;
+      const result = await debtService.forgiveDebt(req.dbUser.id, debtId, req.body || {});
+      res.status(200).json(result);
+    } catch (e: any) {
+      console.error(e);
+      if (e.message === 'Debt not found') {
+        res.status(404).json({ error: 'Debt not found' });
+      } else {
+        res.status(400).json({ error: e.message || 'Unable to forgive debt' });
       }
     }
   }

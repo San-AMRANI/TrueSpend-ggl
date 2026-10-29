@@ -1,5 +1,5 @@
 import { db } from '../../src/db/index.js';
-import { debts, splits } from '../../src/db/schema.js';
+import { debts, splits, userAuditLogs } from '../../src/db/schema.js';
 import { eq, desc, and, sql } from 'drizzle-orm';
 
 export interface CreateDebtParams {
@@ -52,6 +52,55 @@ export class DebtRepository {
 
   async findAllLinkedSplits() {
     return await db.select().from(splits).where(sql`${splits.linkedContactId} IS NOT NULL`);
+  }
+
+  async recordDebtForgiveness(params: {
+    userId: string;
+    debtId: string;
+    contactName: string;
+    amount: number;
+    reason: string;
+    note?: string;
+  }) {
+    try {
+      const inserted = await db
+        .insert(userAuditLogs)
+        .values({
+          actorId: params.userId,
+          actorName: 'User',
+          targetUserId: params.userId,
+          targetUserName: params.debtId,
+          action: 'DEBT_FORGIVEN',
+          details: JSON.stringify({
+            debtId: params.debtId,
+            contactName: params.contactName,
+            amount: params.amount,
+            reason: params.reason,
+            note: params.note || '',
+          }),
+        })
+        .returning();
+      return inserted[0] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async findForgivenessLogsByUserId(userId: string) {
+    try {
+      return await db
+        .select()
+        .from(userAuditLogs)
+        .where(
+          and(
+            eq(userAuditLogs.actorId, userId),
+            eq(userAuditLogs.action, 'DEBT_FORGIVEN')
+          )
+        )
+        .orderBy(desc(userAuditLogs.createdAt));
+    } catch {
+      return [];
+    }
   }
 }
 
