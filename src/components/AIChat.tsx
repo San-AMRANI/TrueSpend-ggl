@@ -547,9 +547,9 @@ function MessageBubble({
     >
       {/* Avatar row for assistant */}
       {!isUser && (
-        <div className="flex items-center gap-2 ml-0.5 mb-0.5 flex-wrap">
-          <SpexAvatar className="h-6 w-6" />
-          <span className="text-[11px] text-gray-600 dark:text-gray-300 font-semibold">Spex</span>
+        <div className="flex items-center gap-1.5 sm:gap-2 ml-0.5 mb-0.5 flex-wrap">
+          <SpexAvatar className="h-5 w-5 sm:h-6 sm:w-6" />
+          <span className="text-[11px] text-gray-700 dark:text-gray-200 font-semibold">Spex</span>
           {msg.modelUsed ? (
             <span
               className={cn(
@@ -565,23 +565,23 @@ function MessageBubble({
             </span>
           ) : null}
           {msg.focusScopesUsed && msg.focusScopesUsed.length > 0 && (
-            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50">
-              🎯 Focus:{' '}
+            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 truncate max-w-[140px] sm:max-w-none">
+              🎯{' '}
               {msg.focusScopesUsed.includes('all')
-                ? '360° All Data'
+                ? '360° All'
                 : msg.focusScopesUsed
                     .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
                     .join(' + ')}
             </span>
           )}
           {msg.responseTimeMs ? (
-            <span className="text-[9px] text-gray-400 dark:text-gray-500 font-mono">
+            <span className="hidden sm:inline text-[9px] text-gray-400 dark:text-gray-500 font-mono">
               {(msg.responseTimeMs / 1000).toFixed(1)}s
             </span>
           ) : null}
           {msg.quotaFallback && (
             <span
-              className="text-[8px] font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-1 py-0.2 rounded"
+              className="hidden sm:inline text-[8px] font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-1 py-0.2 rounded"
               title={msg.fallbackReason}
             >
               Auto Failover
@@ -594,16 +594,16 @@ function MessageBubble({
         className={cn(
           'flex gap-2',
           isUser
-            ? 'flex-row-reverse max-w-[78%] sm:max-w-[65%] lg:max-w-[55%]'
+            ? 'flex-row-reverse max-w-[85%] sm:max-w-[65%] lg:max-w-[55%]'
             : 'flex-row w-full max-w-full',
         )}
       >
         <div
           className={cn(
-            'relative rounded-2xl px-4 py-3.5 shadow-sm text-sm leading-relaxed',
+            'relative rounded-2xl px-3.5 py-3 sm:px-4 sm:py-3.5 shadow-sm text-sm leading-relaxed',
             isUser
               ? 'bg-indigo-600 dark:bg-indigo-700 text-white rounded-br-none'
-              : 'w-full bg-white/90 dark:bg-gray-800/90 backdrop-blur-[2px] text-gray-800 dark:text-gray-100 border border-gray-200/80 dark:border-gray-700/70 rounded-bl-none',
+              : 'w-full bg-white/95 dark:bg-gray-800/95 backdrop-blur-[2px] text-gray-800 dark:text-gray-100 border border-gray-200/80 dark:border-gray-700/70 rounded-bl-none',
           )}
         >
           {msg.imageUrl && (
@@ -617,9 +617,9 @@ function MessageBubble({
           )}
 
           {isUser ? (
-            <span className="whitespace-pre-wrap">{msg.content}</span>
+            <span className="whitespace-pre-wrap break-words">{msg.content}</span>
           ) : (
-            <div className="prose prose-sm max-w-none w-full text-gray-800 dark:text-gray-200 prose-p:leading-relaxed prose-p:my-1.5 prose-pre:text-gray-800 dark:prose-pre:text-gray-200 prose-pre:bg-gray-50 dark:prose-pre:bg-gray-900 prose-strong:text-indigo-800 dark:prose-strong:text-indigo-300 prose-headings:text-indigo-900 dark:prose-headings:text-indigo-300 prose-headings:font-semibold prose-a:text-indigo-600 dark:prose-a:text-indigo-400 prose-ul:my-1.5 prose-li:my-0.5">
+            <div className="prose prose-sm max-w-none w-full text-gray-800 dark:text-gray-200 prose-p:leading-relaxed prose-p:my-1.5 prose-pre:text-gray-800 dark:prose-pre:text-gray-200 prose-pre:bg-gray-50 dark:prose-pre:bg-gray-900 prose-strong:text-indigo-800 dark:prose-strong:text-indigo-300 prose-headings:text-indigo-900 dark:prose-headings:text-indigo-300 prose-headings:font-semibold prose-a:text-indigo-600 dark:prose-a:text-indigo-400 prose-ul:my-1.5 prose-li:my-0.5 break-words">
               <Markdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
                 {normalizeMarkdownTables(msg.content)}
               </Markdown>
@@ -628,7 +628,7 @@ function MessageBubble({
 
           {/* Action buttons — assistant messages */}
           {!isUser && (
-            <div className="absolute -top-2.5 -right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+            <div className="absolute -top-2.5 right-2 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
               <button
                 type="button"
                 onClick={() => onSpeak?.(msg.content, idx)}
@@ -872,6 +872,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
   // Conversation Sidebar / Drawer UI state
   const [showConversationsPanel, setShowConversationsPanel] = useState(false);
+  const [showMobileControlsSheet, setShowMobileControlsSheet] = useState(false);
   const [conversationSearch, setConversationSearch] = useState('');
   const [editingConvId, setEditingConvId] = useState<string | null>(null);
   const [editingConvTitle, setEditingConvTitle] = useState('');
@@ -940,6 +941,10 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       setActiveConversationId(newConv.id);
       setInput('');
       setEditingConvId(null);
+      if (typeof window !== 'undefined' && window.innerWidth < 640) {
+        setShowConversationsPanel(false);
+        setShowMobileControlsSheet(false);
+      }
     },
     [focusScopes, responseDepth],
   );
@@ -953,6 +958,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       setResponseDepth(conv.responseDepth);
     }
     setEditingConvId(null);
+    if (typeof window !== 'undefined' && window.innerWidth < 640) {
+      setShowConversationsPanel(false);
+    }
   }, []);
 
   const handleDeleteConversation = useCallback(
@@ -1689,128 +1697,431 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           'sm:static sm:z-auto sm:rounded-2xl sm:shadow-sm sm:border sm:border-gray-200 sm:dark:border-gray-800 sm:overflow-hidden sm:h-[calc(100vh-8.5rem)] sm:min-h-[600px]',
         )}
       >
-        {/* ─── Mobile compact header ─────────────────────────────── */}
-        <div className="sm:hidden flex items-center justify-between px-4 py-3 bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
+        {/* ─── Mobile Ordered Top Header ─────────────────────────── */}
+        <div className="sm:hidden flex items-center justify-between gap-2 px-3 py-2.5 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-b border-gray-200/80 dark:border-gray-800 flex-shrink-0 z-30">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('truespend:openSidebar'))}
-              title="Open menu"
-              className="p-1.5 -ml-1.5 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:text-white dark:hover:bg-gray-800 transition-colors"
+              title="Open navigation menu"
+              className="p-2 -ml-1 rounded-xl text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-800 transition-colors shrink-0"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <SpexAvatar className="h-9 w-9" animated />
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">
-                  Spex
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowMobileControlsSheet(false);
+                setShowConversationsPanel((prev) => !prev);
+              }}
+              className="flex items-center gap-2 min-w-0 flex-1 text-left rounded-xl py-0.5 pr-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
+              title="Tap to switch or manage conversations"
+            >
+              <SpexAvatar className="h-8 w-8 shrink-0" animated />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1">
+                  <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
+                    {activeConversation?.title || 'Spex Financial AI'}
+                  </p>
+                  <ChevronDown
+                    className={cn(
+                      'w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform',
+                      showConversationsPanel && 'rotate-180 text-indigo-600 dark:text-indigo-400',
+                    )}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate leading-tight">
+                  Spex •{' '}
+                  {focusScopes.includes('all')
+                    ? '360° All Data'
+                    : focusScopes
+                        .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
+                        .join(' + ')}{' '}
+                  •{' '}
+                  {RESPONSE_DEPTH_OPTIONS.find((r) => r.id === responseDepth)?.shortLabel || 'Deep'}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    fetchModelStatuses();
-                    setShowQuotaModal(true);
-                  }}
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium border shadow-2xs transition-colors',
-                    selectedModel === 'auto'
-                      ? isAutoFallenBack
-                        ? 'bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60'
-                        : 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700',
-                  )}
-                  title="View/Change Gemini model routing"
-                >
-                  <Cpu className="w-2.5 h-2.5" />
-                  {selectedModel === 'auto'
-                    ? isAutoFallenBack
-                      ? 'Auto (3.1 Lite)'
-                      : 'Smart Auto'
-                    : AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.shortName ||
-                      selectedModel}
-                </button>
               </div>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">
-                360° Financial &amp; Stocks AI
-              </p>
-            </div>
+            </button>
           </div>
-          <div className="flex items-center gap-1">
+
+          <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
               onClick={() => handleCreateNewConversation()}
               title="New conversation"
-              className="p-2 rounded-full text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-colors"
+              className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors"
             >
               <Plus className="w-4 h-4" />
             </button>
-            <button
-              type="button"
-              onClick={() => setShowConversationsPanel((prev) => !prev)}
-              title="Manage conversations"
-              className={cn(
-                'relative p-2 rounded-full transition-colors',
-                showConversationsPanel
-                  ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60'
-                  : 'text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800',
-              )}
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full bg-indigo-600 text-white text-[9px] font-bold flex items-center justify-center px-0.5">
-                {conversations.length}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={toggleVoiceMode}
-              title={
-                isVoiceMode
-                  ? 'Voice Mode Active (Auto-read responses)'
-                  : 'Enable Voice Mode (Auto-read responses)'
-              }
-              className={cn(
-                'p-2 rounded-full transition-colors',
-                isVoiceMode
-                  ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50'
-                  : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
-              )}
-            >
-              {isVoiceMode ? (
-                <Volume2 className="w-4 h-4 animate-pulse" />
-              ) : (
-                <VolumeX className="w-4 h-4" />
-              )}
-            </button>
+
             <button
               type="button"
               onClick={() => {
-                fetchModelStatuses();
-                setShowQuotaModal(true);
+                setShowMobileControlsSheet(false);
+                setShowConversationsPanel((prev) => !prev);
               }}
-              title="Model routing & quota manager"
-              className="p-2 rounded-full text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="Conversations history"
+              className={cn(
+                'relative p-2 rounded-xl transition-colors',
+                showConversationsPanel
+                  ? 'bg-indigo-600 text-white shadow-2xs'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
+              )}
             >
-              <Settings2 className="w-4 h-4" />
+              <MessageSquare className="w-4 h-4" />
+              <span
+                className={cn(
+                  'absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] rounded-full text-[9px] font-bold flex items-center justify-center px-0.5',
+                  showConversationsPanel
+                    ? 'bg-white text-indigo-700'
+                    : 'bg-indigo-600 text-white',
+                )}
+              >
+                {conversations.length}
+              </span>
             </button>
+
             <button
               type="button"
-              onClick={handleExportChat}
-              title="Export report"
-              className="p-2 rounded-full text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              onClick={() => {
+                setShowConversationsPanel(false);
+                setShowMobileControlsSheet((prev) => !prev);
+              }}
+              title="AI Context, Depth, Topics & Settings"
+              className={cn(
+                'relative p-2 rounded-xl transition-colors',
+                showMobileControlsSheet
+                  ? 'bg-indigo-600 text-white shadow-2xs'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
+              )}
             >
-              <Download className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={handleReset}
-              title="Clear current conversation"
-              className="p-2 rounded-full text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
+              <SlidersHorizontal className="w-4 h-4" />
+              {(!focusScopes.includes('all') || isVoiceMode) && !showMobileControlsSheet && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-gray-900" />
+              )}
             </button>
           </div>
         </div>
+
+        {/* ─── Mobile Slim Status & Quick-Access Bar ─────────────── */}
+        <div className="sm:hidden flex items-center justify-between gap-1.5 px-3 py-1.5 bg-gray-50/95 dark:bg-gray-900/95 border-b border-gray-200/70 dark:border-gray-800/80 flex-shrink-0 z-20">
+          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto no-scrollbar">
+            <button
+              type="button"
+              onClick={() => {
+                setShowConversationsPanel(false);
+                setShowMobileControlsSheet((prev) => !prev);
+              }}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold whitespace-nowrap border transition-colors',
+                focusScopes.includes('all')
+                  ? 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border-gray-200 dark:border-gray-700'
+                  : 'bg-emerald-600 text-white border-emerald-600',
+              )}
+            >
+              <SlidersHorizontal className="w-3 h-3 text-indigo-500 dark:text-indigo-400 shrink-0" />
+              <span>
+                {focusScopes.includes('all')
+                  ? '360° All Data'
+                  : focusScopes
+                      .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
+                      .join(' + ')}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const order: AiResponseDepth[] = ['deep_creative', 'balanced', 'concise'];
+                const nextIdx = (order.indexOf(responseDepth) + 1) % order.length;
+                handleChangeResponseDepth(order[nextIdx]);
+              }}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium bg-indigo-50/90 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800/60 whitespace-nowrap"
+              title="Tap to cycle response depth"
+            >
+              <Sparkles className="w-3 h-3 shrink-0" />
+              <span>
+                {RESPONSE_DEPTH_OPTIONS.find((r) => r.id === responseDepth)?.shortLabel || 'Deep'}
+              </span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowConversationsPanel(false);
+              setShowMobileControlsSheet((prev) => !prev);
+            }}
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 whitespace-nowrap shrink-0"
+          >
+            <span>{currentTopicData.label}</span>
+            <ChevronDown
+              className={cn(
+                'w-3 h-3 text-gray-400 transition-transform',
+                showMobileControlsSheet && 'rotate-180',
+              )}
+            />
+          </button>
+        </div>
+
+        {/* ─── Mobile Ordered Controls & Focus Sheet ─────────────── */}
+        {showMobileControlsSheet && (
+          <div className="sm:hidden fixed inset-0 z-50 flex flex-col">
+            <div
+              className="fixed inset-0 bg-black/45 backdrop-blur-xs animate-fadeIn"
+              onClick={() => setShowMobileControlsSheet(false)}
+            />
+            <div className="relative z-10 mt-auto max-h-[84vh] w-full rounded-t-3xl bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-2xl flex flex-col overflow-hidden animate-slideIn">
+              <div className="flex items-center justify-between px-4 py-3.5 border-b border-gray-100 dark:border-gray-800">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400">
+                    <SlidersHorizontal className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
+                      Spex AI Controls &amp; Context Focus
+                    </h3>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Customize data scope, response depth, topics &amp; tools
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMobileControlsSheet(false)}
+                  className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                {/* 1. Data Context Focus Grid */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                      1. Data Context Focus
+                    </span>
+                    <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                      Multi-select supported
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {DATA_FOCUS_SCOPES.map((scope) => {
+                      const Icon = scope.icon;
+                      const isSelected = focusScopes.includes(scope.id);
+                      return (
+                        <button
+                          key={scope.id}
+                          type="button"
+                          onClick={() => handleToggleFocusScope(scope.id)}
+                          className={cn(
+                            'flex items-center justify-between gap-2 rounded-xl p-2.5 text-left border transition-all',
+                            scope.id === 'all' && 'col-span-2',
+                            isSelected
+                              ? scope.id === 'all'
+                                ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 border-gray-900 dark:border-white shadow-xs'
+                                : 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : 'bg-gray-50 dark:bg-gray-800/80 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700',
+                          )}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Icon className="w-4 h-4 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold truncate">{scope.shortLabel}</p>
+                              {scope.id === 'all' && (
+                                <p
+                                  className={cn(
+                                    'text-[10px] truncate',
+                                    isSelected
+                                      ? 'text-gray-300 dark:text-gray-600'
+                                      : 'text-gray-400 dark:text-gray-500',
+                                  )}
+                                >
+                                  Full cross-account financial &amp; Binance visibility
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <span
+                            className={cn(
+                              'text-[10px] font-mono px-1.5 py-0.5 rounded-md shrink-0',
+                              isSelected
+                                ? 'bg-white/20 text-current'
+                                : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+                            )}
+                          >
+                            {scopeCounts[scope.id]}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. Response Depth Selector */}
+                <div>
+                  <span className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                    2. Response Depth &amp; Creativity
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {RESPONSE_DEPTH_OPTIONS.map((opt) => {
+                      const isSelected = responseDepth === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => handleChangeResponseDepth(opt.id)}
+                          className={cn(
+                            'flex flex-col items-center justify-center rounded-xl p-2.5 text-center border transition-all',
+                            isSelected
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                              : 'bg-gray-50 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700',
+                          )}
+                        >
+                          <span className="text-xs font-bold">{opt.shortLabel}</span>
+                          <span
+                            className={cn(
+                              'text-[10px] mt-0.5 line-clamp-1',
+                              isSelected ? 'text-indigo-100' : 'text-gray-400 dark:text-gray-500',
+                            )}
+                          >
+                            {opt.id === 'deep_creative'
+                              ? 'Full tables & math'
+                              : opt.id === 'balanced'
+                                ? 'Clear & structured'
+                                : 'Quick summary'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. Prompt Topic Starters */}
+                <div>
+                  <span className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                    3. Suggestion Prompt Topics
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PROMPT_TOPICS.map((topic) => {
+                      const Icon = topic.icon;
+                      const isActive = activeTopic === topic.id;
+                      return (
+                        <button
+                          key={topic.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveTopic(topic.id);
+                            setShowMobileControlsSheet(false);
+                          }}
+                          className={cn(
+                            'flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold border transition-all',
+                            isActive
+                              ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700'
+                              : 'bg-gray-50 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700',
+                          )}
+                        >
+                          <Icon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                          <span className="truncate">{topic.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 4. Model Routing & Thread Utilities */}
+                <div>
+                  <span className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                    4. AI Model &amp; Thread Tools
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileControlsSheet(false);
+                        fetchModelStatuses();
+                        setShowQuotaModal(true);
+                      }}
+                      className="flex items-center gap-2 rounded-xl p-2.5 bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 text-left"
+                    >
+                      <Cpu className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">
+                          {selectedModel === 'auto'
+                            ? isAutoFallenBack
+                              ? 'Auto (3.1 Lite)'
+                              : 'Smart Auto'
+                            : AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.shortName ||
+                              selectedModel}
+                        </p>
+                        <p className="text-[10px] text-gray-400 truncate">Model &amp; Quotas</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={toggleVoiceMode}
+                      className={cn(
+                        'flex items-center gap-2 rounded-xl p-2.5 border text-left transition-colors',
+                        isVoiceMode
+                          ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                          : 'bg-gray-50 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200',
+                      )}
+                    >
+                      {isVoiceMode ? (
+                        <Volume2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      ) : (
+                        <VolumeX className="w-4 h-4 text-gray-400 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold truncate">
+                          {isVoiceMode ? 'Voice Auto-Read On' : 'Voice Auto-Read Off'}
+                        </p>
+                        <p className="text-[10px] text-gray-400 truncate">Spex TTS Speech</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileControlsSheet(false);
+                        handleExportChat();
+                      }}
+                      className="flex items-center justify-center gap-1.5 rounded-xl p-2.5 bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-700 dark:text-gray-200"
+                    >
+                      <Download className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Export Report</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileControlsSheet(false);
+                        handleReset();
+                      }}
+                      className="flex items-center justify-center gap-1.5 rounded-xl p-2.5 bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/70 dark:border-rose-900/50 text-xs font-semibold text-rose-600 dark:text-rose-400"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Clear Thread</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-4 py-3 bg-gray-50 dark:bg-gray-800/80 border-t border-gray-100 dark:border-gray-800">
+                <button
+                  type="button"
+                  onClick={() => setShowMobileControlsSheet(false)}
+                  className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors"
+                >
+                  Apply &amp; Return to Chat
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ─── Desktop header ─── */}
         <div className="hidden sm:flex items-center justify-between px-5 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 text-gray-900 dark:text-gray-100">
@@ -2062,8 +2373,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           </div>
         </div>
 
-        {/* ─── NEW: Interactive Data Context Focus Selector Bar ───────────── */}
-        <div className="flex flex-col gap-1.5 px-3 sm:px-5 py-2 bg-gray-50/95 dark:bg-gray-900/95 border-b border-gray-200/80 dark:border-gray-800 flex-shrink-0">
+        {/* ─── Desktop Interactive Data Context Focus Selector Bar ───────────── */}
+        <div className="hidden sm:flex flex-col gap-1.5 px-5 py-2 bg-gray-50/95 dark:bg-gray-900/95 border-b border-gray-200/80 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
             <div className="flex items-center gap-1.5">
               <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mr-1 whitespace-nowrap">
@@ -2104,28 +2415,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 );
               })}
             </div>
-
-            {/* Mobile Response Depth Pill */}
-            <div className="flex sm:hidden items-center gap-1 shrink-0">
-              {RESPONSE_DEPTH_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => handleChangeResponseDepth(opt.id)}
-                  className={cn(
-                    'px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap',
-                    responseDepth === opt.id
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700',
-                  )}
-                >
-                  {opt.shortLabel}
-                </button>
-              ))}
-            </div>
           </div>
 
-          {/* Topic Mode Selector Row */}
+          {/* Topic Mode Selector Row (Desktop) */}
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1 whitespace-nowrap">
               Prompts:
@@ -2155,9 +2447,17 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
         {/* ─── Main Body: Optional Conversations Sidebar + Messages Area ─── */}
         <div className="relative flex-1 overflow-hidden flex">
+          {/* Mobile Overlay Backdrop for Conversations Drawer */}
+          {showConversationsPanel && (
+            <div
+              className="sm:hidden fixed inset-0 bg-black/40 backdrop-blur-xs z-30 animate-fadeIn"
+              onClick={() => setShowConversationsPanel(false)}
+            />
+          )}
+
           {/* Collapsible Conversations Drawer / Sidebar */}
           {showConversationsPanel && (
-            <div className="w-72 sm:w-80 flex-shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col z-20 animate-fadeIn">
+            <div className="fixed sm:static inset-y-0 left-0 w-[85vw] max-w-[320px] sm:w-80 flex-shrink-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col z-40 sm:z-20 shadow-2xl sm:shadow-none animate-fadeIn">
               <div className="p-3 border-b border-gray-100 dark:border-gray-800 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
@@ -2170,14 +2470,14 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                     <button
                       type="button"
                       onClick={() => handleCreateNewConversation()}
-                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-1 text-[11px] font-semibold transition-colors"
+                      className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 text-[11px] font-semibold transition-colors"
                     >
                       <Plus className="w-3 h-3" /> New
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowConversationsPanel(false)}
-                      className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
                       title="Close sidebar"
                     >
                       <X className="w-4 h-4" />
@@ -2273,7 +2573,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                         )}
 
                         {!isEditing && (
-                          <div className="flex items-center gap-0.5 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
+                          <div className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
                             <button
                               type="button"
                               onClick={(e) => handleTogglePinConversation(conv.id, e)}
@@ -2341,12 +2641,12 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               aria-hidden="true"
               className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-0 overflow-hidden"
             >
-              <SpexAvatar className="w-60 h-60 sm:w-80 sm:h-80 md:w-96 md:h-96 opacity-[0.11] dark:opacity-[0.14] transition-opacity" />
+              <SpexAvatar className="w-52 h-52 sm:w-80 sm:h-80 md:w-96 md:h-96 opacity-[0.09] dark:opacity-[0.12] transition-opacity" />
             </div>
 
             <div
               ref={messagesContainerRef}
-              className="relative z-10 flex-1 overflow-y-auto px-3 py-4 sm:px-5 space-y-4 scroll-smooth"
+              className="relative z-10 flex-1 overflow-y-auto px-3 py-3.5 sm:px-5 sm:py-4 space-y-4 scroll-smooth"
               style={{ overscrollBehavior: 'contain' }}
             >
               {messages
@@ -2366,16 +2666,16 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               {isLoading && (
                 <div className="flex items-start gap-2.5 w-full animate-slideIn">
                   <SpexAvatar className="h-7 w-7 mt-0.5 flex-shrink-0" animated />
-                  <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-[2px] border border-gray-200/80 dark:border-gray-700/70 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm flex items-center gap-3">
+                  <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-[2px] border border-gray-200/80 dark:border-gray-700/70 rounded-2xl rounded-bl-none px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-sm flex items-center gap-2.5">
                     <TypingDots />
                     <span className="text-xs text-gray-500 dark:text-gray-400">
                       Analyzing{' '}
                       {focusScopes.includes('all')
-                        ? 'all 360° financial & portfolio data'
+                        ? '360° financial data'
                         : focusScopes
                             .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
-                            .join(' + ')}{' '}
-                      ({responseDepth === 'deep_creative' ? 'Deep & Creative Mode' : 'Standard Mode'})…
+                            .join(' + ')}
+                      …
                     </span>
                   </div>
                 </div>
@@ -2390,38 +2690,37 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           <button
             type="button"
             onClick={() => scrollToBottom()}
-            className="absolute bottom-28 right-4 sm:bottom-28 z-10 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white p-2 shadow-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-all animate-fadeIn"
+            className="absolute bottom-24 right-4 sm:bottom-28 z-20 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white p-2 shadow-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-all animate-fadeIn"
             title="Scroll to latest"
           >
             <ChevronDown className="w-4 h-4" />
           </button>
         )}
 
-        {/* ─── Suggestion chips ──────────────────────────────────── */}
-        {activeSuggestions.length > 0 && !isLoading && (
-          <div className="flex gap-2 px-3 sm:px-5 pb-2 overflow-x-auto no-scrollbar flex-shrink-0">
-            {activeSuggestions.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                disabled={isLoading}
-                onClick={() => void handleSend(prompt)}
-                className="whitespace-nowrap rounded-full border border-indigo-200/80 dark:border-indigo-800/60 bg-white dark:bg-gray-800/90 px-3 py-1.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors disabled:opacity-50 flex-shrink-0 shadow-xs"
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* ─── Bottom Dock: Suggestion Chips + Input Bar ─────────── */}
+        <div className="flex-shrink-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t border-gray-200/80 dark:border-gray-800 px-3 sm:px-5 pt-2 pb-2.5 sm:pb-3 z-20">
+          {activeSuggestions.length > 0 && !isLoading && (
+            <div className="flex gap-1.5 sm:gap-2 pb-2 overflow-x-auto no-scrollbar">
+              {activeSuggestions.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  disabled={isLoading}
+                  onClick={() => void handleSend(prompt)}
+                  className="whitespace-nowrap rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-gray-800/90 px-2.5 py-1.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/70 dark:hover:bg-indigo-950/60 transition-colors disabled:opacity-50 flex-shrink-0"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          )}
 
-        {/* ─── Input bar ─────────────────────────────────────────── */}
-        <div className="flex-shrink-0 px-3 sm:px-5 pb-3 pt-2 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-t border-gray-100 dark:border-gray-800">
           {selectedImage && (
             <div className="mb-2 inline-flex items-center gap-2.5 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/50 p-1.5 pr-3 text-xs animate-fadeIn shadow-xs">
               <img
                 src={selectedImage.previewUrl}
                 alt="Receipt preview"
-                className="h-11 w-11 rounded-lg object-cover border border-indigo-200 dark:border-indigo-700"
+                className="h-10 w-10 rounded-lg object-cover border border-indigo-200 dark:border-indigo-700"
               />
               <div className="flex flex-col">
                 <span className="text-[11px] font-semibold text-indigo-900 dark:text-indigo-200 flex items-center gap-1">
@@ -2429,13 +2728,13 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                   Receipt Attached
                 </span>
                 <span className="text-[10px] text-indigo-600 dark:text-indigo-400">
-                  Gemini Vision will extract store, amount, and items
+                  Gemini Vision will extract store &amp; amount
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedImage(null)}
-                className="ml-2 rounded-full p-1 text-gray-400 hover:bg-white hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200 transition-colors"
+                className="ml-1 rounded-full p-1 text-gray-400 hover:bg-white hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200 transition-colors"
                 title="Remove image"
               >
                 <X className="w-3.5 h-3.5" />
@@ -2443,7 +2742,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             </div>
           )}
 
-          <div className="relative flex items-end gap-2 bg-gray-50 dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-indigo-400 dark:focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-400/20 transition-all shadow-xs">
+          <div className="relative flex items-end gap-1.5 sm:gap-2 bg-gray-50 dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-indigo-400 dark:focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-400/20 transition-all shadow-2xs">
             <textarea
               ref={inputRef}
               rows={1}
@@ -2452,19 +2751,19 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               onKeyDown={handleKeyDown}
               placeholder={
                 selectedImage
-                  ? 'Add an optional note (e.g. Lunch with team)…'
+                  ? 'Add a note about this receipt…'
                   : `Ask Spex (${
                       focusScopes.includes('all')
-                        ? 'All 360° Data'
+                        ? '360° Data'
                         : focusScopes
                             .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
                             .join(' + ')
-                    }) about stocks, Binance fees, transactions, budgets, or wallets…`
+                    })…`
               }
               maxLength={charLimit}
-              className="flex-1 resize-none bg-transparent pl-4 pr-2 py-3 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none leading-relaxed"
+              className="flex-1 resize-none bg-transparent pl-3.5 pr-1.5 py-2.5 sm:pl-4 sm:py-3 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none leading-relaxed"
               disabled={isLoading}
-              style={{ minHeight: '44px', maxHeight: '150px' }}
+              style={{ minHeight: '42px', maxHeight: '130px' }}
             />
             {charsLeft < 400 && (
               <span
@@ -2476,7 +2775,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 {charsLeft}
               </span>
             )}
-            <div className="flex items-center gap-1 pr-2 pb-2">
+            <div className="flex items-center gap-0.5 sm:gap-1 pr-1.5 pb-1.5 sm:pr-2 sm:pb-2">
               <input
                 type="file"
                 accept="image/*"
@@ -2519,7 +2818,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                     : 'Enable Voice Mode: Spex will read replies aloud'
                 }
                 className={cn(
-                  'p-2 rounded-full transition-all',
+                  'hidden sm:inline-flex p-2 rounded-full transition-all',
                   isVoiceMode
                     ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/40'
                     : 'text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700',
@@ -2546,7 +2845,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               </button>
             </div>
           </div>
-          <p className="text-center text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 select-none">
+          <p className="hidden sm:block text-center text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 select-none">
             Powered by Google Gemini • Focus:{' '}
             {focusScopes.includes('all')
               ? 'All 360° Data'
