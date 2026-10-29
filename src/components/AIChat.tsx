@@ -9,10 +9,8 @@ import {
   Check,
   ChevronDown,
   Sparkles,
-  Bot,
   Menu,
   Camera,
-  Image as ImageIcon,
   X,
   Volume2,
   VolumeX,
@@ -21,14 +19,18 @@ import {
   TrendingUp,
   ShieldCheck,
   Zap,
-  Share2,
   Cpu,
   Settings2,
   RefreshCw,
   ExternalLink,
   Info,
-  AlertTriangle,
   Award,
+  Layers,
+  Wallet as WalletIcon,
+  ArrowRightLeft,
+  Target,
+  Users,
+  SlidersHorizontal,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -36,7 +38,11 @@ import { SpexAvatar } from './common/SpexAvatar';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { useDashboardData } from '../hooks/useDashboardData';
-import { buildAiContextSnapshot } from '../lib/aiContext';
+import {
+  buildAiContextSnapshot,
+  type AiDataFocusScope,
+  type AiResponseDepth,
+} from '../lib/aiContext';
 import { playAudioBlob, playBrowserSpeech } from '../lib/speechEngine';
 
 /**
@@ -53,14 +59,14 @@ function normalizeMarkdownTables(raw: string): string {
     const trimmed = line.trim();
     const nextTrimmed = i + 1 < lines.length ? lines[i + 1].trim() : '';
 
-    const looksLikeTableRow = trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.split('|').length >= 3;
+    const looksLikeTableRow =
+      trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.split('|').length >= 3;
     const nextLooksLikeSeparator =
       nextTrimmed.startsWith('|') &&
       nextTrimmed.endsWith('|') &&
       /^\|[\s:|-]+\|$/.test(nextTrimmed) &&
       nextTrimmed.includes('-');
 
-    // If this is the header row of a table and the previous line wasn't blank or another table row, insert a blank line
     if (looksLikeTableRow && nextLooksLikeSeparator && out.length > 0) {
       const prevTrimmed = out[out.length - 1].trim();
       if (prevTrimmed !== '' && !prevTrimmed.startsWith('|')) {
@@ -83,7 +89,10 @@ const MARKDOWN_COMPONENTS = {
     </div>
   ),
   thead: ({ children, ...props }: any) => (
-    <thead className="bg-gray-100/90 dark:bg-gray-800/90 text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700" {...props}>
+    <thead
+      className="bg-gray-100/90 dark:bg-gray-800/90 text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700"
+      {...props}
+    >
       {children}
     </thead>
   ),
@@ -98,7 +107,10 @@ const MARKDOWN_COMPONENTS = {
     </tr>
   ),
   th: ({ children, ...props }: any) => (
-    <th className="px-3.5 py-2.5 font-semibold text-xs uppercase tracking-wider text-gray-600 dark:text-gray-300 whitespace-nowrap" {...props}>
+    <th
+      className="px-3.5 py-2.5 font-semibold text-xs uppercase tracking-wider text-gray-600 dark:text-gray-300 whitespace-nowrap"
+      {...props}
+    >
       {children}
     </th>
   ),
@@ -111,15 +123,171 @@ const MARKDOWN_COMPONENTS = {
 
 const CHAT_SESSION_STORAGE_KEY = 'truespend_chat_session';
 
+export interface FocusScopeDefinition {
+  id: AiDataFocusScope;
+  label: string;
+  shortLabel: string;
+  description: string;
+  icon: React.FC<{ className?: string }>;
+  prompts: string[];
+}
+
+export const DATA_FOCUS_SCOPES: FocusScopeDefinition[] = [
+  {
+    id: 'all',
+    label: 'All Data (360° Full Context)',
+    shortLabel: 'All at Once',
+    description:
+      'Complete visibility across Investments & Binance, All Transactions, Wallets, Budgets, Debts, Goals & Forecast simultaneously.',
+    icon: Layers,
+    prompts: [
+      '🌐 Run a deep 360° executive audit across my Wallets, Transactions, Budgets & Live Binance Portfolio',
+      '📈 How do my Binance & Stock investments interact with my Safe-to-Spend liquidity and 879 MAD reserve?',
+      '💡 Give me 4 creative, high-impact strategies to optimize both my cash burn and investment portfolio this cycle',
+    ],
+  },
+  {
+    id: 'investments',
+    label: 'Investments, Binance & Stocks',
+    shortLabel: 'Stocks & Binance',
+    description:
+      'Deep focus on Live Binance Spot/Funding/Earn, $879 MAD Capital Reserve P&L reconciliation, trade fee drag, breakeven prices & dividends.',
+    icon: TrendingUp,
+    prompts: [
+      '📈 Reconcile my 879 MAD Investment Reserve against my live Binance position ($USD & MAD) and explain every dirham of gain/loss',
+      '💸 Forensic breakdown of all my positions: entry fees, exit fees, total loss on fees, exact breakeven prices & open-lot P&L',
+      '🏆 Analyze my stocks & crypto holdings, dividend yield / 5-year DRIP projections, and propose a smart recovery & allocation plan',
+    ],
+  },
+  {
+    id: 'transactions',
+    label: 'All Transactions & Ledger',
+    shortLabel: 'Transactions',
+    description:
+      'Deep focus on your complete transaction history, category burn rates, recurring merchants, spending leaks & cash-flow trends.',
+    icon: ArrowRightLeft,
+    prompts: [
+      '💳 Deep-dive into all my transactions: identify my top spending categories, merchant patterns, and hidden leaks',
+      '📊 Compare my current financial cycle spending pace against previous cycles and highlight anomalies',
+      '🔍 Which expenses gave me the lowest value this cycle and how much Safe-to-Spend can I reclaim?',
+    ],
+  },
+  {
+    id: 'wallets',
+    label: 'Wallets & Safe-to-Spend',
+    shortLabel: 'Wallets',
+    description:
+      'Deep focus on Bank, Cash, Savings & Investment wallets, Safe-to-Spend waterfall math, emergency buffer & capital flows.',
+    icon: WalletIcon,
+    prompts: [
+      '🏦 Audit all my Wallets (Bank, Cash, Savings, Investment) and walk through my exact Safe-to-Spend waterfall math',
+      '🔄 Analyze my capital transfers between Bank and Investment wallets and recommend optimal liquidity balancing',
+      '🛡️ Is my Emergency Buffer and Daily Allowance properly distributed across my active accounts?',
+    ],
+  },
+  {
+    id: 'budgets',
+    label: 'Budgets & Category Caps',
+    shortLabel: 'Budgets',
+    description:
+      'Deep focus on category budget limits, ideal vs. actual burn pace, 50/30/20 macro split & overspend prevention.',
+    icon: Target,
+    prompts: [
+      '🎯 Audit all my category budgets: which categories are on pace, warning, or at risk of exhaustion before payday?',
+      '⚖️ Analyze my Needs / Wants / Savings macro split against the 50/30/20 benchmark and suggest exact budget adjustments',
+      '💡 Propose an optimized budget plan for the rest of this financial cycle based on my real spending habits',
+    ],
+  },
+  {
+    id: 'debts_goals',
+    label: 'Debts, Goals & Subscriptions',
+    shortLabel: 'Debts & Goals',
+    description:
+      'Deep focus on Payable/Receivable debts, savings goals progress, and recurring monthly subscription burn.',
+    icon: Users,
+    prompts: [
+      '🤝 Review all my Payable & Receivable debts, active Subscriptions, and Savings Goals with a prioritized payoff/funding plan',
+      '🔁 Audit my recurring subscriptions and fixed obligations: how much monthly burn can I optimize?',
+      '🎯 How fast can I hit my savings goals while keeping my daily allowance comfortable?',
+    ],
+  },
+  {
+    id: 'forecast',
+    label: 'Forecast & Cycle Report Card',
+    shortLabel: 'Forecast & Grade',
+    description:
+      'Deep focus on 90-day & 12-month net worth projections, survival runway, What-If simulations & Cycle Report Card grade.',
+    icon: Award,
+    prompts: [
+      '🎓 Give me my complete Financial Cycle Report Card, letter grade, top wins, top leaks & payday capital allocation plan',
+      '🔮 Project my Net Worth, Liquidity & Investment Portfolio over the next 90 days and 12 months',
+      '⚡ Simulate: What if I invest 500 MAD more each payday while cutting 15% of variable dining/shopping spend?',
+    ],
+  },
+];
+
+export const RESPONSE_DEPTH_OPTIONS: {
+  id: AiResponseDepth;
+  label: string;
+  shortLabel: string;
+  badge: string;
+  description: string;
+}[] = [
+  {
+    id: 'deep_creative',
+    label: 'Deep & Creative (Max Output)',
+    shortLabel: 'Deep & Creative',
+    badge: '8K Tokens • Rich Tables',
+    description:
+      'Expansive, multi-section executive analysis with full forensic math, Markdown tables, and creative wealth strategies.',
+  },
+  {
+    id: 'balanced',
+    label: 'Balanced CFO',
+    shortLabel: 'Balanced',
+    badge: 'Standard Depth',
+    description:
+      'Structured breakdown with clear tables, key metrics, and actionable next steps.',
+  },
+  {
+    id: 'concise',
+    label: 'Concise & Fast',
+    shortLabel: 'Concise',
+    badge: 'Quick Summary',
+    description:
+      'Compact bullet points focused strictly on immediate numbers and quick answers.',
+  },
+];
+
 const PROMPT_TOPICS = [
   {
+    id: 'stocks',
+    label: 'Stocks & Binance',
+    icon: TrendingUp,
+    prompts: [
+      '📈 Reconcile my 879 MAD Investment Reserve vs live Binance balance & explain my net gain/loss',
+      '💸 Show fees, loss on fees, breakeven price & open-lot P&L for every position and trade',
+      '🏆 Analyze my stocks, dividends & 5-year DRIP compounding + suggest creative portfolio moves',
+    ],
+  },
+  {
+    id: 'audit',
+    label: '360° Full Audit',
+    icon: ShieldCheck,
+    prompts: [
+      '🌐 Run a complete 360° audit across Wallets, Transactions, Budgets & Live Investments',
+      '📈 Calculate my current Safe-to-Spend waterfall, runway, and net worth',
+      '💡 Where are my biggest spending leaks and wealth opportunities this cycle?',
+    ],
+  },
+  {
     id: 'daily',
-    label: 'Daily Burn',
+    label: 'Daily Burn & Wallets',
     icon: Zap,
     prompts: [
-      '💰 What can I safely spend today?',
-      '📊 How is my daily allowance tracking?',
-      '📅 Days left until next payday?',
+      '💰 What can I safely spend today and how are my wallets balanced?',
+      '💳 Deep-dive into all my recent transactions and category burn rates',
+      '📅 How many days left until payday and how is my pace tracking?',
     ],
   },
   {
@@ -127,29 +295,19 @@ const PROMPT_TOPICS = [
     label: 'Report Card',
     icon: Award,
     prompts: [
-      '🎓 Give me my financial cycle report card & letter grade',
+      '🎓 Give me my financial cycle report card, letter grade & archetype',
       '🏆 What were my biggest wins and spending leaks this cycle?',
-      '💰 Recommend my next payday capital allocations',
-    ],
-  },
-  {
-    id: 'audit',
-    label: 'Health Audit',
-    icon: ShieldCheck,
-    prompts: [
-      '📊 Run a complete financial health audit',
-      '📈 Calculate my current runway and buffer',
-      '💡 Where can I cut spending this cycle?',
+      '💰 Recommend my next payday capital allocations across Savings & Stocks',
     ],
   },
   {
     id: 'whatif',
-    label: 'What-If Simulation',
+    label: 'What-If Simulator',
     icon: Sparkles,
     prompts: [
-      '🔮 What if I make an unplanned 800 MAD purchase?',
-      '📱 Can I afford an unexpected 1,500 MAD expense?',
-      '🎯 What if I boost my savings goal by 500 MAD?',
+      '🔮 What if I make an unplanned 800 MAD purchase today?',
+      '📈 What if I allocate 600 MAD from Safe-to-Spend into dividend stocks?',
+      '🎯 What if I boost my savings goal by 500 MAD and trim dining by 20%?',
     ],
   },
   {
@@ -165,9 +323,9 @@ const PROMPT_TOPICS = [
 ];
 
 const FALLBACK_SUGGESTIONS = [
-  'How am I doing this financial cycle?',
-  'What are my biggest expenses?',
-  'Show me my daily allowance breakdown',
+  '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
+  '🌐 Run a complete 360° audit across all my data',
+  '💳 Analyze all my transactions and spending categories',
 ];
 
 export interface ModelOption {
@@ -186,7 +344,8 @@ export const AVAILABLE_MODELS: ModelOption[] = [
     shortName: 'Smart Auto',
     badge: 'Recommended',
     quotaSummary: 'Dynamic • Auto failover',
-    description: 'Prioritizes high-speed Gemini 3 Flash and auto-cascades to Gemini 3.8 Flash & Flash Lite with local engine failover.',
+    description:
+      'Prioritizes high-speed Gemini 3 Flash and auto-cascades to Gemini 3.8 Flash & Flash Lite with local engine failover.',
   },
   {
     id: 'gemini-3-flash-preview',
@@ -194,7 +353,8 @@ export const AVAILABLE_MODELS: ModelOption[] = [
     shortName: '3 Flash',
     badge: 'High Availability',
     quotaSummary: '500 req/day (Free Tier)',
-    description: 'Ultra-responsive, high-capacity model with exceptional resilience during peak traffic and demand spikes.',
+    description:
+      'Ultra-responsive, high-capacity model with exceptional resilience during peak traffic and demand spikes.',
   },
   {
     id: 'gemini-3.8-flash',
@@ -202,7 +362,8 @@ export const AVAILABLE_MODELS: ModelOption[] = [
     shortName: '3.8 Flash',
     badge: 'Deep Intelligence',
     quotaSummary: '20 req/day (Free Tier)',
-    description: 'Deep financial reasoning, scenario forecasting, safe-to-invest runway simulations, and high accuracy receipt parsing.',
+    description:
+      'Deep financial reasoning, stock forensics, scenario forecasting, and high accuracy receipt parsing.',
   },
   {
     id: 'gemini-3.1-flash-lite-preview',
@@ -210,7 +371,8 @@ export const AVAILABLE_MODELS: ModelOption[] = [
     shortName: '3.1 Flash Lite',
     badge: '500 req/day',
     quotaSummary: '500 req/day (Free Tier)',
-    description: 'Massive daily free quota, ultra-low latency, optimal for high-frequency day-to-day transaction logging.',
+    description:
+      'Massive daily free quota, ultra-low latency, optimal for high-frequency day-to-day transaction logging.',
   },
   {
     id: 'gemini-flash-latest',
@@ -218,7 +380,8 @@ export const AVAILABLE_MODELS: ModelOption[] = [
     shortName: 'Flash Latest',
     badge: 'Standard Stable',
     quotaSummary: '20 req/day (Free Tier)',
-    description: 'Production stable release fallback for high reliability and general finance management.',
+    description:
+      'Production stable release fallback for high reliability and general finance management.',
   },
 ];
 
@@ -270,6 +433,8 @@ interface Message {
   responseTimeMs?: number;
   quotaFallback?: boolean;
   fallbackReason?: string;
+  focusScopesUsed?: AiDataFocusScope[];
+  responseDepthUsed?: AiResponseDepth;
   actions?: AiAction[];
   actionStatus?: 'approved' | 'rejected';
   suggestions?: string[];
@@ -315,7 +480,6 @@ function MessageBubble({
   const [relTime, setRelTime] = useState(() => formatRelativeTime(msg.timestamp));
   const isUser = msg.role === 'user';
 
-  // Update relative time every 30 seconds
   useEffect(() => {
     const id = setInterval(() => setRelTime(formatRelativeTime(msg.timestamp)), 30_000);
     return () => clearInterval(id);
@@ -357,6 +521,16 @@ function MessageBubble({
               {msg.modelUsed.replace('gemini-', '')}
             </span>
           ) : null}
+          {msg.focusScopesUsed && msg.focusScopesUsed.length > 0 && (
+            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50">
+              🎯 Focus:{' '}
+              {msg.focusScopesUsed.includes('all')
+                ? '360° All Data'
+                : msg.focusScopesUsed
+                    .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
+                    .join(' + ')}
+            </span>
+          )}
           {msg.responseTimeMs ? (
             <span className="text-[9px] text-gray-400 dark:text-gray-500 font-mono">
               {(msg.responseTimeMs / 1000).toFixed(1)}s
@@ -412,7 +586,6 @@ function MessageBubble({
           {/* Action buttons — assistant messages */}
           {!isUser && (
             <div className="absolute -top-2.5 -right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-              {/* TTS Listen Button */}
               <button
                 type="button"
                 onClick={() => onSpeak?.(msg.content, idx)}
@@ -433,14 +606,17 @@ function MessageBubble({
                 )}
               </button>
 
-              {/* Copy button */}
               <button
                 type="button"
                 onClick={handleCopy}
                 title="Copy message"
                 className="bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-full p-1 shadow-xs hover:bg-gray-50 dark:hover:bg-gray-600 hover:text-indigo-600 transition-colors"
               >
-                {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? (
+                  <Check className="w-3.5 h-3.5 text-green-500" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
               </button>
             </div>
           )}
@@ -453,7 +629,9 @@ function MessageBubble({
           <div className="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b border-indigo-200/60 dark:border-indigo-800/60">
             <span className="text-[11px] font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              {msg.actions.length === 1 ? 'Proposed Financial Action' : `${msg.actions.length} Proposed Actions`}
+              {msg.actions.length === 1
+                ? 'Proposed Financial Action'
+                : `${msg.actions.length} Proposed Actions`}
             </span>
             {msg.actions.length > 1 && !msg.actionStatus && (
               <button
@@ -503,17 +681,26 @@ function MessageBubble({
             <p
               className={cn(
                 'mt-2 text-[11px] font-semibold flex items-center gap-1',
-                msg.actionStatus === 'approved' ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400',
+                msg.actionStatus === 'approved'
+                  ? 'text-green-600 dark:text-green-400'
+                  : 'text-red-500 dark:text-red-400',
               )}
             >
-              {msg.actionStatus === 'approved' ? '✅ Approved and applied to your account.' : '✕ Rejected — no changes made.'}
+              {msg.actionStatus === 'approved'
+                ? '✅ Approved and applied to your account.'
+                : '✕ Rejected — no changes made.'}
             </p>
           )}
         </div>
       )}
 
       {/* Timestamp */}
-      <span className={cn('text-[10px] text-gray-300 dark:text-gray-600 select-none', isUser ? 'mr-1' : 'ml-8')}>
+      <span
+        className={cn(
+          'text-[10px] text-gray-300 dark:text-gray-600 select-none',
+          isUser ? 'mr-1' : 'ml-8',
+        )}
+      >
         {relTime}
       </span>
     </div>
@@ -535,9 +722,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       {
         role: 'assistant',
         content:
-          "Hey there! 👋 I'm **Spex**, your TrueSpend financial co-pilot powered by **Google Gemini**.\n\nI have complete visibility into your balances, cycles, category burn rates, and savings goals. Ask me anything, dictate your expenses, simulate purchases, or tap a topic below to get started!",
+          "Hey there! 👋 I'm **Spex**, your TrueSpend 360° financial & investment strategist powered by **Google Gemini**.\n\nI have deep, real-time visibility into your **Live Binance Multi-Wallet (Spot, Funding Stocks & Earn)**, **$879 MAD Investment Capital Reconciliation**, **trade fee & breakeven forensics**, **all transactions**, **wallets**, **budgets**, **debts**, and **goals**.\n\n🎯 **New:** Use the **Data Focus Selector** above to focus me on specific areas (*Stocks & Binance*, *All Transactions*, *Wallets*, *Budgets*, etc. — or *All at Once*), and use **Deep & Creative Mode** for expansive, multi-table analyses!",
         timestamp: Date.now(),
-        suggestions: PROMPT_TOPICS[0].prompts,
+        suggestions: DATA_FOCUS_SCOPES[0].prompts,
       },
     ];
   });
@@ -547,14 +734,64 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const [chatSessionId] = useState(getChatSessionId);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [activeTopic, setActiveTopic] = useState<'daily' | 'audit' | 'whatif' | 'receipt'>('daily');
+  const [activeTopic, setActiveTopic] = useState<string>('stocks');
   const [playingAudioIndex, setPlayingAudioIndex] = useState<number | null>(null);
   const [audioLoadingIndex, setAudioLoadingIndex] = useState<number | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const stopAudioPlayerRef = useRef<(() => void) | null>(null);
+
+  // Data Context Focus Selection (supports 'all' or multi-selecting specific scopes)
+  const [focusScopes, setFocusScopes] = useState<AiDataFocusScope[]>(() => {
+    try {
+      const saved = localStorage.getItem('truespend_ai_focus_scopes');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return ['all'];
+  });
+
+  // Response Size & Creativity Depth Selection
+  const [responseDepth, setResponseDepth] = useState<AiResponseDepth>(() => {
+    const saved = localStorage.getItem('truespend_ai_response_depth') as AiResponseDepth | null;
+    if (saved === 'deep_creative' || saved === 'balanced' || saved === 'concise') {
+      return saved;
+    }
+    return 'deep_creative';
+  });
+
   const [isVoiceMode, setIsVoiceMode] = useState<boolean>(() => {
     return localStorage.getItem('truespend_voice_mode') === 'true';
   });
+
+  const handleToggleFocusScope = (scopeId: AiDataFocusScope) => {
+    setFocusScopes((prev) => {
+      let next: AiDataFocusScope[];
+      if (scopeId === 'all') {
+        next = ['all'];
+      } else {
+        const withoutAll = prev.filter((s) => s !== 'all');
+        if (withoutAll.includes(scopeId)) {
+          const filtered = withoutAll.filter((s) => s !== scopeId);
+          next = filtered.length === 0 ? ['all'] : filtered;
+        } else {
+          next = [...withoutAll, scopeId];
+        }
+      }
+      try {
+        localStorage.setItem('truespend_ai_focus_scopes', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleChangeResponseDepth = (depth: AiResponseDepth) => {
+    setResponseDepth(depth);
+    try {
+      localStorage.setItem('truespend_ai_response_depth', depth);
+    } catch {}
+  };
 
   const toggleVoiceMode = () => {
     setIsVoiceMode((prev) => {
@@ -586,10 +823,11 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [voiceSupported] = useState(() => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
+  const [voiceSupported] = useState(
+    () => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window,
+  );
   const { token } = useAuth();
 
-  // Close model dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
@@ -652,14 +890,68 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     budgets,
     payrolls,
     goals,
+    subscriptions,
+    contexts,
     investmentsData,
     fetchData,
   } = useDashboardData(token);
 
   const aiContext = useMemo(
-    () => buildAiContextSnapshot({ kpis, transactions, debts, budgets, payrolls, goals, investmentsData }),
-    [kpis, transactions, debts, budgets, payrolls, goals, investmentsData],
+    () =>
+      buildAiContextSnapshot({
+        kpis,
+        transactions,
+        debts,
+        budgets,
+        payrolls,
+        goals,
+        subscriptions,
+        contexts,
+        investmentsData,
+        focusScopes,
+        responseDepth,
+      }),
+    [
+      kpis,
+      transactions,
+      debts,
+      budgets,
+      payrolls,
+      goals,
+      subscriptions,
+      contexts,
+      investmentsData,
+      focusScopes,
+      responseDepth,
+    ],
   );
+
+  // Scope badge counts for live visual feedback
+  const scopeCounts: Record<AiDataFocusScope, string> = useMemo(() => {
+    const posCount = investmentsData?.positions?.length || 0;
+    const txCount = transactions?.length || 0;
+    const walletCount = kpis?.accounts?.length || 0;
+    const budgetCount = budgets?.length || 0;
+    const debtGoalCount =
+      (debts?.length || 0) + (goals?.length || 0) + (subscriptions?.length || 0);
+    return {
+      all: '360°',
+      investments: `${posCount} pos`,
+      transactions: `${txCount} tx`,
+      wallets: `${walletCount} accts`,
+      budgets: `${budgetCount} caps`,
+      debts_goals: `${debtGoalCount} items`,
+      forecast: '90d/12m',
+    };
+  }, [
+    investmentsData?.positions?.length,
+    transactions?.length,
+    kpis?.accounts?.length,
+    budgets?.length,
+    debts?.length,
+    goals?.length,
+    subscriptions?.length,
+  ]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -678,12 +970,12 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     localStorage.setItem('truespend_chat_history_v2', JSON.stringify(messages));
   }, [messages]);
 
-  // Track scroll position to show/hide scroll-to-bottom button
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
     const onScroll = () => {
-      const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      const distFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
       setShowScrollBtn(distFromBottom > 100);
     };
     container.addEventListener('scroll', onScroll, { passive: true });
@@ -701,18 +993,20 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         currentAudioRef.current = null;
       }
       setPlayingAudioIndex(null);
+      const primaryScope =
+        DATA_FOCUS_SCOPES.find((s) => s.id === focusScopes[0]) || DATA_FOCUS_SCOPES[0];
       setMessages([
         {
           role: 'assistant',
-          content: "Fresh session started! 👋 What would you like to review or plan today?",
+          content:
+            'Fresh session started! 👋 Select any **Data Focus** scope above (or keep **All at Once**) and ask me anything about your stocks, Binance positions, transactions, budgets, or wallets.',
           timestamp: Date.now(),
-          suggestions: PROMPT_TOPICS[0].prompts,
+          suggestions: primaryScope.prompts,
         },
       ]);
     }
   };
 
-  // Cleanup speech audio on component unmount
   useEffect(() => {
     return () => {
       if (stopAudioPlayerRef.current) {
@@ -739,7 +1033,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
     const blob = new Blob(
       [
-        `# TrueSpend AI Financial Advisory Report\nDate: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n\n---\n\n${exportText}`,
+        `# TrueSpend AI Financial & Portfolio Advisory Report\nDate: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}\n\n---\n\n${exportText}`,
       ],
       { type: 'text/markdown' },
     );
@@ -863,10 +1157,10 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       try {
         const apiMessages = [...messages, userMsg]
           .filter((m) => m.role !== 'system')
-          .slice(-10)
+          .slice(-18)
           .map(({ role, content: messageContent }) => ({
             role,
-            content: messageContent.slice(0, 1400),
+            content: messageContent.slice(0, 12000),
           }));
 
         const response = await fetch('/api/chat', {
@@ -879,9 +1173,13 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             messages: apiMessages,
             contextData: aiContext,
             sessionId: chatSessionId,
-            image: currentImage ? { data: currentImage.data, mimeType: currentImage.mimeType } : undefined,
+            image: currentImage
+              ? { data: currentImage.data, mimeType: currentImage.mimeType }
+              : undefined,
             selectedModel: selectedModel === 'auto' ? 'auto' : selectedModel,
             allowFallback,
+            focusScopes,
+            responseDepth,
           }),
         });
 
@@ -909,6 +1207,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 responseTimeMs: data.responseTimeMs,
                 quotaFallback: data.quotaFallback,
                 fallbackReason: data.fallbackReason,
+                focusScopesUsed: focusScopes,
+                responseDepthUsed: responseDepth,
                 timestamp: Date.now(),
               },
             ];
@@ -920,14 +1220,14 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             }
             return nextList;
           });
-          // Refresh live model statuses in background
           fetchModelStatuses();
         } else {
           setMessages((prev) => [
             ...prev,
             {
               role: 'assistant',
-              content: "I've analyzed your financial situation. Let me know if you need any adjustments.",
+              content:
+                "I've analyzed your financial situation. Let me know if you need any adjustments.",
               timestamp: Date.now(),
             },
           ]);
@@ -955,9 +1255,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             content: errorMessage,
             timestamp: Date.now(),
             suggestions: [
+              '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
               '📊 Run a complete financial health audit',
               '💰 What can I safely spend today?',
-              '🎓 Give me my financial cycle report card',
             ],
           },
         ]);
@@ -975,13 +1275,14 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       chatSessionId,
       selectedModel,
       allowFallback,
+      focusScopes,
+      responseDepth,
       fetchModelStatuses,
       isVoiceMode,
       handleSpeak,
     ],
   );
 
-  // Listen for custom prompts dispatched from elsewhere in the app (e.g. Overview banner)
   useEffect(() => {
     const handler = (e: any) => {
       const prompt = e.detail?.prompt;
@@ -997,7 +1298,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     const message = messages[index];
     if (!message.actions?.length) return;
     if (!approve) {
-      setMessages((prev) => prev.map((item, i) => (i === index ? { ...item, actionStatus: 'rejected' } : item)));
+      setMessages((prev) =>
+        prev.map((item, i) => (i === index ? { ...item, actionStatus: 'rejected' } : item)),
+      );
       return;
     }
     try {
@@ -1015,10 +1318,16 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       }
       await fetchData();
       onDataChange?.();
-      setMessages((prev) => prev.map((item, i) => (i === index ? { ...item, actionStatus: 'approved' } : item)));
+      setMessages((prev) =>
+        prev.map((item, i) => (i === index ? { ...item, actionStatus: 'approved' } : item)),
+      );
     } catch (error: any) {
       console.error(error);
-      alert(error.message || 'The action could not be completed.');
+      window.dispatchEvent(
+        new CustomEvent('truespend:toast', {
+          detail: { message: error.message || 'The action could not be completed.', type: 'error' },
+        }),
+      );
     }
   };
 
@@ -1033,7 +1342,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     setInput(e.target.value);
     const ta = e.target;
     ta.style.height = 'auto';
-    ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
+    ta.style.height = `${Math.min(ta.scrollHeight, 150)}px`;
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1055,7 +1364,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
   const handleVoice = useCallback(() => {
     if (!voiceSupported) return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (isListening) {
       recognitionRef.current?.stop();
@@ -1080,13 +1390,25 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     setIsListening(true);
   }, [isListening, voiceSupported]);
 
-  // Suggestions for the current active topic
+  // Suggestions dynamically adapt to the selected Focus Scope or Topic
   const currentTopicData = PROMPT_TOPICS.find((t) => t.id === activeTopic) || PROMPT_TOPICS[0];
+  const primaryFocusScopeObj =
+    DATA_FOCUS_SCOPES.find((s) => s.id === focusScopes[0]) || DATA_FOCUS_SCOPES[0];
   const lastAssistantMsg = [...messages].reverse().find((m) => m.role === 'assistant');
-  const activeSuggestions =
-    messages.length <= 1 ? currentTopicData.prompts : lastAssistantMsg?.suggestions ?? currentTopicData.prompts;
 
-  const charLimit = 500;
+  const activeSuggestions = useMemo(() => {
+    if (!focusScopes.includes('all')) {
+      return primaryFocusScopeObj.prompts;
+    }
+    if (messages.length <= 1) {
+      return currentTopicData.prompts;
+    }
+    return lastAssistantMsg?.suggestions?.length
+      ? lastAssistantMsg.suggestions
+      : currentTopicData.prompts;
+  }, [focusScopes, primaryFocusScopeObj, messages.length, currentTopicData, lastAssistantMsg]);
+
+  const charLimit = 4000;
   const charsLeft = charLimit - input.length;
 
   return (
@@ -1111,7 +1433,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       <div
         className={cn(
           'fixed inset-0 z-[60] flex flex-col bg-gray-50 dark:bg-gray-950',
-          'sm:static sm:z-auto sm:rounded-2xl sm:shadow-sm sm:border sm:border-gray-200 sm:dark:border-gray-800 sm:overflow-hidden sm:h-[calc(100vh-10rem)] sm:min-h-[520px]',
+          'sm:static sm:z-auto sm:rounded-2xl sm:shadow-sm sm:border sm:border-gray-200 sm:dark:border-gray-800 sm:overflow-hidden sm:h-[calc(100vh-8.5rem)] sm:min-h-[600px]',
         )}
       >
         {/* ─── Mobile compact header ─────────────────────────────── */}
@@ -1128,7 +1450,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             <SpexAvatar className="h-9 w-9" animated />
             <div>
               <div className="flex items-center gap-1.5">
-                <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">Spex</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">
+                  Spex
+                </p>
                 <button
                   type="button"
                   onClick={() => {
@@ -1150,17 +1474,24 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                     ? isAutoFallenBack
                       ? 'Auto (3.1 Lite)'
                       : 'Smart Auto'
-                    : AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.shortName || selectedModel}
+                    : AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.shortName ||
+                      selectedModel}
                 </button>
               </div>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">TrueSpend AI Co-Pilot</p>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">
+                360° Financial &amp; Stocks AI
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={toggleVoiceMode}
-              title={isVoiceMode ? 'Voice Mode Active (Auto-read responses)' : 'Enable Voice Mode (Auto-read responses)'}
+              title={
+                isVoiceMode
+                  ? 'Voice Mode Active (Auto-read responses)'
+                  : 'Enable Voice Mode (Auto-read responses)'
+              }
               className={cn(
                 'p-2 rounded-full transition-colors',
                 isVoiceMode
@@ -1168,7 +1499,11 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                   : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800',
               )}
             >
-              {isVoiceMode ? <Volume2 className="w-4 h-4 animate-pulse" /> : <VolumeX className="w-4 h-4" />}
+              {isVoiceMode ? (
+                <Volume2 className="w-4 h-4 animate-pulse" />
+              ) : (
+                <VolumeX className="w-4 h-4" />
+              )}
             </button>
             <button
               type="button"
@@ -1200,24 +1535,49 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           </div>
         </div>
 
-        {/* ─── Desktop header (clean surface, no purple gradient behind avatar) ─── */}
+        {/* ─── Desktop header ─── */}
         <div className="hidden sm:flex items-center justify-between px-5 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 text-gray-900 dark:text-gray-100">
           <div className="flex items-center gap-3">
             <SpexAvatar className="h-11 w-11" animated />
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight">Spex Financial Intelligence</p>
+                <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
+                  Spex 360° Financial &amp; Portfolio Intelligence
+                </p>
                 <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200/70 dark:border-indigo-800/60 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
                   <Sparkles className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
                   Google Gemini AI
                 </span>
               </div>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-tight">
-                Autonomous Cycles, What-If Simulation &amp; Smart Model Failover
+                Live Binance &amp; Stocks Forensics • Full Transaction &amp; Wallet Context • Expansive Output Mode
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 relative">
+            {/* Response Depth / Size Selector */}
+            <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-0.5 text-[11px]">
+              {RESPONSE_DEPTH_OPTIONS.map((opt) => {
+                const isSelected = responseDepth === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => handleChangeResponseDepth(opt.id)}
+                    title={`${opt.label}: ${opt.description}`}
+                    className={cn(
+                      'px-2 py-1 rounded-md font-medium transition-colors whitespace-nowrap',
+                      isSelected
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white',
+                    )}
+                  >
+                    {opt.shortLabel}
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Model Selector Dropdown */}
             <div className="relative" ref={modelDropdownRef}>
               <button
@@ -1242,18 +1602,27 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                     ? isAutoFallenBack
                       ? 'Auto (3.1 Lite Active)'
                       : 'Smart Auto'
-                    : AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.shortName || selectedModel}
+                    : AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.shortName ||
+                      selectedModel}
                 </span>
-                <ChevronDown className={cn('w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform', showModelDropdown && 'rotate-180')} />
+                <ChevronDown
+                  className={cn(
+                    'w-3 h-3 text-gray-500 dark:text-gray-400 transition-transform',
+                    showModelDropdown && 'rotate-180',
+                  )}
+                />
               </button>
 
-              {/* Dropdown Menu */}
               {showModelDropdown && (
                 <div className="absolute right-0 top-full mt-2 w-80 rounded-xl bg-white dark:bg-gray-800 shadow-2xl border border-gray-200 dark:border-gray-700 py-2.5 px-3 z-50 text-gray-900 dark:text-gray-100 animate-fadeIn">
                   <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-100 dark:border-gray-700">
                     <div>
-                      <p className="text-xs font-bold text-gray-900 dark:text-white">AI Model Routing</p>
-                      <p className="text-[10px] text-gray-500 dark:text-gray-400">Manual switch & smart quota failover</p>
+                      <p className="text-xs font-bold text-gray-900 dark:text-white">
+                        AI Model Routing
+                      </p>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                        Manual switch &amp; smart quota failover
+                      </p>
                     </div>
                     <button
                       type="button"
@@ -1268,7 +1637,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                     </button>
                   </div>
 
-                  {/* Model List */}
                   <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
                     {AVAILABLE_MODELS.map((model) => {
                       const isSelected = selectedModel === model.id;
@@ -1290,7 +1658,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                           <div className="flex items-center justify-between mb-0.5">
                             <span className="font-semibold flex items-center gap-1.5">
                               {model.name}
-                              {isSelected && <Check className="w-3 h-3 text-indigo-600 dark:text-indigo-400 inline" />}
+                              {isSelected && (
+                                <Check className="w-3 h-3 text-indigo-600 dark:text-indigo-400 inline" />
+                              )}
                             </span>
                             <span
                               className={cn(
@@ -1314,7 +1684,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                     })}
                   </div>
 
-                  {/* Fallback Checkbox Toggle */}
                   <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-gray-700">
                     <label className="flex items-start gap-2 cursor-pointer select-none text-[11px] text-gray-700 dark:text-gray-300">
                       <input
@@ -1338,7 +1707,11 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             <button
               type="button"
               onClick={toggleVoiceMode}
-              title={isVoiceMode ? 'Voice Mode Active (Spex auto-speaks responses)' : 'Voice Mode Inactive (Click to auto-speak responses)'}
+              title={
+                isVoiceMode
+                  ? 'Voice Mode Active (Spex auto-speaks responses)'
+                  : 'Voice Mode Inactive (Click to auto-speak responses)'
+              }
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all shadow-xs border',
                 isVoiceMode
@@ -1346,22 +1719,14 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                   : 'bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200',
               )}
             >
-              {isVoiceMode ? <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 animate-pulse" /> : <VolumeX className="w-3.5 h-3.5 text-gray-400" />}
-              <span>{isVoiceMode ? 'Voice Mode On' : 'Voice Mode'}</span>
+              {isVoiceMode ? (
+                <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 animate-pulse" />
+              ) : (
+                <VolumeX className="w-3.5 h-3.5 text-gray-400" />
+              )}
+              <span>{isVoiceMode ? 'Voice On' : 'Voice'}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                fetchModelStatuses();
-                setShowQuotaModal(true);
-              }}
-              title="View Gemini API Quotas & Credits"
-              className="inline-flex items-center gap-1 rounded-lg bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 transition-colors"
-            >
-              <Info className="w-3.5 h-3.5" />
-              <span>Quotas</span>
-            </button>
             <button
               type="button"
               onClick={handleExportChat}
@@ -1382,36 +1747,99 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           </div>
         </div>
 
-        {/* ─── Topic Selector Bar ─────────────────────────────────── */}
-        <div className="flex items-center gap-1.5 px-3 sm:px-5 py-2 bg-white/90 dark:bg-gray-900/90 border-b border-gray-100 dark:border-gray-800 overflow-x-auto no-scrollbar flex-shrink-0">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1 hidden sm:inline">
-            Modes:
-          </span>
-          {PROMPT_TOPICS.map((topic) => {
-            const Icon = topic.icon;
-            const isActive = activeTopic === topic.id;
-            return (
-              <button
-                key={topic.id}
-                type="button"
-                onClick={() => setActiveTopic(topic.id as any)}
-                className={cn(
-                  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all whitespace-nowrap',
-                  isActive
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200',
-                )}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {topic.label}
-              </button>
-            );
-          })}
+        {/* ─── NEW: Interactive Data Context Focus Selector Bar ───────────── */}
+        <div className="flex flex-col gap-1.5 px-3 sm:px-5 py-2 bg-gray-50/95 dark:bg-gray-900/95 border-b border-gray-200/80 dark:border-gray-800 flex-shrink-0">
+          <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mr-1 whitespace-nowrap">
+                <SlidersHorizontal className="w-3 h-3" />
+                Context Focus:
+              </span>
+              {DATA_FOCUS_SCOPES.map((scope) => {
+                const Icon = scope.icon;
+                const isSelected = focusScopes.includes(scope.id);
+                return (
+                  <button
+                    key={scope.id}
+                    type="button"
+                    onClick={() => handleToggleFocusScope(scope.id)}
+                    title={scope.description}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-all whitespace-nowrap border',
+                      isSelected
+                        ? scope.id === 'all'
+                          ? 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 border-gray-900 dark:border-white shadow-2xs'
+                          : 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 hover:text-gray-900 dark:hover:text-white',
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{scope.shortLabel}</span>
+                    <span
+                      className={cn(
+                        'text-[9px] font-mono px-1 py-0.2 rounded',
+                        isSelected
+                          ? 'bg-white/20 text-current'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400',
+                      )}
+                    >
+                      {scopeCounts[scope.id]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Mobile Response Depth Pill */}
+            <div className="flex sm:hidden items-center gap-1 shrink-0">
+              {RESPONSE_DEPTH_OPTIONS.map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => handleChangeResponseDepth(opt.id)}
+                  className={cn(
+                    'px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap',
+                    responseDepth === opt.id
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700',
+                  )}
+                >
+                  {opt.shortLabel}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Topic Mode Selector Row */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-0.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mr-1 whitespace-nowrap">
+              Prompts:
+            </span>
+            {PROMPT_TOPICS.map((topic) => {
+              const Icon = topic.icon;
+              const isActive = activeTopic === topic.id;
+              return (
+                <button
+                  key={topic.id}
+                  type="button"
+                  onClick={() => setActiveTopic(topic.id)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-all whitespace-nowrap',
+                    isActive
+                      ? 'bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                      : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-800 dark:hover:text-gray-200',
+                  )}
+                >
+                  <Icon className="w-3 h-3" />
+                  {topic.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* ─── Messages Area with Centered Background Spex Watermark ─── */}
         <div className="relative flex-1 overflow-hidden flex flex-col">
-          {/* Centered Spex Character in the background behind messages */}
           <div
             aria-hidden="true"
             className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-0 overflow-hidden"
@@ -1441,8 +1869,17 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             {isLoading && (
               <div className="flex items-start gap-2.5 w-full animate-slideIn">
                 <SpexAvatar className="h-7 w-7 mt-0.5 flex-shrink-0" animated />
-                <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-[2px] border border-gray-200/80 dark:border-gray-700/70 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm">
+                <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-[2px] border border-gray-200/80 dark:border-gray-700/70 rounded-2xl rounded-bl-none px-4 py-3 shadow-sm flex items-center gap-3">
                   <TypingDots />
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Analyzing{' '}
+                    {focusScopes.includes('all')
+                      ? 'all 360° financial & portfolio data'
+                      : focusScopes
+                          .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
+                          .join(' + ')}{' '}
+                    ({responseDepth === 'deep_creative' ? 'Deep & Creative Mode' : 'Standard Mode'})…
+                  </span>
                 </div>
               </div>
             )}
@@ -1518,25 +1955,37 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               placeholder={
                 selectedImage
                   ? 'Add an optional note (e.g. Lunch with team)…'
-                  : 'Ask Spex or type multiple expenses (e.g. 120 MAD lunch, 30 MAD taxi)…'
+                  : `Ask Spex (${
+                      focusScopes.includes('all')
+                        ? 'All 360° Data'
+                        : focusScopes
+                            .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
+                            .join(' + ')
+                    }) about stocks, Binance fees, transactions, budgets, or wallets…`
               }
               maxLength={charLimit}
               className="flex-1 resize-none bg-transparent pl-4 pr-2 py-3 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none leading-relaxed"
               disabled={isLoading}
-              style={{ minHeight: '44px', maxHeight: '120px' }}
+              style={{ minHeight: '44px', maxHeight: '150px' }}
             />
-            {charsLeft < 100 && (
+            {charsLeft < 400 && (
               <span
                 className={cn(
                   'absolute bottom-3 right-[88px] text-[10px] select-none',
-                  charsLeft < 20 ? 'text-red-400' : 'text-gray-300 dark:text-gray-600',
+                  charsLeft < 50 ? 'text-red-400' : 'text-gray-300 dark:text-gray-600',
                 )}
               >
                 {charsLeft}
               </span>
             )}
             <div className="flex items-center gap-1 pr-2 pb-2">
-              <input type="file" accept="image/*" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                className="hidden"
+                onChange={handleFileUpload}
+              />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -1566,7 +2015,11 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               <button
                 type="button"
                 onClick={toggleVoiceMode}
-                title={isVoiceMode ? 'Voice Mode Active: Spex will automatically read AI replies aloud' : 'Enable Voice Mode: Spex will read replies aloud'}
+                title={
+                  isVoiceMode
+                    ? 'Voice Mode Active: Spex will automatically read AI replies aloud'
+                    : 'Enable Voice Mode: Spex will read replies aloud'
+                }
                 className={cn(
                   'p-2 rounded-full transition-all',
                   isVoiceMode
@@ -1574,7 +2027,11 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                     : 'text-gray-400 dark:text-gray-500 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-gray-100 dark:hover:bg-gray-700',
                 )}
               >
-                {isVoiceMode ? <Volume2 className="w-4 h-4 animate-pulse" /> : <VolumeX className="w-4 h-4" />}
+                {isVoiceMode ? (
+                  <Volume2 className="w-4 h-4 animate-pulse" />
+                ) : (
+                  <VolumeX className="w-4 h-4" />
+                )}
               </button>
 
               <button
@@ -1583,12 +2040,23 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 disabled={(!input.trim() && !selectedImage) || isLoading}
                 className="p-2 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-xs"
               >
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>
           <p className="text-center text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 select-none">
-            Powered by Google Gemini • Spex can make mistakes, always verify numbers.
+            Powered by Google Gemini • Focus:{' '}
+            {focusScopes.includes('all')
+              ? 'All 360° Data'
+              : focusScopes
+                  .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
+                  .join(' + ')}{' '}
+            • Output:{' '}
+            {RESPONSE_DEPTH_OPTIONS.find((r) => r.id === responseDepth)?.label || 'Deep & Creative'}
           </p>
         </div>
       </div>
@@ -1597,16 +2065,17 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       {showQuotaModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
           <div className="relative w-full max-w-xl max-h-[90vh] flex flex-col bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-            {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 text-white">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-xl bg-white/20 backdrop-blur-xs">
                   <Cpu className="w-5 h-5 text-indigo-100" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold leading-tight">Gemini Model Routing & Quotas</h3>
+                  <h3 className="text-base font-bold leading-tight">
+                    Gemini Model Routing &amp; Quotas
+                  </h3>
                   <p className="text-xs text-indigo-200/90 leading-tight">
-                    Smart auto failover, manual switching & real-time quota diagnostics
+                    Smart auto failover, manual switching &amp; real-time quota diagnostics
                   </p>
                 </div>
               </div>
@@ -1619,34 +2088,19 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6 text-sm text-gray-700 dark:text-gray-300">
-              {/* How quotas work banner */}
               <div className="rounded-xl p-4 bg-indigo-50/80 dark:bg-indigo-950/50 border border-indigo-100 dark:border-indigo-900/50 space-y-2">
                 <div className="flex items-center gap-2 text-indigo-900 dark:text-indigo-200 font-bold text-xs">
                   <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                   <span>How Gemini Free Tier Quotas Work Across Models</span>
                 </div>
                 <p className="text-xs leading-relaxed text-indigo-800 dark:text-indigo-300">
-                  Google Gemini API quotas (RPD = Requests Per Day, RPM = Requests Per Minute) are <strong>tracked separately per model</strong>. When Gemini 3.8 Flash hits its 20 requests/day limit, <strong>Gemini 3.1 Flash Lite still has 500 requests/day available</strong>!
+                  Google Gemini API quotas (RPD = Requests Per Day, RPM = Requests Per Minute) are{' '}
+                  <strong>tracked separately per model</strong>. When Gemini 3.8 Flash hits its 20
+                  requests/day limit, <strong>Gemini 3.1 Flash Lite still has 500 requests/day available</strong>!
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
-                  <div className="bg-white dark:bg-gray-800 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
-                    <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Gemini 3.8 Flash</span>
-                    <span className="font-bold text-indigo-700 dark:text-indigo-300">20 req/day</span>
-                  </div>
-                  <div className="bg-white dark:bg-gray-800 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
-                    <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Gemini 3.1 Flash Lite</span>
-                    <span className="font-bold text-green-600 dark:text-green-400">500 req/day</span>
-                  </div>
-                  <div className="bg-white dark:bg-gray-800 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
-                    <span className="text-gray-500 dark:text-gray-400 block text-[10px]">Gemini TTS Audio</span>
-                    <span className="font-bold text-purple-600 dark:text-purple-400">10 req/day</span>
-                  </div>
-                </div>
               </div>
 
-              {/* Mode Selection */}
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
                   Select Routing Strategy
@@ -1678,7 +2132,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                           />
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-gray-900 dark:text-white text-xs">{model.name}</span>
+                              <span className="font-bold text-gray-900 dark:text-white text-xs">
+                                {model.name}
+                              </span>
                               <span
                                 className={cn(
                                   'text-[9px] px-2 py-0.5 rounded-full font-mono font-medium',
@@ -1702,29 +2158,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                     );
                   })}
                 </div>
-
-                {/* Auto Fallback Checkbox */}
-                <div className="mt-4 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/60">
-                  <label className="flex items-start gap-2.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={allowFallback}
-                      onChange={(e) => handleToggleFallback(e.target.checked)}
-                      className="mt-0.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4"
-                    />
-                    <div>
-                      <span className="font-semibold text-xs text-gray-900 dark:text-white block">
-                        Intelligent Auto-Fallback (Recommended)
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 block leading-relaxed mt-0.5">
-                        If your chosen model encounters rate limiting (429) or high server demand (503), TrueSpend will instantly fall back to Gemini 3.1 Flash Lite so your workflow never gets interrupted.
-                      </span>
-                    </div>
-                  </label>
-                </div>
               </div>
 
-              {/* Real-time Model Health Status */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
@@ -1755,7 +2190,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                           )}
                         />
                         <span className="font-semibold text-gray-900 dark:text-white">{m.name}</span>
-                        <span className="text-[10px] text-gray-400 font-mono">({m.dailyQuota} req/day)</span>
+                        <span className="text-[10px] text-gray-400 font-mono">
+                          ({m.dailyQuota} req/day)
+                        </span>
                       </div>
                       <div>
                         {m.isExhausted ? (
@@ -1764,7 +2201,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                           </span>
                         ) : (
                           <span className="text-[10px] font-mono text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-950/60 px-2 py-0.5 rounded-full border border-green-200 dark:border-green-900/40">
-                            Healthy & Ready
+                            Healthy &amp; Ready
                           </span>
                         )}
                       </div>
@@ -1773,7 +2210,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 </div>
               </div>
 
-              {/* Direct links to Google Cloud Console */}
               <div className="pt-2 border-t border-gray-200 dark:border-gray-800 flex flex-wrap items-center gap-3">
                 <a
                   href="https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/quotas"
@@ -1797,7 +2233,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               </div>
             </div>
 
-            {/* Modal Footer */}
             <div className="px-6 py-3.5 bg-gray-50 dark:bg-gray-800/80 border-t border-gray-200 dark:border-gray-800 flex justify-end">
               <button
                 type="button"

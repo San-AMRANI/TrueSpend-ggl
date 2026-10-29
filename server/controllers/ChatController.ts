@@ -5,14 +5,22 @@ import {
   clearAllModelQuotas,
   isModelUnavailable,
   MODEL_FLASH_FAST,
-  MODEL_FLASH_DEEP,
   MODEL_FLASH_LITE_PREVIEW,
 } from '../services/GeminiClient.js';
 
 export const chatWithAi = async (req: Request, res: Response) => {
   try {
-    const { messages, contextData, sessionId, image, selectedModel, allowFallback = true } = req.body;
-    
+    const {
+      messages,
+      contextData,
+      sessionId,
+      image,
+      selectedModel,
+      allowFallback = true,
+      focusScopes,
+      responseDepth = 'deep_creative',
+    } = req.body;
+
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: 'Messages array is required' });
     }
@@ -24,6 +32,8 @@ export const chatWithAi = async (req: Request, res: Response) => {
       image,
       selectedModel,
       allowFallback !== false,
+      Array.isArray(focusScopes) ? focusScopes : undefined,
+      responseDepth,
     );
     const content = completion.choices?.[0]?.message?.content || '';
     try {
@@ -31,7 +41,7 @@ export const chatWithAi = async (req: Request, res: Response) => {
       res.json({
         reply: String(parsed.reply || ''),
         actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 3).map(String) : [],
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 4).map(String) : [],
         modelUsed: completion.modelUsed,
         requestedModel: completion.requestedModel,
         responseTimeMs: completion.responseTimeMs,
@@ -56,9 +66,9 @@ export const chatWithAi = async (req: Request, res: Response) => {
       reply: '⚠️ Spex is currently experiencing temporary high demand on cloud AI servers. Please try again in a moment, or tap a quick action below:',
       actions: [],
       suggestions: [
+        '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
         '📊 Run a complete financial health audit',
         '💰 What can I safely spend today?',
-        '🎓 Give me my financial cycle report card',
       ],
       modelUsed: 'TrueSpend Emergency Fallback',
       quotaFallback: true,
@@ -108,4 +118,3 @@ export const speakAiText = async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message || 'Failed to synthesize speech' });
   }
 };
-

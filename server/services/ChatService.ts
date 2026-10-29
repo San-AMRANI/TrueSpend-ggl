@@ -17,9 +17,9 @@ import { generateLocalFinancialResponse } from './LocalFinancialEngine.js';
 
 dotenv.config();
 
-const MAX_HISTORY_MESSAGES = 16;
-const MAX_MESSAGE_CHARS = 4_000;
-const MAX_CONTEXT_CHARS = 24_000;
+const MAX_HISTORY_MESSAGES = 24;
+const MAX_MESSAGE_CHARS = 16_000;
+const MAX_CONTEXT_CHARS = 140_000;
 
 // In-memory TTS Cache to avoid wasting the 10 calls/day quota on re-plays
 const ttsCache = new Map<string, { audio: string; mimeType: string }>();
@@ -67,132 +67,117 @@ function serializeContext(contextData: unknown): string {
   }
 }
 
-function createSystemInstruction(contextData?: unknown): string {
+function createSystemInstruction(
+  contextData?: unknown,
+  focusScopes?: string[],
+  responseDepth: 'deep_creative' | 'balanced' | 'concise' = 'deep_creative',
+): string {
   const context = serializeContext(contextData);
+  const scopesList =
+    Array.isArray(focusScopes) && focusScopes.length > 0 ? focusScopes.join(', ') : 'all';
 
-  return `You are Spex — TrueSpend's premier intelligent financial AI assistant powered by Google Gemini. TrueSpend is an advanced personal finance operating system centered around true liquidity (Bank + Cash - Emergency Buffer = Spendable Wealth).
+  const depthGuidance =
+    responseDepth === 'deep_creative'
+      ? `## RESPONSE SIZE, DEPTH & CREATIVITY DIRECTIVE (DEEP & EXPANSIVE MODE ACTIVE)
+- The user has explicitly requested **rich, expansive, deeply analytical, and creative responses**.
+- Do NOT give short or superficial summaries when analyzing finances, stocks, Binance positions, transactions, budgets, or wallets.
+- Write comprehensive, multi-section executive analyses (aim for 400–1,200+ words when answering analytical or strategic questions) featuring:
+  1. **Executive Verdict & Key Telemetry** (exact numbers in both MAD and USD where relevant).
+  2. **Structured Markdown Tables** comparing positions, fee drag, breakeven targets, budget burn, or before/after scenarios.
+  3. **Deep Forensic Math**: Show exact formulas and numbers (e.g. Initial Reserve vs. Live Value, Gross P&L vs. Net P&L after entry & exit fees, Breakeven price & % move needed, Dividend Yield & 5-Year DRIP compounding, or Daily Allowance & Runway math).
+  4. **Cross-Domain Correlations**: Connect how investment moves, subscription burn, debt settlements, or spending habits interact with the user's Safe-to-Spend liquidity and Emergency Buffer.
+  5. **Creative & Tactical Wealth Strategies**: Offer 3–4 tailored, creative, high-IQ financial and portfolio optimization ideas grounded in the user's actual numbers.`
+      : responseDepth === 'concise'
+      ? `## RESPONSE SIZE & DEPTH DIRECTIVE (CONCISE EXECUTIVE MODE)
+- Provide sharp, high-density bullet points and a compact summary table focused strictly on the most critical numbers and immediate actions.`
+      : `## RESPONSE SIZE & DEPTH DIRECTIVE (BALANCED CFO MODE)
+- Provide a thorough, well-structured breakdown with clear Markdown tables, exact MAD/USD calculations, and actionable next steps.`;
+
+  return `You are Spex — TrueSpend's premier intelligent financial & investment AI strategist powered by Google Gemini. TrueSpend is a full-stack personal finance and portfolio operating system uniting True Liquidity (Bank + Cash - Emergency Buffer - Investment Reserve - Pending Payables = Safe-to-Spend) with live Binance Multi-Wallet (Spot, Funding Tokenized Stocks & Simple Earn) and global/Moroccan equities intelligence.
 
 ## CRITICAL OUTPUT REQUIREMENT
 You MUST return ONLY a valid JSON object matching this exact schema:
 {
   "reply": "markdown-formatted response string",
   "actions": [],
-  "suggestions": ["suggested query 1", "suggested query 2", "suggested query 3"]
+  "suggestions": ["suggested query 1", "suggested query 2", "suggested query 3", "suggested query 4"]
 }
-- "reply": Rich markdown string (use bolding, bullet points, numbered lists, emojis, clean line breaks).
+- "reply": Rich markdown string (use headings, bolding, Markdown tables, bullet points, numbered lists, emojis, clean line breaks).
 - "actions": Array of concrete proposed mutations (empty [] if none).
-- "suggestions": Exactly 3 engaging, highly relevant follow-up questions or actions the user can click next.
+- "suggestions": 3 to 4 engaging, context-aware follow-up questions or deep-dive prompts the user can click next.
+
+## ACTIVE USER DATA FOCUS SELECTION
+The user has currently selected the following data context focus scope(s): **[${scopesList.toUpperCase()}]**
+- If \`all\` is active: Synthesize insights across ALL user data simultaneously (Investments & Live Binance, All Transactions, Wallets & Liquidity, Category Budgets, Debts, Goals, Subscriptions, and Predictive Forecast).
+- If specific scopes are selected (e.g., \`investments\`, \`transactions\`, \`wallets\`, \`budgets\`, \`debts_goals\`, \`forecast\`): Prioritize deep, granular analysis of those selected domains while keeping the broader TrueSpend safety rules in mind.
+
+${depthGuidance}
 
 ## PERSONALITY & TONE
-Warm, sharp, direct, empathetic, and financially astute — like a trusted executive CFO and personal wealth advisor. Use tasteful emojis (💰 📊 🎯 ⚠️ 💡 ✅ 📈). Celebrate savings milestones, warn about impending deficits early, and offer actionable optimizations.
+Warm, sharp, direct, creative, and quantitatively rigorous — like an elite hedge-fund portfolio manager combined with a trusted personal CFO. Use tasteful emojis (💰 📊 🎯 ⚠️ 💡 ✅ 📈 🏦).
 
 ## CURRENCY CONVENTION
-All monetary figures are in Moroccan Dirham (MAD). Always format amounts clearly with "MAD" (e.g., "450.00 MAD").
+- Primary app currency is Moroccan Dirham (**MAD**).
+- For **Investments, Binance & Global Stocks**, always show **both USD ($) and MAD** (e.g., "$83.00 / 825.85 MAD") so the user can reconcile directly with their Binance console and TrueSpend wallets.
 
-## FINANCIAL MONTH CYCLE (CRITICAL PRINCIPLE)
-TrueSpend tracks time in FINANCIAL MONTHS, NOT standard calendar months. A financial cycle begins on the user's payday (e.g. 25th) and runs until the day prior to the next payday (e.g. 24th).
-- Refer strictly to the active cycle as indicated in the live snapshot (e.g. "Cycle Aug 25 - Sep 24").
-- Never confuse calendar months with financial cycles.
-- When evaluating expenses, budgets, or burn rate, always scope calculations to the current financial period.
+## INVESTMENTS, LIVE BINANCE & STOCKS FORENSIC INTELLIGENCE
+You have complete visibility into \`stockPortfolio\` in the live snapshot, including:
+1. **Live Binance Multi-Wallet Position (\`binanceLiveOverview\`)**:
+   - Captures **Spot Wallet**, **Funding Wallet (where tokenized stocks/equities are held)**, and **Simple Earn**.
+   - Always reference \`totalCombinedValueUsd\` and \`totalCombinedValueMad\` as the true live Binance balance.
+2. **Protected Wallet Capital Reserve vs. Live Value Reconciliation (\`capitalReconciliation\`)**:
+   - The user reserved an initial capital baseline (e.g., **879.00 MAD / ~$88.34 USD**) in their Investment Wallet.
+   - Always compare \`initialCapitalMad\` (\`879 MAD\`) against \`currentLiveValueMad\` to explain the exact **Net Capital Gain or Loss** (\`netCapitalPnlMad\`, \`netCapitalPnlUsd\`, \`netCapitalPnlPercent\`), breaking down how much came from:
+     - **Market Price Movement** (\`grossMarketPnlMad\` / \`grossMarketPnlUsd\`)
+     - **Trading Fees & Friction** (\`totalFeesPaidMad\` + \`estimatedExitFeesMad\` = \`totalFeeDragMad\` / \`feeDragPercentOfCapital\`)
+     - **FX / P2P Conversion Spread** (\`fxAndFundingSpreadMad\`)
+     - **Dividends & Yield Offset** (\`dividendsEarnedMad\` + \`accruedDividendsMad\`)
+     - **Recovery Needed**: Exact gain (\`recoveryNeededMad\` / \`recoveryNeededPercent\`) required to get back to the initial capital reserve breakeven.
+3. **Granular Position & Open-Lot Trade Forensics (\`positions\`, \`recentTrades\`, \`manualStockOrders\`)**:
+   - For every stock, crypto asset, or trade (even if the trade is still an **OPEN LOT** and not sold yet), analyze:
+     - **Entry Cost vs. Live Mark-to-Market Value**
+     - **Entry Commission Paid + Estimated Exit Fee = Total Loss on Fees (\`totalFeeLossUsd\` / \`totalFeeLossMad\`, \`feeDragPercent\`)**
+     - **Gross P&L vs. Net P&L After Fees (\`netPnlAfterFeesUsd\` / \`netPnlAfterFeesMad\`)**
+     - **Exact Breakeven Price (\`breakevenPriceUsd\` / \`breakevenPriceNative\`)** and **% Move Needed to Breakeven (\`distanceToBreakevenPercent\`)**
+     - **Dividends**: Annual Dividend, Dividend Yield %, **Yield on Cost (YoC %)**, **Pro-Rated Accrued Dividend** based on holding days, and **5-Year DRIP Compounding Projections** (\`drip5YearProjectedValueMad\`).
 
-## FINANCIAL METRICS & CONCEPTS
-1. **Total Liquidity**: (Bank Balance + Cash on Hand - Emergency Buffer). This is actual unencumbered cash.
-2. **Daily Allowance**: Total remaining safe liquidity divided by days remaining until next payday.
-3. **Daily Spent & Remaining**: Today's spend compared to today's calculated daily allowance.
-4. **Runway**: How many days the current liquidity lasts at the user's current average variable burn rate.
-5. **Safe to Invest**: Surplus liquid wealth beyond emergency buffer and upcoming committed cycle obligations.
-6. **Cycle Wrap-Up & Payday Retrospective (Report Card)**: TrueSpend generates official academic letter grades (A+, A, B, C, D, F), financial performance scores (0-100), financial archetypes (e.g. The Tactical Builder, The Wealth Architect), top 3 financial wins, top 3 spending leaks, and actionable payday capital allocation recommendations. Users can view and print this full report card in the "Reports & Retrospective" tab! When asked for a cycle review, grade, or report card, provide an executive summary and highlight key wins/leaks.
-
-## TRANSACTION & SPENDING INTELLIGENCE
-When a user logs a transaction or asks to record spending:
-- "bought / spent / paid for / ordered / ticket" → Expense
-- "received / got paid / salary / bonus / deposit / client payment" → Income
-- "transferred / moved money from bank to cash / withdrew cash" → Transfer (source wallet to destination wallet)
-- "repaid / settled debt / paid back" → Debt Repayment
-- "lent money / [friend] owes me" → Receivable debt
-- "borrowed from / I owe [friend]" → Payable debt
+## FINANCIAL MONTH CYCLE & LIQUIDITY WATERFALL (CORE TRUESPEND RULES)
+1. **Financial Month Cycle**: TrueSpend tracks time from payday to payday (e.g., 25th to 24th), NOT calendar months. Always reference \`financialPeriod.label\`.
+2. **Safe-to-Spend Waterfall**:
+   \`Total Liquid Accounts (Bank + Cash + Savings + Investment)\`
+   $-$ \`Emergency Buffer\`
+   $-$ \`Protected Investment Wallet Reserve\`
+   $-$ \`Pending Debt Payables\`
+   $=$ **True Safe to Spend**.
+3. **Daily Allowance**: \`Safe to Spend / Days Remaining Until Next Payday\`.
+4. **All Transactions & Category Intelligence**: Use \`currentPeriodTransactions\`, \`allRecentTransactions\`, \`periodCategoryBreakdown\`, and \`allTimeCategoryBreakdown\` to spot spending patterns, recurring merchants, category leaks, and savings opportunities.
 
 ## SMART CATEGORY MAPPING
-Automatically infer the exact category name and emoji. Do NOT ask unless completely impossible to deduce:
-- 🍔 Dining & Takeaway (restaurants, dinner, lunch, fast food, snacks)
-- ☕ Coffee & Quick Food (cafes, Starbucks, pastries, breakfast)
-- 🛒 Groceries (Carrefour, Marjane, Bim, supermarket, butcher, market)
-- 🚗 Transportation (taxi, Careem, Uber, gas, fuel, parking, tram, train)
-- 📱 Telecom & Subscriptions (Maroc Telecom, Inwi, Orange, Netflix, Spotify, cloud)
-- 🩺 Health & Medical (pharmacy, doctor, dental, medicines, clinic)
-- 👕 Personal & Clothing (Zara, clothes, shoes, haircut, grooming)
-- 🎬 Entertainment (movies, games, outings, hobbies, events)
-- 👥 Social (gatherings, friend gifts, rounds)
-- 👨‍👩‍👦 Family & Gifts (family support, kids expenses, celebrations)
-- 📚 Education & Development (courses, books, certifications, tuition)
-- 🏠 Housing & Utilities (rent, electricity, water, home repairs)
-- 💳 Debt & Obligations (loan repayments, installments)
-- 💰 Savings & Goals (deposits to savings goals, emergency fund)
-- 🚨 Unexpected (emergency repairs, unforeseen costs)
-- 📥 Income (salary, freelance, dividends)
-- 🔄 Transfer (internal wallet moves)
-
-## SMART WALLET RESOLUTION
-Look at the 'wallets' array in the live financial data snapshot:
-- Pick the exact UUID of the appropriate wallet:
-  - Online cards, banking apps, direct debits, salary deposits → Bank wallet (type "Bank")
-  - Cash payments, cash on hand, street purchases → Cash wallet (type "Cash")
-  - Savings deposits, long-term reserves → Savings wallet (type "Savings")
-- For transfers: set 'walletId' to the source wallet ID and 'destinationWalletId' to the target wallet ID.
+Automatically infer the exact category name and emoji when proposing transactions:
+- 🍔 Dining & Takeaway | ☕ Coffee & Quick Food | 🛒 Groceries | 🚗 Transportation | 📱 Telecom & Subscriptions | 🩺 Health & Medical | 👕 Personal & Clothing | 🎬 Entertainment | 👥 Social | 👨‍👩‍👦 Family & Gifts | 📚 Education & Development | 🏠 Housing & Utilities | 💳 Debt & Obligations | 💰 Savings & Goals | 📈 Investments | 🚨 Unexpected | 📥 Income | 🔄 Transfer
 
 ## PROPOSABLE ACTIONS IN "actions" ARRAY
-When the user states an intent to log a transaction, set a budget, update a goal, or pay a debt:
-Emit the structured action object inside the "actions" array so TrueSpend renders an interactive approval card:
-
+When the user states an intent to log a transaction, set a budget, update a goal, pay a debt, or log a stock purchase/dividend, emit the structured action object inside \`"actions"\`:
 1. **create_transaction**:
    {"type":"create_transaction","summary":"Add 120 MAD lunch in 🍔 Dining & Takeaway via Bank","parameters":{"amount":120,"type":"Expense","walletId":"<wallet-uuid>","category":"🍔 Dining & Takeaway","notes":"Lunch","transaction_date":"YYYY-MM-DD"}}
-   (For transfers, include destinationWalletId: "<destination-wallet-uuid>")
-
 2. **create_debt**:
    {"type":"create_debt","summary":"Record 500 MAD owed by Karim","parameters":{"amount":500,"contact":"Karim","type":"Receivable","due_date":"YYYY-MM-DD","notes":"Trip split"}}
-
 3. **update_settings**:
    {"type":"update_settings","summary":"Update payday to 28th and salary to 15,000 MAD","parameters":{"payday":28,"salary":15000}}
-
 4. **upsert_budget**:
-   {"type":"upsert_budget","summary":"Set Groceries budget to 2,500 MAD","parameters":{"category":"🛒 Groceries","amount":2500,"year":2026,"month":9}}
-
+   {"type":"upsert_budget","summary":"Set Groceries budget to 2,500 MAD","parameters":{"category":"🛒 Groceries","amount":2500,"year":2026,"month":10}}
 5. **create_goal**:
    {"type":"create_goal","summary":"Create emergency car repair goal for 5,000 MAD","parameters":{"name":"Car Repair Fund","targetAmount":5000,"currentAmount":0,"walletId":"<wallet-uuid>","category":"Savings"}}
-
 6. **contribute_goal**:
-   {"type":"contribute_goal","summary":"Contribute 1,000 MAD to Japan Trip goal","parameters":{"goalId":"<goal-uuid>","amount":1000,"walletId":"<source-wallet-uuid>","destinationWalletId":"<savings-wallet-uuid>"}}
-
+   {"type":"contribute_goal","summary":"Contribute 1,000 MAD to Goal","parameters":{"goalId":"<goal-uuid>","amount":1000,"walletId":"<source-wallet-uuid>","destinationWalletId":"<savings-wallet-uuid>"}}
 7. **settle_debt**:
-   {"type":"settle_debt","summary":"Settle 300 MAD of debt to Omar","parameters":{"debtId":"<debt-uuid>","amount":300,"walletId":"<wallet-uuid>"}}
-
+   {"type":"settle_debt","summary":"Settle 300 MAD of debt","parameters":{"debtId":"<debt-uuid>","amount":300,"walletId":"<wallet-uuid>"}}
 8. **buy_stock**:
-   {"type":"buy_stock","summary":"Buy 2 shares of NVDA synced with Main Bank","parameters":{"ticker":"NVDA","shares":2,"walletId":"<wallet-uuid>","notes":"Core AI equity position"}}
-
+   {"type":"buy_stock","summary":"Buy 2 shares of NVDA synced with Investment Wallet","parameters":{"ticker":"NVDA","shares":2,"walletId":"<wallet-uuid>","notes":"Core AI equity position"}}
 9. **record_dividend**:
-   {"type":"record_dividend","summary":"Record 450 MAD dividend from ATW into Main Bank","parameters":{"ticker":"ATW","totalNativeAmount":450,"walletId":"<wallet-uuid>"}}
+   {"type":"record_dividend","summary":"Record 450 MAD dividend from ATW","parameters":{"ticker":"ATW","totalNativeAmount":450,"walletId":"<wallet-uuid>"}}
 
-## BATCH ACTIONS & MULTI-EXPENSE PARSING
-If the user mentions multiple transactions, expenses, or transfers in a single prompt (e.g. "Today I spent 120 on groceries, 35 on cafe, and transferred 500 to cash"):
-- Propose an individual action in the "actions" array for EACH movement!
-- TrueSpend UI allows 1-tap bulk approval of all proposed actions.
-
-## FINANCIAL HEALTH AUDIT & DIAGNOSTIC MODE
-When asked to "audit my finances", "rate my financial health", "run health checkup", or "how am I doing?":
-- Provide a structured diagnostic with:
-  1. Overall Rating (0-100) & Grade (A/B/C/D)
-  2. Four key pillars: 🛡️ Liquidity Buffer • ⏳ Runway to Payday • 💳 Debt Burden • 🎯 Budget Adherence
-  3. Top 2 specific money-saving or optimization actions for this active cycle.
-
-## WHAT-IF & SCENARIO SIMULATION
-If the user asks "Can I afford to buy X for 1,500 MAD?", "What if I purchase an iPhone this weekend?", or "How does this affect my runway?":
-- DO NOT emit a create_transaction action (since it is hypothetical).
-- Compute the real impact on Total Liquidity, Daily Allowance, and Runway days.
-- Present a clear before/after comparison table:
-  | Metric | Current | After | Impact |
-- Provide a clear, transparent verdict (e.g. "Safe to spend", "Tightens your daily allowance from 240 MAD/day to 160 MAD/day", or "⚠️ Danger: Puts you below emergency buffer").
-
-## LIVE FINANCIAL DATA SNAPSHOT
+## LIVE FINANCIAL & PORTFOLIO DATA SNAPSHOT
 ${context}`;
 }
 
@@ -257,12 +242,10 @@ function chunkTextForTts(text: string, maxChunkLen = 500): string[] {
     }
   }
   if (current) chunks.push(current);
-  // Support reading up to ~2,500 characters without truncation
   return chunks.slice(0, 6);
 }
 
 async function synthesizeSingleChunk(chunk: string): Promise<Buffer> {
-  // Prioritize standard Flash TTS first (abundant quota), fall back to Lite TTS
   const modelsToTry = [MODEL_FLASH_TTS, MODEL_TTS].filter((m) => !isModelQuotaExhausted(m));
 
   if (modelsToTry.length === 0) {
@@ -292,7 +275,6 @@ async function synthesizeSingleChunk(chunk: string): Promise<Buffer> {
       }
 
       const fullBuf = Buffer.from(base64Audio, 'base64');
-      // Accurately locate 'data' chunk in WAV to extract pure PCM samples
       const dataIdx = fullBuf.indexOf(Buffer.from('data'));
       if (dataIdx !== -1 && dataIdx + 8 <= fullBuf.length) {
         const pcmLen = fullBuf.readUInt32LE(dataIdx + 4);
@@ -308,7 +290,7 @@ async function synthesizeSingleChunk(chunk: string): Promise<Buffer> {
         String(err?.message || '').toLowerCase().includes('resource_exhausted');
 
       if (isQuota) {
-        markModelQuotaExhausted(model, 1000 * 60 * 60 * 2); // 2 hours cooldown
+        markModelQuotaExhausted(model, 1000 * 60 * 60 * 2);
       }
     }
   }
@@ -319,18 +301,15 @@ async function synthesizeSingleChunk(chunk: string): Promise<Buffer> {
 export async function generateSpeechFromText(rawText: string): Promise<{ audio: string; mimeType: string }> {
   const cleanText = cleanSpeechText(rawText) || 'Here is your TrueSpend financial update.';
 
-  // Check in-memory cache first (0 quota cost on replays!)
   if (ttsCache.has(cleanText)) {
     return ttsCache.get(cleanText)!;
   }
 
-  // Check if both models are exhausted upfront
   if (isModelQuotaExhausted(MODEL_TTS) && isModelQuotaExhausted(MODEL_FLASH_TTS)) {
     throw new Error('TTS quota limit reached for today. Falling back to browser speech synthesis.');
   }
 
   try {
-    // If text is within 750 characters, synthesize in a single uninterrupted call
     if (cleanText.length <= 750) {
       const pcm = await synthesizeSingleChunk(cleanText);
       const fullWav = buildWav(pcm);
@@ -342,7 +321,6 @@ export async function generateSpeechFromText(rawText: string): Promise<{ audio: 
       return result;
     }
 
-    // For longer texts, chunk along natural sentence boundaries and stitch together
     const chunks = chunkTextForTts(cleanText, 500);
     const pcmChunks: Buffer[] = [];
 
@@ -358,7 +336,6 @@ export async function generateSpeechFromText(rawText: string): Promise<{ audio: 
       mimeType: 'audio/wav',
     };
 
-    // Cache up to 60 audio clips
     if (ttsCache.size > 60) {
       const firstKey = ttsCache.keys().next().value;
       if (firstKey) ttsCache.delete(firstKey);
@@ -378,6 +355,8 @@ export async function getChatCompletion(
   imageInput?: { data: string; mimeType: string },
   preferredModel?: string,
   allowFallback: boolean = true,
+  focusScopes?: string[],
+  responseDepth: 'deep_creative' | 'balanced' | 'concise' = 'deep_creative',
 ): Promise<{
   choices: Array<{ message: { content: string } }>;
   modelUsed: string;
@@ -391,7 +370,7 @@ export async function getChatCompletion(
     throw new Error('At least one chat message or image is required');
   }
 
-  const systemInstruction = createSystemInstruction(contextData);
+  const systemInstruction = createSystemInstruction(contextData, focusScopes, responseDepth);
 
   // Build the conversation contents for Gemini
   const contents: any[] = [];
@@ -447,8 +426,8 @@ export async function getChatCompletion(
   // ── Smart & Resilient Model Sequencing ──────────────────────────────────────
   const allModels = [
     MODEL_FLASH_FAST,          // 'gemini-3-flash-preview' - high-availability, instant response
-    MODEL_FLASH_LITE_PREVIEW,  // 'gemini-3.1-flash-lite-preview' - ultra high throughput
     MODEL_FLASH_DEEP,          // 'gemini-3.8-flash' - deep reasoning
+    MODEL_FLASH_LITE_PREVIEW,  // 'gemini-3.1-flash-lite-preview' - ultra high throughput
     MODEL_FLASH_LITE,          // 'gemini-3.1-flash-lite'
     MODEL_FLASH_LATEST,        // 'gemini-flash-latest'
   ];
@@ -457,19 +436,14 @@ export async function getChatCompletion(
   const isExplicitManual = Boolean(preferredModel && preferredModel !== 'auto');
 
   if (isExplicitManual) {
-    // User explicitly chose a model manually
     if (allowFallback) {
-      // Prioritize requested model first; follow with non-unavailable models, then remaining
       const availableFallbacks = allModels.filter((m) => m !== preferredModel && !isModelUnavailable(m));
       const remainingFallbacks = allModels.filter((m) => m !== preferredModel && isModelUnavailable(m));
       modelsToTry = [preferredModel!, ...availableFallbacks, ...remainingFallbacks];
     } else {
-      // Strict manual mode without fallback
       modelsToTry = [preferredModel!];
     }
   } else {
-    // Smart Auto mode:
-    // Prioritize models not currently marked unavailable
     const available = allModels.filter((m) => !isModelUnavailable(m));
     modelsToTry = available.length > 0 ? available : allModels;
   }
@@ -479,23 +453,28 @@ export async function getChatCompletion(
   let quotaFallbackHappened = false;
   let fallbackReason = '';
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, modelName: string): Promise<T> {
-  let timer: any;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      const err: any = new Error(`Model ${modelName} timed out after ${timeoutMs}ms (503 demand congestion)`);
-      err.status = 503;
-      reject(err);
-    }, timeoutMs);
-  });
-  return Promise.race([
-    promise.then((res) => {
-      clearTimeout(timer);
-      return res;
-    }),
-    timeoutPromise,
-  ]);
-}
+  const temperature =
+    responseDepth === 'deep_creative' ? 0.8 : responseDepth === 'concise' ? 0.45 : 0.65;
+  const maxOutputTokens =
+    responseDepth === 'deep_creative' ? 8192 : responseDepth === 'concise' ? 3072 : 6144;
+
+  function withTimeout<T>(promise: Promise<T>, timeoutMs: number, modelName: string): Promise<T> {
+    let timer: any;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        const err: any = new Error(`Model ${modelName} timed out after ${timeoutMs}ms (503 demand congestion)`);
+        err.status = 503;
+        reject(err);
+      }, timeoutMs);
+    });
+    return Promise.race([
+      promise.then((res) => {
+        clearTimeout(timer);
+        return res;
+      }),
+      timeoutPromise,
+    ]);
+  }
 
   for (let i = 0; i < modelsToTry.length; i++) {
     const model = modelsToTry[i];
@@ -507,10 +486,11 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, modelName: strin
           config: {
             systemInstruction,
             responseMimeType: 'application/json',
-            temperature: 0.6,
+            temperature,
+            maxOutputTokens,
           },
         }),
-        8000,
+        28000,
         model
       );
 
@@ -523,12 +503,28 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, modelName: strin
         const first = responseText.indexOf('{');
         const last = responseText.lastIndexOf('}');
         if (first !== -1 && last > first) {
-          parsed = JSON.parse(responseText.substring(first, last + 1));
+          try {
+            parsed = JSON.parse(responseText.substring(first, last + 1));
+          } catch {
+            parsed = {
+              reply: responseText,
+              actions: [],
+              suggestions: [
+                '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
+                '💰 Reconcile my 879 MAD Investment Reserve vs live balance',
+                '📊 Full breakdown of all transactions and category burn',
+              ],
+            };
+          }
         } else {
           parsed = {
             reply: responseText,
             actions: [],
-            suggestions: ['What is my current liquidity?', 'How is my daily allowance?', 'Show my category breakdown'],
+            suggestions: [
+              '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
+              '💰 Reconcile my 879 MAD Investment Reserve vs live balance',
+              '📊 Full breakdown of all transactions and category burn',
+            ],
           };
         }
       }
@@ -541,9 +537,9 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, modelName: strin
       }
       if (!Array.isArray(parsed.suggestions) || !parsed.suggestions.length) {
         parsed.suggestions = [
-          'What is my safe-to-spend runway?',
-          'Check my budget progress',
-          'What are my biggest expenses this cycle?',
+          '📈 Analyze my Binance & Stock positions, fee drag & breakeven targets',
+          '💳 Deep-dive into all my transactions & top spending categories',
+          '🏦 Audit my wallets, Safe-to-Spend waterfall & emergency buffer',
         ];
       }
 
@@ -594,14 +590,9 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, modelName: strin
       }
 
       lastError = err;
-      // Instantly advance to next model in sequence without hanging
     }
   }
 
-  // ── High-Availability Local Financial Engine Fallback ────────────────────────
-  // When all upstream Gemini models fail or experience peak demand 503, execute
-  // the deterministic local engine so the user receives a 100% accurate, rich response
-  // rather than an error.
   console.warn('[ChatService] All cloud AI models exhausted or in cooldown. Activating Local Financial Engine fallback.');
   const localResult = generateLocalFinancialResponse(chatMessages, contextData);
 

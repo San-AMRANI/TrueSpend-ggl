@@ -351,29 +351,116 @@ ${
         suggestions: [
           '💰 What can I safely spend today?',
           '📊 Run a complete financial health audit',
-          'Check my budget progress',
+          '📈 Deep audit of my Binance & Stock positions',
         ],
       };
     }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // SCENARIO 5: Default Financial Co-pilot Summary
+  // SCENARIO 5: Investments, Live Binance & Stocks Forensic Audit
   // ───────────────────────────────────────────────────────────────────────────
-  const reply = `### 👋 Spex Financial Co-Pilot Active
+  const stockPort = ctx.stockPortfolio || {};
+  const recon = stockPort.capitalReconciliation || {};
+  const binanceLive = stockPort.binanceLiveOverview || {};
+  const positions = Array.isArray(stockPort.positions) ? stockPort.positions : [];
 
-Here is your current financial posture:
-- **Total Spendable Liquidity**: **${formatMad(totalLiquidity)}** (Bank: ${formatMad(bankBalance)} • Cash: ${formatMad(cashOnHand)})
-- **Safety Cushion**: **${formatMad(emergencyBuffer)}** Emergency Buffer
-- **Daily Safe Allowance**: **${formatMad(dailyAllowance)} / day** (${dailySpent > 0 ? `${formatMad(dailySpent)} spent today` : 'No spend logged today'})
-- **Cycle Timeline**: **${daysUntilPayroll} days** remaining until scheduled payday
+  if (
+    lastUserMsg.includes('stock') ||
+    lastUserMsg.includes('binance') ||
+    lastUserMsg.includes('invest') ||
+    lastUserMsg.includes('portfolio') ||
+    lastUserMsg.includes('fee') ||
+    lastUserMsg.includes('dividend') ||
+    lastUserMsg.includes('breakeven') ||
+    lastUserMsg.includes('879')
+  ) {
+    const liveMad = Number(recon.currentLiveValueMad ?? stockPort.totalPortfolioValueMad ?? 0);
+    const liveUsd = Number(recon.currentLiveValueUsd ?? stockPort.totalPortfolioValueUsd ?? 0);
+    const initMad = Number(recon.initialCapitalMad ?? stockPort.totalCostBasisMad ?? liveMad);
+    const initUsd = Number(recon.initialCapitalUsd ?? stockPort.totalCostBasisUsd ?? liveUsd);
+    const netPnlMad = Number(recon.netCapitalPnlMad ?? liveMad - initMad);
+    const netPnlUsd = Number(recon.netCapitalPnlUsd ?? liveUsd - initUsd);
+    const netPnlPct = Number(recon.netCapitalPnlPercent ?? (initMad > 0 ? (netPnlMad / initMad) * 100 : 0));
+    const feeDragMad = Number(recon.totalFeeDragMad ?? stockPort.totalFeesPaidMad ?? 0);
+    const feeDragUsd = Number(recon.totalFeeDragUsd ?? stockPort.totalFeesPaidUsd ?? 0);
+    const divMad = Number(stockPort.annualDividendIncomeMad ?? 0);
 
-What would you like me to inspect or calculate?`;
+    const posRows = positions
+      .slice(0, 8)
+      .map(
+        (p: any) =>
+          `| **${p.ticker}** (${p.market}) | ${p.shares} | $${Number(p.currentPrice || 0).toFixed(3)} | **${formatMad(p.valueMad)}** ($${Number(p.valueUsd || 0).toFixed(2)}) | ${Number(p.netPnlAfterFeesMad || 0) >= 0 ? '+' : ''}${formatMad(p.netPnlAfterFeesMad)} | -${formatMad(p.totalFeeLossMad)} | $${Number(p.breakevenPriceUsd || p.breakevenPriceNative || 0).toFixed(3)} |`
+      )
+      .join('\n');
+
+    const reply = `### 📈 Investments, Live Binance & Stocks Forensic Audit
+
+#### 1. Capital Reserve vs. Live Valuation Bridge
+- **Protected Wallet Initial Capital**: **${formatMad(initMad)}** ($${initUsd.toFixed(2)})
+- **Current Live Portfolio Value**: **${formatMad(liveMad)}** ($${liveUsd.toFixed(2)})
+- **True Net Capital Gain / Loss**: **${netPnlMad >= 0 ? '+' : ''}${formatMad(netPnlMad)}** (${netPnlUsd >= 0 ? '+' : ''}$${netPnlUsd.toFixed(2)} / **${netPnlPct >= 0 ? '+' : ''}${netPnlPct.toFixed(2)}%**)
+- **Total Round-Trip Fee Drag**: **-${formatMad(feeDragMad)}** (-$${feeDragUsd.toFixed(3)})
+- **Projected Annual Dividend Yield**: **+${formatMad(divMad)} / yr**
+- **Safe Deployable Surplus**: **${formatMad(stockPort.deployableBuyingPowerMad || 0)}** ($${Number(stockPort.deployableBuyingPowerUsd || 0).toFixed(2)})
+
+${
+  positions.length > 0
+    ? `---
+
+#### 2. Active Holdings, Fee Loss & Breakeven Forensics
+
+| Asset | Qty / Shares | Live Price | Market Value | Net P&L (After Fees) | Total Fee Loss | Breakeven Price |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+${posRows}`
+    : ''
+}
+
+---
+
+#### 💡 Strategic Portfolio Verdict
+${
+  recon.verdict ||
+  (netPnlMad < 0
+    ? `Your portfolio is currently **${formatMad(Math.abs(netPnlMad))}** below your initial **${formatMad(initMad)}** reserve. Avoid high-frequency turnover to minimize fee drag and hold quality positions toward breakeven.`
+    : `Your portfolio is generating a net surplus of **+${formatMad(netPnlMad)}** above your initial capital reserve after accounting for all fees.`)
+}`;
+
+    return {
+      reply,
+      actions: [],
+      suggestions: [
+        '📊 Run a complete financial health audit',
+        '💰 What can I safely spend today?',
+        '🔮 What if I invest 500 MAD more into my top stock?',
+      ],
+    };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // SCENARIO 6: Default Comprehensive 360° Financial & Portfolio Co-pilot Summary
+  // ───────────────────────────────────────────────────────────────────────────
+  const livePortfolioMad = Number(stockPort.totalPortfolioValueMad || 0);
+  const livePortfolioUsd = Number(stockPort.totalPortfolioValueUsd || 0);
+
+  const reply = `### 👋 Spex 360° Financial & Portfolio Co-Pilot
+
+Here is your real-time unified posture across **Wallets, Cash Flow, and Investments**:
+
+| Domain | Key Metric | Current Status |
+| :--- | :--- | :--- |
+| **🛡️ Safe to Spend** | **${formatMad(kpis.safeToSpendMad ?? totalLiquidity)}** | Bank: ${formatMad(kpis.bankBalanceMad ?? bankBalance)} • Cash: ${formatMad(kpis.cashOnHandMad ?? cashOnHand)} |
+| **🎯 Daily Allowance** | **${formatMad(kpis.dailyAllowanceMad ?? dailyAllowance)} / day** | ${dailySpent > 0 ? `${formatMad(dailySpent)} spent today` : 'No spend logged today'} (${daysUntilPayroll}d to payday) |
+| **🛟 Emergency Buffer** | **${formatMad(emergencyBuffer)}** | Protected safety reserve |
+| **📈 Live Investments & Binance** | **${formatMad(livePortfolioMad)}** ($${livePortfolioUsd.toFixed(2)}) | ${positions.length} active positions tracked |
+
+What would you like me to analyze, simulate, or optimize next?`;
 
   return {
     reply,
     actions: [],
     suggestions: [
+      '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
       '📊 Run a complete financial health audit',
       '💰 What can I safely spend today?',
       '🎓 Give me my financial cycle report card & letter grade',
