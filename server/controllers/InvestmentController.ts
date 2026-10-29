@@ -39,9 +39,10 @@ export class InvestmentController {
     applyPrivateNoCacheHeaders(res);
     try {
       const rawSymbol = typeof req.query.symbol === 'string' ? req.query.symbol.trim().toUpperCase() : '';
-      if (!rawSymbol || !/^[A-Z0-9]{4,20}$/.test(rawSymbol)) {
+      const cleaned = rawSymbol.replace(/[^A-Z0-9]/g, '');
+      if (!cleaned || cleaned.length > 24) {
         return res.status(400).json({
-          error: 'Invalid or missing trading pair symbol. Expected uppercase alphanumeric symbol such as BTCUSDT or ETHUSDT.',
+          error: 'Please enter a valid asset ticker or trading pair (e.g., BTCUSDT, SOLUSDT, TSLA, NVDA, SPY).',
         });
       }
 
@@ -51,18 +52,22 @@ export class InvestmentController {
       const fromId = req.query.fromId !== undefined ? Number(req.query.fromId) : undefined;
       const forceRefresh = req.query.refresh === 'true';
 
-      const summary = await investmentService.getBinanceSymbolTrades(rawSymbol, {
-        limit,
-        startTime,
-        endTime,
-        fromId,
-        forceRefresh,
-      });
+      const summary = await investmentService.getBinanceSymbolTrades(
+        cleaned,
+        {
+          limit,
+          startTime,
+          endTime,
+          fromId,
+          forceRefresh,
+        },
+        req.dbUser?.id
+      );
 
       return res.json(summary);
     } catch (e: any) {
       console.error('InvestmentController.getBinanceTrades error:', e?.message || 'Unknown error');
-      return res.status(400).json({ error: e?.message || 'Failed to fetch Binance personal trade history' });
+      return res.status(400).json({ error: e?.message || 'Failed to fetch personal trade and position history' });
     }
   }
 

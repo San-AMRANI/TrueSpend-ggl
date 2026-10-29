@@ -393,7 +393,7 @@ export interface BinancePersonalTrade {
   executedAt: string;
   isMaker: boolean;
   // Deep Per-Trade Telemetry (Fees, Open/Closed Position P&L, Breakeven, Dividends)
-  tradeSource?: 'SPOT' | 'CONVERT' | 'MANUAL';
+  tradeSource?: 'SPOT' | 'CONVERT' | 'FUNDING' | 'EARN' | 'MANUAL' | 'BENCHMARK';
   isCompletedTrade?: boolean;
   tradeStatusLabel?: 'OPEN_LOT' | 'PARTIALLY_CLOSED' | 'CLOSED_REALIZED';
   openQtyRemaining?: number;

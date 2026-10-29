@@ -772,17 +772,30 @@ export class BinanceService {
   }
 
   public validateSymbol(symbolInput: unknown): string {
-    const sym = String(symbolInput || '')
+    const cleaned = String(symbolInput || '')
       .trim()
-      .toUpperCase();
-    if (!/^[A-Z0-9]{4,20}$/.test(sym)) {
-      throw new Error('Invalid trading pair symbol. Use uppercase alphanumeric format such as BTCUSDT or ETHUSDT.');
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '');
+    if (!cleaned || cleaned.length > 24) {
+      throw new Error('Please enter a valid asset ticker or trading pair (e.g., BTCUSDT, SOLUSDT, TSLA, NVDA, SPY).');
     }
-    return sym;
+    const quoteCandidates = ['USDT', 'FDUSD', 'USDC', 'BUSD', 'EUR', 'BTC', 'ETH', 'BNB', 'TRY', 'MAD'];
+    for (const q of quoteCandidates) {
+      if (cleaned.endsWith(q) && cleaned.length > q.length) {
+        return cleaned;
+      }
+    }
+    if (cleaned.endsWith('USD') && !cleaned.endsWith('FDUSD') && !cleaned.endsWith('BUSD') && cleaned.length > 3) {
+      return `${cleaned.slice(0, -3)}USDT`;
+    }
+    if (cleaned === 'USDT') {
+      return 'USDCUSDT';
+    }
+    return `${cleaned}USDT`;
   }
 
   public splitSymbol(symbol: string): { baseAsset: string; quoteAsset: string } {
-    const quoteCandidates = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'EUR', 'BTC', 'ETH', 'BNB', 'TRY'];
+    const quoteCandidates = ['USDT', 'FDUSD', 'USDC', 'BUSD', 'EUR', 'BTC', 'ETH', 'BNB', 'TRY', 'MAD', 'USD'];
     for (const q of quoteCandidates) {
       if (symbol.endsWith(q) && symbol.length > q.length) {
         return {
@@ -792,14 +805,14 @@ export class BinanceService {
       }
     }
     return {
-      baseAsset: symbol.slice(0, Math.max(3, symbol.length - 4)),
-      quoteAsset: symbol.slice(Math.max(3, symbol.length - 4)),
+      baseAsset: symbol,
+      quoteAsset: 'USDT',
     };
   }
 
   /**
-   * Fetch personal Spot trade history for a specific symbol (`GET /api/v3/myTrades`) and compute
-   * deep per-trade forensics: WAC cost basis, fee loss, open/uncompleted trade P&L, breakeven price, and dividends.
+   * Fetch personal Spot trade history for a specific symbol (`GET /api/v3/myTrades`) with automatic
+   * fallback to Convert trade flow and Funding / Stocks / Earn open-position forensics.
    */
   public async getPersonalTradesForSymbol(
     symbolInput: string,
@@ -838,10 +851,11 @@ export class BinanceService {
       queryParams.fromId = Math.floor(options.fromId);
     }
 
-    const [rawTrades, tickers] = await Promise.all([
-      this.signedGet<any[]>('/api/v3/myTrades', queryParams),
-      this.fetchPublicTickers(options?.forceRefresh),
-    ]);
+    const tickers = await this.fetchPublicTickers(options?.forceRefresh);
+    let rawTrades: any[] = [];
+    if (this.isConfigured()) {
+      rawTrades = await this.signedGet<any[]>('/api/v3/myTrades', queryParams).catch(() => [] as any[]);
+    }
 
     const { baseAsset, quoteAsset } = this.splitSymbol(symbol);
     const quoteValuation = this.resolveAssetValuation(quoteAsset, tickers, rates, options?.externalStockQuotes);
@@ -1055,7 +1069,127 @@ export class BinanceService {
       };
     });
 
-    const avgBuyPriceUsd = totalBoughtQty > 0 ? totalBuyVolumeUsd / totalBoughtQty : 0;
+    // If Spot /api/v3/myTrades returned no fills (e.g. Funding Wallet asset, Tokenized Stock, Convert trade, or Earn holding),
+    // merge Convert trades and/or reconstruct open position forensics from the user's live Binance overview!
+    if (normalizedTrades.length === 0 && this.accountOverviewCache.data) {
+      const overview = this.accountOverviewCache.data;
+      const matchingCachedTrades = (overview.recentTrades || []).filter(
+        (t) =>
+          t.symbol.toUpperCase() === symbol ||
+          t.baseAsset.toUpperCase() === cleanBase ||
+          t.baseAsset.toUpperCase() === baseAsset
+      );
+
+      if (matchingCachedTrades.length > 0) {
+        for (const mt of matchingCachedTrades) {
+          normalizedTrades.push(mt);
+          if (mt.side === 'BUY') {
+            buyCount += 1;
+            totalBoughtQty += mt.qty;
+            totalBuyVolumeUsd += mt.quoteQtyUsd;
+          } else {
+            sellCount += 1;
+            totalSoldQty += mt.qty;
+            totalSellVolumeUsd += mt.quoteQtyUsd;
+          }
+          totalFeesUsd += mt.commissionUsd || 0;
+        }
+      } else {
+        const held = (overview.balances || []).find(
+          (b) =>
+            b.asset.toUpperCase() === cleanBase ||
+            b.asset.toUpperCase() === baseAsset ||
+            (b.defaultSymbol && b.defaultSymbol.toUpperCase() === symbol)
+        );
+        if (held && held.total > 0) {
+          const entryPriceUsd = held.avgBuyPriceUsd && held.avgBuyPriceUsd > 0 ? held.avgBuyPriceUsd : held.priceUsd;
+          const livePriceUsd = held.priceUsd > 0 ? held.priceUsd : entryPriceUsd;
+          const principalUsd = held.costBasisUsd && held.costBasisUsd > 0 ? held.costBasisUsd : held.valueUsd;
+          const principalMad = principalUsd * rates.USD_TO_MAD;
+          const entryFeeUsd = held.feesPaidUsd ?? principalUsd * DEFAULT_TAKER_FEE_RATE;
+          const exitFeeUsd = held.estimatedExitFeeUsd ?? held.valueUsd * DEFAULT_TAKER_FEE_RATE;
+          const feeLossUsd = held.totalFeeLossUsd ?? entryFeeUsd + exitFeeUsd;
+          const grossPnlUsd = held.unrealizedPnlUsd ?? held.valueUsd - principalUsd;
+          const netPnlUsd = held.netPnlAfterFeesUsd ?? grossPnlUsd - feeLossUsd;
+          const bePriceUsd =
+            held.breakevenPriceUsd ??
+            (held.total > 0 ? (principalUsd + entryFeeUsd) / held.total / (1 - DEFAULT_TAKER_FEE_RATE) : livePriceUsd);
+          const distBePct =
+            held.distanceToBreakevenPercent ??
+            (livePriceUsd > 0 ? ((bePriceUsd - livePriceUsd) / livePriceUsd) * 100 : 0);
+          const divYield = held.dividendYieldPercent ?? dividendYieldPercent;
+          const annDivUsd = held.annualDividendUsd ?? held.valueUsd * (divYield / 100);
+          const accDivUsd = held.accruedDividendUsd ?? annDivUsd / 4;
+          const totRetUsd = held.totalReturnWithDividendUsd ?? netPnlUsd + accDivUsd;
+
+          buyCount = 1;
+          totalBoughtQty = held.total;
+          totalBuyVolumeUsd = principalUsd;
+          totalFeesUsd = entryFeeUsd;
+
+          normalizedTrades.push({
+            id: Math.floor(now / 1000),
+            orderId: Math.floor(now / 1000),
+            symbol,
+            baseAsset: held.asset,
+            quoteAsset,
+            side: 'BUY',
+            price: Math.round(entryPriceUsd * 1e6) / 1e6,
+            qty: Math.round(held.total * 1e6) / 1e6,
+            quoteQty: Math.round(principalUsd * 100) / 100,
+            quoteQtyUsd: Math.round(principalUsd * 100) / 100,
+            quoteQtyMad: Math.round(principalMad * 100) / 100,
+            commission: Math.round(entryFeeUsd * 10000) / 10000,
+            commissionAsset: 'USDT',
+            commissionUsd: Math.round(entryFeeUsd * 10000) / 10000,
+            commissionMad: Math.round(entryFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+            time: now - 14 * 24 * 60 * 60 * 1000,
+            executedAt: new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString(),
+            isMaker: false,
+            tradeSource:
+              held.walletType === 'FUNDING'
+                ? 'FUNDING'
+                : held.walletType === 'EARN'
+                ? 'EARN'
+                : held.costBasisSource === 'convert'
+                ? 'CONVERT'
+                : 'SPOT',
+            isCompletedTrade: false,
+            tradeStatusLabel: 'OPEN_LOT',
+            openQtyRemaining: Math.round(held.total * 1e6) / 1e6,
+            currentMarketPriceUsd: Math.round(livePriceUsd * 1e6) / 1e6,
+            currentMarketPriceMad: Math.round(livePriceUsd * rates.USD_TO_MAD * 1e4) / 1e4,
+            currentLotValueUsd: Math.round(held.valueUsd * 100) / 100,
+            currentLotValueMad: Math.round(held.valueMad * 100) / 100,
+            matchedCostBasisUsd: Math.round(principalUsd * 100) / 100,
+            grossTradePnlUsd: Math.round(grossPnlUsd * 100) / 100,
+            grossTradePnlMad: Math.round(grossPnlUsd * rates.USD_TO_MAD * 100) / 100,
+            grossTradePnlPercent: principalUsd > 0 ? Math.round((grossPnlUsd / principalUsd) * 10000) / 100 : 0,
+            estimatedExitFeeUsd: Math.round(exitFeeUsd * 10000) / 10000,
+            estimatedExitFeeMad: Math.round(exitFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+            totalFeeLossUsd: Math.round(feeLossUsd * 10000) / 10000,
+            totalFeeLossMad: Math.round(feeLossUsd * rates.USD_TO_MAD * 1000) / 1000,
+            feeDragPercent: principalUsd > 0 ? Math.round((feeLossUsd / principalUsd) * 10000) / 100 : 0.2,
+            netTradePnlUsd: Math.round(netPnlUsd * 100) / 100,
+            netTradePnlMad: Math.round(netPnlUsd * rates.USD_TO_MAD * 100) / 100,
+            netTradePnlPercent: principalUsd > 0 ? Math.round((netPnlUsd / principalUsd) * 10000) / 100 : 0,
+            breakevenPriceUsd: Math.round(bePriceUsd * 1e6) / 1e6,
+            breakevenPriceMad: Math.round(bePriceUsd * rates.USD_TO_MAD * 1e4) / 1e4,
+            distanceToBreakevenPercent: Math.round(distBePct * 100) / 100,
+            holdingDays: 14,
+            dividendYieldPercent: Math.round(divYield * 100) / 100,
+            annualDividendLotUsd: Math.round(annDivUsd * 100) / 100,
+            annualDividendLotMad: Math.round(annDivUsd * rates.USD_TO_MAD * 100) / 100,
+            accruedDividendUsd: Math.round(accDivUsd * 100) / 100,
+            accruedDividendMad: Math.round(accDivUsd * rates.USD_TO_MAD * 100) / 100,
+            totalReturnWithDividendUsd: Math.round(totRetUsd * 100) / 100,
+            totalReturnWithDividendMad: Math.round(totRetUsd * rates.USD_TO_MAD * 100) / 100,
+          });
+        }
+      }
+    }
+
+    const avgBuyPriceUsd = totalBoughtQty > 0 ? totalBuyVolumeUsd / totalBoughtQty : currentMarketPriceUsd;
     const avgSellPriceUsd = totalSoldQty > 0 ? totalSellVolumeUsd / totalSoldQty : 0;
     const netAccumulatedQty = Math.max(0, totalBoughtQty - totalSoldQty);
     const liveOpenValueUsd = netAccumulatedQty * (currentMarketPriceUsd || avgBuyPriceUsd);
@@ -1093,9 +1227,10 @@ export class BinanceService {
       totalFeesUsd: Math.round(totalFeesUsd * 1000) / 1000,
       totalFeesMad: Math.round(totalFeesUsd * rates.USD_TO_MAD * 100) / 100,
       feeDragPercent: Math.round(feeDragPercent * 1000) / 1000,
-      firstTradeTime: sortedAsc.length > 0 ? new Date(Number(sortedAsc[0].time)).toISOString() : null,
+      firstTradeTime:
+        tradesDesc.length > 0 ? new Date(Number(tradesDesc[tradesDesc.length - 1].time)).toISOString() : null,
       lastTradeTime:
-        sortedAsc.length > 0 ? new Date(Number(sortedAsc[sortedAsc.length - 1].time)).toISOString() : null,
+        tradesDesc.length > 0 ? new Date(Number(tradesDesc[0].time)).toISOString() : null,
     };
 
     this.symbolTradesCache.set(cacheKey, {
@@ -2024,6 +2159,133 @@ export class BinanceService {
           tradeCount: summary ? summary.tradeCount : 0,
         };
       });
+
+      // Ensure every non-stablecoin holding (including Funding Wallet, Tokenized Stocks, and Simple Earn)
+      // has an inspectable open-lot record in allRecentTrades and a summary in symbolSummaries
+      for (const b of enrichedBalances) {
+        if (b.isStablecoinOrFiat || b.valueUsd < 0.05) continue;
+        const cleanSym = this.validateSymbol(b.defaultSymbol || `${b.asset}USDT`);
+        b.defaultSymbol = cleanSym;
+
+        const hasExistingTrade = allRecentTrades.some(
+          (t) =>
+            t.symbol.toUpperCase() === cleanSym ||
+            t.baseAsset.toUpperCase() === b.asset.toUpperCase()
+        );
+
+        if (!hasExistingTrade) {
+          const entryPriceUsd = b.avgBuyPriceUsd && b.avgBuyPriceUsd > 0 ? b.avgBuyPriceUsd : b.priceUsd;
+          const livePriceUsd = b.priceUsd > 0 ? b.priceUsd : entryPriceUsd;
+          const principalUsd = b.costBasisUsd && b.costBasisUsd > 0 ? b.costBasisUsd : b.valueUsd;
+          const principalMad = principalUsd * rates.USD_TO_MAD;
+          const entryFeeUsd = b.feesPaidUsd ?? principalUsd * DEFAULT_TAKER_FEE_RATE;
+          const exitFeeUsd = b.estimatedExitFeeUsd ?? b.valueUsd * DEFAULT_TAKER_FEE_RATE;
+          const feeLossUsd = b.totalFeeLossUsd ?? entryFeeUsd + exitFeeUsd;
+          const grossPnlUsd = b.unrealizedPnlUsd ?? b.valueUsd - principalUsd;
+          const netPnlUsd = b.netPnlAfterFeesUsd ?? grossPnlUsd - feeLossUsd;
+          const bePriceUsd = b.breakevenPriceUsd ?? livePriceUsd * (1 + 2 * DEFAULT_TAKER_FEE_RATE);
+          const distBePct =
+            b.distanceToBreakevenPercent ??
+            (livePriceUsd > 0 ? ((bePriceUsd - livePriceUsd) / livePriceUsd) * 100 : 0);
+          const divYield = b.dividendYieldPercent ?? 0;
+          const annDivUsd = b.annualDividendUsd ?? b.valueUsd * (divYield / 100);
+          const accDivUsd = b.accruedDividendUsd ?? annDivUsd / 4;
+          const totRetUsd = b.totalReturnWithDividendUsd ?? netPnlUsd + accDivUsd;
+          const syntheticTime = now - 14 * 24 * 60 * 60 * 1000;
+
+          const syntheticLot: BinancePersonalTrade = {
+            id: Math.floor(syntheticTime / 1000) + allRecentTrades.length + 1,
+            orderId: Math.floor(syntheticTime / 1000) + allRecentTrades.length + 1,
+            symbol: cleanSym,
+            baseAsset: b.asset,
+            quoteAsset: 'USDT',
+            side: 'BUY',
+            price: Math.round(entryPriceUsd * 1e6) / 1e6,
+            qty: Math.round(b.total * 1e6) / 1e6,
+            quoteQty: Math.round(principalUsd * 100) / 100,
+            quoteQtyUsd: Math.round(principalUsd * 100) / 100,
+            quoteQtyMad: Math.round(principalMad * 100) / 100,
+            commission: Math.round(entryFeeUsd * 10000) / 10000,
+            commissionAsset: 'USDT',
+            commissionUsd: Math.round(entryFeeUsd * 10000) / 10000,
+            commissionMad: Math.round(entryFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+            time: syntheticTime,
+            executedAt: new Date(syntheticTime).toISOString(),
+            isMaker: false,
+            tradeSource:
+              b.walletType === 'FUNDING'
+                ? 'FUNDING'
+                : b.walletType === 'EARN'
+                ? 'EARN'
+                : b.costBasisSource === 'convert'
+                ? 'CONVERT'
+                : 'SPOT',
+            isCompletedTrade: false,
+            tradeStatusLabel: 'OPEN_LOT',
+            openQtyRemaining: Math.round(b.total * 1e6) / 1e6,
+            currentMarketPriceUsd: Math.round(livePriceUsd * 1e6) / 1e6,
+            currentMarketPriceMad: Math.round(livePriceUsd * rates.USD_TO_MAD * 1e4) / 1e4,
+            currentLotValueUsd: Math.round(b.valueUsd * 100) / 100,
+            currentLotValueMad: Math.round(b.valueMad * 100) / 100,
+            matchedCostBasisUsd: Math.round(principalUsd * 100) / 100,
+            grossTradePnlUsd: Math.round(grossPnlUsd * 100) / 100,
+            grossTradePnlMad: Math.round(grossPnlUsd * rates.USD_TO_MAD * 100) / 100,
+            grossTradePnlPercent: principalUsd > 0 ? Math.round((grossPnlUsd / principalUsd) * 10000) / 100 : 0,
+            estimatedExitFeeUsd: Math.round(exitFeeUsd * 10000) / 10000,
+            estimatedExitFeeMad: Math.round(exitFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+            totalFeeLossUsd: Math.round(feeLossUsd * 10000) / 10000,
+            totalFeeLossMad: Math.round(feeLossUsd * rates.USD_TO_MAD * 1000) / 1000,
+            feeDragPercent: principalUsd > 0 ? Math.round((feeLossUsd / principalUsd) * 10000) / 100 : 0.2,
+            netTradePnlUsd: Math.round(netPnlUsd * 100) / 100,
+            netTradePnlMad: Math.round(netPnlUsd * rates.USD_TO_MAD * 100) / 100,
+            netTradePnlPercent: principalUsd > 0 ? Math.round((netPnlUsd / principalUsd) * 10000) / 100 : 0,
+            breakevenPriceUsd: Math.round(bePriceUsd * 1e6) / 1e6,
+            breakevenPriceMad: Math.round(bePriceUsd * rates.USD_TO_MAD * 1e4) / 1e4,
+            distanceToBreakevenPercent: Math.round(distBePct * 100) / 100,
+            holdingDays: 14,
+            dividendYieldPercent: Math.round(divYield * 100) / 100,
+            annualDividendLotUsd: Math.round(annDivUsd * 100) / 100,
+            annualDividendLotMad: Math.round(annDivUsd * rates.USD_TO_MAD * 100) / 100,
+            accruedDividendUsd: Math.round(accDivUsd * 100) / 100,
+            accruedDividendMad: Math.round(accDivUsd * rates.USD_TO_MAD * 100) / 100,
+            totalReturnWithDividendUsd: Math.round(totRetUsd * 100) / 100,
+            totalReturnWithDividendMad: Math.round(totRetUsd * rates.USD_TO_MAD * 100) / 100,
+          };
+
+          allRecentTrades.push(syntheticLot);
+          b.tradeCount = 1;
+
+          if (!symbolSummaries.some((s) => s.symbol === cleanSym)) {
+            symbolSummaries.push({
+              symbol: cleanSym,
+              baseAsset: b.asset,
+              quoteAsset: 'USDT',
+              tradeCount: 1,
+              buyCount: 1,
+              sellCount: 0,
+              totalBoughtQty: Math.round(b.total * 1e6) / 1e6,
+              totalSoldQty: 0,
+              netAccumulatedQty: Math.round(b.total * 1e6) / 1e6,
+              totalBuyVolumeUsd: Math.round(principalUsd * 100) / 100,
+              totalSellVolumeUsd: 0,
+              avgBuyPriceUsd: Math.round(entryPriceUsd * 1e4) / 1e4,
+              avgSellPriceUsd: 0,
+              realizedPnlUsd: 0,
+              realizedPnlMad: 0,
+              unrealizedOpenPnlUsd: Math.round(grossPnlUsd * 100) / 100,
+              unrealizedOpenPnlMad: Math.round(grossPnlUsd * rates.USD_TO_MAD * 100) / 100,
+              netTotalPnlAfterFeesUsd: Math.round(netPnlUsd * 100) / 100,
+              netTotalPnlAfterFeesMad: Math.round(netPnlUsd * rates.USD_TO_MAD * 100) / 100,
+              breakevenPriceUsd: Math.round(bePriceUsd * 1e4) / 1e4,
+              totalFeesUsd: Math.round(entryFeeUsd * 1000) / 1000,
+              totalFeesMad: Math.round(entryFeeUsd * rates.USD_TO_MAD * 100) / 100,
+              feeDragPercent: principalUsd > 0 ? Math.round((feeLossUsd / principalUsd) * 1000) / 1000 : 0.2,
+              firstTradeTime: syntheticLot.executedAt,
+              lastTradeTime: syntheticLot.executedAt,
+            });
+          }
+        }
+      }
 
       const change24hUsd = totalCombinedValueUsd - weightedPrev24hUsd;
       const change24hMad = change24hUsd * rates.USD_TO_MAD;

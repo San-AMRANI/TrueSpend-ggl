@@ -1848,7 +1848,7 @@ export class InvestmentService {
   }
 
   /**
-   * Read-only Binance personal trade history for a specific validated pair (`GET /api/v3/myTrades`)
+   * Read-only personal trade & position forensics for any Spot, Funding, Stock, or Equity symbol
    */
   async getBinanceSymbolTrades(
     symbol: string,
@@ -1858,16 +1858,353 @@ export class InvestmentService {
       endTime?: number;
       fromId?: number;
       forceRefresh?: boolean;
-    }
+    },
+    userId?: string
   ) {
+    const normalizedSym = binanceService.validateSymbol(symbol);
+    const { baseAsset, quoteAsset } = binanceService.splitSymbol(normalizedSym);
+    const cleanBase = baseAsset.replace(/^LD/, '');
+
     const [rates, liveQuotes] = await Promise.all([
       this.getExchangeRates(),
-      this.fetchLiveStockQuotes(COMMON_BINANCE_STOCK_TICKERS, options?.forceRefresh),
+      this.fetchLiveStockQuotes(
+        Array.from(new Set([...COMMON_BINANCE_STOCK_TICKERS, cleanBase, baseAsset])),
+        options?.forceRefresh
+      ),
     ]);
-    return await binanceService.getPersonalTradesForSymbol(symbol, rates, {
+
+    const result = await binanceService.getPersonalTradesForSymbol(normalizedSym, rates, {
       ...options,
       externalStockQuotes: liveQuotes,
     });
+
+    if (result.trades.length > 0) {
+      return result;
+    }
+
+    const now = Date.now();
+    const catalogItem = CURATED_STOCK_CATALOG.find(
+      (c) => c.ticker.toUpperCase() === cleanBase || c.ticker.toUpperCase() === baseAsset
+    );
+    const liveStock = liveQuotes[cleanBase] || liveQuotes[baseAsset];
+
+    // Check if the user has logged positions or orders for this stock/asset
+    if (userId) {
+      const [rawPositions, rawOrders] = await Promise.all([
+        investmentRepository.findAllPositionsByUserId(userId),
+        investmentRepository.findAllOrdersByUserId(userId),
+      ]);
+
+      const matchingPos = rawPositions.find(
+        (p) => p.ticker.toUpperCase() === cleanBase || p.ticker.toUpperCase() === baseAsset
+      );
+      const matchingOrders = rawOrders.filter(
+        (o) =>
+          (o.ticker || '').toUpperCase() === cleanBase ||
+          (matchingPos && o.positionId === matchingPos.id)
+      );
+
+      if (matchingPos && parseFloat(matchingPos.shares || '0') > 0) {
+        const shares = Math.max(0, parseFloat(matchingPos.shares || '0') || 0);
+        const avgCostNative = Math.max(0, parseFloat(matchingPos.avgCostPerShare || '0') || 0);
+        const currNative =
+          liveStock?.price ||
+          parseFloat(matchingPos.currentPrice || '0') ||
+          catalogItem?.price ||
+          avgCostNative;
+        const currency = (matchingPos.currency || liveStock?.currency || catalogItem?.currency || 'USD').toUpperCase();
+        const toUsdRate = currency === 'MAD' ? 1 / rates.USD_TO_MAD : currency === 'EUR' ? rates.EUR_TO_MAD / rates.USD_TO_MAD : 1;
+
+        const entryPriceUsd = avgCostNative * toUsdRate;
+        const livePriceUsd = currNative * toUsdRate;
+        const principalUsd = shares * entryPriceUsd;
+        const principalMad = principalUsd * rates.USD_TO_MAD;
+        const currentLotValueUsd = shares * livePriceUsd;
+        const currentLotValueMad = currentLotValueUsd * rates.USD_TO_MAD;
+
+        const feeRate = matchingPos.market === 'BVC' ? 0.0035 : 0.001;
+        const entryFeeUsd = principalUsd * feeRate;
+        const exitFeeUsd = currentLotValueUsd * feeRate;
+        const totalFeeLossUsd = entryFeeUsd + exitFeeUsd;
+        const grossPnlUsd = currentLotValueUsd - principalUsd;
+        const netPnlUsd = grossPnlUsd - totalFeeLossUsd;
+        const bePriceUsd = (entryPriceUsd * (1 + feeRate)) / (1 - feeRate);
+        const distBePct = livePriceUsd > 0 ? ((bePriceUsd - livePriceUsd) / livePriceUsd) * 100 : 0;
+
+        const divYield = catalogItem?.dividendYieldPercent ?? liveStock?.dividendYieldPercent ?? 0;
+        const annDivUsd = currentLotValueUsd * (divYield / 100);
+        const createdMs = new Date(matchingPos.createdAt || now).getTime() || now;
+        const holdingDays = Math.max(1, Math.floor((now - createdMs) / (1000 * 60 * 60 * 24)));
+        const accDivUsd = annDivUsd * Math.min(1, holdingDays / 365);
+        const totRetUsd = netPnlUsd + accDivUsd;
+
+        const trades =
+          matchingOrders.length > 0
+            ? matchingOrders.map((ord, idx) => {
+                const ordShares = parseFloat(ord.shares || '0') || shares;
+                const ordPriceUsd = (parseFloat(ord.pricePerShare || '0') || avgCostNative) * toUsdRate;
+                const ordPrincipalUsd = ordShares * ordPriceUsd;
+                const ordFeeUsd = ordPrincipalUsd * feeRate;
+                const ordExitFeeUsd = ord.action === 'BUY' ? ordShares * livePriceUsd * feeRate : 0;
+                const ordFeeLossUsd = ordFeeUsd + ordExitFeeUsd;
+                const ordGrossUsd =
+                  ord.action === 'BUY' ? ordShares * (livePriceUsd - ordPriceUsd) : 0;
+                const ordNetUsd = ordGrossUsd - ordFeeLossUsd;
+                const ordTime = new Date(ord.executedAt || now).getTime() || now;
+                return {
+                  id: Math.floor(ordTime / 1000) + idx,
+                  orderId: Math.floor(ordTime / 1000) + idx,
+                  symbol: normalizedSym,
+                  baseAsset: cleanBase,
+                  quoteAsset,
+                  side: (ord.action === 'SELL' ? 'SELL' : 'BUY') as 'BUY' | 'SELL',
+                  price: Math.round(ordPriceUsd * 1e4) / 1e4,
+                  qty: Math.round(ordShares * 1e6) / 1e6,
+                  quoteQty: Math.round(ordPrincipalUsd * 100) / 100,
+                  quoteQtyUsd: Math.round(ordPrincipalUsd * 100) / 100,
+                  quoteQtyMad: Math.round(ordPrincipalUsd * rates.USD_TO_MAD * 100) / 100,
+                  commission: Math.round(ordFeeUsd * 10000) / 10000,
+                  commissionAsset: 'USD',
+                  commissionUsd: Math.round(ordFeeUsd * 10000) / 10000,
+                  commissionMad: Math.round(ordFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+                  time: ordTime,
+                  executedAt: new Date(ordTime).toISOString(),
+                  isMaker: false,
+                  tradeSource: 'MANUAL' as const,
+                  isCompletedTrade: ord.action === 'SELL',
+                  tradeStatusLabel: (ord.action === 'SELL' ? 'CLOSED_REALIZED' : 'OPEN_LOT') as
+                    | 'OPEN_LOT'
+                    | 'CLOSED_REALIZED',
+                  openQtyRemaining: ord.action === 'BUY' ? ordShares : 0,
+                  currentMarketPriceUsd: Math.round(livePriceUsd * 1e4) / 1e4,
+                  currentMarketPriceMad: Math.round(livePriceUsd * rates.USD_TO_MAD * 100) / 100,
+                  currentLotValueUsd: Math.round(ordShares * livePriceUsd * 100) / 100,
+                  currentLotValueMad: Math.round(ordShares * livePriceUsd * rates.USD_TO_MAD * 100) / 100,
+                  matchedCostBasisUsd: Math.round(ordPrincipalUsd * 100) / 100,
+                  grossTradePnlUsd: Math.round(ordGrossUsd * 100) / 100,
+                  grossTradePnlMad: Math.round(ordGrossUsd * rates.USD_TO_MAD * 100) / 100,
+                  grossTradePnlPercent:
+                    ordPrincipalUsd > 0 ? Math.round((ordGrossUsd / ordPrincipalUsd) * 10000) / 100 : 0,
+                  estimatedExitFeeUsd: Math.round(ordExitFeeUsd * 10000) / 10000,
+                  estimatedExitFeeMad: Math.round(ordExitFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+                  totalFeeLossUsd: Math.round(ordFeeLossUsd * 10000) / 10000,
+                  totalFeeLossMad: Math.round(ordFeeLossUsd * rates.USD_TO_MAD * 1000) / 1000,
+                  feeDragPercent: Math.round(feeRate * 200 * 100) / 100,
+                  netTradePnlUsd: Math.round(ordNetUsd * 100) / 100,
+                  netTradePnlMad: Math.round(ordNetUsd * rates.USD_TO_MAD * 100) / 100,
+                  netTradePnlPercent:
+                    ordPrincipalUsd > 0 ? Math.round((ordNetUsd / ordPrincipalUsd) * 10000) / 100 : 0,
+                  breakevenPriceUsd: Math.round(bePriceUsd * 1e4) / 1e4,
+                  breakevenPriceMad: Math.round(bePriceUsd * rates.USD_TO_MAD * 100) / 100,
+                  distanceToBreakevenPercent: Math.round(distBePct * 100) / 100,
+                  holdingDays,
+                  dividendYieldPercent: Math.round(divYield * 100) / 100,
+                  annualDividendLotUsd: Math.round(annDivUsd * 100) / 100,
+                  annualDividendLotMad: Math.round(annDivUsd * rates.USD_TO_MAD * 100) / 100,
+                  accruedDividendUsd: Math.round(accDivUsd * 100) / 100,
+                  accruedDividendMad: Math.round(accDivUsd * rates.USD_TO_MAD * 100) / 100,
+                  totalReturnWithDividendUsd: Math.round((ordNetUsd + accDivUsd) * 100) / 100,
+                  totalReturnWithDividendMad: Math.round((ordNetUsd + accDivUsd) * rates.USD_TO_MAD * 100) / 100,
+                };
+              })
+            : [
+                {
+                  id: Math.floor(createdMs / 1000),
+                  orderId: Math.floor(createdMs / 1000),
+                  symbol: normalizedSym,
+                  baseAsset: cleanBase,
+                  quoteAsset,
+                  side: 'BUY' as const,
+                  price: Math.round(entryPriceUsd * 1e4) / 1e4,
+                  qty: Math.round(shares * 1e6) / 1e6,
+                  quoteQty: Math.round(principalUsd * 100) / 100,
+                  quoteQtyUsd: Math.round(principalUsd * 100) / 100,
+                  quoteQtyMad: Math.round(principalMad * 100) / 100,
+                  commission: Math.round(entryFeeUsd * 10000) / 10000,
+                  commissionAsset: 'USD',
+                  commissionUsd: Math.round(entryFeeUsd * 10000) / 10000,
+                  commissionMad: Math.round(entryFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+                  time: createdMs,
+                  executedAt: new Date(createdMs).toISOString(),
+                  isMaker: false,
+                  tradeSource: 'MANUAL' as const,
+                  isCompletedTrade: false,
+                  tradeStatusLabel: 'OPEN_LOT' as const,
+                  openQtyRemaining: Math.round(shares * 1e6) / 1e6,
+                  currentMarketPriceUsd: Math.round(livePriceUsd * 1e4) / 1e4,
+                  currentMarketPriceMad: Math.round(livePriceUsd * rates.USD_TO_MAD * 100) / 100,
+                  currentLotValueUsd: Math.round(currentLotValueUsd * 100) / 100,
+                  currentLotValueMad: Math.round(currentLotValueMad * 100) / 100,
+                  matchedCostBasisUsd: Math.round(principalUsd * 100) / 100,
+                  grossTradePnlUsd: Math.round(grossPnlUsd * 100) / 100,
+                  grossTradePnlMad: Math.round(grossPnlUsd * rates.USD_TO_MAD * 100) / 100,
+                  grossTradePnlPercent:
+                    principalUsd > 0 ? Math.round((grossPnlUsd / principalUsd) * 10000) / 100 : 0,
+                  estimatedExitFeeUsd: Math.round(exitFeeUsd * 10000) / 10000,
+                  estimatedExitFeeMad: Math.round(exitFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+                  totalFeeLossUsd: Math.round(totalFeeLossUsd * 10000) / 10000,
+                  totalFeeLossMad: Math.round(totalFeeLossUsd * rates.USD_TO_MAD * 1000) / 1000,
+                  feeDragPercent: Math.round(feeRate * 200 * 100) / 100,
+                  netTradePnlUsd: Math.round(netPnlUsd * 100) / 100,
+                  netTradePnlMad: Math.round(netPnlUsd * rates.USD_TO_MAD * 100) / 100,
+                  netTradePnlPercent:
+                    principalUsd > 0 ? Math.round((netPnlUsd / principalUsd) * 10000) / 100 : 0,
+                  breakevenPriceUsd: Math.round(bePriceUsd * 1e4) / 1e4,
+                  breakevenPriceMad: Math.round(bePriceUsd * rates.USD_TO_MAD * 100) / 100,
+                  distanceToBreakevenPercent: Math.round(distBePct * 100) / 100,
+                  holdingDays,
+                  dividendYieldPercent: Math.round(divYield * 100) / 100,
+                  annualDividendLotUsd: Math.round(annDivUsd * 100) / 100,
+                  annualDividendLotMad: Math.round(annDivUsd * rates.USD_TO_MAD * 100) / 100,
+                  accruedDividendUsd: Math.round(accDivUsd * 100) / 100,
+                  accruedDividendMad: Math.round(accDivUsd * rates.USD_TO_MAD * 100) / 100,
+                  totalReturnWithDividendUsd: Math.round(totRetUsd * 100) / 100,
+                  totalReturnWithDividendMad: Math.round(totRetUsd * rates.USD_TO_MAD * 100) / 100,
+                },
+              ];
+
+        return {
+          trades,
+          summary: {
+            symbol: normalizedSym,
+            baseAsset: cleanBase,
+            quoteAsset,
+            tradeCount: trades.length,
+            buyCount: trades.filter((t) => t.side === 'BUY').length,
+            sellCount: trades.filter((t) => t.side === 'SELL').length,
+            totalBoughtQty: Math.round(shares * 1e6) / 1e6,
+            totalSoldQty: 0,
+            netAccumulatedQty: Math.round(shares * 1e6) / 1e6,
+            totalBuyVolumeUsd: Math.round(principalUsd * 100) / 100,
+            totalSellVolumeUsd: 0,
+            avgBuyPriceUsd: Math.round(entryPriceUsd * 1e4) / 1e4,
+            avgSellPriceUsd: 0,
+            realizedPnlUsd: 0,
+            realizedPnlMad: 0,
+            unrealizedOpenPnlUsd: Math.round(grossPnlUsd * 100) / 100,
+            unrealizedOpenPnlMad: Math.round(grossPnlUsd * rates.USD_TO_MAD * 100) / 100,
+            netTotalPnlAfterFeesUsd: Math.round(netPnlUsd * 100) / 100,
+            netTotalPnlAfterFeesMad: Math.round(netPnlUsd * rates.USD_TO_MAD * 100) / 100,
+            breakevenPriceUsd: Math.round(bePriceUsd * 1e4) / 1e4,
+            totalFeesUsd: Math.round(entryFeeUsd * 1000) / 1000,
+            totalFeesMad: Math.round(entryFeeUsd * rates.USD_TO_MAD * 100) / 100,
+            feeDragPercent: Math.round(feeRate * 200 * 100) / 100,
+            firstTradeTime: trades[trades.length - 1]?.executedAt || null,
+            lastTradeTime: trades[0]?.executedAt || null,
+          },
+        };
+      }
+    }
+
+    // If the user queried a Stock / ETF / Market ticker (e.g. TSLA, NVDA, AAPL, SPY, ATW, IAM) that has live quote or catalog info,
+    // return a 1-share Read-Only Market Benchmark Forensics Lot so they can inspect live price, round-trip fee drag, breakeven price, and dividends!
+    if (liveStock || catalogItem) {
+      const rawPrice = liveStock?.price || catalogItem?.price || 100;
+      const currency = (liveStock?.currency || catalogItem?.currency || 'USD').toUpperCase();
+      const toUsdRate =
+        currency === 'MAD'
+          ? 1 / rates.USD_TO_MAD
+          : currency === 'EUR'
+          ? rates.EUR_TO_MAD / rates.USD_TO_MAD
+          : 1;
+      const livePriceUsd = rawPrice * toUsdRate;
+      const feeRate = catalogItem?.market === 'BVC' ? 0.0035 : 0.001;
+      const entryFeeUsd = livePriceUsd * feeRate;
+      const exitFeeUsd = livePriceUsd * feeRate;
+      const feeLossUsd = entryFeeUsd + exitFeeUsd;
+      const bePriceUsd = (livePriceUsd * (1 + feeRate)) / (1 - feeRate);
+      const distBePct = livePriceUsd > 0 ? ((bePriceUsd - livePriceUsd) / livePriceUsd) * 100 : 0;
+      const divYield = catalogItem?.dividendYieldPercent ?? liveStock?.dividendYieldPercent ?? 0;
+      const annDivUsd = livePriceUsd * (divYield / 100);
+      const accDivUsd = annDivUsd / 4;
+      const netAfterFeeUsd = -feeLossUsd;
+      const totRetUsd = netAfterFeeUsd + accDivUsd;
+
+      const benchmarkLot = {
+        id: Math.floor(now / 1000),
+        orderId: Math.floor(now / 1000),
+        symbol: normalizedSym,
+        baseAsset: cleanBase,
+        quoteAsset,
+        side: 'BUY' as const,
+        price: Math.round(livePriceUsd * 1e4) / 1e4,
+        qty: 1,
+        quoteQty: Math.round(livePriceUsd * 100) / 100,
+        quoteQtyUsd: Math.round(livePriceUsd * 100) / 100,
+        quoteQtyMad: Math.round(livePriceUsd * rates.USD_TO_MAD * 100) / 100,
+        commission: Math.round(entryFeeUsd * 10000) / 10000,
+        commissionAsset: 'USD',
+        commissionUsd: Math.round(entryFeeUsd * 10000) / 10000,
+        commissionMad: Math.round(entryFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+        time: now,
+        executedAt: new Date(now).toISOString(),
+        isMaker: false,
+        tradeSource: 'BENCHMARK' as const,
+        isCompletedTrade: false,
+        tradeStatusLabel: 'OPEN_LOT' as const,
+        openQtyRemaining: 1,
+        currentMarketPriceUsd: Math.round(livePriceUsd * 1e4) / 1e4,
+        currentMarketPriceMad: Math.round(livePriceUsd * rates.USD_TO_MAD * 100) / 100,
+        currentLotValueUsd: Math.round(livePriceUsd * 100) / 100,
+        currentLotValueMad: Math.round(livePriceUsd * rates.USD_TO_MAD * 100) / 100,
+        matchedCostBasisUsd: Math.round(livePriceUsd * 100) / 100,
+        grossTradePnlUsd: 0,
+        grossTradePnlMad: 0,
+        grossTradePnlPercent: 0,
+        estimatedExitFeeUsd: Math.round(exitFeeUsd * 10000) / 10000,
+        estimatedExitFeeMad: Math.round(exitFeeUsd * rates.USD_TO_MAD * 1000) / 1000,
+        totalFeeLossUsd: Math.round(feeLossUsd * 10000) / 10000,
+        totalFeeLossMad: Math.round(feeLossUsd * rates.USD_TO_MAD * 1000) / 1000,
+        feeDragPercent: Math.round(feeRate * 200 * 100) / 100,
+        netTradePnlUsd: Math.round(netAfterFeeUsd * 1000) / 1000,
+        netTradePnlMad: Math.round(netAfterFeeUsd * rates.USD_TO_MAD * 100) / 100,
+        netTradePnlPercent: -Math.round(feeRate * 200 * 100) / 100,
+        breakevenPriceUsd: Math.round(bePriceUsd * 1e4) / 1e4,
+        breakevenPriceMad: Math.round(bePriceUsd * rates.USD_TO_MAD * 100) / 100,
+        distanceToBreakevenPercent: Math.round(distBePct * 100) / 100,
+        holdingDays: 90,
+        dividendYieldPercent: Math.round(divYield * 100) / 100,
+        annualDividendLotUsd: Math.round(annDivUsd * 100) / 100,
+        annualDividendLotMad: Math.round(annDivUsd * rates.USD_TO_MAD * 100) / 100,
+        accruedDividendUsd: Math.round(accDivUsd * 100) / 100,
+        accruedDividendMad: Math.round(accDivUsd * rates.USD_TO_MAD * 100) / 100,
+        totalReturnWithDividendUsd: Math.round(totRetUsd * 100) / 100,
+        totalReturnWithDividendMad: Math.round(totRetUsd * rates.USD_TO_MAD * 100) / 100,
+      };
+
+      return {
+        trades: [benchmarkLot],
+        summary: {
+          symbol: normalizedSym,
+          baseAsset: cleanBase,
+          quoteAsset,
+          tradeCount: 1,
+          buyCount: 1,
+          sellCount: 0,
+          totalBoughtQty: 1,
+          totalSoldQty: 0,
+          netAccumulatedQty: 1,
+          totalBuyVolumeUsd: Math.round(livePriceUsd * 100) / 100,
+          totalSellVolumeUsd: 0,
+          avgBuyPriceUsd: Math.round(livePriceUsd * 1e4) / 1e4,
+          avgSellPriceUsd: 0,
+          realizedPnlUsd: 0,
+          realizedPnlMad: 0,
+          unrealizedOpenPnlUsd: 0,
+          unrealizedOpenPnlMad: 0,
+          netTotalPnlAfterFeesUsd: Math.round(netAfterFeeUsd * 1000) / 1000,
+          netTotalPnlAfterFeesMad: Math.round(netAfterFeeUsd * rates.USD_TO_MAD * 100) / 100,
+          breakevenPriceUsd: Math.round(bePriceUsd * 1e4) / 1e4,
+          totalFeesUsd: Math.round(entryFeeUsd * 1000) / 1000,
+          totalFeesMad: Math.round(entryFeeUsd * rates.USD_TO_MAD * 100) / 100,
+          feeDragPercent: Math.round(feeRate * 200 * 100) / 100,
+          firstTradeTime: benchmarkLot.executedAt,
+          lastTradeTime: benchmarkLot.executedAt,
+        },
+      };
+    }
+
+    return result;
   }
 
   /**

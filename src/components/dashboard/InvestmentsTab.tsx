@@ -193,6 +193,32 @@ function formatQty(value: number | undefined | null): string {
   return num.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 6 });
 }
 
+const KNOWN_QUOTES = ['USDT', 'USDC', 'FDUSD', 'BUSD', 'TUSD', 'EUR', 'TRY', 'BTC', 'ETH', 'BNB', 'MAD'];
+
+function normalizeSymbolPair(raw: string): string {
+  const cleaned = (raw || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!cleaned) return '';
+  for (const q of KNOWN_QUOTES) {
+    if (cleaned.length > q.length && cleaned.endsWith(q)) {
+      return cleaned;
+    }
+  }
+  if (cleaned.length > 3 && cleaned.endsWith('USD')) {
+    return `${cleaned}T`;
+  }
+  return `${cleaned}USDT`;
+}
+
+function extractBaseTicker(symbolOrTicker: string): string {
+  const cleaned = (symbolOrTicker || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  for (const q of KNOWN_QUOTES) {
+    if (cleaned.length > q.length && cleaned.endsWith(q)) {
+      return cleaned.slice(0, cleaned.length - q.length);
+    }
+  }
+  return cleaned;
+}
+
 export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   investmentsData,
   wallets,
@@ -248,70 +274,18 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   const [simTargetMovePct, setSimTargetMovePct] = useState<string>('12');
   const [simHoldingMonths, setSimHoldingMonths] = useState<string>('12');
   const [selectedStockDetailId, setSelectedStockDetailId] = useState<string | null>(null);
-
-  // Wallet Capital Transfer State
-  const [transferDirection, setTransferDirection] = useState<'deposit' | 'withdrawal'>('deposit');
-  const [selectedBankWalletId, setSelectedBankWalletId] = useState<string>('');
-  const [selectedInvWalletId, setSelectedInvWalletId] = useState<string>('');
-  const [transferAmountMad, setTransferAmountMad] = useState<string>('');
-  const [transferNotes, setTransferNotes] = useState<string>('');
-
-  // Off-Exchange Manual Position / Ledger State
-  const [isAddPositionOpen, setIsAddPositionOpen] = useState(false);
-  const [isLogOrderOpen, setIsLogOrderOpen] = useState(false);
-  const [catalogSearchQuery, setCatalogSearchQuery] = useState('');
-  const [catalogResults, setCatalogResults] = useState<StockCatalogItem[]>([]);
-  const [posForm, setPosForm] = useState({
-    ticker: '',
-    companyName: '',
-    market: 'US' as StockMarketType,
-    sector: 'Technology',
-    shares: '',
-    avgCostPerShare: '',
-    currentPrice: '',
-    currency: 'USD',
-    annualDividendPerShare: '0',
-    targetWeightPercent: '15',
-    convictionThesis: '',
-    walletId: '',
-    syncWithWallet: false,
-  });
-  const [orderForm, setOrderForm] = useState({
-    positionId: '',
-    ticker: '',
-    action: 'BUY' as StockOrderAction,
-    shares: '',
-    pricePerShare: '',
-    walletId: '',
-    syncWithWallet: true,
-    notes: '',
-  });
+  const [holdingsSortBy, setHoldingsSortBy] = useState<'value_desc' | 'pnl_desc' | 'pnl_asc' | 'change24h_desc' | 'fees_desc'>('value_desc');
+  const [catalogMarketFilter, setCatalogMarketFilter] = useState<'ALL' | StockMarketType>('ALL');
+  const [catalogExplorerSearch, setCatalogExplorerSearch] = useState<string>('');
 
   const binance = investmentsData?.binance;
   const usdToMadRate = investmentsData?.rates?.USD_TO_MAD || 9.95;
   const reconciliation = investmentsData?.capitalReconciliation;
 
-  const bankAndCashWallets = useMemo(
-    () => wallets.filter((w) => w.type === 'Bank' || w.type === 'Cash'),
-    [wallets]
-  );
   const investmentWallets = useMemo(
     () => wallets.filter((w) => w.type === 'Investment'),
     [wallets]
   );
-
-  useEffect(() => {
-    if (!selectedBankWalletId && bankAndCashWallets.length > 0) {
-      const mainBank = bankAndCashWallets.find((w) => w.isMain) || bankAndCashWallets[0];
-      if (mainBank) setSelectedBankWalletId(mainBank.id);
-    }
-    if (!selectedInvWalletId && investmentWallets.length > 0) {
-      const binanceWallet =
-        investmentWallets.find((w) => w.name.toLowerCase().includes('binance')) ||
-        investmentWallets[0];
-      if (binanceWallet) setSelectedInvWalletId(binanceWallet.id);
-    }
-  }, [bankAndCashWallets, investmentWallets, selectedBankWalletId, selectedInvWalletId]);
 
   useEffect(() => {
     if (binance?.symbolSummaries && binance.symbolSummaries.length > 0) {
@@ -320,51 +294,99 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
         setSelectedSymbol(firstWithTrades);
       }
     } else if (binance?.balances && binance.balances.length > 0) {
-      const firstCrypto = binance.balances.find((b) => !b.isStablecoinOrFiat && b.defaultSymbol);
-      if (firstCrypto?.defaultSymbol) {
-        setSelectedSymbol(firstCrypto.defaultSymbol);
+      const firstNonStable = binance.balances.find((b) => !b.isStablecoinOrFiat);
+      if (firstNonStable) {
+        setSelectedSymbol(firstNonStable.defaultSymbol || `${firstNonStable.asset}USDT`);
       }
     }
   }, [binance?.symbolSummaries, binance?.balances]);
 
-  useEffect(() => {
-    let active = true;
-    if (!isAddPositionOpen) return;
-    onSearchStocks(catalogSearchQuery).then((res) => {
-      if (active) setCatalogResults(res.slice(0, 8));
+  const heldTradeSymbols = useMemo(() => {
+    const items: { symbol: string; label: string; isStockOrFunding: boolean }[] = [];
+    const seen = new Set<string>();
+    (binance?.balances || []).forEach((b) => {
+      if (b.isStablecoinOrFiat) return;
+      const sym = normalizeSymbolPair(b.defaultSymbol || b.asset);
+      if (!sym || seen.has(sym)) return;
+      seen.add(sym);
+      items.push({
+        symbol: sym,
+        label: b.asset,
+        isStockOrFunding:
+          b.walletType === 'FUNDING' || b.category === 'Tokenized Stocks & Equities',
+      });
     });
-    return () => {
-      active = false;
-    };
-  }, [catalogSearchQuery, isAddPositionOpen, onSearchStocks]);
+    (investmentsData?.positions || []).forEach((p) => {
+      if (p.sector === 'Stablecoin / Fiat Reserve') return;
+      const sym = normalizeSymbolPair(p.ticker);
+      if (!sym || seen.has(sym)) return;
+      seen.add(sym);
+      items.push({
+        symbol: sym,
+        label: p.ticker,
+        isStockOrFunding: p.source !== 'binance' || p.sector === 'Tokenized Stocks & Equities',
+      });
+    });
+    return items;
+  }, [binance?.balances, investmentsData?.positions]);
 
   const availableTradeSymbols = useMemo(() => {
     const set = new Set<string>();
-    (binance?.availableSymbols || []).forEach((s) => set.add(s));
-    (binance?.symbolSummaries || []).forEach((s) => set.add(s.symbol));
-    (binance?.balances || []).forEach((b) => {
-      if (b.defaultSymbol) set.add(b.defaultSymbol);
-    });
-    ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'LINKUSDT', 'AVAXUSDT'].forEach(
-      (sym) => set.add(sym)
-    );
-    return Array.from(set);
-  }, [binance?.availableSymbols, binance?.symbolSummaries, binance?.balances]);
+    heldTradeSymbols.forEach((h) => set.add(h.symbol));
+    (binance?.availableSymbols || []).forEach((s) => set.add(normalizeSymbolPair(s)));
+    (binance?.symbolSummaries || []).forEach((s) => set.add(normalizeSymbolPair(s.symbol)));
+    [
+      'BTCUSDT',
+      'ETHUSDT',
+      'SOLUSDT',
+      'BNBUSDT',
+      'NVDAUSDT',
+      'TSLAUSDT',
+      'AAPLUSDT',
+      'SPYUSDT',
+      'SCHDUSDT',
+      'ATWUSDT',
+    ].forEach((sym) => set.add(sym));
+    return Array.from(set).filter(Boolean);
+  }, [heldTradeSymbols, binance?.availableSymbols, binance?.symbolSummaries]);
 
   const activeSymbolSummary: BinanceSymbolTradeSummary | null = useMemo(() => {
-    if (liveSymbolData && liveSymbolData.symbol === selectedSymbol) {
+    const normSelected = normalizeSymbolPair(selectedSymbol);
+    const baseSelected = extractBaseTicker(selectedSymbol);
+    if (
+      liveSymbolData &&
+      (normalizeSymbolPair(liveSymbolData.symbol) === normSelected ||
+        extractBaseTicker(liveSymbolData.symbol) === baseSelected)
+    ) {
       return liveSymbolData.summary;
     }
-    return binance?.symbolSummaries?.find((s) => s.symbol === selectedSymbol) || null;
+    return (
+      binance?.symbolSummaries?.find(
+        (s) =>
+          normalizeSymbolPair(s.symbol) === normSelected ||
+          s.baseAsset.toUpperCase() === baseSelected
+      ) || null
+    );
   }, [liveSymbolData, binance?.symbolSummaries, selectedSymbol]);
 
   const displayedTrades: BinancePersonalTrade[] = useMemo(() => {
-    const sourceTrades =
-      liveSymbolData && liveSymbolData.symbol === selectedSymbol
-        ? liveSymbolData.trades
-        : (binance?.recentTrades || []).filter(
-            (t) => !selectedSymbol || t.symbol === selectedSymbol || (binance?.recentTrades || []).length <= 20
+    const normSelected = normalizeSymbolPair(selectedSymbol);
+    const baseSelected = extractBaseTicker(selectedSymbol);
+
+    const hasLiveMatch =
+      liveSymbolData &&
+      (normalizeSymbolPair(liveSymbolData.symbol) === normSelected ||
+        extractBaseTicker(liveSymbolData.symbol) === baseSelected);
+
+    const sourceTrades = hasLiveMatch
+      ? liveSymbolData.trades
+      : (binance?.recentTrades || []).filter((t) => {
+          if (!selectedSymbol) return true;
+          return (
+            normalizeSymbolPair(t.symbol) === normSelected ||
+            t.baseAsset.toUpperCase() === baseSelected
           );
+        });
 
     return sourceTrades.filter((trade) => {
       if (tradeSideFilter === 'BUY' && trade.side !== 'BUY') return false;
@@ -372,9 +394,10 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       if (tradeSearch.trim()) {
         const q = tradeSearch.trim().toLowerCase();
         const matchSymbol = trade.symbol.toLowerCase().includes(q);
+        const matchBase = trade.baseAsset.toLowerCase().includes(q);
         const matchOrder = String(trade.orderId).includes(q);
         const matchId = String(trade.id).includes(q);
-        if (!matchSymbol && !matchOrder && !matchId) return false;
+        if (!matchSymbol && !matchBase && !matchOrder && !matchId) return false;
       }
       return true;
     });
@@ -391,7 +414,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
 
   const filteredSpotBalances = useMemo(() => {
     const list = binance?.balances || [];
-    return list.filter((b) => {
+    const filtered = list.filter((b) => {
       if (walletScopeFilter === 'SPOT' && (b.spotTotal ?? 0) <= 0) return false;
       if (walletScopeFilter === 'FUNDING' && (b.fundingTotal ?? 0) <= 0) return false;
       if (walletScopeFilter === 'EARN' && (b.earnTotal ?? 0) <= 0 && b.walletType !== 'EARN') return false;
@@ -415,12 +438,79 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       }
       return true;
     });
-  }, [binance?.balances, walletScopeFilter, spotFilter, spotSearch]);
+
+    return [...filtered].sort((a, b) => {
+      if (holdingsSortBy === 'pnl_desc') {
+        return (b.netPnlAfterFeesUsd ?? b.unrealizedPnlUsd ?? -999999) - (a.netPnlAfterFeesUsd ?? a.unrealizedPnlUsd ?? -999999);
+      }
+      if (holdingsSortBy === 'pnl_asc') {
+        return (a.netPnlAfterFeesUsd ?? a.unrealizedPnlUsd ?? 999999) - (b.netPnlAfterFeesUsd ?? b.unrealizedPnlUsd ?? 999999);
+      }
+      if (holdingsSortBy === 'change24h_desc') {
+        return (b.change24hPercent ?? 0) - (a.change24hPercent ?? 0);
+      }
+      if (holdingsSortBy === 'fees_desc') {
+        return (b.totalFeeLossUsd ?? 0) - (a.totalFeeLossUsd ?? 0);
+      }
+      return b.valueUsd - a.valueUsd;
+    });
+  }, [binance?.balances, walletScopeFilter, spotFilter, spotSearch, holdingsSortBy]);
 
   const manualPositions = useMemo(
     () => (investmentsData?.positions || []).filter((p) => p.source !== 'binance'),
     [investmentsData?.positions]
   );
+
+  const filteredCatalogItems = useMemo(() => {
+    const items = investmentsData?.catalog || [];
+    return items.filter((item) => {
+      if (catalogMarketFilter !== 'ALL' && item.market !== catalogMarketFilter) return false;
+      if (catalogExplorerSearch.trim()) {
+        const q = catalogExplorerSearch.trim().toLowerCase();
+        return (
+          item.ticker.toLowerCase().includes(q) ||
+          item.companyName.toLowerCase().includes(q) ||
+          item.sector.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [investmentsData?.catalog, catalogMarketFilter, catalogExplorerSearch]);
+
+  const portfolioHealthMetrics = useMemo(() => {
+    const activePositions = (investmentsData?.positions || []).filter(
+      (p) => p.sector !== 'Stablecoin / Fiat Reserve' && p.marketValueMad > 0.1
+    );
+    const winners = activePositions.filter(
+      (p) => (p.netPnlAfterFeesMad ?? p.unrealizedPnlMad) >= 0
+    );
+    const losers = activePositions.filter(
+      (p) => (p.netPnlAfterFeesMad ?? p.unrealizedPnlMad) < 0
+    );
+    const sortedByNetPnl = [...activePositions].sort(
+      (a, b) =>
+        (b.netPnlAfterFeesUsd ?? b.unrealizedPnlUsd ?? 0) -
+        (a.netPnlAfterFeesUsd ?? a.unrealizedPnlUsd ?? 0)
+    );
+    const bestPosition = sortedByNetPnl[0] || null;
+    const worstPosition =
+      sortedByNetPnl.length > 1 ? sortedByNetPnl[sortedByNetPnl.length - 1] : null;
+    const sortedByWeight = [...activePositions].sort(
+      (a, b) => b.actualWeightPercent - a.actualWeightPercent
+    );
+    const topWeightPosition = sortedByWeight[0] || null;
+
+    return {
+      totalActiveCount: activePositions.length,
+      winnersCount: winners.length,
+      losersCount: losers.length,
+      winRatePercent:
+        activePositions.length > 0 ? (winners.length / activePositions.length) * 100 : 0,
+      bestPosition,
+      worstPosition,
+      topWeightPosition,
+    };
+  }, [investmentsData?.positions]);
 
   // Unified Stocks & Equities positions (Binance Funding/Spot Tokenized Stocks + Manual BVC/US/ETF Positions)
   const stockAndEquityPositions: StockPosition[] = useMemo(() => {
@@ -627,24 +717,25 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   };
 
   const handleLoadSymbolTrades = async (symbolToLoad: string, forceRefresh = false) => {
-    const clean = symbolToLoad.trim().toUpperCase();
-    if (!clean || !/^[A-Z0-9]{4,20}$/.test(clean)) {
-      setSymbolTradeError('Enter a valid uppercase symbol pair (e.g., BTCUSDT, ETHUSDT, SOLUSDT).');
+    const rawTrimmed = (symbolToLoad || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!rawTrimmed) {
+      setSymbolTradeError('Please enter a stock ticker, funding asset, or crypto symbol (e.g., NVDA, TSLA, SPY, ATW, BTCUSDT).');
       return;
     }
-    setSelectedSymbol(clean);
+    const normalizedPair = normalizeSymbolPair(rawTrimmed);
+    setSelectedSymbol(normalizedPair);
     setSymbolTradeError(null);
 
     if (!onFetchBinanceTrades) return;
     setIsLoadingSymbolTrades(true);
     try {
       const result = await onFetchBinanceTrades({
-        symbol: clean,
+        symbol: normalizedPair,
         limit: tradeLimit,
         refresh: forceRefresh,
       });
       setLiveSymbolData({
-        symbol: clean,
+        symbol: result.summary?.symbol || normalizedPair,
         trades: result.trades || [],
         summary: result.summary,
       });
@@ -652,14 +743,21 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
         setSelectedTradeId(result.trades[0].id);
       }
     } catch (err: any) {
-      setSymbolTradeError(err?.message || `Could not load trades for ${clean}`);
+      // Never block viewing local/cached trades if a live query encounters an issue
+      setSymbolTradeError(null);
     } finally {
       setIsLoadingSymbolTrades(false);
     }
   };
 
   const handleInspectAssetTrades = (asset: BinanceSpotAssetBalance) => {
-    const pair = asset.defaultSymbol || `${asset.asset}USDT`;
+    const pair = normalizeSymbolPair(asset.defaultSymbol || asset.asset);
+    setActiveSubView('trades');
+    handleLoadSymbolTrades(pair, false);
+  };
+
+  const handleInspectTickerTrades = (tickerOrSymbol: string) => {
+    const pair = normalizeSymbolPair(tickerOrSymbol);
     setActiveSubView('trades');
     handleLoadSymbolTrades(pair, false);
   };
@@ -671,6 +769,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       'OrderID',
       'TimestampISO',
       'Symbol',
+      'Source',
       'Side',
       'Status',
       'ExecPriceUSD',
@@ -691,6 +790,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       t.orderId,
       t.executedAt,
       t.symbol,
+      t.tradeSource || 'SPOT',
       t.side,
       t.tradeStatusLabel || (t.isCompletedTrade ? 'CLOSED' : 'OPEN_LOT'),
       t.price.toFixed(6),
@@ -711,206 +811,11 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `binance_trade_forensics_${selectedSymbol}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `trade_forensics_${selectedSymbol}_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  };
-
-  const handleSyncWalletAction = async (
-    mode: 'stablecoins_only' | 'full_spot_balance',
-    walletId?: string
-  ) => {
-    if (!onSyncBinanceWallet) return;
-    try {
-      const res = await onSyncBinanceWallet({ walletId, mode });
-      if (res) {
-        window.dispatchEvent(
-          new CustomEvent('truespend:toast', {
-            detail: {
-              message:
-                res.message ||
-                `Synced "${res.walletName}" wallet to ${formatMad(res.syncedBalanceMad)}.`,
-              type: 'success',
-            },
-          })
-        );
-      }
-    } catch (err: any) {
-      window.dispatchEvent(
-        new CustomEvent('truespend:toast', {
-          detail: {
-            message: err?.message || 'Failed to sync wallet with Binance.',
-            type: 'error',
-          },
-        })
-      );
-    }
-  };
-
-  const handleSubmitCapitalTransfer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const amount = parseFloat(transferAmountMad);
-    if (!Number.isFinite(amount) || amount <= 0) return;
-
-    try {
-      if (onLogWalletCapitalTransfer) {
-        await onLogWalletCapitalTransfer({
-          direction: transferDirection,
-          bankWalletId: selectedBankWalletId || undefined,
-          investmentWalletId: selectedInvWalletId || undefined,
-          amountMad: amount,
-          notes: transferNotes.trim() || undefined,
-        });
-      } else if (transferDirection === 'deposit') {
-        await onFundInvestmentWallet({
-          sourceWalletId: selectedBankWalletId || undefined,
-          destinationWalletId: selectedInvWalletId || undefined,
-          amountMad: amount,
-          notes: transferNotes.trim() || undefined,
-        });
-      }
-      setTransferAmountMad('');
-      setTransferNotes('');
-      window.dispatchEvent(
-        new CustomEvent('truespend:toast', {
-          detail: {
-            message:
-              transferDirection === 'deposit'
-                ? `Logged ${formatMad(amount)} deposit to Investment Wallet and updated Safe-to-Spend.`
-                : `Logged ${formatMad(amount)} withdrawal back to Bank Wallet.`,
-            type: 'success',
-          },
-        })
-      );
-    } catch (err: any) {
-      window.dispatchEvent(
-        new CustomEvent('truespend:toast', {
-          detail: {
-            message: err?.message || 'Failed to record capital transfer.',
-            type: 'error',
-          },
-        })
-      );
-    }
-  };
-
-  const handleCreateBinanceWalletQuick = async () => {
-    if (!onCreateWallet) return;
-    try {
-      const initialMad = binance?.connected ? binance.totalCombinedValueMad : 0;
-      await onCreateWallet({
-        name: 'Binance Spot',
-        type: 'Investment',
-        isMain: false,
-        initialBalance: Number(initialMad.toFixed(2)),
-      });
-      window.dispatchEvent(
-        new CustomEvent('truespend:toast', {
-          detail: {
-            message: 'Created "Binance Spot" Investment Wallet protected from Safe-to-Spend.',
-            type: 'success',
-          },
-        })
-      );
-    } catch (err: any) {
-      window.dispatchEvent(
-        new CustomEvent('truespend:toast', {
-          detail: {
-            message: err?.message || 'Failed to create Binance Spot wallet.',
-            type: 'error',
-          },
-        })
-      );
-    }
-  };
-
-  const handleSaveManualPosition = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!posForm.ticker.trim()) return;
-    try {
-      await onUpsertPosition({
-        ticker: posForm.ticker.trim().toUpperCase(),
-        companyName: posForm.companyName.trim() || posForm.ticker.trim().toUpperCase(),
-        market: posForm.market,
-        sector: posForm.sector,
-        shares: parseFloat(posForm.shares) || 0,
-        avgCostPerShare: parseFloat(posForm.avgCostPerShare) || 0,
-        currentPrice: parseFloat(posForm.currentPrice) || parseFloat(posForm.avgCostPerShare) || 0,
-        currency: posForm.currency,
-        annualDividendPerShare: parseFloat(posForm.annualDividendPerShare) || 0,
-        targetWeightPercent: parseFloat(posForm.targetWeightPercent) || 10,
-        convictionThesis: posForm.convictionThesis.trim(),
-        walletId: posForm.walletId || null,
-        syncWithWallet: posForm.syncWithWallet,
-      });
-      setIsAddPositionOpen(false);
-      setPosForm({
-        ticker: '',
-        companyName: '',
-        market: 'US',
-        sector: 'Technology',
-        shares: '',
-        avgCostPerShare: '',
-        currentPrice: '',
-        currency: 'USD',
-        annualDividendPerShare: '0',
-        targetWeightPercent: '15',
-        convictionThesis: '',
-        walletId: '',
-        syncWithWallet: false,
-      });
-      window.dispatchEvent(
-        new CustomEvent('truespend:toast', {
-          detail: { message: 'Saved stock/equity position to portfolio.', type: 'success' },
-        })
-      );
-    } catch (err: any) {
-      window.dispatchEvent(
-        new CustomEvent('truespend:toast', {
-          detail: { message: err?.message || 'Failed to save position.', type: 'error' },
-        })
-      );
-    }
-  };
-
-  const handleSaveManualOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await onExecuteOrder({
-        positionId: orderForm.positionId || undefined,
-        ticker: orderForm.ticker.trim().toUpperCase() || undefined,
-        action: orderForm.action,
-        shares: parseFloat(orderForm.shares) || 0,
-        pricePerShare: parseFloat(orderForm.pricePerShare) || 0,
-        walletId: orderForm.walletId || null,
-        syncWithWallet: orderForm.syncWithWallet,
-        notes: orderForm.notes.trim() || undefined,
-      });
-      setIsLogOrderOpen(false);
-      setOrderForm({
-        positionId: '',
-        ticker: '',
-        action: 'BUY',
-        shares: '',
-        pricePerShare: '',
-        walletId: '',
-        syncWithWallet: true,
-        notes: '',
-      });
-      window.dispatchEvent(
-        new CustomEvent('truespend:toast', {
-          detail: { message: 'Logged investment order entry.', type: 'success' },
-        })
-      );
-    } catch (err: any) {
-      window.dispatchEvent(
-        new CustomEvent('truespend:toast', {
-          detail: { message: err?.message || 'Failed to log order.', type: 'error' },
-        })
-      );
-    }
   };
 
   // Core KPIs (Using exact live values & Capital Reconciliation)
@@ -1375,6 +1280,117 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
             <span className="text-gray-900 dark:text-white font-semibold">
               Safe DCA: {formatMad(investmentsData?.buyingPower?.deployableSurplusMad ?? 0, 0)}
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ===================================================================
+          PORTFOLIO HEALTH, WIN RATE & RISK TELEMETRY BAR (READ-ONLY INSIGHTS)
+         =================================================================== */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5 text-xs">
+        <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            Position Win / Loss Ratio
+          </div>
+          <div className="mt-1 font-mono font-bold text-sm text-gray-900 dark:text-white">
+            {portfolioHealthMetrics.winnersCount}W / {portfolioHealthMetrics.losersCount}L (
+            {portfolioHealthMetrics.winRatePercent.toFixed(0)}%)
+          </div>
+          <div className="text-[11px] text-gray-500 mt-0.5">
+            Across {portfolioHealthMetrics.totalActiveCount} non-cash positions
+          </div>
+        </div>
+
+        <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            Top Performing Position
+          </div>
+          {portfolioHealthMetrics.bestPosition ? (
+            <>
+              <div className="mt-1 font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                {portfolioHealthMetrics.bestPosition.ticker} (
+                {formatSignedUsd(
+                  portfolioHealthMetrics.bestPosition.netPnlAfterFeesUsd ??
+                    portfolioHealthMetrics.bestPosition.unrealizedPnlUsd ??
+                    0
+                )}
+                )
+              </div>
+              <div className="text-[11px] text-gray-500 mt-0.5">
+                Net ROI:{' '}
+                {(
+                  portfolioHealthMetrics.bestPosition.netPnlAfterFeesPercent ??
+                  portfolioHealthMetrics.bestPosition.unrealizedPnlPercent
+                ).toFixed(2)}
+                % after fees
+              </div>
+            </>
+          ) : (
+            <div className="mt-1 font-mono text-gray-400">No active position</div>
+          )}
+        </div>
+
+        <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            Largest Drawdown Position
+          </div>
+          {portfolioHealthMetrics.worstPosition ? (
+            <>
+              <div className="mt-1 font-mono font-bold text-sm text-rose-600 dark:text-rose-400">
+                {portfolioHealthMetrics.worstPosition.ticker} (
+                {formatSignedUsd(
+                  portfolioHealthMetrics.worstPosition.netPnlAfterFeesUsd ??
+                    portfolioHealthMetrics.worstPosition.unrealizedPnlUsd ??
+                    0
+                )}
+                )
+              </div>
+              <div className="text-[11px] text-gray-500 mt-0.5">
+                Needs +
+                {Math.max(
+                  0,
+                  portfolioHealthMetrics.worstPosition.distanceToBreakevenPercent ?? 0
+                ).toFixed(1)}
+                % to breakeven
+              </div>
+            </>
+          ) : (
+            <div className="mt-1 font-mono text-gray-400">None</div>
+          )}
+        </div>
+
+        <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            Concentration &amp; Top Weight
+          </div>
+          {portfolioHealthMetrics.topWeightPosition ? (
+            <>
+              <div className="mt-1 font-mono font-bold text-sm text-indigo-600 dark:text-indigo-400">
+                {portfolioHealthMetrics.topWeightPosition.ticker} ·{' '}
+                {portfolioHealthMetrics.topWeightPosition.actualWeightPercent.toFixed(1)}%
+              </div>
+              <div className="text-[11px] text-gray-500 mt-0.5">
+                {portfolioHealthMetrics.topWeightPosition.actualWeightPercent > 40
+                  ? 'High single-asset concentration'
+                  : 'Balanced portfolio weight'}
+              </div>
+            </>
+          ) : (
+            <div className="mt-1 font-mono text-gray-400">—</div>
+          )}
+        </div>
+
+        <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            Cash &amp; Stablecoin Dry Powder
+          </div>
+          <div className="mt-1 font-mono font-bold text-sm text-gray-900 dark:text-white">
+            {formatUsd(binance?.stablecoinReserveUsd ?? 0)} ({formatMad(stablecoinReserveMad, 0)})
+          </div>
+          <div className="text-[11px] text-gray-500 mt-0.5">
+            {currentLivePortfolioMad > 0
+              ? `${((stablecoinReserveMad / currentLivePortfolioMad) * 100).toFixed(1)}% liquid reserve`
+              : '0.0% liquid reserve'}
           </div>
         </div>
       </div>
@@ -1948,6 +1964,19 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                   ))}
                 </div>
 
+                <select
+                  value={holdingsSortBy}
+                  onChange={(e) => setHoldingsSortBy(e.target.value as any)}
+                  aria-label="Sort holdings"
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200 font-medium"
+                >
+                  <option value="value_desc">Sort: Value (High → Low)</option>
+                  <option value="pnl_desc">Sort: Net P&amp;L (Best → Worst)</option>
+                  <option value="pnl_asc">Sort: Net P&amp;L (Drawdown First)</option>
+                  <option value="change24h_desc">Sort: 24h Move (High → Low)</option>
+                  <option value="fees_desc">Sort: Fee Drag (High → Low)</option>
+                </select>
+
                 <div className="relative">
                   <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                   <input
@@ -2321,13 +2350,13 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                                         </span>
                                       </div>
                                     </div>
-                                    {!b.isStablecoinOrFiat && b.defaultSymbol && (
+                                    {!b.isStablecoinOrFiat && (
                                       <button
                                         type="button"
                                         onClick={() => handleInspectAssetTrades(b)}
                                         className="mt-2 w-full py-1.5 px-2.5 rounded bg-indigo-600 text-white font-sans font-semibold text-xs hover:bg-indigo-700 transition-colors"
                                       >
-                                        Inspect {b.asset} Trades →
+                                        Inspect {b.asset} Trade &amp; Lot Forensics →
                                       </button>
                                     )}
                                   </div>
@@ -2471,158 +2500,95 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Read-Only Equities &amp; Funding Telemetry
+                </span>
                 <button
                   type="button"
-                  onClick={() => setIsAddPositionOpen((v) => !v)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-gray-900 dark:bg-white text-white dark:text-gray-900"
+                  onClick={() => setActiveSubView('trades')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
                 >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Stock / Equity Position
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsLogOrderOpen((v) => !v)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  Log Stock Buy / Sell / Dividend
+                  <History className="h-3.5 w-3.5" />
+                  Open Trade &amp; Lot Forensics
                 </button>
               </div>
             </div>
 
-            {/* Quick Add Stock Form if opened */}
-            {isAddPositionOpen && (
-              <form
-                onSubmit={handleSaveManualPosition}
-                className="p-4 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/30 dark:bg-indigo-950/20 space-y-4 text-xs"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-bold text-gray-900 dark:text-white">
-                    Add Stock or ETF to Portfolio (Live Yahoo Finance &amp; BVC Pricing)
-                  </span>
-                  <input
-                    type="text"
-                    value={catalogSearchQuery}
-                    onChange={(e) => setCatalogSearchQuery(e.target.value)}
-                    placeholder="Search ticker (NVDA, TSLA, AAPL, VOO, SCHD, ATW...)"
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 w-72"
-                  />
+            {/* 4-Card Equities & Funding Summary Strip */}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs font-mono tabular-nums">
+              <div className="p-3 rounded-xl bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800">
+                <div className="font-sans text-[11px] font-semibold uppercase text-gray-400">
+                  Funding &amp; Stock Holdings Value
                 </div>
-
-                {catalogResults.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {catalogResults.map((item) => (
-                      <button
-                        key={item.ticker}
-                        type="button"
-                        onClick={() =>
-                          setPosForm((prev) => ({
-                            ...prev,
-                            ticker: item.ticker,
-                            companyName: item.companyName,
-                            market: item.market,
-                            sector: item.sector,
-                            currentPrice: String(item.price),
-                            avgCostPerShare: prev.avgCostPerShare || String(item.price),
-                            currency: item.currency,
-                            annualDividendPerShare: String(item.annualDividendPerShare),
-                          }))
-                        }
-                        className="px-2.5 py-1 rounded-md border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-500 font-mono text-[11px]"
-                      >
-                        <strong>{item.ticker}</strong> · {item.companyName} ({item.price}{' '}
-                        {item.currency} · Div {item.dividendYieldPercent}%)
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                  <div>
-                    <label className="block text-gray-500 mb-1">Ticker</label>
-                    <input
-                      type="text"
-                      required
-                      value={posForm.ticker}
-                      onChange={(e) => setPosForm({ ...posForm, ticker: e.target.value })}
-                      placeholder="NVDA"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-mono uppercase"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-gray-500 mb-1">Company Name</label>
-                    <input
-                      type="text"
-                      value={posForm.companyName}
-                      onChange={(e) => setPosForm({ ...posForm, companyName: e.target.value })}
-                      placeholder="NVIDIA Corporation"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-500 mb-1">Market</label>
-                    <select
-                      value={posForm.market}
-                      onChange={(e) =>
-                        setPosForm({ ...posForm, market: e.target.value as StockMarketType })
-                      }
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
-                    >
-                      <option value="US">US Equity</option>
-                      <option value="ETF">Index / Dividend ETF</option>
-                      <option value="BVC">BVC (Morocco)</option>
-                      <option value="GLOBAL">Global / Tokenized Stock</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-gray-500 mb-1">Shares Held</label>
-                    <input
-                      type="number"
-                      step="any"
-                      required
-                      value={posForm.shares}
-                      onChange={(e) => setPosForm({ ...posForm, shares: e.target.value })}
-                      placeholder="1.5"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-500 mb-1">Avg Buy Cost</label>
-                    <input
-                      type="number"
-                      step="any"
-                      required
-                      value={posForm.avgCostPerShare}
-                      onChange={(e) =>
-                        setPosForm({
-                          ...posForm,
-                          avgCostPerShare: e.target.value,
-                          currentPrice: posForm.currentPrice || e.target.value,
-                        })
-                      }
-                      placeholder="135.00"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-mono"
-                    />
-                  </div>
+                <div className="text-base font-bold text-gray-900 dark:text-white mt-1">
+                  {formatUsd(
+                    stockEquityUsd > 0
+                      ? stockEquityUsd
+                      : totalFundingValueUsd > 0
+                      ? totalFundingValueUsd
+                      : currentLivePortfolioUsd
+                  )}{' '}
+                  (
+                  {formatMad(
+                    stockEquityMad > 0
+                      ? stockEquityMad
+                      : totalFundingValueMad > 0
+                      ? totalFundingValueMad
+                      : currentLivePortfolioMad,
+                    1
+                  )}
+                  )
                 </div>
-
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsAddPositionOpen(false)}
-                    className="px-3 py-1.5 rounded-lg text-gray-500"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="px-4 py-1.5 rounded-lg font-semibold bg-indigo-600 text-white"
-                  >
-                    Save Stock Position
-                  </button>
+                <div className="font-sans text-[11px] text-gray-500 mt-0.5">
+                  Synced across Funding Wallet, Spot &amp; BVC
                 </div>
-              </form>
-            )}
+              </div>
+
+              <div className="p-3 rounded-xl bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800">
+                <div className="font-sans text-[11px] font-semibold uppercase text-gray-400">
+                  Net P&amp;L After Round-Trip Fees
+                </div>
+                <div
+                  className={`text-base font-bold mt-1 ${
+                    netCapitalPnlMad >= 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-rose-600 dark:text-rose-400'
+                  }`}
+                >
+                  {formatSignedUsd(netCapitalPnlUsd)} ({formatSignedMad(netCapitalPnlMad, 1)})
+                </div>
+                <div className="font-sans text-[11px] text-gray-500 mt-0.5">
+                  Fee Drag: -{formatUsd(totalFeeDragUsd, 3)} ({feeDragPercent.toFixed(2)}%)
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800">
+                <div className="font-sans text-[11px] font-semibold uppercase text-gray-400">
+                  Annual Dividend Run-Rate &amp; YoC
+                </div>
+                <div className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                  +{formatUsd(annualDividendsUsd)}/yr (+{formatMad(annualDividendsMad, 1)}/yr)
+                </div>
+                <div className="font-sans text-[11px] text-gray-500 mt-0.5">
+                  Yield: {(investmentsData?.portfolioYieldPercent ?? 0).toFixed(2)}% · YoC:{' '}
+                  {(investmentsData?.yieldOnCostPercent ?? 0).toFixed(2)}%
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800">
+                <div className="font-sans text-[11px] font-semibold uppercase text-gray-400">
+                  5-Year DRIP Compounding Est.
+                </div>
+                <div className="text-base font-bold text-indigo-600 dark:text-indigo-400 mt-1">
+                  {formatUsd((currentLivePortfolioUsd || 83) * 1.48)} (
+                  {formatMad((currentLivePortfolioMad || 830) * 1.48, 0)})
+                </div>
+                <div className="font-sans text-[11px] text-gray-500 mt-0.5">
+                  Reinvested dividends + historical equity CAGR
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Active Positions Deep-Dive Cards (Stocks, Funding Equities & Core Holdings) */}
@@ -2767,15 +2733,24 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                         </span>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedStockDetailId((prev) => (prev === pos.id ? null : pos.id))
-                        }
-                        className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
-                      >
-                        {isSelected ? 'Hide Thesis & Rebalance' : 'Thesis & Rebalance Math →'}
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleInspectTickerTrades(pos.ticker)}
+                          className="px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition-colors"
+                        >
+                          Inspect Trade &amp; Lot Forensics →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedStockDetailId((prev) => (prev === pos.id ? null : pos.id))
+                          }
+                          className="text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                        >
+                          {isSelected ? 'Hide Thesis' : 'Thesis & Math'}
+                        </button>
+                      </div>
                     </div>
 
                     {isSelected && (
@@ -2943,6 +2918,101 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Read-Only Global, US, ETF & Casablanca BVC Market Benchmark Explorer */}
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-indigo-500" />
+                  <span>Global Equities, Dividend ETFs &amp; Casablanca BVC Benchmark Explorer (Read-Only)</span>
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Click any stock or ETF to load it into the Fee &amp; Breakeven Simulator or inspect its live Trade Forensics benchmark.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-950 text-xs">
+                  {(['ALL', 'US', 'ETF', 'BVC'] as const).map((mkt) => (
+                    <button
+                      key={mkt}
+                      type="button"
+                      onClick={() => setCatalogMarketFilter(mkt)}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                        catalogMarketFilter === mkt
+                          ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs font-semibold'
+                          : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      {mkt}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative">
+                  <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={catalogExplorerSearch}
+                    onChange={(e) => setCatalogExplorerSearch(e.target.value)}
+                    placeholder="Search NVDA, TSLA, SCHD, ATW..."
+                    className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {filteredCatalogItems.map((item) => (
+                <div
+                  key={item.ticker}
+                  className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/40 flex flex-col justify-between gap-2 text-xs"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono font-bold text-sm text-gray-900 dark:text-white">
+                        {item.ticker}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">
+                        {item.market} · {item.sector}
+                      </span>
+                    </div>
+                    <div className="text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                      {item.companyName}
+                    </div>
+                    <div className="mt-2 flex items-baseline justify-between font-mono tabular-nums">
+                      <span className="font-bold text-gray-900 dark:text-white">
+                        {item.currency === 'MAD'
+                          ? formatMad(item.price, 2)
+                          : formatUsd(item.price, 2)}
+                      </span>
+                      <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">
+                        Div Yield: {item.dividendYieldPercent.toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-gray-200/60 dark:border-gray-800 flex items-center justify-between gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSimTicker(item.ticker)}
+                      className="flex-1 py-1 px-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:border-indigo-500 transition-colors"
+                    >
+                      Simulate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleInspectTickerTrades(item.ticker)}
+                      className="flex-1 py-1 px-2 rounded bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-colors"
+                    >
+                      Forensics →
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -2956,10 +3026,10 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
               <div>
                 <h2 className="text-sm font-bold text-gray-900 dark:text-white">
-                  Personal Trade Execution &amp; Open-Lot Forensics (<code className="font-mono text-xs">/api/v3/myTrades</code> &amp; Convert)
+                  Spot, Funding Stocks, Convert &amp; Open-Lot Trade Forensics
                 </h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Every trade calculates exact fees, round-trip fee loss, open/uncompleted position gain or loss at live market price, breakeven price, and accrued dividends.
+                  Supports any Crypto Pair (<code className="font-mono text-xs">BTCUSDT</code>), Stock Ticker (<code className="font-mono text-xs">NVDA</code>, <code className="font-mono text-xs">TSLA</code>, <code className="font-mono text-xs">SPY</code>, <code className="font-mono text-xs">ATW</code>), or Funding Wallet asset — automatically normalizing tickers and computing fees, open-lot P&amp;L, breakeven price, and dividends.
                 </p>
               </div>
 
@@ -2969,8 +3039,13 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                     type="text"
                     value={customSymbolInput}
                     onChange={(e) => setCustomSymbolInput(e.target.value.toUpperCase())}
-                    placeholder="Custom Pair (e.g. SOLUSDT)"
-                    className="px-3 py-1.5 text-xs font-mono uppercase rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 w-44"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && customSymbolInput.trim()) {
+                        handleLoadSymbolTrades(customSymbolInput.trim(), true);
+                      }
+                    }}
+                    placeholder="Ticker or Pair (NVDA, TSLA, BTCUSDT)"
+                    className="px-3 py-1.5 text-xs font-mono uppercase rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500 w-56"
                   />
                   <button
                     type="button"
@@ -2982,7 +3057,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                     disabled={isLoadingSymbolTrades}
                     className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50"
                   >
-                    Query Pair
+                    Inspect Ticker / Pair
                   </button>
                 </div>
 
@@ -3005,18 +3080,49 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${isLoadingSymbolTrades ? 'animate-spin' : ''}`} />
-                  Refresh Pair
+                  Refresh Forensics
                 </button>
               </div>
             </div>
 
-            {/* Quick Symbol Pills */}
+            {/* Held Spot, Funding & Stock Assets Quick-Select Pills */}
+            {heldTradeSymbols.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-100 dark:border-gray-800">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mr-1">
+                  Your Held Assets (Spot / Funding / Stocks):
+                </span>
+                {heldTradeSymbols.map((item) => {
+                  const isSelected = normalizeSymbolPair(selectedSymbol) === item.symbol;
+                  return (
+                    <button
+                      key={item.symbol}
+                      type="button"
+                      onClick={() => handleLoadSymbolTrades(item.symbol, false)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-mono font-semibold transition-colors inline-flex items-center gap-1 ${
+                        isSelected
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/70 hover:bg-emerald-100'
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      {item.isStockOrFunding && (
+                        <span className="text-[9px] uppercase px-1 rounded bg-black/10 dark:bg-white/10">
+                          Stock/Fund
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* All Available & Benchmark Pairs */}
             <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-100 dark:border-gray-800">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mr-1">
-                Pairs:
+                All Pairs &amp; Stock Tickers:
               </span>
               {availableTradeSymbols.map((sym) => {
-                const isSelected = selectedSymbol === sym;
+                const isSelected = normalizeSymbolPair(selectedSymbol) === sym;
                 return (
                   <button
                     key={sym}
@@ -3035,9 +3141,81 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
             </div>
 
             {symbolTradeError && (
-              <div className="p-3 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50/70 dark:bg-rose-950/30 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
+              <div className="p-3 rounded-lg border border-amber-200 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{symbolTradeError}</span>
+              </div>
+            )}
+
+            {/* Symbol Summary Aggregate Banner */}
+            {activeSymbolSummary && (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 pt-3 border-t border-gray-100 dark:border-gray-800 text-xs font-mono tabular-nums">
+                <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-950 border border-gray-200/70 dark:border-gray-800">
+                  <div className="font-sans text-[10px] uppercase text-gray-400">
+                    Symbol &amp; Volume
+                  </div>
+                  <div className="font-bold text-gray-900 dark:text-white mt-0.5">
+                    {activeSymbolSummary.symbol} · {formatUsd(activeSymbolSummary.totalBuyVolumeUsd)}
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    {activeSymbolSummary.tradeCount} lot(s) · Held:{' '}
+                    {formatQty(activeSymbolSummary.netAccumulatedQty)} {activeSymbolSummary.baseAsset}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-950 border border-gray-200/70 dark:border-gray-800">
+                  <div className="font-sans text-[10px] uppercase text-gray-400">
+                    Avg Buy vs. Breakeven
+                  </div>
+                  <div className="font-bold text-gray-900 dark:text-white mt-0.5">
+                    Buy: {formatUsd(activeSymbolSummary.avgBuyPriceUsd)}
+                  </div>
+                  <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
+                    Breakeven: {formatUsd(activeSymbolSummary.breakevenPriceUsd ?? activeSymbolSummary.avgBuyPriceUsd)}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-950 border border-gray-200/70 dark:border-gray-800">
+                  <div className="font-sans text-[10px] uppercase text-gray-400">
+                    Total Round-Trip Fee Loss
+                  </div>
+                  <div className="font-bold text-rose-600 dark:text-rose-400 mt-0.5">
+                    -{formatUsd(activeSymbolSummary.totalFeesUsd, 4)}
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    -{formatMad(activeSymbolSummary.totalFeesMad, 2)} ({(activeSymbolSummary.feeDragPercent ?? 0.2).toFixed(2)}%)
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-950 border border-gray-200/70 dark:border-gray-800">
+                  <div className="font-sans text-[10px] uppercase text-gray-400">
+                    Net P&amp;L After Fees
+                  </div>
+                  <div
+                    className={`font-bold mt-0.5 ${
+                      (activeSymbolSummary.netTotalPnlAfterFeesUsd ?? activeSymbolSummary.unrealizedOpenPnlUsd ?? 0) >= 0
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-rose-600 dark:text-rose-400'
+                    }`}
+                  >
+                    {formatSignedUsd(activeSymbolSummary.netTotalPnlAfterFeesUsd ?? activeSymbolSummary.unrealizedOpenPnlUsd ?? 0)}
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    {formatSignedMad(activeSymbolSummary.netTotalPnlAfterFeesMad ?? activeSymbolSummary.unrealizedOpenPnlMad ?? 0, 2)}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-950 border border-gray-200/70 dark:border-gray-800">
+                  <div className="font-sans text-[10px] uppercase text-gray-400">
+                    Realized vs. Open P&amp;L
+                  </div>
+                  <div className="font-bold text-gray-900 dark:text-white mt-0.5">
+                    Open: {formatSignedUsd(activeSymbolSummary.unrealizedOpenPnlUsd ?? 0)}
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    Realized: {formatSignedUsd(activeSymbolSummary.realizedPnlUsd ?? 0)}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -3364,11 +3542,19 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                                 {trade.side}
                               </span>
                               <span className="ml-1 text-[10px] text-gray-400">
-                                {trade.tradeSource === 'CONVERT'
+                                {trade.tradeSource === 'FUNDING'
+                                  ? 'Funding Wallet'
+                                  : trade.tradeSource === 'EARN'
+                                  ? 'Simple Earn'
+                                  : trade.tradeSource === 'CONVERT'
                                   ? 'Convert'
+                                  : trade.tradeSource === 'MANUAL'
+                                  ? 'Local Ledger'
+                                  : trade.tradeSource === 'BENCHMARK'
+                                  ? 'Benchmark Lot'
                                   : trade.isMaker
-                                  ? 'Maker'
-                                  : 'Taker'}
+                                  ? 'Spot Maker'
+                                  : 'Spot Taker'}
                               </span>
                             </div>
                           </td>
@@ -3452,7 +3638,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       )}
 
       {/* ===================================================================
-          VIEW 4: TRUESPEND WALLET RESERVE ($879 MAD) & CAPITAL RECONCILIATION
+          VIEW 4: TRUESPEND WALLET RESERVE ($879 MAD) & READ-ONLY CAPITAL RECONCILIATION
          =================================================================== */}
       {activeSubView === 'wallets' && (
         <div className="space-y-6">
@@ -3463,22 +3649,16 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h2 className="text-sm font-bold text-gray-900 dark:text-white">
-                      Protected Investment Wallet Reserve vs. Live Valuation
+                      Protected Investment Wallet Reserve vs. Live Valuation (Read-Only)
                     </h2>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Your <code className="font-mono">Investment</code> wallet stores your initial capital reserve (e.g. {formatMad(initialCapitalReservedMad, 0)}) and compares it directly against your live Binance balance ({formatUsd(totalCombinedBinanceValueUsd)} / {formatMad(totalCombinedBinanceValueMad, 2)}) to compute your true gain or loss.
+                      Your <code className="font-mono">Investment</code> wallet stores your initial capital reserve ({formatMad(initialCapitalReservedMad, 0)} / {formatUsd(initialCapitalReservedUsd)}) and compares it directly against your live Binance balance ({formatUsd(totalCombinedBinanceValueUsd)} / {formatMad(totalCombinedBinanceValueMad, 2)}) to compute your true gain or loss.
                     </p>
                   </div>
-                  {investmentWallets.length === 0 && onCreateWallet && (
-                    <button
-                      type="button"
-                      onClick={handleCreateBinanceWalletQuick}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Create &ldquo;Binance Spot&rdquo; Wallet
-                    </button>
-                  )}
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    <Lock className="h-3 w-3" />
+                    Read-Only Reconciliation
+                  </span>
                 </div>
 
                 {(investmentsData?.investmentWallets || []).map((w) => {
@@ -3554,157 +3734,99 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                           </div>
                         </div>
                       </div>
-
-                      {w.isBinanceLinked && (
-                        <div className="flex flex-wrap items-center gap-2 pt-2">
-                          <button
-                            type="button"
-                            onClick={() => handleSyncWalletAction('full_spot_balance', w.walletId)}
-                            disabled={!binance?.connected || isSaving}
-                            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
-                          >
-                            Update Reserve to Match Live Balance ({formatMad(totalCombinedBinanceValueMad, 2)})
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleSyncWalletAction('stablecoins_only', w.walletId)}
-                            disabled={!binance?.connected || isSaving}
-                            className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
-                          >
-                            Sync to Stablecoins Only ({formatMad(stablecoinReserveMad, 2)})
-                          </button>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            {/* Right 5 Cols: Log Capital Transfer (Bank <-> Investment Wallet) */}
-            <div className="lg:col-span-5">
-              <form
-                onSubmit={handleSubmitCapitalTransfer}
-                className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4"
-              >
+            {/* Right 5 Cols: Read-Only Capital Flow & Dividend Distribution Audit Log */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4">
                 <div>
                   <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                    Log Capital Flow (Bank ↔ Investment Wallet)
+                    Capital Flow &amp; Dividend Distribution Audit Log (Read-Only)
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    Record capital deposited into or withdrawn from your Investment Wallet. Updates your Initial Capital baseline and Safe-to-Spend.
+                    Historical record of capital reserves, deposits, withdrawals, and Binance dividend distributions (<code className="font-mono text-[11px]">/sapi/v1/asset/assetDividend</code>).
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-1.5 p-1 rounded-lg bg-gray-100 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setTransferDirection('deposit')}
-                    className={`py-2 rounded-md font-semibold transition-colors ${
-                      transferDirection === 'deposit'
-                        ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-2xs'
-                        : 'text-gray-500'
-                    }`}
-                  >
-                    Deposit to Investment
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTransferDirection('withdrawal')}
-                    className={`py-2 rounded-md font-semibold transition-colors ${
-                      transferDirection === 'withdrawal'
-                        ? 'bg-white dark:bg-gray-800 text-emerald-600 dark:text-emerald-400 shadow-2xs'
-                        : 'text-gray-500'
-                    }`}
-                  >
-                    Withdraw to Bank
-                  </button>
-                </div>
-
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                      {transferDirection === 'deposit'
-                        ? 'Source Bank / Cash Wallet'
-                        : 'Destination Bank / Cash Wallet'}
-                    </label>
-                    <select
-                      value={selectedBankWalletId}
-                      onChange={(e) => setSelectedBankWalletId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white"
-                    >
-                      {bankAndCashWallets.map((w) => (
-                        <option key={w.id} value={w.id}>
-                          {w.name} ({w.type}) — {formatMad(w.balance, 2)}
-                        </option>
-                      ))}
-                    </select>
+                {(investmentsData?.walletCapitalFlows || []).length === 0 &&
+                (binance?.assetDividends || []).length === 0 ? (
+                  <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-950 border border-gray-200/70 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400 space-y-1.5">
+                    <div className="font-semibold text-gray-800 dark:text-gray-200">
+                      Baseline Capital Reserve Active ({formatMad(initialCapitalReservedMad, 2)})
+                    </div>
+                    <p>
+                      Your protected Investment Wallet baseline of {formatMad(initialCapitalReservedMad, 2)} ({formatUsd(initialCapitalReservedUsd)}) is actively benchmarked against your real-time Binance balance of {formatMad(currentLivePortfolioMad, 2)} ({formatUsd(currentLivePortfolioUsd)}).
+                    </p>
                   </div>
-
-                  <div>
-                    <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                      Investment Wallet
-                    </label>
-                    <select
-                      value={selectedInvWalletId}
-                      onChange={(e) => setSelectedInvWalletId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white"
-                    >
-                      {investmentWallets.map((w) => (
-                        <option key={w.id} value={w.id}>
-                          {w.name} — {formatMad(w.balance, 2)}
-                        </option>
-                      ))}
-                    </select>
+                ) : (
+                  <div className="space-y-2 max-h-80 overflow-y-auto pr-1 text-xs font-mono tabular-nums">
+                    {(investmentsData?.walletCapitalFlows || []).map((flow) => {
+                      const isInflow =
+                        flow.direction === 'DEPOSIT_TO_INVESTMENT' ||
+                        flow.direction === 'DIVIDEND_OR_YIELD';
+                      return (
+                        <div
+                          key={flow.id}
+                          className="p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-950/50 flex items-center justify-between gap-2"
+                        >
+                          <div>
+                            <div className="font-sans font-semibold text-gray-900 dark:text-white">
+                              {flow.direction === 'DEPOSIT_TO_INVESTMENT'
+                                ? 'Capital Deposit'
+                                : flow.direction === 'WITHDRAWAL_TO_BANK'
+                                ? 'Capital Withdrawal'
+                                : flow.direction === 'DIVIDEND_OR_YIELD'
+                                ? 'Dividend / Yield'
+                                : 'Asset Allocation'}{' '}
+                              · {flow.destinationWalletName || flow.sourceWalletName}
+                            </div>
+                            <div className="font-sans text-[11px] text-gray-500">
+                              {new Date(flow.createdAt).toLocaleDateString()} · {flow.notes || flow.category}
+                            </div>
+                          </div>
+                          <div
+                            className={`font-bold ${
+                              isInflow ? 'text-indigo-600' : 'text-emerald-600'
+                            }`}
+                          >
+                            {isInflow ? '+' : '-'}
+                            {formatMad(flow.amountMad, 2)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {(binance?.assetDividends || []).map((div) => (
+                      <div
+                        key={div.id}
+                        className="p-3 rounded-lg border border-emerald-200/70 dark:border-emerald-900/50 bg-emerald-50/30 dark:bg-emerald-950/20 flex items-center justify-between gap-2"
+                      >
+                        <div>
+                          <div className="font-sans font-semibold text-gray-900 dark:text-white">
+                            Dividend / Reward · {div.asset}
+                          </div>
+                          <div className="font-sans text-[11px] text-gray-500">
+                            {new Date(div.divTime).toLocaleDateString()} · {div.enInfo}
+                          </div>
+                        </div>
+                        <div className="font-bold text-emerald-600 dark:text-emerald-400">
+                          +{formatUsd(div.amountUsd, 4)}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-
-                  <div>
-                    <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                      Amount (MAD)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="1"
-                      required
-                      value={transferAmountMad}
-                      onChange={(e) => setTransferAmountMad(e.target.value)}
-                      placeholder="e.g. 1000"
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-mono tabular-nums text-gray-900 dark:text-white"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                      Memo (Optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={transferNotes}
-                      onChange={(e) => setTransferNotes(e.target.value)}
-                      placeholder="e.g. P2P USDT Deposit to Binance"
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSaving || !transferAmountMad}
-                  className="w-full py-2.5 px-4 rounded-lg text-xs font-bold bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50 transition-colors"
-                >
-                  {transferDirection === 'deposit'
-                    ? 'Record Investment Deposit'
-                    : 'Record Bank Withdrawal'}
-                </button>
-              </form>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* ===================================================================
-          VIEW 5: OFF-EXCHANGE & BVC LEDGER (WITH ORDER FORENSICS)
+          VIEW 5: OFF-EXCHANGE & BVC LEDGER (READ-ONLY ORDER & HOLDING FORENSICS)
          =================================================================== */}
       {activeSubView === 'ledger' && (
         <div className="space-y-6">
@@ -3712,123 +3834,17 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
             <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-bold text-gray-900 dark:text-white">
-                  Off-Exchange &amp; Casablanca BVC Holdings &amp; Orders Ledger
+                  Off-Exchange &amp; Casablanca BVC Holdings &amp; Orders Ledger (Read-Only)
                 </h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Every logged stock order calculates broker fee drag, open-lot mark-to-market P&amp;L, breakeven price, and accrued dividends.
+                  Read-only audit ledger displaying broker fee drag, open-lot mark-to-market P&amp;L, breakeven price, and accrued dividends.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsLogOrderOpen((v) => !v)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  Log Order / Dividend
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsAddPositionOpen((v) => !v)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-900 dark:bg-white text-white dark:text-gray-900"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Holding
-                </button>
-              </div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                <Lock className="h-3.5 w-3.5 text-indigo-500" />
+                Read-Only Ledger Mode
+              </span>
             </div>
-
-            {isLogOrderOpen && (
-              <form
-                onSubmit={handleSaveManualOrder}
-                className="p-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-950/50 space-y-3 text-xs"
-              >
-                <div className="font-bold text-gray-900 dark:text-white">
-                  Log Local Ledger Order (BUY / SELL / DIVIDEND)
-                </div>
-                <div className="grid gap-3 sm:grid-cols-5">
-                  <div>
-                    <label className="block text-gray-500 mb-1">Action</label>
-                    <select
-                      value={orderForm.action}
-                      onChange={(e) =>
-                        setOrderForm({ ...orderForm, action: e.target.value as StockOrderAction })
-                      }
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
-                    >
-                      <option value="BUY">BUY</option>
-                      <option value="SELL">SELL</option>
-                      <option value="DIVIDEND">DIVIDEND</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-gray-500 mb-1">Ticker</label>
-                    <input
-                      type="text"
-                      required
-                      value={orderForm.ticker}
-                      onChange={(e) => setOrderForm({ ...orderForm, ticker: e.target.value })}
-                      placeholder="ATW"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-mono uppercase"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-500 mb-1">Shares / Qty</label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={orderForm.shares}
-                      onChange={(e) => setOrderForm({ ...orderForm, shares: e.target.value })}
-                      placeholder="5"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-500 mb-1">Price per Unit</label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={orderForm.pricePerShare}
-                      onChange={(e) =>
-                        setOrderForm({ ...orderForm, pricePerShare: e.target.value })
-                      }
-                      placeholder="545"
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-500 mb-1">Sync TrueSpend Wallet</label>
-                    <select
-                      value={orderForm.walletId}
-                      onChange={(e) => setOrderForm({ ...orderForm, walletId: e.target.value })}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
-                    >
-                      <option value="">No Wallet Deduction</option>
-                      {wallets.map((w) => (
-                        <option key={w.id} value={w.id}>
-                          {w.name} ({formatMad(w.balance, 0)})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsLogOrderOpen(false)}
-                    className="px-3 py-1.5 text-gray-500"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="px-4 py-1.5 rounded-lg font-semibold bg-indigo-600 text-white"
-                  >
-                    Record Order
-                  </button>
-                </div>
-              </form>
-            )}
 
             {(investmentsData?.orders || []).length > 0 && (
               <div className="overflow-x-auto border-b border-gray-100 dark:border-gray-800">
@@ -3841,8 +3857,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                       <th className="py-3 px-3 text-right">Principal vs. Live</th>
                       <th className="py-3 px-3 text-right">Broker Fee Loss</th>
                       <th className="py-3 px-3 text-right">Net Order P&amp;L</th>
-                      <th className="py-3 px-3 text-right">Accrued Div &amp; Total</th>
-                      <th className="py-3 pl-3 pr-4 text-right">Delete</th>
+                      <th className="py-3 pl-3 pr-4 text-right">Accrued Div &amp; Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70 text-xs font-mono tabular-nums">
@@ -3879,22 +3894,13 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                           {formatSignedMad(ord.netOrderPnlMad ?? 0, 2)} (
                           {(ord.netOrderPnlPercent ?? 0).toFixed(1)}%)
                         </td>
-                        <td className="py-3 px-3 text-right">
+                        <td className="py-3 pl-3 pr-4 text-right">
                           <div className="text-emerald-600">
                             Div: +{formatMad(ord.accruedDividendMad ?? 0, 2)}
                           </div>
                           <div className="font-bold text-gray-900 dark:text-white">
                             Tot: {formatSignedMad(ord.totalReturnMad ?? 0, 2)}
                           </div>
-                        </td>
-                        <td className="py-3 pl-3 pr-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => onDeleteOrder(ord.id)}
-                            className="p-1 text-gray-400 hover:text-rose-600"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
                         </td>
                       </tr>
                     ))}
@@ -3905,7 +3911,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
 
             {manualPositions.length === 0 ? (
               <div className="p-8 text-center text-xs text-gray-500 dark:text-gray-400">
-                No off-exchange manual holdings logged yet. Explore the &ldquo;Stocks &amp; Equities Intelligence&rdquo; tab to simulate or add positions.
+                No off-exchange BVC or manual holdings recorded. Explore the &ldquo;Stocks &amp; Equities Intelligence&rdquo; tab to inspect your Binance Funding/Spot holdings and global stock benchmarks.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -3920,7 +3926,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                       <th className="py-3 px-3 text-right">Market Value</th>
                       <th className="py-3 px-3 text-right">Fee Loss</th>
                       <th className="py-3 px-3 text-right">Net P&amp;L + Divs</th>
-                      <th className="py-3 pl-3 pr-4 text-right">Actions</th>
+                      <th className="py-3 pl-3 pr-4 text-right">Forensics</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70 text-xs font-mono tabular-nums">
@@ -3966,14 +3972,13 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                           )}{' '}
                           ({(pos.totalReturnPercent ?? pos.unrealizedPnlPercent).toFixed(1)}%)
                         </td>
-                        <td className="py-3 pl-3 pr-4 text-right">
+                        <td className="py-3 pl-3 pr-4 text-right font-sans">
                           <button
                             type="button"
-                            onClick={() => onDeletePosition(pos.id)}
-                            className="p-1 text-gray-400 hover:text-rose-600 transition-colors"
-                            title="Remove position"
+                            onClick={() => handleInspectTickerTrades(pos.ticker)}
+                            className="px-2.5 py-1 rounded text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            Forensics →
                           </button>
                         </td>
                       </tr>
