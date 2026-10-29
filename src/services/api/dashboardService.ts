@@ -97,6 +97,16 @@ export const dashboardService = {
   getDebts: (token: string | null) => apiClient.get<Debt[]>('/api/debts', token),
   settleDebt: (debtId: string, amount: number, token: string | null, category?: string, walletId?: string) =>
     apiClient.post<{ message: string }>('/api/debts', { debt_id: debtId, amount, category, walletId }, token),
+  forgiveDebt: (
+    debtId: string,
+    payload: { amount?: number; reason?: string; note?: string },
+    token: string | null
+  ) =>
+    apiClient.post<{ message: string; forgivenAmount: number; remainingBalance: number; status: string }>(
+      `/api/debts/${debtId}/forgive`,
+      payload,
+      token
+    ),
   updateDebt: (debtId: string, payload: { amount: number; contact: string; type: string }, token: string | null) =>
     apiClient.put<{ message: string }>(`/api/debts/${debtId}`, payload, token),
   deleteDebt: (debtId: string, token: string | null) =>

@@ -75,7 +75,7 @@ const initialFilters: TransactionFilters = {
 };
 
 type ViewMode = 'grouped' | 'compact' | 'table';
-type QuickPreset = 'all' | 'expense' | 'income' | 'transfer' | 'stocks' | 'split' | 'over_budget' | 'high_value';
+type QuickPreset = 'all' | 'expense' | 'income' | 'transfer' | 'stocks' | 'split' | 'partial' | 'over_budget' | 'high_value';
 
 export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   transactions,
@@ -290,6 +290,10 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     } else if (quickPreset === 'split') {
       result = result.filter(
         (tx) => (tx.splits && tx.splits.length > 0) || (parseFloat(tx.reimbursableAmount || '0') > 0)
+      );
+    } else if (quickPreset === 'partial') {
+      result = result.filter(
+        (tx) => Boolean(tx.isPartialPayment) || parseFloat(tx.unpaidAmount || '0') > 0
       );
     } else if (quickPreset === 'high_value') {
       result = result.filter((tx) => parseFloat(tx.amount) >= 500);
@@ -814,6 +818,88 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                 );
               })()}
 
+              {/* Uncompleted / Partial Payment Breakdown Card */}
+              {inspectingTx.isPartialPayment && (
+                <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/25 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-900 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                      Uncompleted / Partial Payment
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          inspectingTx.unpaidStatus === 'Settled' ||
+                          parseFloat(inspectingTx.unpaidRemainingBalance || '0') <= 0.009
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                            : 'bg-amber-200/80 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200'
+                        }`}
+                      >
+                        {inspectingTx.unpaidStatus === 'Settled' ||
+                        parseFloat(inspectingTx.unpaidRemainingBalance || '0') <= 0.009
+                          ? 'Completed / Settled'
+                          : 'Partially Paid • Balance Owed'}
+                      </span>
+                      {setActiveTab && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setInspectingTx(null);
+                            setActiveTab('debts');
+                          }}
+                          className="text-xs font-semibold text-amber-700 dark:text-amber-300 hover:underline flex items-center gap-0.5"
+                        >
+                          Manage Debt <ChevronRight className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-xl bg-white/80 dark:bg-gray-900/70 p-2.5 border border-amber-100 dark:border-amber-900/40">
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 block">Total Bill</span>
+                      <span className="font-bold text-gray-900 dark:text-gray-100 font-mono">
+                        {parseFloat(
+                          inspectingTx.totalBillAmount ||
+                            String(
+                              (parseFloat(inspectingTx.amount || '0') || 0) +
+                                (parseFloat(inspectingTx.unpaidAmount || '0') || 0),
+                            ),
+                        ).toFixed(2)}{' '}
+                        MAD
+                      </span>
+                    </div>
+                    <div className="rounded-xl bg-white/80 dark:bg-gray-900/70 p-2.5 border border-amber-100 dark:border-amber-900/40">
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 block">Paid From Wallet</span>
+                      <span className="font-bold text-emerald-700 dark:text-emerald-400 font-mono">
+                        {parseFloat(inspectingTx.amount || '0').toFixed(2)} MAD
+                      </span>
+                    </div>
+                    <div className="rounded-xl bg-white/80 dark:bg-gray-900/70 p-2.5 border border-amber-100 dark:border-amber-900/40">
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 block">Still Owed</span>
+                      <span className="font-bold text-rose-600 dark:text-rose-400 font-mono">
+                        {parseFloat(
+                          inspectingTx.unpaidRemainingBalance ?? inspectingTx.unpaidAmount ?? '0',
+                        ).toFixed(2)}{' '}
+                        MAD
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-amber-200/50 dark:border-amber-900/40">
+                    <span className="text-gray-600 dark:text-gray-300">
+                      Creditor / Owed To:{' '}
+                      <strong className="text-gray-900 dark:text-white">
+                        {inspectingTx.unpaidContactName || 'Merchant / Counterparty'}
+                      </strong>
+                    </span>
+                    <span className="text-[11px] text-amber-800 dark:text-amber-300 font-mono">
+                      Initial unpaid part: {parseFloat(inspectingTx.unpaidAmount || '0').toFixed(2)} MAD
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Split & Debt Breakdown Card */}
               {((inspectingTx.splits && inspectingTx.splits.length > 0) ||
                 parseFloat(inspectingTx.reimbursableAmount || '0') > 0 ||
@@ -1325,6 +1411,16 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
               👥 Splits & Owed
             </button>
             <button
+              onClick={() => setQuickPreset(quickPreset === 'partial' ? 'all' : 'partial')}
+              className={`rounded-full px-3 py-1 font-medium transition-all whitespace-nowrap ${
+                quickPreset === 'partial'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100'
+              }`}
+            >
+              ⏳ Uncompleted / Partial
+            </button>
+            <button
               onClick={() => setQuickPreset(quickPreset === 'over_budget' ? 'all' : 'over_budget')}
               className={`rounded-full px-3 py-1 font-medium transition-all whitespace-nowrap ${
                 quickPreset === 'over_budget'
@@ -1732,6 +1828,34 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                                     </span>
                                   );
                                 })()}
+
+                                {/* Interconnected Uncompleted / Partial Payment Badge */}
+                                {transaction.isPartialPayment && (
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                                      transaction.unpaidStatus === 'Settled' ||
+                                      parseFloat(transaction.unpaidRemainingBalance || '0') <= 0.009
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800'
+                                        : 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800'
+                                    }`}
+                                  >
+                                    <Clock className="w-2.5 h-2.5" />
+                                    {transaction.unpaidStatus === 'Settled' ||
+                                    parseFloat(transaction.unpaidRemainingBalance || '0') <= 0.009
+                                      ? `Partial Bill Completed (${parseFloat(transaction.totalBillAmount || transaction.amount).toFixed(0)} MAD)`
+                                      : `Paid ${parseFloat(transaction.amount).toFixed(0)}/${parseFloat(
+                                          transaction.totalBillAmount ||
+                                            String(
+                                              parseFloat(transaction.amount) +
+                                                parseFloat(transaction.unpaidAmount || '0'),
+                                            ),
+                                        ).toFixed(0)} MAD • Owe ${parseFloat(
+                                          transaction.unpaidRemainingBalance || transaction.unpaidAmount || '0',
+                                        ).toFixed(0)} MAD${
+                                          transaction.unpaidContactName ? ` to ${transaction.unpaidContactName}` : ''
+                                        }`}
+                                  </span>
+                                )}
 
                                 {/* Interconnected Split / Contact Badge */}
                                 {transaction.splits && transaction.splits.length > 1 ? (

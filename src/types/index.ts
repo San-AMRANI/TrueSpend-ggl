@@ -151,6 +151,14 @@ export interface Transaction {
   linkedDebtType?: 'Receivable' | 'Payable' | null;
   splits?: TransactionSplit[];
   contextId?: string | null;
+  // Uncompleted / Partial Payment Telemetry (Paid part now, still owe remainder)
+  isPartialPayment?: boolean;
+  unpaidAmount?: string | null;
+  totalBillAmount?: string | null;
+  unpaidRemainingBalance?: string | null;
+  unpaidStatus?: 'Pending' | 'Cleared' | 'Settled' | null;
+  unpaidDebtId?: string | null;
+  unpaidContactName?: string | null;
 }
 
 export interface Goal {
@@ -225,6 +233,9 @@ export interface DebtSettlement {
   id: string;
   amount: string;
   createdAt: string;
+  isForgiven?: boolean;
+  reason?: string;
+  note?: string;
 }
 
 export interface Debt {
@@ -238,6 +249,9 @@ export interface Debt {
   createdAt: string;
   dueDate?: string | null;
   settlements?: DebtSettlement[];
+  forgivenAmount?: string;
+  originTransactionId?: string | null;
+  originDescription?: string | null;
 }
 
 export interface UserSettings {

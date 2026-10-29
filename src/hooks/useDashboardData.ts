@@ -150,8 +150,41 @@ export function useDashboardData(token: string | null) {
     try {
       await dashboardService.settleDebt(debtId, amount, token, category, walletId);
       await fetchData();
+      window.dispatchEvent(
+        new CustomEvent('truespend:toast', {
+          detail: { message: `Settled ${amount.toFixed(2)} MAD in wallet.`, type: 'success' },
+        })
+      );
     } catch (e) {
       console.error('Error settling debt:', e);
+    }
+  };
+
+  const handleForgiveDebt = async (
+    debtId: string,
+    amount: number,
+    reason?: string,
+    note?: string
+  ) => {
+    try {
+      await dashboardService.forgiveDebt(debtId, { amount, reason, note }, token);
+      await fetchData();
+      window.dispatchEvent(
+        new CustomEvent('truespend:toast', {
+          detail: {
+            message: `Freed ${amount.toFixed(2)} MAD debt without adding as reimbursement.`,
+            type: 'success',
+          },
+        })
+      );
+    } catch (e: any) {
+      console.error('Error forgiving debt:', e);
+      window.dispatchEvent(
+        new CustomEvent('truespend:toast', {
+          detail: { message: e?.message || 'Failed to forgive debt.', type: 'error' },
+        })
+      );
+      throw e;
     }
   };
 
@@ -825,6 +858,7 @@ export function useDashboardData(token: string | null) {
     setSelectedTransactionId,
     fetchData,
     handleSettleDebt,
+    handleForgiveDebt,
     handleDeleteDebt,
     handleEditDebt,
     handleDeleteTransaction,
