@@ -9,9 +9,12 @@
 
 /* ============================================================================
    TRUESPEND MULTI-THEME & ARCHITECTURAL STYLE ENGINE
-   6 Curated Themes + 3 Independent Architectural Axes (Radius, Font, Surface)
+   12 Curated Themes (6 Light + 6 Dark) + 3 Architectural Style Overrides
    ============================================================================ */
 
+/* ----------------------------------------------------------------------------
+   THEME 1: SWISS ALABASTER (Clean Daylight Ledger) [LIGHT]
+   ---------------------------------------------------------------------------- */
 :root,
 html[data-theme="light"] {
   --ts-canvas-pattern: none;
@@ -20,7 +23,7 @@ html[data-theme="light"] {
 }
 
 /* ----------------------------------------------------------------------------
-   THEME 2: VINTAGE LEDGER (1920s Archival Paper, Sepia Ink & Aged Brass)
+   THEME 2: VINTAGE LEDGER (1920s Archival Paper, Sepia Ink & Aged Brass) [LIGHT]
    ---------------------------------------------------------------------------- */
 html[data-theme="vintage"] {
   --font-sans: "Lora", Georgia, Cambria, "Times New Roman", serif;
@@ -59,7 +62,7 @@ html[data-theme="vintage"] {
   --color-slate-900: #24190d;
   --color-slate-950: #181007;
 
-  /* Terracotta Wax & Copper-Rust Primary Accents (replaces Indigo/Blue/Violet) */
+  /* Terracotta Wax & Copper-Rust Primary Accents */
   --color-indigo-50: #f6e8dc;
   --color-indigo-100: #edd2bc;
   --color-indigo-200: #deb08d;
@@ -74,27 +77,18 @@ html[data-theme="vintage"] {
 
   --color-blue-50: #f6e8dc;
   --color-blue-100: #edd2bc;
-  --color-blue-200: #deb08d;
-  --color-blue-300: #cb8759;
-  --color-blue-400: #b66635;
   --color-blue-500: #9a4422;
   --color-blue-600: #833518;
-  --color-blue-700: #6b2912;
-  --color-blue-800: #572110;
-  --color-blue-900: #471c0f;
-  --color-blue-950: #290d06;
 
   --color-violet-50: #f3e6d8;
   --color-violet-100: #e6ccb3;
   --color-violet-500: #8c4a27;
   --color-violet-600: #73391b;
 
-  /* Vintage Botanical Ink Emerald & Crimson Ledger Ink */
   --color-emerald-50: #e6efe9;
   --color-emerald-100: #cde0d3;
   --color-emerald-500: #2f684a;
   --color-emerald-600: #24533a;
-  --color-emerald-700: #1b3f2c;
 
   --ts-canvas-pattern: repeating-linear-gradient(
     0deg,
@@ -107,7 +101,7 @@ html[data-theme="vintage"] {
 }
 
 /* ----------------------------------------------------------------------------
-   THEME 3: TRAVERTINE & ESPRESSO (Quiet Luxury Editorial Wealth)
+   THEME 3: TRAVERTINE & ESPRESSO (Quiet Luxury Private Wealth) [LIGHT]
    ---------------------------------------------------------------------------- */
 html[data-theme="espresso"] {
   --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -162,11 +156,192 @@ html[data-theme="espresso"] {
   --color-blue-100: #e9dacb;
   --color-blue-500: #875937;
   --color-blue-600: #6e4629;
-  --color-blue-700: #593720;
 }
 
 /* ----------------------------------------------------------------------------
-   THEME 4: MIDNIGHT OBSIDIAN (Deep Carbon Dark Studio)
+   THEME 4: SAHARA & TERRACOTTA (Moroccan Saffron & Desert Clay) [LIGHT]
+   ---------------------------------------------------------------------------- */
+html[data-theme="sahara-dune"] {
+  --font-sans: "Plus Jakarta Sans", sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --radius-sm: 0.2rem;
+  --radius-md: 0.35rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+
+  --color-white: #fffdf9;
+  --color-gray-50: #faf4eb;
+  --color-gray-100: #f2e7d7;
+  --color-gray-200: #e6d7c3;
+  --color-gray-300: #d4bfab;
+  --color-gray-400: #ad947c;
+  --color-gray-500: #876f57;
+  --color-gray-600: #695440;
+  --color-gray-700: #4f3e2e;
+  --color-gray-800: #382c20;
+  --color-gray-900: #261c14;
+  --color-gray-950: #17100a;
+
+  --color-slate-50: #faf4eb;
+  --color-slate-100: #f2e7d7;
+  --color-slate-200: #e6d7c3;
+  --color-slate-300: #d4bfab;
+  --color-slate-400: #ad947c;
+  --color-slate-500: #876f57;
+  --color-slate-600: #695440;
+  --color-slate-700: #4f3e2e;
+  --color-slate-800: #382c20;
+  --color-slate-900: #261c14;
+  --color-slate-950: #17100a;
+
+  /* Terracotta Saffron & Atlas Ochre Primary Accents */
+  --color-indigo-50: #fdf2eb;
+  --color-indigo-100: #fae2d3;
+  --color-indigo-200: #f4c3a7;
+  --color-indigo-300: #eb9c73;
+  --color-indigo-400: #df7543;
+  --color-indigo-500: #c85a2b;
+  --color-indigo-600: #ab461e;
+  --color-indigo-700: #8a3617;
+  --color-indigo-800: #702e17;
+  --color-indigo-900: #5c2716;
+  --color-indigo-950: #32120a;
+
+  --color-blue-500: #c85a2b;
+  --color-blue-600: #ab461e;
+
+  /* Oasis Palm Emerald Secondary */
+  --color-emerald-500: #2a6349;
+  --color-emerald-600: #204d38;
+
+  --ts-card-shadow: 0 2px 4px 0 rgba(79, 62, 46, 0.05);
+}
+
+/* ----------------------------------------------------------------------------
+   THEME 5: KYOTO BAMBOO & MATCHA (Washi Paper & Ceremonial Matcha) [LIGHT]
+   ---------------------------------------------------------------------------- */
+html[data-theme="kyoto-zen"] {
+  --font-sans: "Plus Jakarta Sans", sans-serif;
+  --font-display: "Lora", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --radius-sm: 0.35rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+
+  --color-white: #fcfffa;
+  --color-gray-50: #f5f7f2;
+  --color-gray-100: #e9eee4;
+  --color-gray-200: #d2ded0;
+  --color-gray-300: #b5c7b3;
+  --color-gray-400: #8d9f8b;
+  --color-gray-500: #677865;
+  --color-gray-600: #4e5d4d;
+  --color-gray-700: #384537;
+  --color-gray-800: #273127;
+  --color-gray-900: #192019;
+  --color-gray-950: #0e130e;
+
+  --color-slate-50: #f5f7f2;
+  --color-slate-100: #e9eee4;
+  --color-slate-200: #d2ded0;
+  --color-slate-300: #b5c7b3;
+  --color-slate-400: #8d9f8b;
+  --color-slate-500: #677865;
+  --color-slate-600: #4e5d4d;
+  --color-slate-700: #384537;
+  --color-slate-800: #273127;
+  --color-slate-900: #192019;
+  --color-slate-950: #0e130e;
+
+  /* Ceremonial Matcha Green Primary Accent */
+  --color-indigo-50: #eef7f2;
+  --color-indigo-100: #d7ede1;
+  --color-indigo-200: #b2dbc6;
+  --color-indigo-300: #82c2a3;
+  --color-indigo-400: #52a37f;
+  --color-indigo-500: #2d6a4f;
+  --color-indigo-600: #22563f;
+  --color-indigo-700: #1c4534;
+  --color-indigo-800: #18382b;
+  --color-indigo-900: #142f24;
+  --color-indigo-950: #0a1b14;
+
+  --color-blue-500: #2d6a4f;
+  --color-blue-600: #22563f;
+
+  /* Bamboo Amber Secondary */
+  --color-amber-500: #b47834;
+  --color-amber-600: #966126;
+
+  --ts-card-shadow: 0 1px 3px 0 rgba(39, 49, 39, 0.04);
+}
+
+/* ----------------------------------------------------------------------------
+   THEME 6: ROSE GOLD & CHAMPAGNE (Cashmere Ivory & Rose Atelier) [LIGHT]
+   ---------------------------------------------------------------------------- */
+html[data-theme="rose-atelier"] {
+  --font-sans: "Lora", Georgia, serif;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --radius-sm: 0.35rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+
+  --color-white: #fffcfb;
+  --color-gray-50: #faf5f2;
+  --color-gray-100: #f4eae5;
+  --color-gray-200: #ebd8d0;
+  --color-gray-300: #dcc2b8;
+  --color-gray-400: #b8988e;
+  --color-gray-500: #93736a;
+  --color-gray-600: #745850;
+  --color-gray-700: #563f39;
+  --color-gray-800: #3c2a26;
+  --color-gray-900: #281a17;
+  --color-gray-950: #180e0c;
+
+  --color-slate-50: #faf5f2;
+  --color-slate-100: #f4eae5;
+  --color-slate-200: #ebd8d0;
+  --color-slate-300: #dcc2b8;
+  --color-slate-400: #b8988e;
+  --color-slate-500: #93736a;
+  --color-slate-600: #745850;
+  --color-slate-700: #563f39;
+  --color-slate-800: #3c2a26;
+  --color-slate-900: #281a17;
+  --color-slate-950: #180e0c;
+
+  /* Rose Gold & Champagne Accent */
+  --color-indigo-50: #fdf2f4;
+  --color-indigo-100: #fbe6ea;
+  --color-indigo-200: #f7ced7;
+  --color-indigo-300: #f0a7b7;
+  --color-indigo-400: #e37991;
+  --color-indigo-500: #b35d6b;
+  --color-indigo-600: #9b4b58;
+  --color-indigo-700: #813c47;
+  --color-indigo-800: #6d343e;
+  --color-indigo-900: #5d2f37;
+  --color-indigo-950: #37161c;
+
+  --color-blue-500: #b35d6b;
+  --color-blue-600: #9b4b58;
+
+  --ts-card-shadow: 0 2px 6px 0 rgba(60, 42, 38, 0.05);
+}
+
+/* ----------------------------------------------------------------------------
+   THEME 7: MIDNIGHT OBSIDIAN (Deep Carbon Dark Studio) [DARK]
    ---------------------------------------------------------------------------- */
 html[data-theme="dark"] {
   --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -175,7 +350,7 @@ html[data-theme="dark"] {
 }
 
 /* ----------------------------------------------------------------------------
-   THEME 5: NORDIC PRIVATE BANK (Botanical Pine & Bullion Gold Dark)
+   THEME 8: NORDIC PRIVATE BANK (Botanical Pine & Bullion Gold Dark) [DARK]
    ---------------------------------------------------------------------------- */
 html[data-theme="emerald-night"] {
   --font-sans: "Outfit", "Plus Jakarta Sans", sans-serif;
@@ -228,7 +403,7 @@ html[data-theme="emerald-night"] {
 }
 
 /* ----------------------------------------------------------------------------
-   THEME 6: AMBER DESK TERMINAL (Institutional Quant Console)
+   THEME 9: AMBER DESK TERMINAL (Institutional Quant Console) [DARK]
    ---------------------------------------------------------------------------- */
 html[data-theme="terminal"] {
   --font-sans: "IBM Plex Mono", "JetBrains Mono", monospace;
@@ -287,6 +462,188 @@ html[data-theme="terminal"] {
 
   --ts-canvas-pattern: linear-gradient(rgba(245, 158, 11, 0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(245, 158, 11, 0.025) 1px, transparent 1px);
+}
+
+/* ----------------------------------------------------------------------------
+   THEME 10: NEO-TOKYO CYBER (Midnight Neon & Cyan Matrix) [DARK]
+   ---------------------------------------------------------------------------- */
+html[data-theme="tokyo-night"] {
+  --font-sans: "Outfit", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-sm: 0.15rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.35rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.75rem;
+
+  /* Titanium Midnight Scale */
+  --color-gray-50: #f1f5f9;
+  --color-gray-100: #e2e8f0;
+  --color-gray-200: #cbd5e1;
+  --color-gray-300: #94a3b8;
+  --color-gray-400: #64748b;
+  --color-gray-500: #475569;
+  --color-gray-600: #334155;
+  --color-gray-700: #1e293b;
+  --color-gray-800: #182032;
+  --color-gray-900: #111624;
+  --color-gray-950: #0a0d17;
+
+  --color-slate-50: #f1f5f9;
+  --color-slate-100: #e2e8f0;
+  --color-slate-200: #cbd5e1;
+  --color-slate-300: #94a3b8;
+  --color-slate-400: #64748b;
+  --color-slate-500: #475569;
+  --color-slate-600: #334155;
+  --color-slate-700: #1e293b;
+  --color-slate-800: #182032;
+  --color-slate-900: #111624;
+  --color-slate-950: #0a0d17;
+
+  /* Electric Cyan & Neon Violet Accents */
+  --color-indigo-50: #ecfeff;
+  --color-indigo-100: #cffafe;
+  --color-indigo-200: #a5f3fc;
+  --color-indigo-300: #67e8f9;
+  --color-indigo-400: #22d3ee;
+  --color-indigo-500: #06b6d4;
+  --color-indigo-600: #0891b2;
+  --color-indigo-700: #0e7490;
+  --color-indigo-800: #155e75;
+  --color-indigo-900: #164e63;
+  --color-indigo-950: #083344;
+
+  --color-blue-400: #22d3ee;
+  --color-blue-500: #06b6d4;
+  --color-blue-600: #0891b2;
+  --color-violet-500: #d946ef;
+  --color-violet-600: #c026d3;
+
+  --ts-canvas-pattern: linear-gradient(rgba(6, 182, 212, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.03) 1px, transparent 1px);
+}
+
+/* ----------------------------------------------------------------------------
+   THEME 11: BLUE CHIP WALL STREET (Deep Harbor Navy & Bullion Gold) [DARK]
+   ---------------------------------------------------------------------------- */
+html[data-theme="wall-street"] {
+  --font-sans: "Plus Jakarta Sans", sans-serif;
+  --font-display: "Plus Jakarta Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+
+  /* Deep Nautical Navy Scale */
+  --color-gray-50: #f0f6fc;
+  --color-gray-100: #e1ebf5;
+  --color-gray-200: #c9dbed;
+  --color-gray-300: #93b5d9;
+  --color-gray-400: #5c88b8;
+  --color-gray-500: #3b6696;
+  --color-gray-600: #2a4c73;
+  --color-gray-700: #1d3553;
+  --color-gray-800: #14243b;
+  --color-gray-900: #0e1929;
+  --color-gray-950: #070d17;
+
+  --color-slate-50: #f0f6fc;
+  --color-slate-100: #e1ebf5;
+  --color-slate-200: #c9dbed;
+  --color-slate-300: #93b5d9;
+  --color-slate-400: #5c88b8;
+  --color-slate-500: #3b6696;
+  --color-slate-600: #2a4c73;
+  --color-slate-700: #1d3553;
+  --color-slate-800: #14243b;
+  --color-slate-900: #0e1929;
+  --color-slate-950: #070d17;
+
+  /* Royal Cobalt & Bullion Gold Accents */
+  --color-indigo-50: #eff6ff;
+  --color-indigo-100: #dbeafe;
+  --color-indigo-200: #bfdbfe;
+  --color-indigo-300: #93c5fd;
+  --color-indigo-400: #60a5fa;
+  --color-indigo-500: #3b82f6;
+  --color-indigo-600: #2563eb;
+  --color-indigo-700: #1d4ed8;
+  --color-indigo-800: #1e40af;
+  --color-indigo-900: #1e3a8a;
+  --color-indigo-950: #172554;
+
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-violet-500: #f59e0b;
+  --color-violet-600: #d97706;
+}
+
+/* ----------------------------------------------------------------------------
+   THEME 12: MARIANA OCEANIC ABYSS (Bioluminescent Trench & Cyan) [DARK]
+   ---------------------------------------------------------------------------- */
+html[data-theme="deep-abyss"] {
+  --font-sans: "Outfit", "JetBrains Mono", sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-sm: 0.15rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.35rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.75rem;
+
+  /* Benthic Oceanic Black-Teal Scale */
+  --color-gray-50: #ecfeff;
+  --color-gray-100: #cffafe;
+  --color-gray-200: #a5f3fc;
+  --color-gray-300: #67e8f9;
+  --color-gray-400: #38bdf8;
+  --color-gray-500: #1e7087;
+  --color-gray-600: #154c5c;
+  --color-gray-700: #0f3440;
+  --color-gray-800: #0a212a;
+  --color-gray-900: #06151c;
+  --color-gray-950: #030b0f;
+
+  --color-slate-50: #ecfeff;
+  --color-slate-100: #cffafe;
+  --color-slate-200: #a5f3fc;
+  --color-slate-300: #67e8f9;
+  --color-slate-400: #38bdf8;
+  --color-slate-500: #1e7087;
+  --color-slate-600: #154c5c;
+  --color-slate-700: #0f3440;
+  --color-slate-800: #0a212a;
+  --color-slate-900: #06151c;
+  --color-slate-950: #030b0f;
+
+  /* Bioluminescent Teal & Phosphor Aqua Accents */
+  --color-indigo-50: #f0fdfa;
+  --color-indigo-100: #ccfbf1;
+  --color-indigo-200: #99f6e4;
+  --color-indigo-300: #5eead4;
+  --color-indigo-400: #2dd4bf;
+  --color-indigo-500: #14b8a6;
+  --color-indigo-600: #0d9488;
+  --color-indigo-700: #0f766e;
+  --color-indigo-800: #115e59;
+  --color-indigo-900: #134e4a;
+  --color-indigo-950: #042f2e;
+
+  --color-blue-400: #38bdf8;
+  --color-blue-500: #0ea5e9;
+  --color-blue-600: #0284c7;
+  --color-violet-500: #14b8a6;
+  --color-violet-600: #0d9488;
+
+  --ts-canvas-pattern: radial-gradient(circle at 50% 0%, rgba(20, 184, 166, 0.04) 0%, transparent 75%);
 }
 
 /* ============================================================================
@@ -358,7 +715,7 @@ html[data-font="technical"] {
   }
 }
 
-/* Vintage & Textured Canvas Treatments */
+/* Canvas Patterns */
 html[data-theme="vintage"][data-surface="theme-default"] body,
 html[data-surface="textured"] body {
   background-image: var(--ts-canvas-pattern, repeating-linear-gradient(
@@ -370,9 +727,14 @@ html[data-surface="textured"] body {
   ));
 }
 
-html[data-theme="terminal"][data-surface="theme-default"] body {
+html[data-theme="terminal"][data-surface="theme-default"] body,
+html[data-theme="tokyo-night"][data-surface="theme-default"] body {
   background-image: var(--ts-canvas-pattern);
   background-size: 28px 28px;
+}
+
+html[data-theme="deep-abyss"][data-surface="theme-default"] body {
+  background-image: var(--ts-canvas-pattern);
 }
 
 /* Card Surface Styling Hook (.ts-card) */

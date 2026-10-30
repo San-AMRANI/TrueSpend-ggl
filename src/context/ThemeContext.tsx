@@ -4,9 +4,15 @@ export type ThemeId =
   | 'light'
   | 'dark'
   | 'vintage'
+  | 'espresso'
   | 'emerald-night'
   | 'terminal'
-  | 'espresso'
+  | 'sahara-dune'
+  | 'tokyo-night'
+  | 'wall-street'
+  | 'kyoto-zen'
+  | 'rose-atelier'
+  | 'deep-abyss'
   | 'system';
 
 export type ResolvedThemeId = Exclude<ThemeId, 'system'>;
@@ -35,6 +41,7 @@ export interface ThemePresetMeta {
 }
 
 export const THEME_PRESETS: ThemePresetMeta[] = [
+  // ── Light Themes ────────────────────────────────────────────────────────────
   {
     id: 'light',
     name: 'Swiss Alabaster',
@@ -93,6 +100,65 @@ export const THEME_PRESETS: ThemePresetMeta[] = [
     },
   },
   {
+    id: 'sahara-dune',
+    name: 'Sahara & Terracotta',
+    tagline: 'Moroccan Saffron & Clay',
+    description:
+      'Warm terracotta clay and desert sand canvas inspired by Marrakech, paired with rich saffron ochre and oasis palm green.',
+    mode: 'light',
+    eraOrStyle: 'Moroccan Saffron',
+    defaultFontLabel: 'Fraunces & Plus Jakarta',
+    defaultRadiusLabel: 'Balanced (10px)',
+    swatches: {
+      canvas: '#faf4eb',
+      surface: '#fffdf9',
+      border: '#e6d7c3',
+      text: '#2b221a',
+      accent: '#c85a2b',
+      secondaryAccent: '#2a6349',
+    },
+  },
+  {
+    id: 'kyoto-zen',
+    name: 'Kyoto Bamboo & Matcha',
+    tagline: 'Washi Paper & Ceremonial Matcha',
+    description:
+      'Calming Japanese washi paper canvas with pale hinoki surfaces, deep sumi-e ink typography, and ceremonial matcha green accents.',
+    mode: 'light',
+    eraOrStyle: 'Zen Botanical',
+    defaultFontLabel: 'Plus Jakarta & Lora',
+    defaultRadiusLabel: 'Soft (14px)',
+    swatches: {
+      canvas: '#f5f7f2',
+      surface: '#fcfffa',
+      border: '#d2ded0',
+      text: '#1c241e',
+      accent: '#2d6a4f',
+      secondaryAccent: '#b47834',
+    },
+  },
+  {
+    id: 'rose-atelier',
+    name: 'Rose Gold & Champagne',
+    tagline: 'Cashmere Ivory & Rose Gold',
+    description:
+      'Soft cashmere ivory canvas paired with polished porcelain surfaces, warm antique rose gold accents, and deep charcoal-plum typography.',
+    mode: 'light',
+    eraOrStyle: 'Parisian Haute Joaillerie',
+    defaultFontLabel: 'Fraunces & Lora',
+    defaultRadiusLabel: 'Soft (16px)',
+    swatches: {
+      canvas: '#faf5f2',
+      surface: '#fffcfb',
+      border: '#ebd8d0',
+      text: '#2b1d22',
+      accent: '#b35d6b',
+      secondaryAccent: '#4a6b5d',
+    },
+  },
+
+  // ── Dark Themes ─────────────────────────────────────────────────────────────
+  {
     id: 'dark',
     name: 'Midnight Obsidian',
     tagline: 'Deep Carbon Studio',
@@ -149,6 +215,63 @@ export const THEME_PRESETS: ThemePresetMeta[] = [
       secondaryAccent: '#22d3ee',
     },
   },
+  {
+    id: 'tokyo-night',
+    name: 'Neo-Tokyo Cyber',
+    tagline: 'Midnight Neon & Cyan Matrix',
+    description:
+      'Deep midnight navy-black canvas with hyper-clean titanium surfaces, luminous electric cyan, and neon magenta accents.',
+    mode: 'dark',
+    eraOrStyle: 'Cyberpunk High-Tech',
+    defaultFontLabel: 'Outfit & JetBrains Mono',
+    defaultRadiusLabel: 'Sharp (4px)',
+    swatches: {
+      canvas: '#0b0e17',
+      surface: '#121826',
+      border: '#1f293d',
+      text: '#f1f5f9',
+      accent: '#06b6d4',
+      secondaryAccent: '#d946ef',
+    },
+  },
+  {
+    id: 'wall-street',
+    name: 'Blue Chip Wall Street',
+    tagline: 'Deep Harbor Navy & Gold',
+    description:
+      'Classic institutional trading desk navy with crisp harbor steel surfaces, bold cobalt blue accents, and bullion gold metrics.',
+    mode: 'dark',
+    eraOrStyle: 'Institutional Cobalt',
+    defaultFontLabel: 'Plus Jakarta & IBM Plex Mono',
+    defaultRadiusLabel: 'Balanced (8px)',
+    swatches: {
+      canvas: '#08101e',
+      surface: '#0f1c30',
+      border: '#1c3252',
+      text: '#f0f6fc',
+      accent: '#2563eb',
+      secondaryAccent: '#f59e0b',
+    },
+  },
+  {
+    id: 'deep-abyss',
+    name: 'Mariana Oceanic Abyss',
+    tagline: 'Bioluminescent Mariana Trench',
+    description:
+      'Subsea abyss deep black-navy canvas, high-pressure submarine steel surfaces, and bioluminescent aquamarine & teal phosphor highlights.',
+    mode: 'dark',
+    eraOrStyle: 'Subsea Benthic Spec',
+    defaultFontLabel: 'JetBrains Mono & Outfit',
+    defaultRadiusLabel: 'Sharp (4px)',
+    swatches: {
+      canvas: '#030a10',
+      surface: '#081622',
+      border: '#0f2b40',
+      text: '#ecfeff',
+      accent: '#14b8a6',
+      secondaryAccent: '#38bdf8',
+    },
+  },
 ];
 
 type ThemeProviderProps = {
@@ -195,9 +318,15 @@ const VALID_THEMES: ThemeId[] = [
   'light',
   'dark',
   'vintage',
+  'espresso',
   'emerald-night',
   'terminal',
-  'espresso',
+  'sahara-dune',
+  'tokyo-night',
+  'wall-street',
+  'kyoto-zen',
+  'rose-atelier',
+  'deep-abyss',
   'system',
 ];
 
@@ -296,9 +425,15 @@ export function ThemeProvider({
       'light',
       'vintage',
       'espresso',
+      'sahara-dune',
+      'kyoto-zen',
+      'rose-atelier',
       'dark',
       'emerald-night',
       'terminal',
+      'tokyo-night',
+      'wall-street',
+      'deep-abyss',
     ];
     const currentIdx = order.indexOf(resolvedTheme);
     const next = order[(currentIdx + 1) % order.length];

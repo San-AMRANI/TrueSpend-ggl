@@ -200,7 +200,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         badge: theme === preset.id ? 'Active Theme' : 'Theme',
         badgeColor: 'text-indigo-600 dark:text-indigo-400',
         icon: Palette,
-        keywords: `theme style appearance ${preset.id} ${preset.name.toLowerCase()} ${preset.tagline.toLowerCase()} vintage dark light terminal emerald espresso`,
+        keywords: `theme style appearance ${preset.id} ${preset.name.toLowerCase()} ${preset.tagline.toLowerCase()} ${preset.eraOrStyle.toLowerCase()} ${preset.mode} vintage dark light terminal emerald espresso sahara terracotta kyoto matcha rose gold tokyo cyber wall street abyss navy`,
         onSelect: () => {
           setTheme(preset.id);
           onClose();
