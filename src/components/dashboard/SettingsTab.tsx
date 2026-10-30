@@ -6,9 +6,9 @@ import { googleSignIn, getGoogleAccessToken } from '../../lib/googleAuth';
 import { uploadToGoogleDrive } from '../../lib/driveUpload';
 import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
 import { WalletsManager } from './WalletsManager';
 import { UsersAndRolesSection } from './UsersAndRolesSection';
+import { ThemeStudioCard } from './ThemeStudioCard';
 import type { NotifSettings, ServerNotifSettings } from '../../hooks/useNotifications';
 import type { Wallet, Subscription, Debt, InvestmentsData, DashboardTab } from '../../types';
 
@@ -60,7 +60,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   handleDeleteWallet,
   notifications,
 }) => {
-  const { theme, setTheme } = useTheme();
   const importFileRef = useRef<HTMLInputElement>(null);
   const [notifToast, setNotifToast] = useState<string | null>(null);
   const [isDriveConnecting, setIsDriveConnecting] = useState(false);
@@ -256,8 +255,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <User className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
             Profile & Account
           </CardTitle>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
             Active Session
           </span>
         </CardHeader>
@@ -321,6 +319,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </CardContent>
       </Card>
 
+      {/* ── Theme & Frontend Style Studio (6 Themes + Architectural Controls) ── */}
+      <ThemeStudioCard />
+
       {/* ── User Management & Role-Based Access Control ── */}
       <UsersAndRolesSection />
 
@@ -337,58 +338,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           onDeleteWallet={handleDeleteWallet}
         />
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Settings</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            {/* Appearance */}
-            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
-              <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">Appearance</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                Choose between light and dark mode, or sync with your system.
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setTheme('light')}
-                  className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-                    theme === 'light'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                  }`}
-                >
-                  <Sun className="h-4 w-4" />
-                  Light
-                </button>
-                <button
-                  onClick={() => setTheme('dark')}
-                  className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-                    theme === 'dark'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                  }`}
-                >
-                  <Moon className="h-4 w-4" />
-                  Dark
-                </button>
-                <button
-                  onClick={() => setTheme('system')}
-                  className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-                    theme === 'system'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                  }`}
-                >
-                  <Monitor className="h-4 w-4" />
-                  System
-                </button>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* ── Notifications ── */}
       <Card>

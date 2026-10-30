@@ -27,6 +27,7 @@ import {
   Landmark,
   Banknote,
   Bot,
+  Palette,
 } from 'lucide-react';
 import {
   DashboardTab,
@@ -37,7 +38,7 @@ import {
   Subscription,
   InvestmentsData,
 } from '../types';
-import { useTheme } from '../context/ThemeContext';
+import { useTheme, THEME_PRESETS } from '../context/ThemeContext';
 import { format } from 'date-fns';
 
 interface CommandPaletteProps {
@@ -191,19 +192,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           }, 120);
         },
       },
-      {
-        id: 'act-toggle-theme',
-        group: 'Quick Actions',
-        title: `Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`,
-        subtitle: `Current appearance: ${theme}`,
-        badge: 'Theme',
-        icon: theme === 'dark' ? Sun : Moon,
-        keywords: 'dark light theme mode appearance',
+      ...THEME_PRESETS.map((preset) => ({
+        id: `act-theme-${preset.id}`,
+        group: 'Quick Actions' as const,
+        title: `Apply Theme: ${preset.name}`,
+        subtitle: `${preset.tagline} · ${preset.defaultFontLabel}`,
+        badge: theme === preset.id ? 'Active Theme' : 'Theme',
+        badgeColor: 'text-indigo-600 dark:text-indigo-400',
+        icon: Palette,
+        keywords: `theme style appearance ${preset.id} ${preset.name.toLowerCase()} ${preset.tagline.toLowerCase()} vintage dark light terminal emerald espresso`,
         onSelect: () => {
-          setTheme(theme === 'dark' ? 'light' : 'dark');
+          setTheme(preset.id);
           onClose();
         },
-      },
+      })),
 
       // 2. Navigation
       {

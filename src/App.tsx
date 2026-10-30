@@ -5,15 +5,15 @@ import React from 'react';
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { ThemeProvider } from './context/ThemeContext';
+import { ThemeProvider, useTheme, THEME_PRESETS, type ThemeId } from './context/ThemeContext';
 import { PrivacyProvider, usePrivacy } from './context/PrivacyContext';
 import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 import { DesktopHeaderNav } from './components/dashboard/DesktopHeaderNav';
 import type { DashboardTab } from './types';
-import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins, Sparkles, Search, Map, Eye, EyeOff } from 'lucide-react';
+import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins, Sparkles, Search, Map, Eye, EyeOff, Palette, Check } from 'lucide-react';
 
 import { SpexAvatar } from './components/common/SpexAvatar';
 
@@ -30,12 +30,15 @@ const SpexNavIcon: React.FC<{ className?: string }> = ({ className = 'h-5 w-5' }
 function AppContent() {
   const { user, loading, signIn, switchUserSession } = useAuth();
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
+  const { theme, resolvedTheme, activePreset, setTheme } = useTheme();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
 
   const handleSelectTab = (tab: DashboardTab) => {
     setActiveTab(tab);
@@ -45,10 +48,17 @@ function AppContent() {
   useEffect(() => {
     const cleanup = initGoogleAuth();
     const handleOpen = () => setIsSidebarOpen(true);
+    const handleClickOutside = (e: MouseEvent) => {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
+        setIsThemeMenuOpen(false);
+      }
+    };
     window.addEventListener('truespend:openSidebar', handleOpen);
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
       cleanup && cleanup();
       window.removeEventListener('truespend:openSidebar', handleOpen);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
 
@@ -204,6 +214,84 @@ function AppContent() {
           </div>
           <div className="flex items-center gap-2">
             <DesktopHeaderNav activeTab={activeTab} onSelectTab={handleSelectTab} />
+            {/* Quick Theme Switcher Popover */}
+            <div className="relative" ref={themeMenuRef}>
+              <button
+                type="button"
+                onClick={() => setIsThemeMenuOpen((prev) => !prev)}
+                title={`Active Theme: ${activePreset.name}`}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-medium transition-colors shrink-0"
+              >
+                <span
+                  className="h-3 w-3 rounded-full border border-black/15 dark:border-white/20 shrink-0"
+                  style={{ backgroundColor: activePreset.swatches.accent }}
+                />
+                <Palette className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400 sm:hidden" />
+                <span className="hidden sm:inline truncate max-w-[100px]">
+                  {activePreset.name}
+                </span>
+              </button>
+
+              {isThemeMenuOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-64 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl py-2 z-50">
+                  <div className="px-3.5 pb-1.5 mb-1 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                      Select Theme (6 Presets)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsThemeMenuOpen(false);
+                        handleSelectTab('settings');
+                      }}
+                      className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      Style Studio
+                    </button>
+                  </div>
+
+                  {THEME_PRESETS.map((preset) => {
+                    const isSelected =
+                      theme === preset.id || (theme === 'system' && resolvedTheme === preset.id);
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => {
+                          setTheme(preset.id as ThemeId);
+                          setIsThemeMenuOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between gap-2.5 px-3.5 py-2 text-left text-xs transition-colors ${
+                          isSelected
+                            ? 'bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold'
+                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className="h-4 w-4 rounded-full border border-black/15 dark:border-white/20 shrink-0 flex items-center justify-center"
+                            style={{ backgroundColor: preset.swatches.canvas }}
+                          >
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={{ backgroundColor: preset.swatches.accent }}
+                            />
+                          </span>
+                          <div className="truncate">
+                            <div className="truncate">{preset.name}</div>
+                            <div className="text-[10px] text-gray-500 dark:text-gray-400 font-normal truncate">
+                              {preset.tagline}
+                            </div>
+                          </div>
+                        </div>
+                        {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-indigo-600 dark:text-indigo-400" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={togglePrivacyMode}
@@ -271,6 +359,30 @@ function AppContent() {
                   {tab.label}
                 </button>
               ))}
+            </div>
+            <div className="p-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-950/50">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                Quick Theme
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {THEME_PRESETS.map((preset) => {
+                  const active = resolvedTheme === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setTheme(preset.id as ThemeId)}
+                      className={`px-2 py-1.5 rounded border text-[11px] font-medium truncate transition-colors ${
+                        active
+                          ? 'border-indigo-600 dark:border-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      {preset.name.split(' ')[0]}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
