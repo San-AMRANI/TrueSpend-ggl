@@ -372,6 +372,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
 
           {activeTab === 'analytics' && (
             <AnalyticsTab
+              kpis={kpis}
               transactions={transactions}
               payrolls={payrolls}
               debts={debts}

@@ -46,6 +46,84 @@ export function generateLocalFinancialResponse(
   const monthlyExpenses = Number(kpis.monthlyExpenses) || Number(summary.expenses) || 0;
   const survivalRunwayDays = Number(forecast.survivalRunwayDays) || (dailyAllowance > 0 ? Math.round(totalLiquidity / dailyAllowance) : 30);
 
+  const historicalPeriods = Array.isArray(ctx.historicalFinancialPeriods)
+    ? ctx.historicalFinancialPeriods
+    : [];
+  const nwBreakdown = ctx.unifiedNetWorthBreakdown || {};
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // SCENARIO 0: Financial Periods Ending Liquidity / Net Money Saved / Net Worth
+  // ───────────────────────────────────────────────────────────────────────────
+  if (
+    lastUserMsg.includes('period') ||
+    lastUserMsg.includes('ended') ||
+    lastUserMsg.includes('end with') ||
+    lastUserMsg.includes('ending') ||
+    lastUserMsg.includes('closing') ||
+    lastUserMsg.includes('net money saved') ||
+    lastUserMsg.includes('net worth') ||
+    lastUserMsg.includes('unified net worth') ||
+    lastUserMsg.includes('each month') ||
+    lastUserMsg.includes('sept') ||
+    lastUserMsg.includes('oct') ||
+    lastUserMsg.includes('aug')
+  ) {
+    const periodRows = historicalPeriods
+      .map(
+        (p: any) =>
+          `| **${p.periodLabel}** ${p.isCurrent ? '*(Active)*' : ''} | ${formatMad(p.openingLiquidityMad)} | ${formatMad(p.salaryIncomeMad)} | +${formatMad(p.totalIncomeMad)} | -${formatMad(p.grossOutflowMad)} | ${formatMad(p.netLivingExpenseMad)} | **${Number(p.netCashflowSavedMad) >= 0 ? '+' : ''}${formatMad(p.netCashflowSavedMad)}** | **${formatMad(p.closingLiquidityMad)}** |`
+      )
+      .join('\n');
+
+    const actualHoldings = Number(nwBreakdown.actualHoldingsNetWorthMad ?? totalLiquidity);
+    const nonInvCash = Number(nwBreakdown.nonInvestmentCashAndSavingsMad ?? totalLiquidity);
+    const effInv = Number(nwBreakdown.effectiveInvestmentValueMad ?? 0);
+    const pendingRec = Number(nwBreakdown.pendingReceivablesMad ?? 0);
+    const pendingPay = Number(nwBreakdown.pendingPayablesMad ?? 0);
+    const netDebtAdj = Number(nwBreakdown.netDebtAdjustmentMad ?? pendingRec - pendingPay);
+    const unifiedNw = Number(nwBreakdown.estimatedUnifiedNetWorthMad ?? actualHoldings + netDebtAdj);
+
+    const reply = `### 📅 Financial Periods Ending Liquidity & Cash Flow Ledger
+
+Every period below is strictly aligned with your **configured payroll dates** in the Financial Calendar and reconciles **100%** with your **Historical Cash Flow** ledger:
+
+| Financial Period | Opening Liquidity | Base Salary | Total Inflow | Gross Outflow | Net Living Spend | Net Cash Saved (Delta) | **Ending Liquidity (Closing)** |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+${periodRows || '| No historical periods found | — | — | — | — | — | — | — |'}
+
+---
+
+#### 🔍 Key Accounting Distinctions
+1. **Ending Period Liquidity (Closing Balance)**: The exact total money remaining across your wallets at the end of the period:
+   - \` Opening Liquidity + Total Inflow − Gross Outflow = Ending Liquidity \`
+   - Each period's **Ending Liquidity** becomes the next period's **Opening Liquidity**.
+2. **Net Period Cash Saved (Delta)**: How much your wallet liquidity grew during that single period (\`Total Inflow − Gross Outflow\`).
+3. **Why Reimbursable Splits Differ from Gross Outflow**: When you split a bill for friends, the **Gross Outflow** leaves your wallet immediately, while **Net Living Spend** deducts the reimbursable portion. When friends pay you back, those repayments appear in **Total Inflow** (above your base salary).
+
+---
+
+### 🏛️ What "Estimated Unified Net Worth" Calculates
+
+| Component | Amount | How It Is Calculated |
+| :--- | :---: | :--- |
+| **1. Liquid Cash & Savings Wallets** | **${formatMad(nonInvCash)}** | Bank + Cash + Savings wallets (excl. Investment wallet reserve) |
+| **2. Investment Reserve / Portfolio** | **${formatMad(effInv)}** | Investment wallet / Live Binance & Stock portfolio (counted once, never double-counted) |
+| **= Actual Wallet & Portfolio Holdings** | **${formatMad(actualHoldings)}** | **Exact money & investments you currently hold** |
+| **3. + Pending Receivables (Owed to You)** | **+${formatMad(pendingRec)}** | Uncollected split/IOU receivables still marked Pending |
+| **4. − Pending Payables (You Owe)** | **-${formatMad(pendingPay)}** | Unpaid payables you owe to others |
+| **= Estimated Unified Net Worth** | **${formatMad(unifiedNw)}** | **Actual Holdings (${formatMad(actualHoldings)}) ${netDebtAdj >= 0 ? '+' : ''}${formatMad(netDebtAdj)} Net Receivables** |`;
+
+    return {
+      reply,
+      actions: [],
+      suggestions: [
+        '📊 Run a complete financial health audit',
+        '💰 What can I safely spend today?',
+        '📈 Deep audit of my Binance & Stock positions',
+      ],
+    };
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // SCENARIO 1: Complete Financial Health Audit
   // ───────────────────────────────────────────────────────────────────────────

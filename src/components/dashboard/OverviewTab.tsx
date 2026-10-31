@@ -92,8 +92,16 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     [investmentsData]
   );
 
-  // Unified Net Worth Tracking (Liquidity across all wallets + Stock Portfolio + Receivables - Payables)
-  const netWorth = (kpis?.totalLiquidity ?? 0) + stockPortfolioMad + activeReceivables - activePayables;
+  // Prevent double-counting: kpis.totalLiquidity already includes kpis.investmentReserve (Investment Wallet balance).
+  // When live stock/Binance portfolio value (stockPortfolioMad) is present, replace investmentReserve with stockPortfolioMad.
+  const investmentReserveMad = kpis?.investmentReserve ?? 0;
+  const nonInvestmentLiquidity = Math.max(0, (kpis?.totalLiquidity ?? 0) - investmentReserveMad);
+  const effectiveInvestmentMad = stockPortfolioMad > 0 ? stockPortfolioMad : investmentReserveMad;
+  const actualHoldingsNetWorth = nonInvestmentLiquidity + effectiveInvestmentMad;
+  const netDebtAdjustment = activeReceivables - activePayables;
+
+  // Unified Net Worth Tracking (Non-Investment Wallets + Live Investment Portfolio + Receivables - Payables)
+  const netWorth = actualHoldingsNetWorth + netDebtAdjustment;
   const dailyStatusStyles = { on_track: 'text-blue-600', warning: 'text-amber-600', critical: 'text-red-600' };
 
   // Subscriptions metrics
@@ -488,19 +496,40 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             )}
 
             {/* Net Worth Badge */}
-            <div className="mt-4 pt-3 border-t border-gray-800 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-xs text-gray-400">Estimated Unified Net Worth</p>
-                <p className="text-lg font-semibold text-white font-mono tabular-nums">{netWorth.toFixed(2)} MAD</p>
+            <div className="mt-4 pt-3 border-t border-gray-800 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs text-gray-400">
+                    Estimated Unified Net Worth{' '}
+                    <span className="text-[10px] text-gray-500">(incl. Net Debts)</span>
+                  </p>
+                  <p className="text-lg font-semibold text-white font-mono tabular-nums">
+                    {isPrivacyMode ? '******' : `${netWorth.toFixed(2)} MAD`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('investments')}
+                  className="text-xs font-medium text-emerald-300 hover:text-white bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-800/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap shrink-0"
+                >
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  <span>{activeStockPositions.length > 0 ? `${activeStockPositions.length} Positions` : 'Investments'}</span>
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setActiveTab('investments')}
-                className="text-xs font-medium text-emerald-300 hover:text-white bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-800/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap shrink-0"
-              >
-                <TrendingUp className="h-3.5 w-3.5" />
-                <span>{activeStockPositions.length > 0 ? `${activeStockPositions.length} Stocks` : 'Invest in Stocks'}</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-mono tabular-nums text-gray-400 bg-gray-950/50 rounded-lg px-2.5 py-1.5 border border-gray-800/80">
+                <span className="text-gray-200 font-medium">
+                  Actual Holdings: {isPrivacyMode ? '****' : `${actualHoldingsNetWorth.toFixed(2)} MAD`}
+                </span>
+                <span>
+                  (Cash &amp; Savings {nonInvestmentLiquidity.toFixed(2)} + Inv {effectiveInvestmentMad.toFixed(2)})
+                </span>
+                {(activeReceivables > 0 || activePayables > 0) && (
+                  <span className={netDebtAdjustment >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                    · Net Debts {netDebtAdjustment >= 0 ? '+' : ''}
+                    {netDebtAdjustment.toFixed(2)} (+{activeReceivables.toFixed(2)} owed to you − {activePayables.toFixed(2)} payable)
+                  </span>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

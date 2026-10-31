@@ -214,7 +214,10 @@ export function computeHolisticForecast(params: {
 
   // 1. Current Balances & Net Worth
   const currentLiquidity = kpis?.totalLiquidity ?? 0;
-  const currentPortfolioMad = investmentsData?.totalPortfolioValueMad ?? 0;
+  const investmentReserveMad = kpis?.investmentReserve ?? 0;
+  const nonInvestmentLiquidity = Math.max(0, currentLiquidity - investmentReserveMad);
+  const rawPortfolioMad = investmentsData?.totalPortfolioValueMad ?? 0;
+  const currentPortfolioMad = rawPortfolioMad > 0 ? rawPortfolioMad : investmentReserveMad;
   const pendingReceivables = debts
     .filter((d) => d.type === 'Receivable' && d.status === 'Pending')
     .reduce((s, d) => s + (parseFloat(d.remainingBalance) || 0), 0);
@@ -223,7 +226,7 @@ export function computeHolisticForecast(params: {
     .reduce((s, d) => s + (parseFloat(d.remainingBalance) || 0), 0);
 
   const currentNetWorth =
-    currentLiquidity + currentPortfolioMad + pendingReceivables - pendingPayables;
+    nonInvestmentLiquidity + currentPortfolioMad + pendingReceivables - pendingPayables;
 
   // 2. Verified Active Salary & Recurring Monthly Income Baseline
   // Sort payrolls descending by scheduled date to find the active/current payroll amount

@@ -15,6 +15,7 @@ import {
   getPreviousFinancialMonth,
 } from './financialMonth.js';
 import { computeHolisticForecast } from './predictiveEngine.js';
+import { generateFinancialPeriodsLedger } from './cashFlowEngine.js';
 
 export type AiDataFocusScope =
   | 'all'
@@ -188,6 +189,73 @@ export function buildAiContextSnapshot({
           daysUntilPayroll: kpis.daysUntilPayday,
           runwayDays: kpis.runwayDays,
         }
+      : null,
+
+    // Historical Financial Periods Ledger (Exact opening/closing liquidity, net cashflow saved, and living spend per payroll period)
+    historicalFinancialPeriods: generateFinancialPeriodsLedger(transactions, payrolls, kpis).map(
+      (p) => ({
+        label: p.label,
+        dateRangeLabel: p.dateRangeLabel,
+        startDate: p.startKey,
+        endDate: p.endKey,
+        isCurrentActivePeriod: p.isCurrentPeriod,
+        openingLiquidityMad: p.openingLiquidity,
+        salaryIncomeMad: p.salaryIncome,
+        otherIncomeMad: p.otherIncome,
+        totalIncomeMad: p.totalIncome,
+        grossOutflowMad: p.grossOutflow,
+        netLivingExpenseMad: p.netLivingExpense,
+        reimbursableFrontedMad: p.reimbursableAmount,
+        debtRepaymentsMad: p.debtRepayments,
+        investmentDeployedMad: p.investmentDeployed,
+        netCashflowSavedMad: p.netCashflowSaved,
+        netEconomicSavedMad: p.netEconomicSaved,
+        endingLiquidityMad: p.closingLiquidity,
+        savingsRatePercent: p.savingsRate,
+        transactionCount: p.transactionCount,
+      })
+    ),
+
+    // Unified Net Worth Breakdown (explains Actual Holdings vs Pending Receivables & Payables)
+    unifiedNetWorthBreakdown: kpis
+      ? (() => {
+          const totalLiquidity = amountOf(kpis.totalLiquidity);
+          const invReserve = amountOf(kpis.investmentReserve);
+          const nonInvestmentLiquidity = amountOf(totalLiquidity - invReserve);
+          const liveInvestmentVal =
+            investmentsData && investmentsData.totalPortfolioValueMad > 0
+              ? amountOf(investmentsData.totalPortfolioValueMad)
+              : invReserve;
+          const actualLiquidAndInvestedHoldings = amountOf(
+            nonInvestmentLiquidity + liveInvestmentVal
+          );
+          const pendingReceivables = amountOf(
+            debts
+              .filter((d) => d.type === 'Receivable' && d.status === 'Pending')
+              .reduce((s, d) => s + amountOf(d.amount), 0)
+          );
+          const pendingPayables = amountOf(
+            debts
+              .filter((d) => d.type === 'Payable' && d.status === 'Pending')
+              .reduce((s, d) => s + amountOf(d.amount), 0)
+          );
+          const netDebtPosition = amountOf(pendingReceivables - pendingPayables);
+          return {
+            actualLiquidAndInvestedHoldingsMad: actualLiquidAndInvestedHoldings,
+            totalWalletLiquidityMad: totalLiquidity,
+            nonInvestmentCashAndSavingsMad: nonInvestmentLiquidity,
+            investmentReserveWalletMad: invReserve,
+            liveSyncedInvestmentPortfolioMad: liveInvestmentVal,
+            pendingReceivablesOwedToUserMad: pendingReceivables,
+            pendingPayablesUserOwesMad: pendingPayables,
+            netReceivablesMinusPayablesMad: netDebtPosition,
+            estimatedUnifiedNetWorthMad: amountOf(
+              actualLiquidAndInvestedHoldings + netDebtPosition
+            ),
+            explanation:
+              'Estimated Unified Net Worth = Non-Investment Wallets (Bank + Cash + Simple Savings) + Live Investment Value (or Investment Reserve Wallet, never double-counted) + Pending Receivables (money owed to user) - Pending Payables (money user owes).',
+          };
+        })()
       : null,
 
     // Deep Investments, Live Binance Multi-Wallet, Trade Forensics & Stock Intelligence

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Debt, Payroll, Transaction, Wallet, CategoryBudget, Goal, Subscription, DashboardTab, InvestmentsData } from '../../types';
+import { Debt, Payroll, Transaction, Wallet, CategoryBudget, Goal, Subscription, DashboardTab, InvestmentsData, KPI } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
@@ -28,10 +28,15 @@ import {
 } from '../../lib/finance';
 import {
   financialPeriodLabel,
+  financialMonthLabel,
   getFinancialMonthsFromTransactions,
   getCurrentFinancialMonth,
   getPreviousFinancialMonth,
 } from '../../lib/financialMonth';
+import {
+  generateFinancialPeriodsLedger,
+  type FinancialPeriodLedgerEntry,
+} from '../../lib/cashFlowEngine';
 import {
   Banknote,
   Landmark,
@@ -75,6 +80,7 @@ const COLORS = [
 type AnalyticsSubView = 'overview' | 'categories' | 'recurring' | 'merchants' | 'debts_goals';
 
 interface AnalyticsTabProps {
+  kpis?: KPI | null;
   transactions: Transaction[];
   payrolls: Payroll[];
   debts: Debt[];
@@ -89,6 +95,7 @@ interface AnalyticsTabProps {
 }
 
 export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
+  kpis = null,
   transactions,
   payrolls,
   debts,
@@ -104,6 +111,39 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   const [subView, setSubView] = useState<AnalyticsSubView>('overview');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
+  const currentTotalLiquidity = useMemo(() => {
+    if (kpis && typeof kpis.totalLiquidity === 'number') {
+      return kpis.totalLiquidity;
+    }
+    return wallets.reduce((sum, w) => sum + (parseFloat(String(w.balance ?? w.currentBalance ?? 0)) || 0), 0);
+  }, [kpis, wallets]);
+
+  // Complete Financial Periods Ledger (reconciled 100% with Historical Cash Flow)
+  const periodsLedger = useMemo(
+    () => generateFinancialPeriodsLedger(transactions, payrolls, currentTotalLiquidity, wallets),
+    [transactions, payrolls, currentTotalLiquidity, wallets]
+  );
+
+  // Non-future periods in reverse chronological order (newest first)
+  const historicalPeriodsDesc = useMemo(
+    () => periodsLedger.filter((p) => !p.isFuture).slice().reverse(),
+    [periodsLedger]
+  );
+
+  const selectedPeriodEntry = useMemo(
+    () =>
+      analyticsMonth !== 'All Time'
+        ? periodsLedger.find((p) => p.label === analyticsMonth) || null
+        : null,
+    [analyticsMonth, periodsLedger]
+  );
+
+  // Last completed period (e.g. Sep 24 – Oct 22, 2026) and the one before it (Aug 27 – Sep 23, 2026)
+  const lastCompletedPeriodEntry = useMemo(() => {
+    const completed = periodsLedger.filter((p) => !p.isCurrent && !p.isFuture);
+    return completed.length > 0 ? completed[completed.length - 1] : periodsLedger[0] || null;
+  }, [periodsLedger]);
+
   const availableMonthRefs = useMemo(
     () => getFinancialMonthsFromTransactions(transactions, payrolls),
     [transactions, payrolls]
@@ -117,9 +157,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     if (analyticsMonth === 'All Time') return transactions;
     const ref = availableMonthRefs.find((m) => financialPeriodLabel(m) === analyticsMonth);
     if (!ref) return transactions;
-    return transactions.filter(
-      (t) => new Date(t.createdAt) >= ref.start && new Date(t.createdAt) <= ref.end
-    );
+    const startKey = format(ref.start, 'yyyy-MM-dd');
+    const endKey = format(ref.end, 'yyyy-MM-dd');
+    return transactions.filter((t) => {
+      try {
+        const txKey = format(new Date(t.createdAt), 'yyyy-MM-dd');
+        return txKey >= startKey && txKey <= endKey;
+      } catch {
+        const txDate = new Date(t.createdAt);
+        return txDate >= ref.start && txDate <= ref.end;
+      }
+    });
   }, [transactions, analyticsMonth, availableMonthRefs]);
 
   // Expenses by Category
@@ -245,24 +293,49 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     const expense = filteredTransactions
       .filter((t) => t.type === 'Expense')
       .reduce((sum, t) => sum + netExpenseOf(t), 0);
+    const grossOutflow = filteredTransactions
+      .filter((t) => t.type === 'Expense' || t.type === 'Debt Repayment')
+      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
     return [
       { name: 'Income', amount: income },
       { name: 'Expense', amount: expense },
+      { name: 'GrossOutflow', amount: grossOutflow },
     ];
   }, [filteredTransactions]);
 
   const totalIncome = incomeVsExpenseData[0].amount;
   const totalExpense = incomeVsExpenseData[1].amount;
+  const totalGrossOutflow = incomeVsExpenseData[2].amount;
+  // True cashflow saved (Inflow - Gross Outflow) matches actual wallet liquidity change
+  const netCashflowSaved = selectedPeriodEntry
+    ? selectedPeriodEntry.netCashflowSaved
+    : totalIncome - totalGrossOutflow;
+  // Economic net savings (Inflow - Net Expense excluding reimbursable splits)
   const netSavings = totalIncome - totalExpense;
 
   const historicalAverages = useMemo(() => {
+    const activePeriods = periodsLedger.filter((p) => !p.isFuture && p.transactionCount > 0);
+    if (activePeriods.length > 0) {
+      const sumInc = activePeriods.reduce((s, p) => s + p.totalIncome, 0);
+      const sumExp = activePeriods.reduce((s, p) => s + p.netLivingExpense, 0);
+      return {
+        avgIncome: sumInc / activePeriods.length,
+        avgExpense: sumExp / activePeriods.length,
+      };
+    }
+
     const allMonths = new Set<string>();
     let histIncome = 0;
     let histExpense = 0;
 
     transactions.forEach((t) => {
-      const date = new Date(t.createdAt);
-      allMonths.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
+      const ref = transactionMonth(t, payrolls);
+      if (ref) {
+        allMonths.add(`${ref.year}-${ref.month}`);
+      } else {
+        const date = new Date(t.createdAt);
+        allMonths.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
+      }
 
       if (t.type === 'Income') histIncome += parseFloat(t.amount);
       if (t.type === 'Expense') histExpense += netExpenseOf(t);
@@ -273,7 +346,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       avgIncome: histIncome / monthCount,
       avgExpense: histExpense / monthCount,
     };
-  }, [transactions]);
+  }, [transactions, payrolls, periodsLedger]);
 
   const adjustedTrueSpendData = useMemo(() => {
     let totalGrossExpenses = 0;
@@ -298,6 +371,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         } else {
           totalExpenses += netExpenseOf(tx);
         }
+      } else if (tx.type === 'Debt Repayment') {
+        totalGrossExpenses += amount;
+        totalExpenses += amount;
+        debtRepayments += amount;
       } else if (tx.type === 'Transfer' && isInvest && !isFromInvestmentWallet) {
         investmentCapital += amount;
       }
@@ -338,14 +415,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       reimbursements,
       pendingReimbursable,
       investmentCapital,
-      adjustedTrueSpend: totalExpenses - debtRepayments,
+      adjustedTrueSpend: Math.max(0, totalExpenses - debtRepayments),
     };
   }, [filteredTransactions, debts, wallets]);
 
   const savingsRate = useMemo(() => {
     if (totalIncome === 0) return 0;
-    return ((totalIncome - totalExpense) / totalIncome) * 100;
-  }, [totalIncome, totalExpense]);
+    return (netCashflowSaved / totalIncome) * 100;
+  }, [totalIncome, netCashflowSaved]);
 
   const topExpense = useMemo(() => {
     const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
@@ -359,7 +436,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     ? financialPeriodLabel(comparisonMonth)
     : 'No configured financial period';
 
-  // Digest summary
+  // Digest summary reconciled with FinancialPeriodLedgerEntry
   const digestData = useMemo(() => {
     let targetRange: { start: Date; end: Date; label: string } | null = null;
 
@@ -384,19 +461,44 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     if (!targetRange) return null;
 
     const { start, end, label } = targetRange;
+    const startKey = format(start, 'yyyy-MM-dd');
+    const endKey = format(end, 'yyyy-MM-dd');
+    const ledgerEntry = periodsLedger.find((p) => p.label === label) || null;
 
     const periodTxs = transactions.filter((t) => {
-      const txDate = new Date(t.createdAt);
-      return txDate >= start && txDate <= end;
+      try {
+        const k = format(new Date(t.createdAt), 'yyyy-MM-dd');
+        return k >= startKey && k <= endKey;
+      } catch {
+        const txDate = new Date(t.createdAt);
+        return txDate >= start && txDate <= end;
+      }
     });
 
-    const income = periodTxs
-      .filter((t) => t.type === 'Income')
-      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
-    const expense = periodTxs
-      .filter((t) => t.type === 'Expense')
-      .reduce((sum, t) => sum + netExpenseOf(t), 0);
-    const moneySaved = income - expense;
+    const income = ledgerEntry
+      ? ledgerEntry.totalIncome
+      : periodTxs
+          .filter((t) => t.type === 'Income')
+          .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const salaryIncome = ledgerEntry ? ledgerEntry.salaryIncome : income;
+    const otherIncome = ledgerEntry ? ledgerEntry.otherIncome : 0;
+    const grossOutflow = ledgerEntry
+      ? ledgerEntry.grossOutflow
+      : periodTxs
+          .filter((t) => t.type === 'Expense' || t.type === 'Debt Repayment')
+          .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+    const expense = ledgerEntry
+      ? ledgerEntry.netLivingExpense
+      : periodTxs
+          .filter((t) => t.type === 'Expense')
+          .reduce((sum, t) => sum + netExpenseOf(t), 0);
+    const openingLiquidity = ledgerEntry ? ledgerEntry.openingLiquidity : 0;
+    const closingLiquidity = ledgerEntry
+      ? ledgerEntry.closingLiquidity
+      : openingLiquidity + (income - grossOutflow);
+    // True wallet cashflow saved = Inflow - Gross Outflow = Closing Liquidity - Opening Liquidity
+    const moneySaved = ledgerEntry ? ledgerEntry.netCashflowSaved : income - grossOutflow;
+    const economicSaved = ledgerEntry ? ledgerEntry.netEconomicSaved : income - expense;
     const periodSavingsRate = income > 0 ? (moneySaved / income) * 100 : 0;
 
     const topCategoriesMap = periodTxs
@@ -422,9 +524,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
     return {
       month: label,
+      openingLiquidity,
+      closingLiquidity,
+      salaryIncome,
+      otherIncome,
       income,
+      grossOutflow,
       expense,
       moneySaved,
+      economicSaved,
       savingsRate: periodSavingsRate,
       topCategories: sortedCategories,
       debtStats: {
@@ -432,7 +540,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         newDebts,
       },
     };
-  }, [transactions, debts, payrolls, analyticsMonth, availableMonthRefs]);
+  }, [transactions, debts, payrolls, analyticsMonth, availableMonthRefs, periodsLedger]);
 
   // Interconnected: Budget vs Actual Variance Analysis
   const budgetVarianceData = useMemo(() => {
@@ -656,14 +764,28 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   // Outflow breakdown for Cash Flow Waterfall
   const cashFlowBreakdownChart = useMemo(() => {
+    const targetEntry = selectedPeriodEntry || lastCompletedPeriodEntry;
+    if (selectedPeriodEntry) {
+      return [
+        { name: 'Opening Liq.', amount: Number(selectedPeriodEntry.openingLiquidity.toFixed(2)), fill: '#6366f1' },
+        { name: 'Period Inflow', amount: Number(selectedPeriodEntry.totalIncome.toFixed(2)), fill: '#10b981' },
+        { name: 'Gross Outflow', amount: Number(selectedPeriodEntry.grossOutflow.toFixed(2)), fill: '#ef4444' },
+        { name: 'Net Living Spend', amount: Number(selectedPeriodEntry.netLivingExpense.toFixed(2)), fill: '#3b82f6' },
+        { name: 'Ending Liquidity', amount: Number(selectedPeriodEntry.closingLiquidity.toFixed(2)), fill: '#06b6d4' },
+      ];
+    }
     return [
-      { name: 'Income Inflow', amount: Number(totalIncome.toFixed(2)), fill: '#10b981' },
+      { name: 'Total Inflow', amount: Number(totalIncome.toFixed(2)), fill: '#10b981' },
+      { name: 'Gross Outflow', amount: Number(totalGrossOutflow.toFixed(2)), fill: '#ef4444' },
       { name: 'Living Spend', amount: Number(adjustedTrueSpendData.adjustedTrueSpend.toFixed(2)), fill: '#3b82f6' },
-      { name: 'Subscriptions', amount: Number(recurringAnalysis.monthlySubTotal.toFixed(2)), fill: '#8b5cf6' },
-      { name: 'Debt Repaid', amount: Number(adjustedTrueSpendData.debtRepayments.toFixed(2)), fill: '#f59e0b' },
-      { name: 'Net Saved', amount: Number(Math.max(0, netSavings).toFixed(2)), fill: '#06b6d4' },
+      { name: 'Reimb. Splits', amount: Number(adjustedTrueSpendData.reimbursements.toFixed(2)), fill: '#f59e0b' },
+      {
+        name: targetEntry ? `Current Liq.` : 'Net Saved',
+        amount: Number(currentTotalLiquidity.toFixed(2)),
+        fill: '#06b6d4',
+      },
     ];
-  }, [totalIncome, adjustedTrueSpendData, recurringAnalysis, netSavings]);
+  }, [selectedPeriodEntry, lastCompletedPeriodEntry, totalIncome, totalGrossOutflow, adjustedTrueSpendData, currentTotalLiquidity]);
 
   return (
     <div className="space-y-6">
@@ -792,47 +914,65 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
       {/* Macro Key Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Net Cashflow & Savings */}
+        {/* Ending Period Liquidity & Net Cashflow Saved */}
         <div className="bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Net Money Saved
+              {selectedPeriodEntry
+                ? selectedPeriodEntry.isCurrent
+                  ? 'Active Period Liquidity'
+                  : 'Period Ending Liquidity'
+                : 'Ending Liquidity & Saved'}
             </span>
             <span
               className={`p-1.5 rounded-lg ${
-                netSavings >= 0
+                netCashflowSaved >= 0
                   ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400'
                   : 'bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400'
               }`}
             >
-              {netSavings >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+              {netCashflowSaved >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
             </span>
           </div>
           <div className="mt-2">
-            <p
-              className={`text-2xl font-black ${
-                netSavings >= 0
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-rose-600 dark:text-rose-400'
-              }`}
-            >
-              {netSavings >= 0 ? '+' : ''}
-              {netSavings.toFixed(2)} MAD
+            <p className="text-2xl font-black text-gray-900 dark:text-white font-mono tabular-nums">
+              {(selectedPeriodEntry ? selectedPeriodEntry.closingLiquidity : currentTotalLiquidity).toFixed(2)} MAD
             </p>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Savings Rate:</span>
-              <span
-                className={`text-xs font-bold ${
-                  savingsRate >= 20
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : savingsRate >= 0
-                    ? 'text-gray-700 dark:text-gray-300'
-                    : 'text-rose-600 dark:text-rose-400'
-                }`}
-              >
-                {savingsRate.toFixed(1)}%
-              </span>
-            </div>
+            {selectedPeriodEntry ? (
+              <div className="mt-1.5 space-y-0.5 text-xs">
+                <div className="flex items-center justify-between text-gray-500 dark:text-gray-400 font-mono">
+                  <span>Opened: {selectedPeriodEntry.openingLiquidity.toFixed(2)}</span>
+                  <span
+                    className={`font-bold ${
+                      selectedPeriodEntry.netCashflowSaved >= 0
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-rose-600 dark:text-rose-400'
+                    }`}
+                  >
+                    {selectedPeriodEntry.netCashflowSaved >= 0 ? '+' : ''}
+                    {selectedPeriodEntry.netCashflowSaved.toFixed(2)} MAD ({selectedPeriodEntry.cashSavingsRate.toFixed(1)}%)
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                  Inflow {selectedPeriodEntry.totalIncome.toFixed(2)} − Gross Outflow {selectedPeriodEntry.grossOutflow.toFixed(2)} MAD
+                </p>
+              </div>
+            ) : (
+              <div className="mt-1.5 space-y-0.5 text-xs">
+                {lastCompletedPeriodEntry ? (
+                  <p className="text-gray-600 dark:text-gray-300 font-medium">
+                    Last period ({lastCompletedPeriodEntry.label}) ended:{' '}
+                    <strong className="text-emerald-600 dark:text-emerald-400 font-mono">
+                      {lastCompletedPeriodEntry.closingLiquidity.toFixed(2)} MAD
+                    </strong>
+                  </p>
+                ) : null}
+                <p className="text-[11px] text-gray-400 dark:text-gray-500 font-mono">
+                  Net Cashflow Delta: {netCashflowSaved >= 0 ? '+' : ''}
+                  {netCashflowSaved.toFixed(2)} MAD ({savingsRate.toFixed(1)}%)
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -847,16 +987,19 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             </span>
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-black text-gray-900 dark:text-white">
+            <p className="text-2xl font-black text-gray-900 dark:text-white font-mono tabular-nums">
               {adjustedTrueSpendData.adjustedTrueSpend.toFixed(2)} MAD
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Living outflow (excl. debt moves & reimb.)
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">
+              Gross outflow: {totalGrossOutflow.toFixed(2)} MAD
+              {adjustedTrueSpendData.reimbursements > 0
+                ? ` (−${adjustedTrueSpendData.reimbursements.toFixed(2)} reimb.)`
+                : ''}
             </p>
           </div>
         </div>
 
-        {/* Fixed Commitments Load */}
+        {/* Committed Fixed Load */}
         <div className="bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -867,11 +1010,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             </span>
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+            <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400 font-mono tabular-nums">
               {recurringAnalysis.fixedOutflows.toFixed(2)} MAD
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {recurringAnalysis.fixedRatio.toFixed(0)}% of outflow locked in bills & subs
+              {recurringAnalysis.fixedRatio.toFixed(0)}% of net spend locked in bills &amp; subs
             </p>
           </div>
         </div>
@@ -879,16 +1022,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         {/* Spending Momentum vs Previous */}
         <div className="bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Period Trend
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate pr-1">
+              Period Trend ({comparisonLabel})
             </span>
-            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400">
+            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400 shrink-0">
               <Layers className="w-4 h-4" />
             </span>
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-black text-gray-900 dark:text-white">
-              {totalExpense.toFixed(0)} MAD
+            <p className="text-2xl font-black text-gray-900 dark:text-white font-mono tabular-nums">
+              {spendingChange.current.toFixed(2)} MAD
             </p>
             <div className="flex items-center gap-1.5 mt-1 text-xs">
               {spendingChange.percentage === null ? (
@@ -904,7 +1047,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   }`}
                 >
                   {spendingChange.percentage > 0 ? '+' : ''}
-                  {spendingChange.percentage.toFixed(1)}% vs prev period
+                  {spendingChange.percentage.toFixed(1)}% vs prev ({spendingChange.previous.toFixed(0)} MAD)
                 </span>
               )}
             </div>
@@ -915,6 +1058,116 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       {/* ======================= SUB-VIEW 1: OVERVIEW & CASH FLOW ======================= */}
       {subView === 'overview' && (
         <div className="space-y-6">
+          {/* Financial Periods Ending Liquidity & Cashflow Ledger Table */}
+          {historicalPeriodsDesc.length > 0 && (
+            <Card className="border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+              <CardHeader className="pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Landmark className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                    Financial Periods Ending Liquidity &amp; Cash Flow Ledger
+                  </CardTitle>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    100% reconciled with Historical Cash Flow &amp; Financial Calendar payroll boundaries. Click any period to inspect it.
+                  </p>
+                </div>
+                {analyticsMonth !== 'All Time' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAnalyticsMonth('All Time')}
+                    className="text-xs self-start sm:self-auto"
+                  >
+                    Show All Time
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+                  <table className="w-full text-left text-xs sm:text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 dark:bg-gray-800/80 text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-800 text-[11px] uppercase tracking-wider">
+                        <th className="py-2.5 px-3 font-semibold">Financial Period</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Opening Liq.</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Base Salary</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Total Inflow</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Gross Outflow</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Net Living Spend</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Net Cash Saved</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">Ending Liquidity</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-mono tabular-nums">
+                      {historicalPeriodsDesc.map((p) => {
+                        const isSelected = analyticsMonth === p.label;
+                        return (
+                          <tr
+                            key={p.label}
+                            onClick={() => setAnalyticsMonth(isSelected ? 'All Time' : p.label)}
+                            className={`cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-indigo-50/70 dark:bg-indigo-950/40 font-semibold'
+                                : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                            }`}
+                          >
+                            <td className="py-2.5 px-3 font-sans">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                  {p.label}
+                                </span>
+                                {p.isCurrent && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                                    Active
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-gray-400">
+                                {p.monthNameLabel} • {p.transactionCount} txs
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-gray-600 dark:text-gray-300">
+                              {p.openingLiquidity.toFixed(2)} MAD
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-gray-600 dark:text-gray-300">
+                              {p.salaryIncome.toFixed(2)} MAD
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-emerald-600 dark:text-emerald-400 font-medium">
+                              +{p.totalIncome.toFixed(2)} MAD
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-rose-600 dark:text-rose-400">
+                              -{p.grossOutflow.toFixed(2)} MAD
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-gray-700 dark:text-gray-300">
+                              {p.netLivingExpense.toFixed(2)} MAD
+                              {p.reimbursableAmount > 0 && (
+                                <span className="block text-[10px] text-gray-400">
+                                  ({p.reimbursableAmount.toFixed(0)} reimb.)
+                                </span>
+                              )}
+                            </td>
+                            <td
+                              className={`py-2.5 px-3 text-right font-semibold ${
+                                p.netCashflowSaved >= 0
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : 'text-rose-600 dark:text-rose-400'
+                              }`}
+                            >
+                              {p.netCashflowSaved >= 0 ? '+' : ''}
+                              {p.netCashflowSaved.toFixed(2)} MAD
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-indigo-600 dark:text-indigo-400">
+                              {p.closingLiquidity.toFixed(2)} MAD
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Executive Digest Banner */}
           {digestData && (
             <Card className="border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-50/20 via-white to-sky-50/20 dark:from-gray-900 dark:via-gray-900 dark:to-indigo-950/20 shadow-sm">
@@ -925,7 +1178,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                     Executive Financial Digest: {digestData.month}
                   </CardTitle>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Period cashflow surplus, debt resolution, and top spending drivers.
+                    Exact ending liquidity, period cashflow surplus, debt resolution, and top spending drivers.
                   </p>
                 </div>
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
@@ -933,11 +1186,25 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 </span>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-center">
                   <div className="p-3.5 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-800 shadow-xs">
-                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Net Money Saved</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                      Period Ending Liquidity
+                    </p>
+                    <p className="text-xl font-black text-indigo-600 dark:text-indigo-400 mt-1 font-mono tabular-nums">
+                      {digestData.closingLiquidity.toFixed(2)} MAD
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5 font-mono">
+                      Opened period with {digestData.openingLiquidity.toFixed(2)} MAD
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-800 shadow-xs">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                      Net Period Cash Saved
+                    </p>
                     <p
-                      className={`text-xl font-black mt-1 ${
+                      className={`text-xl font-black mt-1 font-mono tabular-nums ${
                         digestData.moneySaved >= 0
                           ? 'text-emerald-600 dark:text-emerald-400'
                           : 'text-rose-600 dark:text-rose-400'
@@ -947,7 +1214,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       {digestData.moneySaved.toFixed(2)} MAD
                     </p>
                     <p className="text-[11px] text-gray-400 mt-0.5">
-                      Savings rate:{' '}
+                      Inflow {digestData.income.toFixed(0)} − Gross {digestData.grossOutflow.toFixed(0)} (
                       <strong
                         className={
                           digestData.savingsRate >= 20
@@ -957,36 +1224,42 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       >
                         {digestData.savingsRate.toFixed(1)}%
                       </strong>
+                      )
                     </p>
                   </div>
 
                   <div className="p-3.5 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-800 shadow-xs">
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Debts Created in Period
+                      Period Inflow &amp; Salary
                     </p>
-                    <p className="text-xl font-black text-amber-600 dark:text-amber-400 mt-1">
-                      {digestData.debtStats.newDebts}
+                    <p className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1 font-mono tabular-nums">
+                      +{digestData.income.toFixed(2)} MAD
                     </p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">New obligations logged</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5 font-mono">
+                      Salary: {digestData.salaryIncome.toFixed(2)}
+                      {digestData.otherIncome > 0 ? ` + ${digestData.otherIncome.toFixed(2)} other` : ''}
+                    </p>
                   </div>
 
                   <div className="p-3.5 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-800 shadow-xs">
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Debts Cleared in Period
+                      Debts Created / Cleared
                     </p>
-                    <p className="text-xl font-black text-indigo-600 dark:text-indigo-400 mt-1">
-                      {digestData.debtStats.settledDebts}
+                    <p className="text-xl font-black text-amber-600 dark:text-amber-400 mt-1 font-mono">
+                      {digestData.debtStats.newDebts} / {digestData.debtStats.settledDebts}
                     </p>
-                    <p className="text-[11px] text-gray-400 mt-0.5">Debts settled & closed</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {digestData.debtStats.newDebts} logged • {digestData.debtStats.settledDebts} settled
+                    </p>
                   </div>
                 </div>
 
                 {digestData.topCategories.length > 0 && (
                   <div className="space-y-2 pt-1">
-                    <p className="text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center justify-between">
+                    <p className="text-xs font-bold text-gray-700 dark:text-gray-300 flex flex-wrap items-center justify-between gap-2">
                       <span>Top 5 Spending Categories ({digestData.month}):</span>
-                      <span className="text-[11px] font-normal text-gray-400">
-                        Total Outflow: {digestData.expense.toFixed(2)} MAD
+                      <span className="text-[11px] font-normal text-gray-400 font-mono">
+                        Gross Outflow: {digestData.grossOutflow.toFixed(2)} MAD • Net Living Spend: {digestData.expense.toFixed(2)} MAD
                       </span>
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -1004,8 +1277,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                               {item.name}
                             </span>
                           </div>
-                          <span className="text-xs font-bold text-gray-900 dark:text-gray-100 shrink-0">
-                            {item.value.toFixed(0)} MAD
+                          <span className="text-xs font-bold text-gray-900 dark:text-gray-100 shrink-0 font-mono">
+                            {item.value.toFixed(2)} MAD
                           </span>
                         </div>
                       ))}

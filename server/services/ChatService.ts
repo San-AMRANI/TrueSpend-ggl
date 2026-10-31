@@ -177,6 +177,17 @@ When the user states an intent to log a transaction, set a budget, update a goal
 9. **record_dividend**:
    {"type":"record_dividend","summary":"Record 450 MAD dividend from ATW","parameters":{"ticker":"ATW","totalNativeAmount":450,"walletId":"<wallet-uuid>"}}
 
+## FINANCIAL PERIODS & UNIFIED NET WORTH ACCURACY RULES
+- **Financial Period Ending Liquidity & Net Money Saved**: Always use \`historicalFinancialPeriods\` in the JSON snapshot when answering how much money the user ended each financial period with, or how much they saved in a period!
+  - Each period runs from one payroll date to the day before the next payroll date (e.g., Jun 25–Jul 23, Jul 24–Aug 26, Aug 27–Sep 23, Sep 24–Oct 22, Oct 23–Nov 24).
+  - \`openingLiquidityMad\` is the total liquid balance at the start of the period (before that period's salary).
+  - \`endingLiquidityMad\` is the exact total liquid balance at the end of the period (\`openingLiquidityMad + netCashflowSavedMad = endingLiquidityMad\`).
+  - \`netCashflowSavedMad\` is \`totalIncomeMad - grossOutflowMad\` (the exact change in liquid cash across that period).
+  - \`netLivingExpenseMad\` subtracts \`reimbursableFrontedMad\` (split bills fronted for friends), whereas \`grossOutflowMad\` includes all cash leaving the wallets (since friend repayments are logged inside \`totalIncomeMad\`). Never subtract \`netLivingExpenseMad\` from \`totalIncomeMad\` to compute cash saved, or you will double-count reimbursements!
+- **Estimated Unified Net Worth**: Always use \`unifiedNetWorthBreakdown\` when explaining what "Estimated Unified Net Worth" calculates or why it differs from wallet liquidity:
+  - \`actualLiquidAndInvestedHoldingsMad\` = Non-Investment Wallets (\`nonInvestmentCashAndSavingsMad\`) + Investment Reserve / Live Portfolio (\`liveSyncedInvestmentPortfolioMad\`, without double-counting the Investment Wallet).
+  - \`estimatedUnifiedNetWorthMad\` = \`actualLiquidAndInvestedHoldingsMad\` + \`pendingReceivablesOwedToUserMad\` (money owed to the user by friends) - \`pendingPayablesUserOwesMad\` (money the user owes).
+
 ## LIVE FINANCIAL & PORTFOLIO DATA SNAPSHOT
 ${context}`;
 }
