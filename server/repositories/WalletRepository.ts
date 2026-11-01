@@ -1,10 +1,14 @@
 import { db } from '../../src/db/index.js';
-import { wallets, transactions } from '../../src/db/schema.js';
-import { eq, and, ne } from 'drizzle-orm';
+import { wallets, transactions, subscriptions, goals } from '../../src/db/schema.js';
+import { eq, and, ne, desc, asc } from 'drizzle-orm';
 
 export class WalletRepository {
   async findAllByUserId(userId: string) {
-    return await db.select().from(wallets).where(eq(wallets.userId, userId));
+    return await db
+      .select()
+      .from(wallets)
+      .where(eq(wallets.userId, userId))
+      .orderBy(desc(wallets.isMain), asc(wallets.createdAt));
   }
 
   async findById(id: string, userId: string) {
@@ -64,6 +68,26 @@ export class WalletRepository {
       .update(transactions)
       .set({ walletId: toWalletId })
       .where(and(eq(transactions.userId, userId), eq(transactions.walletId, fromWalletId)));
+  }
+
+  async reassignSubscriptions(userId: string, fromWalletId: string, toWalletId: string) {
+    await db
+      .update(subscriptions)
+      .set({ walletId: toWalletId, updatedAt: new Date() })
+      .where(and(eq(subscriptions.userId, userId), eq(subscriptions.walletId, fromWalletId)));
+  }
+
+  async reassignAutoSyncGoals(userId: string, fromWalletId: string, toWalletId: string) {
+    await db
+      .update(goals)
+      .set({ walletId: toWalletId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(goals.userId, userId),
+          eq(goals.walletId, fromWalletId),
+          eq(goals.autoSyncBalance, true)
+        )
+      );
   }
 
   async delete(id: string, userId: string) {

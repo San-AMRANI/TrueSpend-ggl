@@ -4,6 +4,7 @@ import { settingsService } from './SettingsService.js';
 import { categoryBudgetService } from './CategoryBudgetService.js';
 import { goalService } from './GoalService.js';
 import { investmentService } from './InvestmentService.js';
+import { walletService } from './WalletService.js';
 
 export type AiAction = {
   type:

@@ -182,9 +182,20 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
 
   const handleMakeMain = async (wallet: Wallet) => {
     if (wallet.isMain) return;
+    const prevMain = wallets.find((w) => w.isMain && w.id !== wallet.id);
+    const wasSavingsSwap = wallet.type === 'Savings' && prevMain?.type === 'Bank';
     setLoading(true);
+    setError(null);
     try {
       await onUpdateWallet(wallet.id, { isMain: true });
+      if (wasSavingsSwap && prevMain) {
+        setReconcileNotice(
+          `Switched Primary Wallet to ${wallet.name} (promoted to Bank Account; ${prevMain.name} moved to Savings Vault & linked bills/goals synced).`
+        );
+      } else {
+        setReconcileNotice(`Set ${wallet.name} as your Primary spending wallet.`);
+      }
+      setTimeout(() => setReconcileNotice(null), 6000);
     } catch (err: any) {
       setError(err.message || 'Failed to update primary wallet');
     } finally {
@@ -771,15 +782,16 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
             </div>
 
             {/* Bottom Actions */}
-            {!wallet.isMain && (
+            {!wallet.isMain && wallet.type !== 'Investment' && (
               <div className="mt-3 pt-2">
                 <button
                   type="button"
                   onClick={() => handleMakeMain(wallet)}
                   disabled={loading}
-                  className="w-full text-center text-xs font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 py-1 rounded hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors flex items-center justify-center gap-1"
+                  className="w-full text-center text-xs font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 py-1.5 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors flex items-center justify-center gap-1"
                 >
-                  <Star className="h-3 w-3" /> Make Primary
+                  <Star className="h-3 w-3" />
+                  {wallet.type === 'Savings' ? 'Swap as Primary Bank' : 'Make Primary'}
                 </button>
               </div>
             )}

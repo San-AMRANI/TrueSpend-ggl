@@ -104,7 +104,7 @@ export const SpexAvatar: React.FC<SpexAvatarProps> = ({
   size,
   animated = false,
   themeId,
-  clickable = true,
+  clickable = false,
 }) => {
   const { resolvedTheme, setTheme } = useTheme();
   const activeThemeId: ResolvedThemeId =

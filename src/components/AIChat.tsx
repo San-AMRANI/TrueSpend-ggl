@@ -699,7 +699,7 @@ function MessageBubble({
       {/* Avatar row for assistant */}
       {!isUser && (
         <div className="flex items-center gap-1.5 sm:gap-2 ml-0.5 mb-0.5 flex-wrap">
-          <SpexAvatar className="h-5 w-5 sm:h-6 sm:w-6" />
+          <SpexAvatar className="h-5 w-5 sm:h-6 sm:w-6" clickable />
           <span className="text-[11px] text-gray-700 dark:text-gray-200 font-semibold">Spex</span>
           {msg.modelUsed ? (
             <span
@@ -1872,6 +1872,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               <Menu className="w-5 h-5" />
             </button>
 
+            <SpexAvatar className="h-8 w-8 shrink-0" animated clickable />
+
             <button
               type="button"
               onClick={() => {
@@ -1881,7 +1883,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               className="flex items-center gap-2 min-w-0 flex-1 text-left rounded-xl py-0.5 pr-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors"
               title="Tap to switch or manage conversations"
             >
-              <SpexAvatar className="h-8 w-8 shrink-0" animated />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1">
                   <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
@@ -2289,7 +2290,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         {/* ─── Desktop header ─── */}
         <div className="hidden sm:flex items-center justify-between px-5 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 text-gray-900 dark:text-gray-100">
           <div className="flex items-center gap-3">
-            <SpexAvatar className="h-11 w-11" animated />
+            <SpexAvatar className="h-11 w-11" animated clickable />
             <div>
               <div className="flex items-center gap-2">
                 <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
@@ -2831,7 +2832,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
               {isLoading && (
                 <div className="flex items-start gap-2.5 w-full animate-slideIn">
-                  <SpexAvatar className="h-7 w-7 mt-0.5 flex-shrink-0" animated />
+                  <SpexAvatar className="h-7 w-7 mt-0.5 flex-shrink-0" animated clickable />
                   <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-[2px] border border-gray-200/80 dark:border-gray-700/70 rounded-2xl rounded-bl-none px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-sm flex items-center gap-2.5">
                     <TypingDots />
                     <span className="text-xs text-gray-500 dark:text-gray-400">

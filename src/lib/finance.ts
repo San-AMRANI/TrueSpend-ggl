@@ -99,9 +99,12 @@ export const getExpensesForMonth = (
       let norm = normalizeCategory(transaction.category);
       if (options?.wallets && transaction.destinationWalletId) {
         const dest = options.wallets.find((w) => w.id === transaction.destinationWalletId);
-        const destType = dest?.type?.toLowerCase();
-        if (destType === 'investment') norm = '📈 Investments';
-        else if (destType === 'savings') norm = '🛟 Emergency & goals Fund';
+        if (dest) {
+          const destType = dest.type?.toLowerCase();
+          if (destType === 'investment') norm = '📈 Investments';
+          else if (destType === 'savings') norm = '🛟 Emergency & goals Fund';
+          else norm = '🔄 Transfer';
+        }
       }
       return Boolean(norm && norm !== '🔄 Transfer' && norm !== 'Transfer');
     }
@@ -124,11 +127,15 @@ export const getCategorySpending = (
       let txCategory = normalizeCategory(transaction.category);
       if (transaction.type === 'Transfer' && wallets && transaction.destinationWalletId) {
         const dest = wallets.find((w) => w.id === transaction.destinationWalletId);
-        const destType = dest?.type?.toLowerCase();
-        if (destType === 'investment') {
-          txCategory = '📈 Investments';
-        } else if (destType === 'savings') {
-          txCategory = '🛟 Emergency & goals Fund';
+        if (dest) {
+          const destType = dest.type?.toLowerCase();
+          if (destType === 'investment') {
+            txCategory = '📈 Investments';
+          } else if (destType === 'savings') {
+            txCategory = '🛟 Emergency & goals Fund';
+          } else {
+            txCategory = '🔄 Transfer';
+          }
         }
       }
 

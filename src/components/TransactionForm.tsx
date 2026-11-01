@@ -25,16 +25,26 @@ type FormSplit = {
   linked_contact_name: string;
 };
 
-const emptyForm = (wallets?: { id: string; name: string; type?: string }[]): FormData => ({
-  amount: '',
-  type: 'Expense',
-  walletId: wallets?.[0]?.id || '',
-  toWalletId: wallets?.[1]?.id || wallets?.[0]?.id || '',
-  category: '',
-  notes: '',
-  transaction_date: new Date().toISOString().slice(0, 10),
-  contextId: null,
-});
+const emptyForm = (wallets?: { id: string; name: string; type?: string; isMain?: boolean }[]): FormData => {
+  const primary =
+    wallets?.find((w) => w.isMain) ||
+    wallets?.find((w) => w.type === 'Bank') ||
+    wallets?.[0];
+  const secondary =
+    wallets?.find((w) => w.id !== primary?.id && w.type === 'Cash') ||
+    wallets?.find((w) => w.id !== primary?.id) ||
+    primary;
+  return {
+    amount: '',
+    type: 'Expense',
+    walletId: primary?.id || '',
+    toWalletId: secondary?.id || '',
+    category: '',
+    notes: '',
+    transaction_date: new Date().toISOString().slice(0, 10),
+    contextId: null,
+  };
+};
 
 interface TransactionFormProps {
   onSuccess: () => void;
@@ -42,7 +52,7 @@ interface TransactionFormProps {
   duplicateFrom?: Transaction | null;
   initialType?: 'Income' | 'Expense' | 'Transfer';
   onCancel?: () => void;
-  wallets?: { id: string; name: string; type?: string }[];
+  wallets?: { id: string; name: string; type?: string; isMain?: boolean }[];
   contexts?: any[];
   onDelete?: (id: string) => Promise<void> | void;
 }
@@ -192,12 +202,20 @@ export default function TransactionForm({
 
   useEffect(() => {
     if (!isEditing && contexts.length > 0 && formData.transaction_date && !formData.contextId) {
-      const txDate = new Date(formData.transaction_date).getTime();
+      const txDateStr = formData.transaction_date.slice(0, 10);
       const matchingContext = contexts.find((c) => {
-        if (!c.startDate || !c.endDate || c.status === 'Planned') return false;
-        const start = new Date(c.startDate).getTime();
-        const end = new Date(c.endDate).getTime();
-        return txDate >= start && txDate <= end;
+        const startStr = c.startDate ? new Date(c.startDate).toISOString().slice(0, 10) : null;
+        const endStr = c.endDate ? new Date(c.endDate).toISOString().slice(0, 10) : null;
+        if (startStr && endStr) {
+          return txDateStr >= startStr && txDateStr <= endStr;
+        }
+        if (startStr) {
+          return txDateStr === startStr;
+        }
+        if (endStr) {
+          return txDateStr === endStr;
+        }
+        return false;
       });
       if (matchingContext) {
         setFormData((prev) => ({ ...prev, contextId: matchingContext.id }));

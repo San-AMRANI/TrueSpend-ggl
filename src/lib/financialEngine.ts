@@ -31,7 +31,11 @@ export function computeFinancialState(input: FinancialEngineInput) {
   const currentFm = getCurrentFinancialMonth(input.payrolls, now);
 
   const userWallets = input.wallets || [];
-  const mainBank = userWallets.find(w => w.type === 'Bank' && w.isMain) || userWallets.find(w => w.type === 'Bank');
+  const mainBank =
+    userWallets.find(w => w.type === 'Bank' && w.isMain) ||
+    userWallets.find(w => w.isMain && w.type !== 'Investment') ||
+    userWallets.find(w => w.type === 'Bank') ||
+    userWallets[0];
   const defaultCash = userWallets.find(w => w.type === 'Cash') || mainBank;
 
   // Track balances per wallet
@@ -115,8 +119,9 @@ export function computeFinancialState(input: FinancialEngineInput) {
       // Determine destination wallet ID or key
       let destId = (tx as any).destinationWalletId || (tx as any).toWalletId;
       if (!destId || balances[destId] === undefined) {
-        const fromIsBank = sourceId === 'Bank' || (mainBank && sourceId === mainBank.id);
-        if (fromIsBank) {
+        const sourceWalletObj = userWallets.find(w => w.id === sourceId);
+        const fromIsCash = sourceId === 'Cash' || sourceWalletObj?.type === 'Cash';
+        if (!fromIsCash) {
           destId = defaultCash ? defaultCash.id : 'Cash';
         } else {
           destId = mainBank ? mainBank.id : 'Bank';
@@ -158,7 +163,9 @@ export function computeFinancialState(input: FinancialEngineInput) {
     const txSourceWallet = userWallets.find((w) => w.id === tx.walletId || (tx.sourceWallet && (w.name === tx.sourceWallet || w.type === tx.sourceWallet)));
     const isInvestmentWalletTx = txSourceWallet?.type === 'Investment';
     const isSavingsWalletTx = txSourceWallet?.type === 'Savings';
-    const isCapitalReserveOutflow = isInvestmentCategory || isInvestmentWalletTx || (isSavingsCategory && tx.type === 'Expense') || isSavingsWalletTx;
+    // Only exclude explicit Investment or Savings category allocations from daily/monthly living spend.
+    // Real living expenses (e.g. Dining, Groceries, Transport) paid from any wallet—even one tagged as 'Savings'—must count as true expenses.
+    const isCapitalReserveOutflow = isInvestmentCategory || isInvestmentWalletTx || (isSavingsCategory && tx.type === 'Expense');
     const reimbursableAmt = (!isPayableTx && tx.reimbursableAmount) ? Math.max(0, parseFloat(tx.reimbursableAmount as string) || 0) : 0;
     const netExpense = Math.max(0, txAmount - reimbursableAmt);
 
@@ -177,9 +184,15 @@ export function computeFinancialState(input: FinancialEngineInput) {
       if (tx.type === 'Transfer') {
         const destWallet = userWallets.find((w) => w.id === (tx as any).destinationWalletId || w.id === (tx as any).toWalletId);
         const destType = destWallet?.type?.toLowerCase();
-        if (destType === 'investment' || isInvestmentCategory) {
+        if (destWallet) {
+          if (destType === 'investment' && !isInvestmentWalletTx) {
+            monthlyInvestmentFunded += txAmount;
+          } else if (destType === 'savings' && !isSavingsWalletTx) {
+            monthlySavingsFunded += txAmount;
+          }
+        } else if (isInvestmentCategory) {
           monthlyInvestmentFunded += txAmount;
-        } else if (destType === 'savings' || isSavingsCategory) {
+        } else if (isSavingsCategory) {
           monthlySavingsFunded += txAmount;
         }
       } else if (tx.type === 'Expense') {
@@ -190,7 +203,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
           if (!isInvestmentWalletTx) {
             monthlyInvestmentFunded += netExpense;
           }
-        } else if (isSavingsCategory || isSavingsWalletTx) {
+        } else if (isSavingsCategory) {
           if (!isSavingsWalletTx) {
             monthlySavingsFunded += netExpense;
           }
@@ -209,7 +222,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
           monthlyDividendIncomeMad += txAmount;
         }
       }
-      if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) debtRepayments += txAmount;
+      if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) debtRepayments += netExpense;
       if (tx.type === 'Expense' && !isPayableTx && tx.reimbursableAmount) reimbursements += reimbursableAmt;
     }
     if (transactionDay.getTime() === today.getTime()) {
@@ -226,12 +239,20 @@ export function computeFinancialState(input: FinancialEngineInput) {
     }
   }
 
+  const savingsWallets = userWallets.filter(w => w.type === 'Savings' && !w.isMain);
   const savingsBalance = userWallets.length > 0
-    ? userWallets.filter(w => w.type === 'Savings').reduce((sum, w) => sum + (walletBalances[w.id] || 0), 0)
+    ? savingsWallets.reduce((sum, w) => sum + (walletBalances[w.id] || 0), 0)
     : walletBalances.Savings || 0;
+  const openingSavingsBalance = userWallets.length > 0
+    ? savingsWallets.reduce((sum, w) => sum + (openingWalletBalances[w.id] || 0), 0)
+    : openingWalletBalances.Savings || 0;
+  const configuredBuffer = parseFloat(input.userSettings.emergencyBuffer as unknown as string) || 0;
   const emergencyBuffer = savingsBalance > 0
     ? savingsBalance
-    : (parseFloat(input.userSettings.emergencyBuffer as unknown as string) || 0);
+    : configuredBuffer;
+  const openingEmergencyBuffer = savingsBalance > 0
+    ? openingSavingsBalance
+    : configuredBuffer;
 
   const investmentReserve = userWallets.length > 0
     ? userWallets.filter(w => w.type === 'Investment').reduce((sum, w) => sum + (walletBalances[w.id] || 0), 0)
@@ -328,8 +349,8 @@ export function computeFinancialState(input: FinancialEngineInput) {
 
   const runwayDays = avgDailySpend > 0 ? Math.floor(safeToSpend / avgDailySpend) : safeToSpend > 0 ? 999 : 0;
 
-  // Spendable opening liquidity excludes both emergency buffer and investment capital reserves
-  const spendableOpening = Math.max(0, openingLiquidity - emergencyBuffer - openingInvestmentReserve);
+  // Spendable opening liquidity excludes both opening emergency buffer and opening investment capital reserves
+  const spendableOpening = Math.max(0, openingLiquidity - openingEmergencyBuffer - openingInvestmentReserve);
   const dailyAllowance = daysUntilPayday > 0 ? (spendableOpening + todaysIncome) / daysUntilPayday : 0;
   const dailyRemaining = dailyAllowance - dailySpent;
   const dailyUsagePercent = dailyAllowance > 0 ? (dailySpent / dailyAllowance) * 100 : dailySpent > 0 ? 100 : 0;
