@@ -2804,7 +2804,10 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               aria-hidden="true"
               className="pointer-events-none select-none absolute inset-0 flex items-center justify-center z-0 overflow-hidden"
             >
-              <SpexAvatar className="w-52 h-52 sm:w-80 sm:h-80 md:w-96 md:h-96 opacity-[0.09] dark:opacity-[0.12] transition-opacity" />
+              <SpexAvatar
+                clickable={false}
+                className="w-52 h-52 sm:w-80 sm:h-80 md:w-96 md:h-96 opacity-[0.09] dark:opacity-[0.12] transition-opacity"
+              />
             </div>
 
             <div
