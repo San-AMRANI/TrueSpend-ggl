@@ -23,7 +23,28 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { netExpenseOf } from '../../lib/finance';
-import { computeRealTimeContextStatus, getContextTimelineMeta } from './ContextsTab';
+import {
+  computeRealTimeContextStatus,
+  getContextTimelineMeta,
+  toDateKeyStr,
+} from './ContextsTab';
+
+function safeFormatDate(
+  value: Date | string | null | undefined,
+  pattern: string,
+  fallback = '—'
+): string {
+  if (!value) return fallback;
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    const parsed = new Date(`${value.trim()}T12:00:00`);
+    if (!Number.isNaN(parsed.getTime())) {
+      return format(parsed, pattern);
+    }
+  }
+  const dateObj = value instanceof Date ? value : new Date(value as string);
+  if (Number.isNaN(dateObj.getTime())) return fallback;
+  return format(dateObj, pattern);
+}
 
 interface ContextDetailProps {
   context: FinancialContext;
@@ -49,30 +70,37 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
   const [linkingAll, setLinkingAll] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
-  const effectiveStatus = computeRealTimeContextStatus(context);
-  const timelineMeta = getContextTimelineMeta(context);
+  const autoStatusMeta = computeRealTimeContextStatus(
+    context.startDate,
+    context.endDate,
+    context.status
+  );
+  const effectiveStatus = autoStatusMeta.status;
+  const timelineMeta = getContextTimelineMeta(context.startDate, context.endDate);
 
   const matchingUnlinked = useMemo(() => {
     if (!allTransactions?.length) return [];
-    const startStr = context.startDate ? format(new Date(context.startDate), 'yyyy-MM-dd') : null;
-    const endStr = context.endDate ? format(new Date(context.endDate), 'yyyy-MM-dd') : null;
-    const nameTokens = context.name
+    const startStr = toDateKeyStr(context.startDate);
+    const endStr = toDateKeyStr(context.endDate);
+    const nameTokens = (context.name || '')
       .toLowerCase()
       .split(/[\s,\-_/]+/)
       .filter((tok) => tok.length >= 3);
 
     return allTransactions.filter((t) => {
       if (t.contextId || dismissedIds.has(t.id)) return false;
-      const txDateStr = format(new Date(t.createdAt), 'yyyy-MM-dd');
+      const txDateStr = toDateKeyStr(t.createdAt);
       const noteText = (t.notes || '').toLowerCase();
 
       let dateMatches = false;
-      if (startStr && endStr) {
-        dateMatches = txDateStr >= startStr && txDateStr <= endStr;
-      } else if (startStr) {
-        dateMatches = txDateStr === startStr;
-      } else if (endStr) {
-        dateMatches = txDateStr === endStr;
+      if (txDateStr) {
+        if (startStr && endStr) {
+          dateMatches = txDateStr >= startStr && txDateStr <= endStr;
+        } else if (startStr) {
+          dateMatches = txDateStr === startStr;
+        } else if (endStr) {
+          dateMatches = txDateStr === endStr;
+        }
       }
 
       const keywordMatches =
@@ -159,7 +187,7 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
   const { dailyBurnRate, peakDay } = useMemo(() => {
     const byDay: Record<string, number> = {};
     expenses.forEach((tx) => {
-      const d = format(new Date(tx.createdAt), 'MMM d, yyyy');
+      const d = safeFormatDate(tx.createdAt, 'MMM d, yyyy');
       byDay[d] = (byDay[d] || 0) + netExpenseOf(tx);
     });
     const entries = Object.entries(byDay).sort((a, b) => b[1] - a[1]);
@@ -181,9 +209,11 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
   }, [expenses]);
 
   const timeline = useMemo(() => {
-    return [...transactions].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    return [...transactions].sort((a, b) => {
+      const ta = new Date(a.createdAt || 0).getTime() || 0;
+      const tb = new Date(b.createdAt || 0).getTime() || 0;
+      return tb - ta;
+    });
   }, [transactions]);
 
   const handleExportCSV = () => {
@@ -202,7 +232,7 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
       const reimb = parseFloat(tx.reimbursableAmount || '0') || 0;
       const net = tx.type === 'Expense' ? netExpenseOf(tx) : gross;
       return [
-        format(new Date(tx.createdAt), 'yyyy-MM-dd HH:mm'),
+        safeFormatDate(tx.createdAt, 'yyyy-MM-dd HH:mm'),
         tx.type,
         `"${(tx.category || '').replace(/"/g, '""')}"`,
         gross.toFixed(2),
@@ -260,9 +290,9 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
               <span className="inline-flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5" />
                 {context.startDate
-                  ? format(new Date(context.startDate), 'MMM d, yyyy')
+                  ? safeFormatDate(context.startDate, 'MMM d, yyyy', 'Flexible start')
                   : 'Flexible start'}
-                {context.endDate && ` → ${format(new Date(context.endDate), 'MMM d, yyyy')}`}
+                {context.endDate && ` → ${safeFormatDate(context.endDate, 'MMM d, yyyy')}`}
               </span>
               {timelineMeta.durationDays > 0 && (
                 <span>
@@ -394,11 +424,11 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
               <div className="h-1.5 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                  style={{ width: `${timelineMeta.timeProgressPercent}%` }}
+                  style={{ width: `${timelineMeta.progressPct ?? 0}%` }}
                 />
               </div>
               <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                {timelineMeta.badgeText} ({timelineMeta.timeProgressPercent.toFixed(0)}% elapsed)
+                {timelineMeta.badgeText} ({(timelineMeta.progressPct ?? 0).toFixed(0)}% elapsed)
               </p>
             </div>
           </CardContent>
@@ -594,7 +624,7 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
                       {tx.notes || tx.category}
                     </p>
                     <div className="flex items-center text-xs text-gray-500 dark:text-gray-400 space-x-2 mt-0.5">
-                      <span>{format(new Date(tx.createdAt), 'MMM d, yyyy')}</span>
+                      <span>{safeFormatDate(tx.createdAt, 'MMM d, yyyy')}</span>
                       <span>•</span>
                       <span>{tx.category}</span>
                     </div>
@@ -669,7 +699,7 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
                     <div className="min-w-0">
                       <p className="font-medium text-sm truncate">{tx.notes || tx.category}</p>
                       <div className="flex flex-wrap items-center text-xs text-gray-500 dark:text-gray-400 gap-x-2 gap-y-0.5 mt-0.5">
-                        <span>{format(new Date(tx.createdAt), 'MMM d, yyyy h:mm a')}</span>
+                        <span>{safeFormatDate(tx.createdAt, 'MMM d, yyyy h:mm a')}</span>
                         <span>•</span>
                         <span>{tx.category}</span>
                       </div>

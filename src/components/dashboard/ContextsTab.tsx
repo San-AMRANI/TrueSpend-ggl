@@ -56,12 +56,20 @@ const contextTypeIcons: Record<string, React.ReactNode> = {
 
 export function toDateKeyStr(d: Date | string | null | undefined): string | null {
   if (!d) return null;
-  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.trim())) {
-    return d.trim();
+  if (typeof d === 'string') {
+    const trimmed = d.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return format(parsed, 'yyyy-MM-dd');
   }
-  const dateObj = typeof d === 'string' ? new Date(d) : d;
-  if (Number.isNaN(dateObj.getTime())) return null;
-  return format(dateObj, 'yyyy-MM-dd');
+  if (d instanceof Date) {
+    if (Number.isNaN(d.getTime())) return null;
+    return format(d, 'yyyy-MM-dd');
+  }
+  return null;
 }
 
 export function computeRealTimeContextStatus(
@@ -352,7 +360,7 @@ export const ContextsTab: React.FC<ContextsTabProps> = ({
     const suggestions: SuggestedLink[] = [];
 
     for (const tx of unlinked) {
-      const txDateStr = format(new Date(tx.createdAt), 'yyyy-MM-dd');
+      const txDateStr = toDateKeyStr(tx.createdAt);
       const notesLower = (tx.notes || '').toLowerCase();
       const matching: FinancialContext[] = [];
 
@@ -361,12 +369,14 @@ export const ContextsTab: React.FC<ContextsTabProps> = ({
         const endStr = toDateKeyStr(ctx.endDate);
 
         let matches = false;
-        if (startStr && endStr) {
-          matches = txDateStr >= startStr && txDateStr <= endStr;
-        } else if (startStr) {
-          matches = txDateStr === startStr;
-        } else if (endStr) {
-          matches = txDateStr === endStr;
+        if (txDateStr) {
+          if (startStr && endStr) {
+            matches = txDateStr >= startStr && txDateStr <= endStr;
+          } else if (startStr) {
+            matches = txDateStr === startStr;
+          } else if (endStr) {
+            matches = txDateStr === endStr;
+          }
         }
 
         // Also match if transaction notes explicitly mention the context name
@@ -647,27 +657,9 @@ export const ContextsTab: React.FC<ContextsTabProps> = ({
     });
   }, [enrichedContexts, typeFilter, statusFilter, searchQuery]);
 
-  if (selectedContextId) {
-    const ctx = enrichedContexts.find((c) => c.id === selectedContextId);
-    if (!ctx) {
-      setSelectedContextId(null);
-      return null;
-    }
-    return (
-      <ContextDetail
-        context={ctx}
-        transactions={transactions.filter((t) => t.contextId === ctx.id)}
-        allTransactions={transactions}
-        onBack={() => setSelectedContextId(null)}
-        onEdit={(e) => handleOpenEdit(e, ctx)}
-        onDelete={async () => {
-          await handleDeleteContext(ctx.id);
-          setSelectedContextId(null);
-        }}
-        onLinkTransactions={handleLinkTransactions}
-      />
-    );
-  }
+  const selectedContext = selectedContextId
+    ? enrichedContexts.find((c) => c.id === selectedContextId) || null
+    : null;
 
   const active = filteredContexts.filter((c) => c.status === 'Active');
   const planned = filteredContexts.filter((c) => c.status === 'Planned');
@@ -891,7 +883,22 @@ export const ContextsTab: React.FC<ContextsTabProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Header */}
+      {selectedContext ? (
+        <ContextDetail
+          context={selectedContext}
+          transactions={transactions.filter((t) => t.contextId === selectedContext.id)}
+          allTransactions={transactions}
+          onBack={() => setSelectedContextId(null)}
+          onEdit={(e) => handleOpenEdit(e, selectedContext)}
+          onDelete={async () => {
+            await handleDeleteContext(selectedContext.id);
+            setSelectedContextId(null);
+          }}
+          onLinkTransactions={handleLinkTransactions}
+        />
+      ) : (
+        <>
+          {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -1268,6 +1275,8 @@ export const ContextsTab: React.FC<ContextsTabProps> = ({
             <Button onClick={handleOpenCreate}>Create Your First Context</Button>
           </CardContent>
         </Card>
+      )}
+        </>
       )}
 
       {/* Create / Edit Modal */}
