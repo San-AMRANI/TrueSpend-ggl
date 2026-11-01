@@ -9,6 +9,7 @@ import {
   type SurfaceStyle,
   type ThemeId,
 } from '../../context/ThemeContext';
+import { SpexAvatar } from '../common/SpexAvatar';
 import {
   Palette,
   Sun,
@@ -247,25 +248,31 @@ export const ThemeStudioCard: React.FC = () => {
                       </span>
                     </div>
 
-                    {/* Mini Ledger Card inside Viewport */}
+                    {/* Mini Ledger Card inside Viewport with Matched Spex Avatar */}
                     <div
-                      className="rounded p-1.5 flex items-center justify-between"
+                      className="rounded p-1.5 flex items-center justify-between gap-2"
                       style={{
                         backgroundColor: preset.swatches.surface,
                         border: `1px solid ${preset.swatches.border}`,
                       }}
                     >
-                      <div className="space-y-1">
-                        <div
-                          className="h-1.5 w-12 rounded-full"
-                          style={{ backgroundColor: preset.swatches.text, opacity: 0.75 }}
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <SpexAvatar
+                          themeId={preset.id}
+                          className="h-7 w-7 shrink-0 group-hover:scale-110 transition-transform"
                         />
-                        <div
-                          className="h-1 w-8 rounded-full"
-                          style={{ backgroundColor: preset.swatches.text, opacity: 0.35 }}
-                        />
+                        <div className="space-y-1">
+                          <div
+                            className="h-1.5 w-11 rounded-full"
+                            style={{ backgroundColor: preset.swatches.text, opacity: 0.75 }}
+                          />
+                          <div
+                            className="h-1 w-7 rounded-full"
+                            style={{ backgroundColor: preset.swatches.text, opacity: 0.35 }}
+                          />
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 shrink-0">
                         <span
                           className="text-[10px] font-mono font-semibold tabular-nums"
                           style={{ color: preset.swatches.accent }}

@@ -503,9 +503,159 @@ function TypingDots() {
   );
 }
 
+function unescapeJsonSlice(rawSlice: string): string {
+  return rawSlice
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\');
+}
+
+function unwrapStructuredAiContent(
+  rawContent: string,
+  existingActions?: AiAction[],
+  existingSuggestions?: string[],
+): {
+  reply: string;
+  actions: AiAction[];
+  suggestions: string[];
+} {
+  const safeActions = Array.isArray(existingActions) ? existingActions : [];
+  const safeSuggestions = Array.isArray(existingSuggestions) ? existingSuggestions : [];
+  const trimmed = String(rawContent || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  if (!trimmed.startsWith('{') || !/"reply"\s*:/.test(trimmed)) {
+    return {
+      reply: rawContent,
+      actions: safeActions,
+      suggestions: safeSuggestions,
+    };
+  }
+
+  // 1. Try direct JSON.parse
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === 'object' && typeof parsed.reply === 'string') {
+      const mergedActions =
+        safeActions.length > 0
+          ? safeActions
+          : Array.isArray(parsed.actions)
+          ? parsed.actions
+          : [];
+      const mergedSuggestions =
+        safeSuggestions.length > 0 && safeSuggestions !== FALLBACK_SUGGESTIONS
+          ? safeSuggestions
+          : Array.isArray(parsed.suggestions) && parsed.suggestions.length > 0
+          ? parsed.suggestions.map(String)
+          : safeSuggestions;
+
+      if (parsed.reply.trim().startsWith('{') && /"reply"\s*:/.test(parsed.reply)) {
+        return unwrapStructuredAiContent(parsed.reply, mergedActions, mergedSuggestions);
+      }
+      return {
+        reply: parsed.reply,
+        actions: mergedActions,
+        suggestions: mergedSuggestions,
+      };
+    }
+  } catch {}
+
+  // 2. Structural boundary extraction for responses with unescaped inner quotes (e.g. 3.1-flash-lite-preview)
+  const replyStartMatch = trimmed.match(/"reply"\s*:\s*"/);
+  if (replyStartMatch && replyStartMatch.index !== undefined) {
+    const replyContentStart = replyStartMatch.index + replyStartMatch[0].length;
+    const afterReplyStart = trimmed.slice(replyContentStart);
+
+    const actionsBoundaryMatch = afterReplyStart.match(/"\s*,\s*"actions"\s*:\s*\[/);
+    const suggestionsBoundaryMatch = afterReplyStart.match(/"\s*,\s*"suggestions"\s*:\s*\[/);
+    const endBraceMatch = afterReplyStart.match(/"\s*\}\s*$/);
+
+    let replyEndOffset = -1;
+    let tailStartOffset = -1;
+
+    if (actionsBoundaryMatch && actionsBoundaryMatch.index !== undefined) {
+      replyEndOffset = actionsBoundaryMatch.index;
+      tailStartOffset = actionsBoundaryMatch.index + 1;
+    } else if (suggestionsBoundaryMatch && suggestionsBoundaryMatch.index !== undefined) {
+      replyEndOffset = suggestionsBoundaryMatch.index;
+      tailStartOffset = suggestionsBoundaryMatch.index + 1;
+    } else if (endBraceMatch && endBraceMatch.index !== undefined) {
+      replyEndOffset = endBraceMatch.index;
+    }
+
+    if (replyEndOffset !== -1) {
+      const extractedReply = unescapeJsonSlice(afterReplyStart.slice(0, replyEndOffset)).trim();
+      let extractedActions: AiAction[] = safeActions;
+      let extractedSuggestions: string[] = safeSuggestions;
+
+      if (tailStartOffset !== -1) {
+        const tailRaw = afterReplyStart.slice(tailStartOffset).replace(/^\s*,\s*/, '');
+        const tailJsonCandidate = `{ ${tailRaw}`;
+        try {
+          const parsedTail = JSON.parse(tailJsonCandidate);
+          if (!extractedActions.length && Array.isArray(parsedTail.actions)) {
+            extractedActions = parsedTail.actions;
+          }
+          if (Array.isArray(parsedTail.suggestions) && parsedTail.suggestions.length > 0) {
+            extractedSuggestions = parsedTail.suggestions.map(String);
+          }
+        } catch {
+          const actMatch = tailRaw.match(/"actions"\s*:\s*(\[[\s\S]*?\])(?=\s*,\s*"suggestions"|\s*\})/);
+          if (!extractedActions.length && actMatch?.[1]) {
+            try {
+              const actParsed = JSON.parse(actMatch[1]);
+              if (Array.isArray(actParsed)) extractedActions = actParsed;
+            } catch {}
+          }
+          const sugMatch = tailRaw.match(/"suggestions"\s*:\s*(\[[\s\S]*?\])\s*\}?$/);
+          if (sugMatch?.[1]) {
+            try {
+              const sugParsed = JSON.parse(sugMatch[1]);
+              if (Array.isArray(sugParsed) && sugParsed.length > 0) {
+                extractedSuggestions = sugParsed.map(String);
+              }
+            } catch {}
+          }
+        }
+      }
+
+      return {
+        reply: extractedReply,
+        actions: extractedActions,
+        suggestions: extractedSuggestions,
+      };
+    }
+  }
+
+  return {
+    reply: rawContent,
+    actions: safeActions,
+    suggestions: safeSuggestions,
+  };
+}
+
+function sanitizeStoredMessage(m: Message): Message {
+  if (!m || m.role !== 'assistant' || typeof m.content !== 'string') return m;
+  const trimmed = m.content.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('```')) return m;
+  const unwrapped = unwrapStructuredAiContent(m.content, m.actions, m.suggestions);
+  if (unwrapped.reply === m.content) return m;
+  return {
+    ...m,
+    content: unwrapped.reply,
+    actions: unwrapped.actions,
+    suggestions: unwrapped.suggestions.length > 0 ? unwrapped.suggestions : m.suggestions,
+  };
+}
+
 // Single message bubble
 function MessageBubble({
-  msg,
+  msg: rawMsg,
   idx,
   onAction,
   onSpeak,
@@ -519,6 +669,7 @@ function MessageBubble({
   isPlayingAudio?: boolean;
   isAudioLoading?: boolean;
 }) {
+  const msg = useMemo(() => sanitizeStoredMessage(rawMsg), [rawMsg]);
   const [copied, setCopied] = useState(false);
   const [relTime, setRelTime] = useState(() => formatRelativeTime(msg.timestamp));
   const isUser = msg.role === 'user';
@@ -779,7 +930,12 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       if (savedConvs) {
         const parsed = JSON.parse(savedConvs);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return parsed.map((conv: ChatConversation) => ({
+            ...conv,
+            messages: Array.isArray(conv.messages)
+              ? conv.messages.map(sanitizeStoredMessage)
+              : [createDefaultWelcomeMessage(['all'])],
+          }));
         }
       }
     } catch (e) {
@@ -793,7 +949,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       if (legacy) {
         const parsedLegacy = JSON.parse(legacy);
         if (Array.isArray(parsedLegacy) && parsedLegacy.length > 0) {
-          initialMessages = parsedLegacy;
+          initialMessages = parsedLegacy.map(sanitizeStoredMessage);
         }
       }
     } catch {}
@@ -1454,15 +1610,22 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
         const data = await response.json();
         if (data.reply) {
-          const replyText = data.reply;
+          const unwrapped = unwrapStructuredAiContent(
+            data.reply,
+            data.actions,
+            data.suggestions,
+          );
+          const replyText = unwrapped.reply;
           setMessages((prev) => {
             const nextList = [
               ...prev,
               {
                 role: 'assistant' as const,
                 content: replyText,
-                actions: data.actions || [],
-                suggestions: data.suggestions?.length ? data.suggestions : FALLBACK_SUGGESTIONS,
+                actions: unwrapped.actions,
+                suggestions: unwrapped.suggestions?.length
+                  ? unwrapped.suggestions
+                  : FALLBACK_SUGGESTIONS,
                 modelUsed: data.modelUsed,
                 requestedModel: data.requestedModel,
                 responseTimeMs: data.responseTimeMs,

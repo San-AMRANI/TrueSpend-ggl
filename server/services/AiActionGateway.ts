@@ -82,11 +82,28 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
     if (action.type === 'update_settings') {
       if (p.payday !== undefined) p.payday = Number(p.payday);
       if (p.salary !== undefined) p.salary = Number(p.salary);
-      
-      if (p.payday === undefined && p.salary === undefined) {
+      if (p.emergencyBuffer !== undefined && p.emergency_buffer === undefined) {
+        p.emergency_buffer = Number(p.emergencyBuffer);
+      } else if (p.emergency_buffer !== undefined) {
+        p.emergency_buffer = Number(p.emergency_buffer);
+      }
+
+      const targetPrimaryWalletId = p.primaryWalletId || p.mainWalletId || p.walletId;
+      let updatedPrimary = false;
+      if (targetPrimaryWalletId) {
+        results.push(
+          await walletService.updateWallet(userId, String(targetPrimaryWalletId), {
+            isMain: true,
+          }),
+        );
+        updatedPrimary = true;
+      }
+
+      if (p.payday !== undefined || p.salary !== undefined || p.emergency_buffer !== undefined) {
+        results.push(await settingsService.updateSettings(userId, p));
+      } else if (!updatedPrimary) {
         throw new Error('Settings proposal has no changes');
       }
-      results.push(await settingsService.updateSettings(userId, p));
     }
 
     if (action.type === 'upsert_budget') {

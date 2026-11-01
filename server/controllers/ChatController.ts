@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getChatCompletion, generateSpeechFromText } from '../services/ChatService.js';
+import { getChatCompletion, generateSpeechFromText, parseStructuredAiResponse } from '../services/ChatService.js';
 import {
   getModelStatusList,
   clearAllModelQuotas,
@@ -36,30 +36,17 @@ export const chatWithAi = async (req: Request, res: Response) => {
       responseDepth,
     );
     const content = completion.choices?.[0]?.message?.content || '';
-    try {
-      const parsed = JSON.parse(content);
-      res.json({
-        reply: String(parsed.reply || ''),
-        actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 4).map(String) : [],
-        modelUsed: completion.modelUsed,
-        requestedModel: completion.requestedModel,
-        responseTimeMs: completion.responseTimeMs,
-        quotaFallback: Boolean(completion.quotaFallback),
-        fallbackReason: completion.fallbackReason,
-      });
-    } catch {
-      res.json({
-        reply: content,
-        actions: [],
-        suggestions: [],
-        modelUsed: completion.modelUsed,
-        requestedModel: completion.requestedModel,
-        responseTimeMs: completion.responseTimeMs,
-        quotaFallback: Boolean(completion.quotaFallback),
-        fallbackReason: completion.fallbackReason,
-      });
-    }
+    const parsed = parseStructuredAiResponse(content);
+    res.json({
+      reply: String(parsed.reply || ''),
+      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 4).map(String) : [],
+      modelUsed: completion.modelUsed,
+      requestedModel: completion.requestedModel,
+      responseTimeMs: completion.responseTimeMs,
+      quotaFallback: Boolean(completion.quotaFallback),
+      fallbackReason: completion.fallbackReason,
+    });
   } catch (error: any) {
     console.error('Chat error in controller:', error);
     res.status(200).json({

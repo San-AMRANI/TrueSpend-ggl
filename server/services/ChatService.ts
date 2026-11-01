@@ -103,6 +103,7 @@ You MUST return ONLY a valid JSON object matching this exact schema:
   "suggestions": ["suggested query 1", "suggested query 2", "suggested query 3", "suggested query 4"]
 }
 - "reply": Rich markdown string (use headings, bolding, Markdown tables, bullet points, numbered lists, emojis, clean line breaks).
+- CRITICAL JSON ESCAPING: Inside the "reply" string, NEVER use unescaped double quotes ("). Use single quotes ('...') or Markdown bold (**...**) when quoting terms (e.g. 'Safe-to-Spend', 'Account Segregation') so the JSON is always valid.
 - "actions": Array of concrete proposed mutations (empty [] if none).
 - "suggestions": 3 to 4 engaging, context-aware follow-up questions or deep-dive prompts the user can click next.
 
@@ -359,6 +360,157 @@ export async function generateSpeechFromText(rawText: string): Promise<{ audio: 
   }
 }
 
+function unescapeJsonStringContent(rawSlice: string): string {
+  return rawSlice
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\');
+}
+
+export function parseStructuredAiResponse(rawText: string): {
+  reply: string;
+  actions: any[];
+  suggestions: string[];
+} {
+  const defaultFallbackSuggestions = [
+    '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
+    '💰 Reconcile my 879 MAD Investment Reserve vs live balance',
+    '📊 Full breakdown of all transactions and category burn',
+  ];
+
+  const cleaned = String(rawText || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  if (!cleaned) {
+    return { reply: '', actions: [], suggestions: defaultFallbackSuggestions };
+  }
+
+  // 1. Try direct JSON.parse
+  try {
+    const direct = JSON.parse(cleaned);
+    if (direct && typeof direct === 'object') {
+      const innerReply = typeof direct.reply === 'string' ? direct.reply.trim() : '';
+      if (innerReply.startsWith('{') && /"reply"\s*:/.test(innerReply)) {
+        const unwrapped = parseStructuredAiResponse(innerReply);
+        return {
+          reply: unwrapped.reply,
+          actions: Array.isArray(direct.actions) && direct.actions.length ? direct.actions : unwrapped.actions,
+          suggestions:
+            Array.isArray(direct.suggestions) && direct.suggestions.length
+              ? direct.suggestions
+              : unwrapped.suggestions,
+        };
+      }
+      return {
+        reply: typeof direct.reply === 'string' ? direct.reply : cleaned,
+        actions: Array.isArray(direct.actions) ? direct.actions : [],
+        suggestions: Array.isArray(direct.suggestions) ? direct.suggestions : defaultFallbackSuggestions,
+      };
+    }
+  } catch {}
+
+  // 2. Try outer braces substring JSON.parse
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  const jsonCandidate =
+    firstBrace !== -1 && lastBrace > firstBrace
+      ? cleaned.substring(firstBrace, lastBrace + 1)
+      : cleaned;
+
+  try {
+    const sub = JSON.parse(jsonCandidate);
+    if (sub && typeof sub === 'object' && typeof sub.reply === 'string') {
+      return {
+        reply: sub.reply,
+        actions: Array.isArray(sub.actions) ? sub.actions : [],
+        suggestions: Array.isArray(sub.suggestions) ? sub.suggestions : defaultFallbackSuggestions,
+      };
+    }
+  } catch {}
+
+  // 3. Structural extraction when model (e.g., gemini-3.1-flash-lite-preview) emits unescaped quotes inside "reply"
+  const replyStartMatch = jsonCandidate.match(/"reply"\s*:\s*"/);
+  if (replyStartMatch && replyStartMatch.index !== undefined) {
+    const replyContentStart = replyStartMatch.index + replyStartMatch[0].length;
+    const afterReplyStart = jsonCandidate.slice(replyContentStart);
+
+    // Find the structural boundary ending "reply": either `", "actions": [` or `", "suggestions": [` or `"}` at the end
+    const actionsBoundaryMatch = afterReplyStart.match(/"\s*,\s*"actions"\s*:\s*\[/);
+    const suggestionsBoundaryMatch = afterReplyStart.match(/"\s*,\s*"suggestions"\s*:\s*\[/);
+    const endBraceMatch = afterReplyStart.match(/"\s*\}\s*$/);
+
+    let replyEndOffset = -1;
+    let tailStartOffset = -1;
+
+    if (actionsBoundaryMatch && actionsBoundaryMatch.index !== undefined) {
+      replyEndOffset = actionsBoundaryMatch.index;
+      tailStartOffset = actionsBoundaryMatch.index + 1; // starts at `, "actions": [`
+    } else if (suggestionsBoundaryMatch && suggestionsBoundaryMatch.index !== undefined) {
+      replyEndOffset = suggestionsBoundaryMatch.index;
+      tailStartOffset = suggestionsBoundaryMatch.index + 1; // starts at `, "suggestions": [`
+    } else if (endBraceMatch && endBraceMatch.index !== undefined) {
+      replyEndOffset = endBraceMatch.index;
+    }
+
+    if (replyEndOffset !== -1) {
+      const rawReplySlice = afterReplyStart.slice(0, replyEndOffset);
+      const extractedReply = unescapeJsonStringContent(rawReplySlice).trim();
+
+      let extractedActions: any[] = [];
+      let extractedSuggestions: string[] = defaultFallbackSuggestions;
+
+      if (tailStartOffset !== -1) {
+        const tailRaw = afterReplyStart.slice(tailStartOffset).replace(/^\s*,\s*/, '');
+        const tailJsonCandidate = `{ ${tailRaw}`;
+        try {
+          const parsedTail = JSON.parse(tailJsonCandidate);
+          if (Array.isArray(parsedTail.actions)) {
+            extractedActions = parsedTail.actions;
+          }
+          if (Array.isArray(parsedTail.suggestions) && parsedTail.suggestions.length > 0) {
+            extractedSuggestions = parsedTail.suggestions.map(String);
+          }
+        } catch {
+          // Fallback regex extraction for actions and suggestions arrays independently
+          const actMatch = tailRaw.match(/"actions"\s*:\s*(\[[\s\S]*?\])(?=\s*,\s*"suggestions"|\s*\})/);
+          if (actMatch?.[1]) {
+            try {
+              const actParsed = JSON.parse(actMatch[1]);
+              if (Array.isArray(actParsed)) extractedActions = actParsed;
+            } catch {}
+          }
+          const sugMatch = tailRaw.match(/"suggestions"\s*:\s*(\[[\s\S]*?\])\s*\}?$/);
+          if (sugMatch?.[1]) {
+            try {
+              const sugParsed = JSON.parse(sugMatch[1]);
+              if (Array.isArray(sugParsed) && sugParsed.length > 0) {
+                extractedSuggestions = sugParsed.map(String);
+              }
+            } catch {}
+          }
+        }
+      }
+
+      return {
+        reply: extractedReply,
+        actions: extractedActions,
+        suggestions: extractedSuggestions,
+      };
+    }
+  }
+
+  return {
+    reply: cleaned,
+    actions: [],
+    suggestions: defaultFallbackSuggestions,
+  };
+}
+
 export async function getChatCompletion(
   messages: unknown,
   contextData?: unknown,
@@ -506,39 +658,7 @@ export async function getChatCompletion(
       );
 
       const responseText = response.text || '';
-      let parsed: any;
-
-      try {
-        parsed = JSON.parse(responseText.trim());
-      } catch (parseErr) {
-        const first = responseText.indexOf('{');
-        const last = responseText.lastIndexOf('}');
-        if (first !== -1 && last > first) {
-          try {
-            parsed = JSON.parse(responseText.substring(first, last + 1));
-          } catch {
-            parsed = {
-              reply: responseText,
-              actions: [],
-              suggestions: [
-                '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
-                '💰 Reconcile my 879 MAD Investment Reserve vs live balance',
-                '📊 Full breakdown of all transactions and category burn',
-              ],
-            };
-          }
-        } else {
-          parsed = {
-            reply: responseText,
-            actions: [],
-            suggestions: [
-              '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
-              '💰 Reconcile my 879 MAD Investment Reserve vs live balance',
-              '📊 Full breakdown of all transactions and category burn',
-            ],
-          };
-        }
-      }
+      const parsed = parseStructuredAiResponse(responseText);
 
       if (!parsed.reply) {
         parsed.reply = "I've analyzed your financial request. Let me know if you would like me to take any specific actions.";
