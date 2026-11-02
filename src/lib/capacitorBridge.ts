@@ -7,7 +7,7 @@ import { Haptics, ImpactStyle } from '@capacitor/haptics';
 const STORAGE_KEY_API_BASE = 'truespend_capacitor_api_base_url';
 const DEFAULT_CLOUD_API_URL =
   import.meta.env.VITE_API_BASE_URL ||
-  'https://ais-pre-5k7l37bq2kfruccqi7aybz-944601978390.europe-west2.run.app';
+  'https://true-spend-ggl.vercel.app';
 
 export function isNativePlatform(): boolean {
   try {

@@ -629,7 +629,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   type="url"
                   value={apiBaseInput}
                   onChange={(e) => setApiBaseInput(e.target.value)}
-                  placeholder="https://ais-pre-5k7l37bq2kfruccqi7aybz-944601978390.europe-west2.run.app"
+                  placeholder="https://true-spend-ggl.vercel.app"
                   className="flex-1 px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
                 <Button

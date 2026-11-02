@@ -12,7 +12,7 @@ TrueSpend is configured as a native Android application using **Capacitor** (`@c
 - **Native Android Project:** `android/` (Gradle + Android Studio project)
 - **Native Bridge:** `src/lib/capacitorBridge.ts`
   - Automatically detects when running inside the Capacitor Android WebView (`Capacitor.isNativePlatform()`).
-  - Transparently routes relative `/api/*` `fetch()` calls from the native WebView (`https://localhost`) to your backend API server (`https://ais-pre-5k7l37bq2kfruccqi7aybz-944601978390.europe-west2.run.app` by default, or any custom endpoint set via `VITE_API_BASE_URL` or in **Settings → Android / Capacitor Native Runtime**).
+  - Transparently routes relative `/api/*` `fetch()` calls from the native WebView (`https://localhost`) to the deployed Vercel API (`https://true-spend-ggl.vercel.app` by default, or any custom endpoint set via `VITE_API_BASE_URL` or in **Settings → Android / Capacitor Native Runtime**).
   - Handles the **Android hardware back button** (navigates browser history or minimizes the app at root).
   - Syncs the **Android Status Bar** and hides the native **Splash Screen** once React mounts.
   - Supports **native haptics** (`@capacitor/haptics`) and **keyboard resize behavior** (`@capacitor/keyboard`).
@@ -67,7 +67,7 @@ android/app/build/outputs/apk/debug/app-debug.apk
 
 Because the Android APK bundles the frontend UI locally inside the app, all `/api/*` requests are forwarded to the TrueSpend backend server:
 
-1. **Default Cloud Server**: Out of the box, the Android app connects to the deployed Cloud Run backend (`https://ais-pre-5k7l37bq2kfruccqi7aybz-944601978390.europe-west2.run.app`).
+1. **Default Cloud Server**: Out of the box, the Android app connects to the deployed Vercel API (`https://true-spend-ggl.vercel.app`).
 2. **Android Emulator (Local Backend)**: If running `npm run dev` on your computer and testing in the Android Emulator, open **Settings → Android / Capacitor Native Runtime** inside the app and set the endpoint to:
    ```
    http://10.0.2.2:3000
