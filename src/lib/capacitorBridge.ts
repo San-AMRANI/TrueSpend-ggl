@@ -11,7 +11,12 @@ const DEFAULT_CLOUD_API_URL =
 
 export function isNativePlatform(): boolean {
   try {
-    return Capacitor.isNativePlatform();
+    if (Capacitor.isNativePlatform()) return true;
+    if (typeof window !== 'undefined') {
+      if ((window as any).AndroidBridge) return true;
+      if (window.location.hostname === 'localhost' && !window.location.port) return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -19,7 +24,15 @@ export function isNativePlatform(): boolean {
 
 export function getPlatformName(): string {
   try {
-    return Capacitor.getPlatform();
+    const capPlatform = Capacitor.getPlatform();
+    if (capPlatform && capPlatform !== 'web') return capPlatform;
+    if (typeof window !== 'undefined') {
+      if ((window as any).AndroidBridge) return 'android';
+      if (window.location.hostname === 'localhost' && !window.location.port && /android/i.test(navigator.userAgent)) {
+        return 'android';
+      }
+    }
+    return capPlatform || 'web';
   } catch {
     return 'web';
   }

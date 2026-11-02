@@ -597,42 +597,63 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-              Mobile API Server Endpoint (<code className="text-xs">com.truespend.app</code>)
-            </h3>
-            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-              When running inside the Capacitor Android app, relative <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">/api/*</code> calls are routed to this backend server URL. Use the deployed Cloud Run URL, <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">http://10.0.2.2:3000</code> for Android Emulator, or your LAN IP when testing locally.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-2 pt-1">
-              <input
-                type="url"
-                value={apiBaseInput}
-                onChange={(e) => setApiBaseInput(e.target.value)}
-                placeholder="https://ais-pre-5k7l37bq2kfruccqi7aybz-944601978390.europe-west2.run.app"
-                className="flex-1 px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-              />
-              <Button
-                size="sm"
-                onClick={() => {
-                  setCapacitorApiBaseUrl(apiBaseInput);
-                  showNotifToast('Mobile API Server URL saved!');
-                }}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-4 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-gray-200 dark:border-gray-800">
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Install TrueSpend Android App (.apk)
+                </h3>
+                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                  Download the compiled Capacitor Android package (<code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">TrueSpend.apk</code>, <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">com.truespend.app</code>) directly to your Android phone or emulator.
+                </p>
+              </div>
+              <a
+                href="/api/download-apk"
+                download="TrueSpend.apk"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors shrink-0"
               >
-                Save Endpoint
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setCapacitorApiBaseUrl('');
-                  const def = getCapacitorApiBaseUrl();
-                  setApiBaseInput(def);
-                  showNotifToast('Reset to default Cloud Run endpoint.');
-                }}
-              >
-                Reset Default
-              </Button>
+                <Download className="h-4 w-4" />
+                Download TrueSpend.apk
+              </a>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                Mobile API Server Endpoint (<code className="text-xs">com.truespend.app</code>)
+              </h3>
+              <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                When running inside the Capacitor Android app, relative <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">/api/*</code> calls are routed to this backend server URL. Use the deployed Cloud Run URL, <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">http://10.0.2.2:3000</code> for Android Emulator, or your LAN IP when testing locally.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                <input
+                  type="url"
+                  value={apiBaseInput}
+                  onChange={(e) => setApiBaseInput(e.target.value)}
+                  placeholder="https://ais-pre-5k7l37bq2kfruccqi7aybz-944601978390.europe-west2.run.app"
+                  className="flex-1 px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCapacitorApiBaseUrl(apiBaseInput);
+                    showNotifToast('Mobile API Server URL saved!');
+                  }}
+                >
+                  Save Endpoint
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setCapacitorApiBaseUrl('');
+                    const def = getCapacitorApiBaseUrl();
+                    setApiBaseInput(def);
+                    showNotifToast('Reset to default Cloud Run endpoint.');
+                  }}
+                >
+                  Reset Default
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>

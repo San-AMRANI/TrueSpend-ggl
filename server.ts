@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from "express";
+import fs from "fs";
 import path from "path";
 import cookieParser from "cookie-parser";
 import { createServer as createViteServer } from "vite";
@@ -34,6 +35,23 @@ async function startServer() {
       return;
     }
     next();
+  });
+
+  // Direct download route for the compiled Android APK
+  app.get("/api/download-apk", (_req, res) => {
+    const candidates = [
+      path.join(process.cwd(), "public", "TrueSpend.apk"),
+      path.join(process.cwd(), "dist", "TrueSpend.apk"),
+      path.join(process.cwd(), "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk"),
+    ];
+    const apkPath = candidates.find((p) => fs.existsSync(p));
+    if (!apkPath) {
+      res.status(404).json({ error: "Android APK file not found on server." });
+      return;
+    }
+    res.setHeader("Content-Type", "application/vnd.android.package-archive");
+    res.setHeader("Content-Disposition", 'attachment; filename="TrueSpend.apk"');
+    res.sendFile(apkPath);
   });
 
   // Mount clean layered API routes
