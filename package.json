@@ -9,9 +9,21 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:financial": "tsx tests/financialEngine.test.ts && tsx tests/receiptExtraction.test.ts"
+    "test:financial": "tsx tests/financialEngine.test.ts && tsx tests/receiptExtraction.test.ts",
+    "cap:sync": "vite build && cap sync android",
+    "cap:open": "cap open android",
+    "cap:run": "vite build && cap run android",
+    "android:apk:debug": "vite build && cap sync android && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/keyboard": "^8.0.6",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",

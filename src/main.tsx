@@ -2,8 +2,11 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initCapacitorBridge, isNativePlatform } from './lib/capacitorBridge';
 
-if ('serviceWorker' in navigator) {
+initCapacitorBridge();
+
+if ('serviceWorker' in navigator && !isNativePlatform()) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(error => {
       console.error('Service Worker registration failed:', error);

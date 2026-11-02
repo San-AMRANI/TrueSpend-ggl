@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send, Cloud, Clock, Check, User, ShieldCheck, LogOut, Mail, Key } from 'lucide-react';
+import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send, Cloud, Clock, Check, User, ShieldCheck, LogOut, Mail, Key, Smartphone } from 'lucide-react';
 import { googleSignIn, getGoogleAccessToken } from '../../lib/googleAuth';
 import { uploadToGoogleDrive } from '../../lib/driveUpload';
 import { dashboardService } from '../../services/api/dashboardService';
@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { WalletsManager } from './WalletsManager';
 import { UsersAndRolesSection } from './UsersAndRolesSection';
 import { ThemeStudioCard } from './ThemeStudioCard';
+import { getCapacitorApiBaseUrl, setCapacitorApiBaseUrl, isNativePlatform, getPlatformName } from '../../lib/capacitorBridge';
 import type { NotifSettings, ServerNotifSettings } from '../../hooks/useNotifications';
 import type { Wallet, Subscription, Debt, InvestmentsData, DashboardTab } from '../../types';
 
@@ -64,6 +65,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [notifToast, setNotifToast] = useState<string | null>(null);
   const [isDriveConnecting, setIsDriveConnecting] = useState(false);
   const [isDriveBackingUp, setIsDriveBackingUp] = useState(false);
+  const [apiBaseInput, setApiBaseInput] = useState<string>(() => getCapacitorApiBaseUrl());
   const { user, token, signOut } = useAuth();
 
   
@@ -576,6 +578,61 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   {isImporting ? 'Restoring Backup...' : 'Import & Restore SQL Backup'}
                 </Button>
               </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Android / Capacitor Mobile Runtime ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5 text-emerald-600" />
+              Android / Capacitor Native Runtime
+            </span>
+            <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+              {isNativePlatform() ? `Native (${getPlatformName()})` : 'Web / Capacitor Ready'}
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+              Mobile API Server Endpoint (<code className="text-xs">com.truespend.app</code>)
+            </h3>
+            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+              When running inside the Capacitor Android app, relative <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">/api/*</code> calls are routed to this backend server URL. Use the deployed Cloud Run URL, <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">http://10.0.2.2:3000</code> for Android Emulator, or your LAN IP when testing locally.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              <input
+                type="url"
+                value={apiBaseInput}
+                onChange={(e) => setApiBaseInput(e.target.value)}
+                placeholder="https://ais-pre-5k7l37bq2kfruccqi7aybz-944601978390.europe-west2.run.app"
+                className="flex-1 px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              />
+              <Button
+                size="sm"
+                onClick={() => {
+                  setCapacitorApiBaseUrl(apiBaseInput);
+                  showNotifToast('Mobile API Server URL saved!');
+                }}
+              >
+                Save Endpoint
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setCapacitorApiBaseUrl('');
+                  const def = getCapacitorApiBaseUrl();
+                  setApiBaseInput(def);
+                  showNotifToast('Reset to default Cloud Run endpoint.');
+                }}
+              >
+                Reset Default
+              </Button>
             </div>
           </div>
         </CardContent>
