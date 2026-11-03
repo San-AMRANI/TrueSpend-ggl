@@ -179,7 +179,19 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
       {/* ── Top Header & Data Synthesis Telemetry ── */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex items-start gap-3">
-          <SpexAvatar className="h-12 w-12 shrink-0" animated />
+          <SpexAvatar
+            className="h-14 w-14 shrink-0"
+            animated
+            clickable
+            lookAtCursor
+            state={
+              isWhatIfModified
+                ? 'running'
+                : forecast.hasLiquidityPinchBeforePayday
+                ? 'failed'
+                : 'review'
+            }
+          />
           <div>
             <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <span>Holistic Predictive Intelligence &amp; Forecasting</span>

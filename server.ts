@@ -40,6 +40,7 @@ async function startServer() {
   // Direct download route for the compiled Android APK
   app.get("/api/download-apk", (_req, res) => {
     const candidates = [
+      path.join(process.cwd(), "TrueSpend.apk"),
       path.join(process.cwd(), "public", "TrueSpend.apk"),
       path.join(process.cwd(), "dist", "TrueSpend.apk"),
       path.join(process.cwd(), "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk"),

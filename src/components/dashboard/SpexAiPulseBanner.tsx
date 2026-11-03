@@ -59,7 +59,13 @@ export const SpexAiPulseBanner: React.FC<SpexAiPulseBannerProps> = ({
         {/* Left: Spex Avatar & Headline */}
         <div className="flex items-start sm:items-center gap-3">
           <div className="relative flex-shrink-0">
-            <SpexAvatar className="h-12 w-12" animated />
+            <SpexAvatar
+              className="h-14 w-14"
+              animated
+              clickable
+              lookAtCursor
+              state={tone === 'alert' ? 'failed' : tone === 'warning' ? 'review' : 'idle'}
+            />
           </div>
 
           <div>
@@ -68,7 +74,7 @@ export const SpexAiPulseBanner: React.FC<SpexAiPulseBannerProps> = ({
                 Spex AI Financial Pulse
               </span>
               <span className="rounded-full bg-indigo-100/80 dark:bg-indigo-900/50 px-2 py-0.2 text-[10px] font-medium text-indigo-700 dark:text-indigo-300">
-                Gemini 3.8 Flash
+                Gemini 3.8 Flash · Live Sprite v2
               </span>
             </div>
             <p className="text-sm font-semibold text-gray-900 dark:text-white mt-0.5 leading-snug">

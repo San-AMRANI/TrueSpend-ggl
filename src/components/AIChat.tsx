@@ -41,6 +41,7 @@ import {
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { SpexAvatar } from './common/SpexAvatar';
+import type { SpexAnimationState } from './common/SpexSprite';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { useDashboardData } from '../hooks/useDashboardData';
@@ -699,7 +700,12 @@ function MessageBubble({
       {/* Avatar row for assistant */}
       {!isUser && (
         <div className="flex items-center gap-1.5 sm:gap-2 ml-0.5 mb-0.5 flex-wrap">
-          <SpexAvatar className="h-5 w-5 sm:h-6 sm:w-6" clickable />
+          <SpexAvatar
+            className="h-6 w-6 sm:h-7 sm:w-7"
+            clickable
+            useSprite
+            state={idx === 0 ? 'waving' : 'idle'}
+          />
           <span className="text-[11px] text-gray-700 dark:text-gray-200 font-semibold">Spex</span>
           {msg.modelUsed ? (
             <span
@@ -1835,6 +1841,14 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const charLimit = 4000;
   const charsLeft = charLimit - input.length;
 
+  const liveSpexState: SpexAnimationState = isLoading
+    ? 'running'
+    : selectedImage
+    ? 'review'
+    : isListening || input.trim().length > 0
+    ? 'waiting'
+    : 'idle';
+
   return (
     <>
       <style>{`
@@ -1872,7 +1886,13 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               <Menu className="w-5 h-5" />
             </button>
 
-            <SpexAvatar className="h-8 w-8 shrink-0" animated clickable />
+            <SpexAvatar
+              className="h-9 w-9 shrink-0"
+              animated
+              clickable
+              lookAtCursor
+              state={liveSpexState}
+            />
 
             <button
               type="button"
@@ -2290,7 +2310,13 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         {/* ─── Desktop header ─── */}
         <div className="hidden sm:flex items-center justify-between px-5 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex-shrink-0 text-gray-900 dark:text-gray-100">
           <div className="flex items-center gap-3">
-            <SpexAvatar className="h-11 w-11" animated clickable />
+            <SpexAvatar
+              className="h-12 w-12"
+              animated
+              clickable
+              lookAtCursor
+              state={liveSpexState}
+            />
             <div>
               <div className="flex items-center gap-2">
                 <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
@@ -2832,7 +2858,12 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
               {isLoading && (
                 <div className="flex items-start gap-2.5 w-full animate-slideIn">
-                  <SpexAvatar className="h-7 w-7 mt-0.5 flex-shrink-0" animated clickable />
+                  <SpexAvatar
+                    className="h-9 w-9 mt-0.5 flex-shrink-0"
+                    animated
+                    clickable
+                    state="running"
+                  />
                   <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-[2px] border border-gray-200/80 dark:border-gray-700/70 rounded-2xl rounded-bl-none px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-sm flex items-center gap-2.5">
                     <TypingDots />
                     <span className="text-xs text-gray-500 dark:text-gray-400">

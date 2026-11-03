@@ -1,0 +1,78 @@
+{
+  "ok": true,
+  "atlas": "/Users/hassanamrani/Documents/Codex/2026-10-01/pets-plugin-work-pets-openai-curated-2/work/spex/run/final/spritesheet-extended-v3.png",
+  "encoded_bytes": 4167830,
+  "sha256": "cbf6b02773237ab93764e6ba14dba2105cce27ac6e7702180a4de38d17677a94",
+  "jump": {
+    "idle_baseline": 201,
+    "jump_baselines": [
+      202,
+      179,
+      147,
+      182,
+      202
+    ],
+    "airborne_lift_pixels": 55,
+    "landing_delta_pixels": 1
+  },
+  "look_registration": {
+    "neutral_center_x": 95.5,
+    "look_centers_x": [
+      96.0,
+      95.5,
+      97.0,
+      97.0,
+      96.0,
+      97.5,
+      97.5,
+      97.0,
+      95.5,
+      96.5,
+      98.5,
+      98.5,
+      98.5,
+      97.5,
+      97.5,
+      99.5
+    ],
+    "look_widths": [
+      168,
+      165,
+      164,
+      166,
+      164,
+      165,
+      165,
+      166,
+      167,
+      165,
+      163,
+      165,
+      165,
+      163,
+      163,
+      165
+    ],
+    "maximum_center_drift_pixels": 4.0,
+    "maximum_width_ratio": 1.030674846625767
+  },
+  "errors": [],
+  "warnings": [
+    "look direction 022.5 accepted with a reviewed warning",
+    "look direction 157.5 accepted with a reviewed warning",
+    "look direction 202.5 accepted with a reviewed warning",
+    "look direction 337.5 accepted with a reviewed warning",
+    "000 has transparent interior hole rows (y=90, y=91, y=92, y=93)",
+    "022.5 has transparent interior hole rows (y=90)",
+    "045 has transparent interior hole rows (y=90)",
+    "067.5 has transparent interior hole rows (y=90, y=91, y=92)",
+    "090 has transparent interior hole rows (y=90, y=91, y=92, y=93, +1 more)",
+    "180 has transparent interior hole rows (y=27, y=28, y=91)",
+    "247.5 has transparent interior hole rows (y=89, y=90)",
+    "270 has transparent interior hole rows (y=89, y=90, y=91, y=92, +1 more)",
+    "292.5 has transparent interior hole rows (y=89, y=90, y=91, y=92, +1 more)",
+    "315 has transparent interior hole rows (y=89, y=90, y=91, y=92, +1 more)",
+    "337.5 has transparent interior hole rows (y=89, y=90, y=91, y=92, +1 more)",
+    "090->112.5 diff is a local outlier (2515 pixels vs neighbor average 1523)"
+  ]
+}

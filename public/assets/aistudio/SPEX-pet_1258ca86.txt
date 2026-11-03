@@ -1,0 +1,5 @@
+Name: SPEX
+ChatGPT Pets ID: pet_6ae8720544588191a8c64f65c78fe6c9
+Active in ChatGPT Pets: yes
+Local desktop package: /Users/hassanamrani/.codex/pets/spex
+Final spritesheet: SPEX-spritesheet-v2.png

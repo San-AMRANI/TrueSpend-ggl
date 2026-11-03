@@ -23,6 +23,7 @@ import { WalletsManager } from './dashboard/WalletsManager';
 import TransactionForm from './TransactionForm';
 import { CommandPalette } from './CommandPalette';
 import { AIChat } from './AIChat';
+import { SpexCompanionPet } from './common/SpexCompanionPet';
 import { X, CheckCircle2, AlertCircle, Info, Calculator } from 'lucide-react';
 import type { DashboardTab } from '../types';
 
@@ -569,6 +570,13 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onDeleteWallet={handleDeleteWallet}
         />
       )}
+
+      {/* Interactive SPEX Companion Pet (16° Cursor Gaze, Patrol Flight & Live Reactions) */}
+      <SpexCompanionPet
+        activeTab={activeTab}
+        kpis={kpis}
+        onOpenChat={() => setActiveTab('chat')}
+      />
     </div>
   );
 }
