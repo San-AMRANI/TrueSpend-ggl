@@ -7,28 +7,77 @@ export interface CreateSubscriptionDTO {
   name: string;
   amount: number;
   currency?: string;
-  billingCycle?: 'monthly' | 'yearly' | 'quarterly' | 'weekly';
+  billingCycle?: string;
   category?: string;
   walletId?: string | null;
   nextBillingDate?: string | null;
-  status?: 'active' | 'paused' | 'reviewing' | 'cancelled';
+  status?: 'active' | 'planned' | 'paused' | 'reviewing' | 'cancelled';
   notes?: string;
   icon?: string;
   websiteUrl?: string;
+  recordInitialPayment?: boolean;
+  initialPaymentDate?: string;
 }
 
 export interface UpdateSubscriptionDTO {
   name?: string;
   amount?: number;
   currency?: string;
-  billingCycle?: 'monthly' | 'yearly' | 'quarterly' | 'weekly';
+  billingCycle?: string;
   category?: string;
   walletId?: string | null;
   nextBillingDate?: string | null;
-  status?: 'active' | 'paused' | 'reviewing' | 'cancelled';
+  status?: 'active' | 'planned' | 'paused' | 'reviewing' | 'cancelled';
   notes?: string;
   icon?: string;
   websiteUrl?: string;
+}
+
+function advanceDateByCycle(baseDate: Date, cycleRaw?: string | null): Date {
+  const result = new Date(baseDate.getTime());
+  const raw = (cycleRaw || 'monthly').trim().toLowerCase();
+
+  if (raw === 'weekly') {
+    result.setDate(result.getDate() + 7);
+    return result;
+  }
+  if (raw === 'biweekly') {
+    result.setDate(result.getDate() + 14);
+    return result;
+  }
+  if (raw === 'yearly') {
+    result.setFullYear(result.getFullYear() + 1);
+    return result;
+  }
+  if (raw === 'quarterly' || raw === 'every_3_months') {
+    result.setMonth(result.getMonth() + 3);
+    return result;
+  }
+  if (raw === 'every_2_months') {
+    result.setMonth(result.getMonth() + 2);
+    return result;
+  }
+  if (raw === 'every_6_months') {
+    result.setMonth(result.getMonth() + 6);
+    return result;
+  }
+
+  const customMonthsMatch = raw.match(/^every_(\d+)_months?$/);
+  if (customMonthsMatch) {
+    const n = Math.max(1, parseInt(customMonthsMatch[1], 10));
+    result.setMonth(result.getMonth() + n);
+    return result;
+  }
+
+  const customDaysMatch = raw.match(/^every_(\d+)_days?$/);
+  if (customDaysMatch) {
+    const d = Math.max(1, parseInt(customDaysMatch[1], 10));
+    result.setDate(result.getDate() + d);
+    return result;
+  }
+
+  result.setMonth(result.getMonth() + 1);
+  return result;
 }
 
 export class SubscriptionService {
@@ -66,7 +115,7 @@ export class SubscriptionService {
 
     const nextBillingDate = dto.nextBillingDate ? new Date(dto.nextBillingDate) : null;
 
-    return await subscriptionRepository.create({
+    const createdSub = await subscriptionRepository.create({
       userId,
       name,
       amount: amountNum.toFixed(2),
@@ -80,6 +129,33 @@ export class SubscriptionService {
       icon: dto.icon || '📱',
       websiteUrl: dto.websiteUrl?.trim() || '',
     });
+
+    if (dto.recordInitialPayment) {
+      let targetWalletId = walletId;
+      if (!targetWalletId) {
+        const wallets = await walletRepository.findAllByUserId(userId);
+        const mainWallet =
+          wallets.find((w) => w.type === 'Bank' && w.isMain) ||
+          wallets.find((w) => w.type === 'Bank') ||
+          wallets[0];
+        if (mainWallet) targetWalletId = mainWallet.id;
+      }
+      if (targetWalletId) {
+        const payDateStr = (dto.initialPaymentDate ? new Date(dto.initialPaymentDate) : new Date())
+          .toISOString()
+          .slice(0, 10);
+        await transactionService.createTransaction(userId, {
+          amount: amountNum,
+          type: 'Expense',
+          category: dto.category?.trim() || 'Subscriptions & Streaming',
+          notes: `Subscription: ${name}`,
+          walletId: targetWalletId,
+          transaction_date: payDateStr,
+        });
+      }
+    }
+
+    return createdSub;
   }
 
   async updateSubscription(userId: string, id: string, dto: UpdateSubscriptionDTO) {
@@ -155,25 +231,17 @@ export class SubscriptionService {
       transaction_date: dateToUse,
     });
 
-    // 2. Roll next billing date forward by 1 cycle
-    let nextDate = sub.nextBillingDate ? new Date(sub.nextBillingDate) : new Date(dateToUse);
-    if (isNaN(nextDate.getTime())) nextDate = new Date();
-
-    const cycle = sub.billingCycle || 'monthly';
-    const rolledDate = new Date(nextDate.getTime());
-    if (cycle === 'weekly') {
-      rolledDate.setDate(rolledDate.getDate() + 7);
-    } else if (cycle === 'quarterly') {
-      rolledDate.setMonth(rolledDate.getMonth() + 3);
-    } else if (cycle === 'yearly') {
-      rolledDate.setFullYear(rolledDate.getFullYear() + 1);
-    } else {
-      // Monthly default
-      rolledDate.setMonth(rolledDate.getMonth() + 1);
+    // 2. Roll next billing date forward by 1 cycle (or from paymentDate if planned/overdue)
+    let baseDate = sub.nextBillingDate ? new Date(sub.nextBillingDate) : new Date(dateToUse);
+    if (isNaN(baseDate.getTime()) || sub.status === 'planned') {
+      baseDate = new Date(dateToUse);
     }
+
+    const rolledDate = advanceDateByCycle(baseDate, sub.billingCycle);
 
     const updatedSub = await subscriptionRepository.update(id, userId, {
       nextBillingDate: rolledDate,
+      status: sub.status === 'planned' ? 'active' : sub.status,
     });
 
     return {
@@ -192,34 +260,34 @@ export class SubscriptionService {
 
     // Keywords to recognize subscription services
     const knownPatterns = [
-      { name: 'Netflix', category: 'Streaming & Media', icon: '🎬' },
-      { name: 'Spotify', category: 'Streaming & Media', icon: '🎵' },
-      { name: 'YouTube', category: 'Streaming & Media', icon: '▶️' },
-      { name: 'Apple', category: 'Digital Services', icon: '🍏' },
-      { name: 'iCloud', category: 'Cloud Storage', icon: '☁️' },
-      { name: 'Google', category: 'Digital Services', icon: '🌐' },
-      { name: 'Amazon Prime', category: 'Subscriptions & Streaming', icon: '📦' },
-      { name: 'ChatGPT / OpenAI', category: 'AI & Software', icon: '🤖' },
-      { name: 'Claude / Anthropic', category: 'AI & Software', icon: '🧠' },
-      { name: 'GitHub', category: 'Software & Dev', icon: '💻' },
-      { name: 'Gym / Fitness', category: 'Health & Fitness', icon: '💪' },
-      { name: 'Maroc Telecom', category: 'Internet & Telecom', icon: '📶' },
-      { name: 'Orange', category: 'Internet & Telecom', icon: '📱' },
-      { name: 'Inwi', category: 'Internet & Telecom', icon: '📡' },
-      { name: 'Fiber / Internet', category: 'Bills & Utilities', icon: '🌐' },
-      { name: 'Rent / Loyer', category: 'Housing & Rent', icon: '🏠' },
-      { name: 'Lydec / Redal / Amendis', category: 'Bills & Utilities', icon: '💡' },
-      { name: 'Assurance / Insurance', category: 'Insurance', icon: '🛡️' },
-      { name: 'Adobe', category: 'Software & Dev', icon: '🎨' },
-      { name: 'Notion', category: 'Software & Dev', icon: '📝' },
-      { name: 'Canva', category: 'Software & Dev', icon: '✨' },
-      { name: 'Disney+', category: 'Streaming & Media', icon: '🏰' },
+      { name: 'Netflix', category: 'Streaming & Media', icon: '🎬', defaultCycle: 'monthly' },
+      { name: 'Spotify', category: 'Streaming & Media', icon: '🎵', defaultCycle: 'monthly' },
+      { name: 'YouTube', category: 'Streaming & Media', icon: '▶️', defaultCycle: 'monthly' },
+      { name: 'Apple', category: 'Digital Services', icon: '🍏', defaultCycle: 'monthly' },
+      { name: 'iCloud', category: 'Cloud Storage', icon: '☁️', defaultCycle: 'monthly' },
+      { name: 'Google', category: 'Digital Services', icon: '🌐', defaultCycle: 'monthly' },
+      { name: 'Amazon Prime', category: 'Subscriptions & Streaming', icon: '📦', defaultCycle: 'monthly' },
+      { name: 'ChatGPT / OpenAI', category: 'AI & Software', icon: '🤖', defaultCycle: 'monthly' },
+      { name: 'Claude / Anthropic', category: 'AI & Software', icon: '🧠', defaultCycle: 'monthly' },
+      { name: 'GitHub', category: 'Software & Dev', icon: '💻', defaultCycle: 'monthly' },
+      { name: 'Gym / Fitness', category: 'Health & Fitness', icon: '💪', defaultCycle: 'every_3_months' },
+      { name: 'Maroc Telecom', category: 'Internet & Telecom', icon: '📶', defaultCycle: 'monthly' },
+      { name: 'Orange', category: 'Internet & Telecom', icon: '📱', defaultCycle: 'monthly' },
+      { name: 'Inwi', category: 'Internet & Telecom', icon: '📡', defaultCycle: 'monthly' },
+      { name: 'Fiber / Internet', category: 'Bills & Utilities', icon: '🌐', defaultCycle: 'monthly' },
+      { name: 'Rent / Loyer', category: 'Housing & Rent', icon: '🏠', defaultCycle: 'monthly' },
+      { name: 'Lydec / Redal / Amendis', category: 'Bills & Utilities', icon: '💡', defaultCycle: 'monthly' },
+      { name: 'Assurance / Insurance', category: 'Insurance', icon: '🛡️', defaultCycle: 'every_3_months' },
+      { name: 'Adobe', category: 'Software & Dev', icon: '🎨', defaultCycle: 'monthly' },
+      { name: 'Notion', category: 'Software & Dev', icon: '📝', defaultCycle: 'monthly' },
+      { name: 'Canva', category: 'Software & Dev', icon: '✨', defaultCycle: 'monthly' },
+      { name: 'Disney+', category: 'Streaming & Media', icon: '🏰', defaultCycle: 'monthly' },
     ];
 
     const detected: Array<{
       name: string;
       suggestedAmount: number;
-      suggestedCycle: 'monthly' | 'yearly' | 'quarterly' | 'weekly';
+      suggestedCycle: string;
       suggestedCategory: string;
       frequencyCount: number;
       lastSeenDate: string;
@@ -245,14 +313,26 @@ export class SubscriptionService {
         const amounts = matchedTxs.map((t) => parseFloat(t.amount as string) || 0).filter((a) => a > 0);
         if (amounts.length === 0) continue;
 
-        // Take mode or most recent amount
         const latestTx = matchedTxs[0];
         const suggestedAmount = parseFloat(latestTx.amount as string) || amounts[0];
+
+        // Infer cycle from gap between recent transactions if >= 2 occurrences
+        let inferredCycle = pattern.defaultCycle || 'monthly';
+        if (matchedTxs.length >= 2 && matchedTxs[0].createdAt && matchedTxs[1].createdAt) {
+          const gapDays = Math.abs(
+            (new Date(matchedTxs[0].createdAt).getTime() - new Date(matchedTxs[1].createdAt).getTime()) /
+              86400000
+          );
+          if (gapDays >= 75 && gapDays <= 110) inferredCycle = 'every_3_months';
+          else if (gapDays >= 50 && gapDays < 75) inferredCycle = 'every_2_months';
+          else if (gapDays >= 160 && gapDays <= 210) inferredCycle = 'every_6_months';
+          else if (gapDays >= 330) inferredCycle = 'yearly';
+        }
 
         detected.push({
           name: pattern.name,
           suggestedAmount: Math.round(suggestedAmount * 100) / 100,
-          suggestedCycle: 'monthly',
+          suggestedCycle: inferredCycle,
           suggestedCategory: pattern.category,
           frequencyCount: matchedTxs.length,
           lastSeenDate: latestTx.createdAt ? new Date(latestTx.createdAt).toISOString() : new Date().toISOString(),

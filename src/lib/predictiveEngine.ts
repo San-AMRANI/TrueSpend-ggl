@@ -285,9 +285,17 @@ export function computeHolisticForecast(params: {
         ? investmentsData?.rates?.EUR_TO_MAD || 10.8
         : 1;
     const amtMad = amt * rate;
-    if (s.billingCycle === 'yearly') return amtMad / 12;
-    if (s.billingCycle === 'quarterly') return amtMad / 3;
-    if (s.billingCycle === 'weekly') return (amtMad * 52) / 12;
+    const raw = (s.billingCycle || 'monthly').trim().toLowerCase();
+    if (raw === 'yearly') return amtMad / 12;
+    if (raw === 'every_6_months') return amtMad / 6;
+    if (raw === 'quarterly' || raw === 'every_3_months') return amtMad / 3;
+    if (raw === 'every_2_months') return amtMad / 2;
+    if (raw === 'weekly') return (amtMad * 52) / 12;
+    if (raw === 'biweekly') return (amtMad * 26) / 12;
+    const customMonths = raw.match(/^every_(\d+)_months?$/);
+    if (customMonths) return amtMad / Math.max(1, parseInt(customMonths[1], 10));
+    const customDays = raw.match(/^every_(\d+)_days?$/);
+    if (customDays) return (amtMad * 30.4375) / Math.max(1, parseInt(customDays[1], 10));
     return amtMad;
   };
 

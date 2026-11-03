@@ -132,15 +132,35 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     const subscriptionEvents: CalendarEvent[] = [];
     const daysInViewMonth = new Date(Date.UTC(ref.year, ref.month + 1, 0)).getUTCDate();
 
-    (subscriptions || []).filter((sub) => sub.status === 'active').forEach((sub) => {
+    (subscriptions || []).filter((sub) => sub.status === 'active' || sub.status === 'planned').forEach((sub) => {
       const subAmount = parseFloat(sub.amount) || 0;
       let billDay = 1;
+      let anchorYear = ref.year;
+      let anchorMonth = ref.month;
 
       if (sub.nextBillingDate) {
         const parsedNext = new Date(sub.nextBillingDate);
         if (!isNaN(parsedNext.getTime())) {
           billDay = parsedNext.getUTCDate();
+          anchorYear = parsedNext.getUTCFullYear();
+          anchorMonth = parsedNext.getUTCMonth();
         }
+      }
+
+      const rawCycle = (sub.billingCycle || 'monthly').trim().toLowerCase();
+      let intervalMonths = 1;
+      if (rawCycle === 'yearly') intervalMonths = 12;
+      else if (rawCycle === 'every_6_months') intervalMonths = 6;
+      else if (rawCycle === 'quarterly' || rawCycle === 'every_3_months') intervalMonths = 3;
+      else if (rawCycle === 'every_2_months') intervalMonths = 2;
+      else {
+        const mMatch = rawCycle.match(/^every_(\d+)_months?$/);
+        if (mMatch) intervalMonths = Math.max(1, parseInt(mMatch[1], 10));
+      }
+
+      const monthDiff = (ref.year - anchorYear) * 12 + (ref.month - anchorMonth);
+      if (intervalMonths > 1 && Math.abs(monthDiff) % intervalMonths !== 0) {
+        return;
       }
 
       // Clamp billing day to the number of days in the currently viewed month
@@ -151,7 +171,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
         id: `sub-${sub.id}-${ref.year}-${ref.month}-${effectiveDay}`,
         date: subDate,
         kind: 'subscription' as const,
-        title: `${sub.icon || '📱'} ${sub.name}`,
+        title: `${sub.icon || '📱'} ${sub.name}${sub.status === 'planned' ? ' (Planned)' : ''}`,
         amount: subAmount,
         subscription: sub,
       });

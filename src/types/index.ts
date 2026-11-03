@@ -176,8 +176,17 @@ export interface Goal {
   updatedAt: string;
 }
 
-export type SubscriptionBillingCycle = 'monthly' | 'yearly' | 'quarterly' | 'weekly';
-export type SubscriptionStatus = 'active' | 'paused' | 'reviewing' | 'cancelled';
+export type SubscriptionBillingCycle =
+  | 'monthly'
+  | 'every_2_months'
+  | 'every_3_months'
+  | 'quarterly'
+  | 'every_6_months'
+  | 'yearly'
+  | 'weekly'
+  | 'biweekly'
+  | (string & {});
+export type SubscriptionStatus = 'active' | 'planned' | 'paused' | 'reviewing' | 'cancelled';
 
 export interface Subscription {
   id: string;

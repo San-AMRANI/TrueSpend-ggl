@@ -109,9 +109,17 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const monthlySubBurn = useMemo(() => {
     return activeSubs.reduce((sum, s) => {
       const amt = parseFloat(s.amount) || 0;
-      if (s.billingCycle === 'yearly') return sum + amt / 12;
-      if (s.billingCycle === 'quarterly') return sum + amt / 3;
-      if (s.billingCycle === 'weekly') return sum + (amt * 52) / 12;
+      const raw = (s.billingCycle || 'monthly').trim().toLowerCase();
+      if (raw === 'yearly') return sum + amt / 12;
+      if (raw === 'every_6_months') return sum + amt / 6;
+      if (raw === 'quarterly' || raw === 'every_3_months') return sum + amt / 3;
+      if (raw === 'every_2_months') return sum + amt / 2;
+      if (raw === 'weekly') return sum + (amt * 52) / 12;
+      if (raw === 'biweekly') return sum + (amt * 26) / 12;
+      const customMonths = raw.match(/^every_(\d+)_months?$/);
+      if (customMonths) return sum + amt / Math.max(1, parseInt(customMonths[1], 10));
+      const customDays = raw.match(/^every_(\d+)_days?$/);
+      if (customDays) return sum + (amt * 30.4375) / Math.max(1, parseInt(customDays[1], 10));
       return sum + amt;
     }, 0);
   }, [activeSubs]);
