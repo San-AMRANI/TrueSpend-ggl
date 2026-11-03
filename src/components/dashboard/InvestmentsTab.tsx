@@ -63,6 +63,8 @@ import {
   EyeOff,
 } from 'lucide-react';
 import { usePrivacy } from '../../context/PrivacyContext';
+import { FundingStocksDashboard } from './FundingStocksDashboard';
+import { classifyAssetClass } from '../../lib/stockCategories';
 
 interface InvestmentsTabProps {
   investmentsData: InvestmentsData | null;
@@ -225,6 +227,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   kpis,
   isSaving,
   onUpsertPosition,
+  onUpdatePosition,
   onDeletePosition,
   onExecuteOrder,
   onDeleteOrder,
@@ -239,9 +242,9 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   setActiveTab,
 }) => {
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
-  const [activeSubView, setActiveSubView] = useState<ActiveSubView>('spot');
-  const [walletScopeFilter, setWalletScopeFilter] = useState<WalletScopeFilterType>('ALL');
-  const [spotFilter, setSpotFilter] = useState<SpotFilterType>('ALL');
+  const [activeSubView, setActiveSubView] = useState<ActiveSubView>('stocks');
+  const [walletScopeFilter, setWalletScopeFilter] = useState<WalletScopeFilterType>('SPOT');
+  const [spotFilter, setSpotFilter] = useState<SpotFilterType>('CRYPTO');
   const [spotSearch, setSpotSearch] = useState('');
   const [showSetupGuide, setShowSetupGuide] = useState(false);
   const [isRefreshingLive, setIsRefreshingLive] = useState(false);
@@ -415,16 +418,23 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   const filteredSpotBalances = useMemo(() => {
     const list = binance?.balances || [];
     const filtered = list.filter((b) => {
+      const isStockAsset =
+        b.category === 'Tokenized Stocks & Equities' ||
+        classifyAssetClass({
+          ticker: b.asset,
+          sector: b.category,
+          walletType: b.walletType,
+        }) === 'STOCK';
+
+      // Strictly separate US / Funding Stocks from Spot Cryptocurrency unless explicitly filtering for STOCKS
+      if (spotFilter !== 'STOCKS' && isStockAsset) return false;
+      if (spotFilter === 'STOCKS' && !isStockAsset) return false;
+
       if (walletScopeFilter === 'SPOT' && (b.spotTotal ?? 0) <= 0) return false;
       if (walletScopeFilter === 'FUNDING' && (b.fundingTotal ?? 0) <= 0) return false;
       if (walletScopeFilter === 'EARN' && (b.earnTotal ?? 0) <= 0 && b.walletType !== 'EARN') return false;
 
-      if (spotFilter === 'STOCKS' && b.category !== 'Tokenized Stocks & Equities') return false;
-      if (
-        spotFilter === 'CRYPTO' &&
-        (b.isStablecoinOrFiat || b.category === 'Tokenized Stocks & Equities')
-      )
-        return false;
+      if (spotFilter === 'CRYPTO' && (b.isStablecoinOrFiat || isStockAsset)) return false;
       if (spotFilter === 'STABLECOIN' && !b.isStablecoinOrFiat) return false;
       if (spotFilter === 'LOCKED' && b.locked <= 0 && (b.earnTotal ?? 0) <= 0) return false;
 
@@ -512,24 +522,32 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
     };
   }, [investmentsData?.positions]);
 
-  // Unified Stocks & Equities positions (Binance Funding/Spot Tokenized Stocks + Manual BVC/US/ETF Positions)
+  // Strictly separated US, Funding & BVC Stock Positions (Excludes Spot Cryptocurrencies & Stablecoins)
   const stockAndEquityPositions: StockPosition[] = useMemo(() => {
     const allPos = investmentsData?.positions || [];
-    const filtered = allPos.filter(
+    return allPos.filter(
       (p) =>
-        p.source !== 'binance' ||
-        p.sector === 'Tokenized Stocks & Equities' ||
-        p.market === 'GLOBAL' ||
-        p.market === 'US' ||
-        p.market === 'BVC' ||
-        p.market === 'ETF'
+        classifyAssetClass({
+          ticker: p.ticker,
+          market: p.market,
+          sector: p.sector,
+        }) === 'STOCK'
     );
-    // If user currently holds all assets in Binance and wants to analyze all non-stablecoin positions in the Stocks & Equities Intelligence suite too:
-    if (filtered.length === 0) {
-      return allPos.filter((p) => p.sector !== 'Stablecoin / Fiat Reserve');
-    }
-    return filtered;
   }, [investmentsData?.positions]);
+
+  // Strictly separated Spot Cryptocurrency & Stablecoin balances
+  const spotCryptoBalancesCount = useMemo(() => {
+    const list = binance?.balances || [];
+    return list.filter(
+      (b) =>
+        b.category !== 'Tokenized Stocks & Equities' &&
+        classifyAssetClass({
+          ticker: b.asset,
+          sector: b.category,
+          walletType: b.walletType,
+        }) !== 'STOCK'
+    ).length;
+  }, [binance?.balances]);
 
   // Filtered Portfolio History for Chart
   const chartHistoryData = useMemo(() => {
@@ -1817,21 +1835,10 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       )}
 
       {/* ===================================================================
-          SUB-NAVIGATION BAR (5 SPECIALIZED VIEWS)
+          SUB-NAVIGATION BAR (SEPARATED FUNDING STOCKS VS SPOT CRYPTO)
          =================================================================== */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-800 pb-3">
         <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-900 border border-gray-200/80 dark:border-gray-800">
-          <button
-            type="button"
-            onClick={() => setActiveSubView('spot')}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
-              activeSubView === 'spot'
-                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-xs'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            Binance Holdings ({binance?.balances?.length || 0})
-          </button>
           <button
             type="button"
             onClick={() => setActiveSubView('stocks')}
@@ -1842,7 +1849,21 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
             }`}
           >
             <Sparkles className="h-3.5 w-3.5" />
-            Stocks &amp; Equities Intelligence ({stockAndEquityPositions.length})
+            US &amp; Funding Stocks Dashboard ({stockAndEquityPositions.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveSubView('spot');
+              if (spotFilter === 'STOCKS') setSpotFilter('CRYPTO');
+            }}
+            className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
+              activeSubView === 'spot'
+                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-xs'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            Spot Cryptocurrency &amp; Earn ({spotCryptoBalancesCount})
           </button>
           <button
             type="button"
@@ -1882,11 +1903,11 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setActiveSubView('stocks')}
+            onClick={() => setActiveSubView(activeSubView === 'stocks' ? 'spot' : 'stocks')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/80 transition-colors"
           >
             <TrendingUp className="h-3.5 w-3.5" />
-            Stock Simulator &amp; Insights
+            {activeSubView === 'stocks' ? 'Switch to Spot Crypto →' : 'Open US Stocks Dashboard →'}
           </button>
           <button
             type="button"
@@ -1900,7 +1921,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       </div>
 
       {/* ===================================================================
-          VIEW 1: BINANCE HOLDINGS (SPOT, FUNDING STOCKS & EARN) WITH FORENSICS
+          VIEW 1: SPOT CRYPTOCURRENCY & SIMPLE EARN (SEPARATED FROM STOCKS)
          =================================================================== */}
       {activeSubView === 'spot' && (
         <div className="space-y-6">
@@ -1908,16 +1929,16 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
             <div className="p-4 border-b border-gray-100 dark:border-gray-800 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
               <div>
                 <h2 className="text-sm font-bold text-gray-900 dark:text-white">
-                  Binance Live Positions (Spot, Funding Stocks &amp; Simple Earn)
+                  Spot Cryptocurrency &amp; Simple Earn Positions (Separated from US &amp; Funding Stocks)
                 </h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Click any asset row to expand its full Position Forensics: Entry Cost, Fee Loss, Net P&amp;L After Fees, Breakeven Target Price, and Dividend Yield.
+                  Dedicated to your Spot Cryptocurrencies (BTC, ETH, SOL, BNB) and Stablecoin Reserves. US &amp; Funding Wallet Stocks are managed in the dedicated Stocks Dashboard tab.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-950 text-xs">
-                  {(['ALL', 'SPOT', 'FUNDING', 'EARN'] as WalletScopeFilterType[]).map((scope) => (
+                  {(['ALL', 'SPOT', 'EARN'] as WalletScopeFilterType[]).map((scope) => (
                     <button
                       key={scope}
                       type="button"
@@ -1929,18 +1950,16 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                       }`}
                     >
                       {scope === 'ALL'
-                        ? 'All Wallets'
+                        ? 'Spot + Earn'
                         : scope === 'SPOT'
-                        ? 'Spot'
-                        : scope === 'FUNDING'
-                        ? 'Funding (Stocks)'
-                        : 'Earn'}
+                        ? 'Spot Wallet'
+                        : 'Simple Earn'}
                     </button>
                   ))}
                 </div>
 
                 <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-950 text-xs">
-                  {(['ALL', 'STOCKS', 'CRYPTO', 'STABLECOIN', 'LOCKED'] as SpotFilterType[]).map((f) => (
+                  {(['CRYPTO', 'ALL', 'STABLECOIN', 'LOCKED'] as SpotFilterType[]).map((f) => (
                     <button
                       key={f}
                       type="button"
@@ -1951,15 +1970,13 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
                           : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-300'
                       }`}
                     >
-                      {f === 'ALL'
-                        ? 'All'
-                        : f === 'STOCKS'
-                        ? 'Stocks'
-                        : f === 'CRYPTO'
-                        ? 'Crypto'
+                      {f === 'CRYPTO'
+                        ? 'Cryptocurrency Only'
+                        : f === 'ALL'
+                        ? 'Crypto + Stablecoins'
                         : f === 'STABLECOIN'
                         ? 'Stablecoins'
-                        : 'Locked'}
+                        : 'Locked / Earn'}
                     </button>
                   ))}
                 </div>
@@ -2479,541 +2496,24 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       )}
 
       {/* ===================================================================
-          VIEW 2: STOCKS & EQUITIES INTELLIGENCE SUITE (ENHANCED)
+          VIEW 2: US & FUNDING STOCKS DASHBOARD (SEPARATED FROM SPOT CRYPTO)
          =================================================================== */}
       {activeSubView === 'stocks' && (
-        <div className="space-y-6">
-          {/* Stocks & Equities Executive Summary Header */}
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>Institutional Equities, Dividends &amp; Fee Drag Intelligence</span>
-                </div>
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white mt-0.5">
-                  Stocks &amp; Equities Intelligence Suite (Binance Funding Stocks, US ETFs &amp; Casablanca BVC)
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Deep per-position equity analytics: WAC cost basis, entry &amp; exit fee drag, net breakeven price, dividend yield on cost (YoC), 5-year DRIP compounding, and pre-trade fee/profit simulation.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  Read-Only Equities &amp; Funding Telemetry
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setActiveSubView('trades')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
-                >
-                  <History className="h-3.5 w-3.5" />
-                  Open Trade &amp; Lot Forensics
-                </button>
-              </div>
-            </div>
-
-            {/* 4-Card Equities & Funding Summary Strip */}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs font-mono tabular-nums">
-              <div className="p-3 rounded-xl bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800">
-                <div className="font-sans text-[11px] font-semibold uppercase text-gray-400">
-                  Funding &amp; Stock Holdings Value
-                </div>
-                <div className="text-base font-bold text-gray-900 dark:text-white mt-1">
-                  {formatUsd(
-                    stockEquityUsd > 0
-                      ? stockEquityUsd
-                      : totalFundingValueUsd > 0
-                      ? totalFundingValueUsd
-                      : currentLivePortfolioUsd
-                  )}{' '}
-                  (
-                  {formatMad(
-                    stockEquityMad > 0
-                      ? stockEquityMad
-                      : totalFundingValueMad > 0
-                      ? totalFundingValueMad
-                      : currentLivePortfolioMad,
-                    1
-                  )}
-                  )
-                </div>
-                <div className="font-sans text-[11px] text-gray-500 mt-0.5">
-                  Synced across Funding Wallet, Spot &amp; BVC
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800">
-                <div className="font-sans text-[11px] font-semibold uppercase text-gray-400">
-                  Net P&amp;L After Round-Trip Fees
-                </div>
-                <div
-                  className={`text-base font-bold mt-1 ${
-                    netCapitalPnlMad >= 0
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : 'text-rose-600 dark:text-rose-400'
-                  }`}
-                >
-                  {formatSignedUsd(netCapitalPnlUsd)} ({formatSignedMad(netCapitalPnlMad, 1)})
-                </div>
-                <div className="font-sans text-[11px] text-gray-500 mt-0.5">
-                  Fee Drag: -{formatUsd(totalFeeDragUsd, 3)} ({feeDragPercent.toFixed(2)}%)
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800">
-                <div className="font-sans text-[11px] font-semibold uppercase text-gray-400">
-                  Annual Dividend Run-Rate &amp; YoC
-                </div>
-                <div className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                  +{formatUsd(annualDividendsUsd)}/yr (+{formatMad(annualDividendsMad, 1)}/yr)
-                </div>
-                <div className="font-sans text-[11px] text-gray-500 mt-0.5">
-                  Yield: {(investmentsData?.portfolioYieldPercent ?? 0).toFixed(2)}% · YoC:{' '}
-                  {(investmentsData?.yieldOnCostPercent ?? 0).toFixed(2)}%
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800">
-                <div className="font-sans text-[11px] font-semibold uppercase text-gray-400">
-                  5-Year DRIP Compounding Est.
-                </div>
-                <div className="text-base font-bold text-indigo-600 dark:text-indigo-400 mt-1">
-                  {formatUsd((currentLivePortfolioUsd || 83) * 1.48)} (
-                  {formatMad((currentLivePortfolioMad || 830) * 1.48, 0)})
-                </div>
-                <div className="font-sans text-[11px] text-gray-500 mt-0.5">
-                  Reinvested dividends + historical equity CAGR
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Active Positions Deep-Dive Cards (Stocks, Funding Equities & Core Holdings) */}
-          <div className="grid gap-4 lg:grid-cols-2">
-            {(investmentsData?.positions || [])
-              .filter((p) => p.sector !== 'Stablecoin / Fiat Reserve')
-              .map((pos) => {
-                const isSelected = selectedStockDetailId === pos.id;
-                const grossPnlMad = pos.unrealizedPnlMad;
-                const grossPnlUsd = pos.unrealizedPnlUsd ?? grossPnlMad / usdToMadRate;
-                const feeLossMad = pos.totalFeeLossMad ?? 0;
-                const feeLossUsd = pos.totalFeeLossUsd ?? feeLossMad / usdToMadRate;
-                const netPnlMad = pos.netPnlAfterFeesMad ?? grossPnlMad - feeLossMad;
-                const netPnlUsd = pos.netPnlAfterFeesUsd ?? grossPnlUsd - feeLossUsd;
-                const totalRetMad = pos.totalReturnWithDividendMad ?? netPnlMad;
-                const totalRetUsd = pos.totalReturnWithDividendUsd ?? netPnlUsd;
-
-                return (
-                  <div
-                    key={pos.id}
-                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4 hover:border-indigo-500/40 transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center font-mono font-bold text-xs text-indigo-700 dark:text-indigo-300">
-                          {pos.ticker.slice(0, 4)}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-base text-gray-900 dark:text-white">
-                              {pos.ticker}
-                            </span>
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {pos.companyName}
-                            </span>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-                              {pos.market} · {pos.sector}
-                            </span>
-                          </div>
-                          <div className="text-xs font-mono tabular-nums text-gray-500 dark:text-gray-400 mt-0.5">
-                            {formatQty(pos.sharesNum)} units · Avg Buy:{' '}
-                            {pos.currency === 'MAD'
-                              ? formatMad(pos.avgCostNum)
-                              : formatUsd(pos.avgCostNum)}{' '}
-                            · Breakeven:{' '}
-                            <strong className="text-indigo-600 dark:text-indigo-400">
-                              {pos.currency === 'MAD'
-                                ? formatMad(pos.breakevenPriceMad ?? pos.avgCostNum)
-                                : formatUsd(pos.breakevenPriceUsd ?? pos.avgCostNum)}
-                            </strong>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-right font-mono tabular-nums">
-                        <div className="text-base font-bold text-gray-900 dark:text-white">
-                          {formatUsd(pos.marketValueUsd ?? pos.marketValueMad / usdToMadRate)}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {formatMad(pos.marketValueMad, 2)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 4-Column Forensic Metrics Inside Each Card */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 rounded-xl bg-gray-50/80 dark:bg-gray-950/60 border border-gray-100 dark:border-gray-800/80 text-xs font-mono tabular-nums">
-                      <div>
-                        <div className="font-sans text-[10px] uppercase text-gray-400">
-                          Gross P&amp;L
-                        </div>
-                        <div
-                          className={`font-bold mt-0.5 ${
-                            grossPnlUsd >= 0
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-rose-600 dark:text-rose-400'
-                          }`}
-                        >
-                          {formatSignedUsd(grossPnlUsd)}
-                        </div>
-                        <div className="text-[11px] text-gray-500">
-                          {formatSignedMad(grossPnlMad, 1)} ({pos.unrealizedPnlPercent >= 0 ? '+' : ''}
-                          {pos.unrealizedPnlPercent.toFixed(1)}%)
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="font-sans text-[10px] uppercase text-gray-400">
-                          Loss on Fees
-                        </div>
-                        <div className="font-bold text-rose-600 dark:text-rose-400 mt-0.5">
-                          -{formatUsd(feeLossUsd, 3)}
-                        </div>
-                        <div className="text-[11px] text-gray-500">
-                          -{formatMad(feeLossMad, 2)} ({(pos.feeDragPercent ?? 0).toFixed(2)}%)
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="font-sans text-[10px] uppercase text-gray-400">
-                          Dividends &amp; Yield
-                        </div>
-                        <div className="font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                          +{formatUsd((pos.annualDividendMad || 0) / usdToMadRate)}/yr
-                        </div>
-                        <div className="text-[11px] text-gray-500">
-                          Yield {pos.dividendYieldPercent.toFixed(2)}% · Accrued +
-                          {formatUsd(pos.accruedDividendUsd ?? 0)}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="font-sans text-[10px] uppercase text-gray-400">
-                          Total Net Return
-                        </div>
-                        <div
-                          className={`font-bold mt-0.5 ${
-                            totalRetUsd >= 0
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-rose-600 dark:text-rose-400'
-                          }`}
-                        >
-                          {formatSignedUsd(totalRetUsd)}
-                        </div>
-                        <div className="text-[11px] text-gray-500">
-                          {formatSignedMad(totalRetMad, 1)} (After Fees + Divs)
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Footer: 5Y DRIP Projection, Weight Drift & Action */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
-                      <div className="flex flex-wrap items-center gap-3 text-gray-500 dark:text-gray-400 font-mono tabular-nums">
-                        <span>
-                          Weight: <strong className="text-gray-900 dark:text-white">{pos.actualWeightPercent.toFixed(1)}%</strong>
-                        </span>
-                        <span>·</span>
-                        <span>
-                          5Y DRIP Est.:{' '}
-                          <strong className="text-emerald-600 dark:text-emerald-400">
-                            {formatMad(pos.drip5YearProjectedValueMad ?? pos.marketValueMad * 1.45, 0)}
-                          </strong>
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleInspectTickerTrades(pos.ticker)}
-                          className="px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition-colors"
-                        >
-                          Inspect Trade &amp; Lot Forensics →
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSelectedStockDetailId((prev) => (prev === pos.id ? null : pos.id))
-                          }
-                          className="text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-                        >
-                          {isSelected ? 'Hide Thesis' : 'Thesis & Math'}
-                        </button>
-                      </div>
-                    </div>
-
-                    {isSelected && (
-                      <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-xs space-y-2">
-                        <p className="text-gray-600 dark:text-gray-400">
-                          <strong>Conviction Thesis:</strong> {pos.convictionThesis || 'Core portfolio holding'}
-                        </p>
-                        <div className="grid grid-cols-3 gap-2 font-mono tabular-nums text-[11px] bg-gray-50 dark:bg-gray-950 p-2.5 rounded-lg">
-                          <div>
-                            <span className="text-gray-400 block font-sans">Distance to Breakeven</span>
-                            <span className="font-bold text-gray-900 dark:text-white">
-                              {(pos.distanceToBreakevenPercent ?? 0) >= 0 ? '+' : ''}
-                              {(pos.distanceToBreakevenPercent ?? 0).toFixed(2)}%
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-gray-400 block font-sans">Yield on Cost (YoC)</span>
-                            <span className="font-bold text-emerald-600">
-                              {(pos.yieldOnCostPercent ?? pos.dividendYieldPercent).toFixed(2)}%
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-gray-400 block font-sans">Safe Surplus Buying Power</span>
-                            <span className="font-bold text-indigo-600">
-                              +{formatQty(pos.affordableSharesFromSurplus)} {pos.ticker}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-          </div>
-
-          {/* Interactive Stock Trade, Fee Drag, Dividend & Breakeven Simulator */}
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
-              <div>
-                <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                  <Calculator className="h-4 w-4 text-indigo-500" />
-                  <span>Smart Stock Trade, Fee Loss, Dividend &amp; Breakeven Simulator</span>
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Calculate exact entry fees, exit fees, breakeven stock price, accrued dividends, and net return before placing any stock trade.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid gap-6 lg:grid-cols-12 items-center">
-              <div className="lg:col-span-5 grid gap-3 sm:grid-cols-2 text-xs">
-                <div className="sm:col-span-2">
-                  <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                    Select Stock / ETF from Live Catalog
-                  </label>
-                  <select
-                    value={simTicker}
-                    onChange={(e) => setSimTicker(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white font-mono"
-                  >
-                    {(investmentsData?.catalog || []).map((c) => (
-                      <option key={c.ticker} value={c.ticker}>
-                        {c.ticker} — {c.companyName} ({c.price} {c.currency} · Div {c.dividendYieldPercent}%)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                    Position Size (USD)
-                  </label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="1"
-                    value={simInvestUsd}
-                    onChange={(e) => setSimInvestUsd(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-mono text-gray-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                    Expected Price Move (%)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={simTargetMovePct}
-                    onChange={(e) => setSimTargetMovePct(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-mono text-gray-900 dark:text-white"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                    Holding Period (Months for Dividend Accrual)
-                  </label>
-                  <input
-                    type="number"
-                    step="1"
-                    min="1"
-                    max="120"
-                    value={simHoldingMonths}
-                    onChange={(e) => setSimHoldingMonths(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-mono text-gray-900 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="lg:col-span-7 grid gap-3 sm:grid-cols-3 text-xs font-mono tabular-nums bg-gray-50/70 dark:bg-gray-950/60 p-4 rounded-xl border border-gray-200/80 dark:border-gray-800">
-                <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-1">
-                  <div className="font-sans text-[11px] text-gray-400 uppercase font-semibold">
-                    Shares &amp; Breakeven
-                  </div>
-                  <div className="text-sm font-bold text-gray-900 dark:text-white">
-                    {formatQty(stockSimulation.sharesAcquired)} {stockSimulation.stock.ticker}
-                  </div>
-                  <div className="text-[11px] text-gray-500">
-                    Entry: {formatUsd(stockSimulation.stockPriceUsd)}
-                  </div>
-                  <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
-                    Breakeven: {formatUsd(stockSimulation.breakevenStockPriceUsd)}
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-1">
-                  <div className="font-sans text-[11px] text-gray-400 uppercase font-semibold">
-                    Round-Trip Fee Loss
-                  </div>
-                  <div className="text-sm font-bold text-rose-600 dark:text-rose-400">
-                    -{formatUsd(stockSimulation.totalRoundTripFeesUsd, 3)}
-                  </div>
-                  <div className="text-[11px] text-gray-500">
-                    -{formatMad(stockSimulation.totalRoundTripFeesMad, 2)}
-                  </div>
-                  <div className="text-[11px] text-emerald-600 dark:text-emerald-400">
-                    Divs Earned: +{formatUsd(stockSimulation.proratedDividendUsd, 2)}
-                  </div>
-                </div>
-
-                <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-1">
-                  <div className="font-sans text-[11px] text-gray-400 uppercase font-semibold">
-                    Net Profit / Loss
-                  </div>
-                  <div
-                    className={`text-sm font-bold ${
-                      stockSimulation.totalNetReturnUsd >= 0
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-rose-600 dark:text-rose-400'
-                    }`}
-                  >
-                    {formatSignedUsd(stockSimulation.totalNetReturnUsd)} (
-                    {stockSimulation.totalNetRoiPct >= 0 ? '+' : ''}
-                    {stockSimulation.totalNetRoiPct.toFixed(2)}%)
-                  </div>
-                  <div className="text-[11px] text-gray-500">
-                    {formatSignedMad(stockSimulation.totalNetReturnMad, 2)}
-                  </div>
-                  <div className="text-[11px] text-gray-400">
-                    Gross: {formatSignedUsd(stockSimulation.grossCapitalGainUsd)}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Read-Only Global, US, ETF & Casablanca BVC Market Benchmark Explorer */}
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-3">
-              <div>
-                <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-indigo-500" />
-                  <span>Global Equities, Dividend ETFs &amp; Casablanca BVC Benchmark Explorer (Read-Only)</span>
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Click any stock or ETF to load it into the Fee &amp; Breakeven Simulator or inspect its live Trade Forensics benchmark.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-950 text-xs">
-                  {(['ALL', 'US', 'ETF', 'BVC'] as const).map((mkt) => (
-                    <button
-                      key={mkt}
-                      type="button"
-                      onClick={() => setCatalogMarketFilter(mkt)}
-                      className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
-                        catalogMarketFilter === mkt
-                          ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs font-semibold'
-                          : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-300'
-                      }`}
-                    >
-                      {mkt}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="relative">
-                  <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={catalogExplorerSearch}
-                    onChange={(e) => setCatalogExplorerSearch(e.target.value)}
-                    placeholder="Search NVDA, TSLA, SCHD, ATW..."
-                    className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {filteredCatalogItems.map((item) => (
-                <div
-                  key={item.ticker}
-                  className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/40 flex flex-col justify-between gap-2 text-xs"
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono font-bold text-sm text-gray-900 dark:text-white">
-                        {item.ticker}
-                      </span>
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">
-                        {item.market} · {item.sector}
-                      </span>
-                    </div>
-                    <div className="text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                      {item.companyName}
-                    </div>
-                    <div className="mt-2 flex items-baseline justify-between font-mono tabular-nums">
-                      <span className="font-bold text-gray-900 dark:text-white">
-                        {item.currency === 'MAD'
-                          ? formatMad(item.price, 2)
-                          : formatUsd(item.price, 2)}
-                      </span>
-                      <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">
-                        Div Yield: {item.dividendYieldPercent.toFixed(2)}%
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-gray-200/60 dark:border-gray-800 flex items-center justify-between gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setSimTicker(item.ticker)}
-                      className="flex-1 py-1 px-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:border-indigo-500 transition-colors"
-                    >
-                      Simulate
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleInspectTickerTrades(item.ticker)}
-                      className="flex-1 py-1 px-2 rounded bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-colors"
-                    >
-                      Forensics →
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <FundingStocksDashboard
+          investmentsData={investmentsData}
+          wallets={wallets}
+          isSaving={isSaving}
+          usdToMadRate={usdToMadRate}
+          onUpsertPosition={onUpsertPosition}
+          onUpdatePosition={onUpdatePosition}
+          onDeletePosition={onDeletePosition}
+          onExecuteOrder={onExecuteOrder}
+          onInspectTickerTrades={handleInspectTickerTrades}
+          onSwitchToSpotCrypto={() => {
+            setSpotFilter('CRYPTO');
+            setActiveSubView('spot');
+          }}
+        />
       )}
 
       {/* ===================================================================

@@ -8,6 +8,11 @@ import type {
   BinanceSymbolTradeSummary,
   BinanceWalletBreakdownItem,
 } from '../../src/types/index.js';
+import {
+  classifyAssetClass,
+  normalizeStockTicker,
+  TICKER_TO_STOCK_SECTOR,
+} from '../../src/lib/stockCategories.js';
 
 /**
  * Official Binance Spot REST API base endpoints.
@@ -110,17 +115,46 @@ const ASSET_METADATA: Record<
   AMD: { name: 'Advanced Micro Devices', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
   INTC: { name: 'Intel Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.5 },
   PLTR: { name: 'Palantir Technologies', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  TSM: { name: 'Taiwan Semiconductor (TSMC)', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.4 },
+  ASML: { name: 'ASML Holding NV', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.75 },
+  ARM: { name: 'Arm Holdings plc', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  MU: { name: 'Micron Technology', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.45 },
+  SMCI: { name: 'Super Micro Computer', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  CRM: { name: 'Salesforce Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.6 },
+  ORCL: { name: 'Oracle Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.95 },
+  ADBE: { name: 'Adobe Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  CAT: { name: 'Caterpillar Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.48 },
+  DE: { name: 'Deere & Co. (John Deere)', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.42 },
+  GE: { name: 'GE Aerospace', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.65 },
+  HON: { name: 'Honeywell International', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 2.1 },
+  BA: { name: 'Boeing Co.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  LMT: { name: 'Lockheed Martin Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 2.65 },
+  F: { name: 'Ford Motor Co.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 5.4 },
+  GM: { name: 'General Motors Co.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.05 },
   DIS: { name: 'Walt Disney Co.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.85 },
   PYPL: { name: 'PayPal Holdings', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
   V: { name: 'Visa Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.76 },
   MA: { name: 'Mastercard Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.55 },
   JPM: { name: 'JPMorgan Chase & Co.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 2.15 },
+  BAC: { name: 'Bank of America Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 2.45 },
+  GS: { name: 'Goldman Sachs Group', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 2.2 },
+  MS: { name: 'Morgan Stanley', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 3.1 },
+  WFC: { name: 'Wells Fargo & Co.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 2.35 },
   KO: { name: 'Coca-Cola Co.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 3.05 },
   PEP: { name: 'PepsiCo Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 3.2 },
+  WMT: { name: 'Walmart Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.1 },
+  MCD: { name: "McDonald's Corp.", category: 'Tokenized Stocks & Equities', dividendYieldPercent: 2.35 },
+  NKE: { name: 'Nike Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.85 },
+  LLY: { name: 'Eli Lilly & Co.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.65 },
+  UNH: { name: 'UnitedHealth Group', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.55 },
+  JNJ: { name: 'Johnson & Johnson', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 3.15 },
+  XOM: { name: 'Exxon Mobil Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 3.35 },
+  CVX: { name: 'Chevron Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 4.15 },
   O: { name: 'Realty Income Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 5.45 },
   AVGO: { name: 'Broadcom Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 1.2 },
   COST: { name: 'Costco Wholesale', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.52 },
   BRK: { name: 'Berkshire Hathaway', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  'BRK-B': { name: 'Berkshire Hathaway (Class B)', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
 
   // Layer 1 Core
   BTC: { name: 'Bitcoin', category: 'Layer 1 Core', dividendYieldPercent: 0 },
@@ -740,8 +774,9 @@ export class BinanceService {
       };
     }
 
-    // Check external live stock quotes (e.g. for Tokenized Stocks in Funding/Spot like TSLA, NVDA, AAPL, MSFT)
-    const stockQuote = externalStockQuotes?.[clean];
+    // Check external live stock quotes (e.g. for Tokenized Stocks in Funding/Spot like TSLA, NVDA, AAPL, MSFT, CAT, JPM)
+    const normalizedStockSym = normalizeStockTicker(clean);
+    const stockQuote = externalStockQuotes?.[clean] || externalStockQuotes?.[normalizedStockSym];
     if (stockQuote && stockQuote.price > 0) {
       const priceUsd =
         stockQuote.currency === 'MAD'
@@ -755,7 +790,7 @@ export class BinanceService {
         change24hPercent: stockQuote.change24hPercent || 0,
         high24hUsd: priceUsd * 1.012,
         low24hUsd: priceUsd * 0.988,
-        defaultSymbol: `${clean}USDT`,
+        defaultSymbol: `${normalizedStockSym}USDT`,
         isStablecoinOrFiat: false,
       };
     }
@@ -1587,14 +1622,36 @@ export class BinanceService {
         if (entry.total <= 0 && entry.btcValuation <= 0) continue;
 
         const cleanAsset = entry.asset.replace(/^LD/, '');
-        const stockQuote = options?.externalStockQuotes?.[cleanAsset];
-        const meta = ASSET_METADATA[cleanAsset] || {
-          name:
-            stockQuote?.companyName ||
-            (entry.asset.startsWith('LD') ? `${cleanAsset} (Simple Earn)` : cleanAsset),
-          category: (stockQuote ? 'Tokenized Stocks & Equities' : 'Digital Assets') as BinanceAssetCategory,
-          dividendYieldPercent: stockQuote?.dividendYieldPercent || 0,
-        };
+        const normalizedStockAsset = normalizeStockTicker(cleanAsset);
+        const stockQuote =
+          options?.externalStockQuotes?.[cleanAsset] ||
+          options?.externalStockQuotes?.[normalizedStockAsset];
+
+        const detectedAssetClass = classifyAssetClass({
+          ticker: normalizedStockAsset,
+          walletType: entry.fundingTotal > 0 ? 'FUNDING' : 'SPOT',
+          fundingTotal: entry.fundingTotal,
+          isStablecoinOrFiat: USD_PEGGED_STABLECOINS.has(cleanAsset) || EUR_PEGGED_ASSETS.has(cleanAsset),
+        });
+
+        const baseMeta = ASSET_METADATA[cleanAsset] || ASSET_METADATA[normalizedStockAsset];
+        const meta = baseMeta
+          ? {
+              ...baseMeta,
+              category:
+                detectedAssetClass === 'STOCK'
+                  ? ('Tokenized Stocks & Equities' as BinanceAssetCategory)
+                  : baseMeta.category,
+            }
+          : {
+              name:
+                stockQuote?.companyName ||
+                (entry.asset.startsWith('LD') ? `${cleanAsset} (Simple Earn)` : cleanAsset),
+              category: (detectedAssetClass === 'STOCK' || stockQuote || TICKER_TO_STOCK_SECTOR[normalizedStockAsset]
+                ? 'Tokenized Stocks & Equities'
+                : 'Digital Assets') as BinanceAssetCategory,
+              dividendYieldPercent: stockQuote?.dividendYieldPercent || 0,
+            };
 
         let val = this.resolveAssetValuation(
           entry.asset,
@@ -1644,7 +1701,8 @@ export class BinanceService {
         totalEarnValueUsd += earnValUsd;
         lockedValueUsd += lockedUsd;
 
-        const isStock = meta.category === 'Tokenized Stocks & Equities';
+        const isStock =
+          meta.category === 'Tokenized Stocks & Equities' || detectedAssetClass === 'STOCK';
 
         if (isStock) {
           stockEquityUsd += valueUsd;
@@ -1672,7 +1730,7 @@ export class BinanceService {
         preliminaryBalances.push({
           asset: entry.asset,
           assetName: entry.asset.startsWith('LD') ? `${meta.name} (Earn)` : meta.name,
-          category: meta.category,
+          category: isStock ? 'Tokenized Stocks & Equities' : meta.category,
           isStablecoinOrFiat: val.isStablecoinOrFiat,
           walletType,
           spotFree: Math.round(entry.spotFree * 1e8) / 1e8,
@@ -1742,6 +1800,9 @@ export class BinanceService {
                 }
               }
             }
+          } else {
+            // Unitemized Funding Wallet equity (e.g. Funding US Stocks balance reported by /sapi/v1/asset/wallet/balance)
+            stockEquityUsd += fundingDiff;
           }
         } else if (spotWalletEntry && spotWalletEntry.balanceUsd > totalSpotValueUsd + 0.05) {
           const spotDiff = spotWalletEntry.balanceUsd - totalSpotValueUsd;
