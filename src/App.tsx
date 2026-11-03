@@ -17,8 +17,8 @@ import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, S
 
 import { SpexAvatar } from './components/common/SpexAvatar';
 
-const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}logo-1.png`;
-const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png`;
+const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}logo-1.png?v=transparent`;
+const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png?v=transparent`;
 
 const SpexNavIcon: React.FC<{ className?: string }> = ({ className = 'h-5 w-5' }) => (
   <span className={`inline-flex items-center justify-center shrink-0 ${className}`}>

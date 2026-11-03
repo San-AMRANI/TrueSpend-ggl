@@ -44,10 +44,12 @@ import {
 } from 'recharts';
 import type {
   BinanceAccountOverview,
+  InvestmentsData,
   StockCatalogItem,
   StockMarketType,
   StockOrderAction,
   StockPosition,
+  Wallet,
 } from '../../types';
 import {
   ALL_STOCK_SECTOR_CATEGORIES,
@@ -58,11 +60,13 @@ import {
 } from '../../lib/stockCategories';
 
 interface FundingStocksDashboardProps {
-  positions: StockPosition[];
-  catalog: StockCatalogItem[];
+  investmentsData?: InvestmentsData | null;
+  wallets?: Wallet[];
+  positions?: StockPosition[];
+  catalog?: StockCatalogItem[];
   binance?: BinanceAccountOverview | null;
   usdToMadRate: number;
-  deployableSurplusMad: number;
+  deployableSurplusMad?: number;
   isSaving: boolean;
   onUpsertPosition: (payload: {
     ticker: string;
@@ -93,7 +97,8 @@ interface FundingStocksDashboardProps {
     syncWithWallet?: boolean;
     notes?: string;
   }) => Promise<any>;
-  onInspectTickerForensics: (ticker: string) => void;
+  onInspectTickerForensics?: (ticker: string) => void;
+  onInspectTickerTrades?: (ticker: string) => void;
   onSwitchToSpotCrypto: () => void;
 }
 
@@ -164,19 +169,36 @@ function getSectorIcon(sector: StockSectorCategory) {
 }
 
 export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
+  investmentsData,
   positions,
   catalog,
   binance,
   usdToMadRate,
-  deployableSurplusMad,
   isSaving,
   onUpsertPosition,
   onUpdatePosition,
   onDeletePosition,
   onExecuteOrder,
   onInspectTickerForensics,
+  onInspectTickerTrades,
   onSwitchToSpotCrypto,
 }) => {
+  const safePositions = useMemo<StockPosition[]>(() => {
+    if (Array.isArray(positions)) return positions;
+    if (Array.isArray(investmentsData?.positions)) return investmentsData.positions;
+    return [];
+  }, [positions, investmentsData?.positions]);
+
+  const safeCatalog = useMemo<StockCatalogItem[]>(() => {
+    if (Array.isArray(catalog)) return catalog;
+    if (Array.isArray(investmentsData?.catalog)) return investmentsData.catalog;
+    return [];
+  }, [catalog, investmentsData?.catalog]);
+
+  const safeBinance = binance ?? investmentsData?.binance ?? null;
+  const handleInspectForensics =
+    onInspectTickerForensics || onInspectTickerTrades || (() => {});
+
   // Interactive Filter & Search State
   const [selectedSectorFilter, setSelectedSectorFilter] = useState<'ALL' | StockSectorCategory>('ALL');
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'US' | 'ETF' | 'BVC'>('ALL');
@@ -212,7 +234,7 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
 
   // 1. Strictly filter ONLY Stock & ETF positions (never Spot Cryptocurrencies or Stablecoins)
   const stockHoldings = useMemo(() => {
-    const rawStocks = positions.filter((p) => {
+    const rawStocks = (safePositions || []).filter((p) => {
       const cls = classifyAssetClass({
         ticker: p.ticker,
         market: p.market,
@@ -240,11 +262,11 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
         stockWeightPercent,
       };
     });
-  }, [positions]);
+  }, [safePositions]);
 
   // Separate Spot Crypto totals so we can show the clean separation between Funding Stocks vs. Spot Crypto
   const spotCryptoSummary = useMemo(() => {
-    const cryptoPositions = positions.filter((p) => {
+    const cryptoPositions = (safePositions || []).filter((p) => {
       const cls = classifyAssetClass({
         ticker: p.ticker,
         market: p.market,
@@ -253,8 +275,8 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
       return cls === 'CRYPTO' && p.marketValueMad > 0.05;
     });
     const totalCryptoMad =
-      binance?.cryptoEquityMad && binance.cryptoEquityMad > 0
-        ? binance.cryptoEquityMad
+      safeBinance?.cryptoEquityMad && safeBinance.cryptoEquityMad > 0
+        ? safeBinance.cryptoEquityMad
         : cryptoPositions.reduce((s, p) => s + p.marketValueMad, 0);
     const totalCryptoUsd = totalCryptoMad / usdToMadRate;
     return {
@@ -263,17 +285,17 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
       totalCryptoUsd,
       topTickers: cryptoPositions.slice(0, 4).map((p) => p.ticker),
     };
-  }, [positions, binance?.cryptoEquityMad, usdToMadRate]);
+  }, [safePositions, safeBinance?.cryptoEquityMad, usdToMadRate]);
 
   // 2. Compute Stocks Portfolio Aggregate KPIs
   const stocksSummary = useMemo(() => {
     const holdingsValueMad = stockHoldings.reduce((s, p) => s + p.marketValueMad, 0);
     const holdingsValueUsd = holdingsValueMad / usdToMadRate;
 
-    const fundingWalletMad = binance?.totalFundingValueMad ?? 0;
-    const fundingWalletUsd = binance?.totalFundingValueUsd ?? 0;
-    const fundingStocksReportedMad = binance?.stockEquityMad ?? 0;
-    const fundingStocksReportedUsd = binance?.stockEquityUsd ?? 0;
+    const fundingWalletMad = safeBinance?.totalFundingValueMad ?? 0;
+    const fundingWalletUsd = safeBinance?.totalFundingValueUsd ?? 0;
+    const fundingStocksReportedMad = safeBinance?.stockEquityMad ?? 0;
+    const fundingStocksReportedUsd = safeBinance?.stockEquityUsd ?? 0;
 
     // Total Stocks Portfolio Value combines itemized stock holdings (or Binance Funding Wallet equity if higher)
     const effectiveStocksValueMad = Math.max(
@@ -353,7 +375,7 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
       weighted24hChangePercent,
       topWinner,
     };
-  }, [stockHoldings, binance, usdToMadRate]);
+  }, [stockHoldings, safeBinance, usdToMadRate]);
 
   // 3. Compute Stock Category Breakdown (AI, Tech, Mechanics/Automotive, Banking, Consumer, Healthcare, Energy, ETFs)
   const categoryBreakdown = useMemo(() => {
@@ -498,7 +520,7 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
 
   // 5. Enrich & Filter Benchmark Stock Catalog by Canonical Sector
   const enrichedCatalog = useMemo(() => {
-    return catalog.map((item) => ({
+    return (safeCatalog || []).map((item) => ({
       ...item,
       canonicalSector: resolveStockSectorCategory({
         ticker: item.ticker,
@@ -507,7 +529,7 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
         market: item.market,
       }),
     }));
-  }, [catalog]);
+  }, [safeCatalog]);
 
   const filteredCatalog = useMemo(() => {
     return enrichedCatalog.filter((item) => {
@@ -1712,7 +1734,7 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => onInspectTickerForensics(pos.ticker)}
+                        onClick={() => handleInspectForensics(pos.ticker)}
                         className="px-2.5 py-1 rounded-md font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors cursor-pointer"
                       >
                         Trade Forensics →

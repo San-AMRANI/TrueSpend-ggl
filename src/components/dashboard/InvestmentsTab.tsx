@@ -286,7 +286,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   const reconciliation = investmentsData?.capitalReconciliation;
 
   const investmentWallets = useMemo(
-    () => wallets.filter((w) => w.type === 'Investment'),
+    () => (wallets || []).filter((w) => w.type === 'Investment'),
     [wallets]
   );
 
@@ -382,7 +382,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
         extractBaseTicker(liveSymbolData.symbol) === baseSelected);
 
     const sourceTrades = hasLiveMatch
-      ? liveSymbolData.trades
+      ? liveSymbolData.trades || []
       : (binance?.recentTrades || []).filter((t) => {
           if (!selectedSymbol) return true;
           return (
@@ -391,7 +391,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           );
         });
 
-    return sourceTrades.filter((trade) => {
+    return (sourceTrades || []).filter((trade) => {
       if (tradeSideFilter === 'BUY' && trade.side !== 'BUY') return false;
       if (tradeSideFilter === 'SELL' && trade.side !== 'SELL') return false;
       if (tradeSearch.trim()) {
@@ -2501,13 +2501,18 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       {activeSubView === 'stocks' && (
         <FundingStocksDashboard
           investmentsData={investmentsData}
-          wallets={wallets}
+          wallets={wallets || []}
+          positions={investmentsData?.positions || []}
+          catalog={investmentsData?.catalog || []}
+          binance={binance}
+          deployableSurplusMad={investmentsData?.buyingPower?.deployableSurplusMad || 0}
           isSaving={isSaving}
           usdToMadRate={usdToMadRate}
           onUpsertPosition={onUpsertPosition}
           onUpdatePosition={onUpdatePosition}
           onDeletePosition={onDeletePosition}
           onExecuteOrder={onExecuteOrder}
+          onInspectTickerForensics={handleInspectTickerTrades}
           onInspectTickerTrades={handleInspectTickerTrades}
           onSwitchToSpotCrypto={() => {
             setSpotFilter('CRYPTO');
