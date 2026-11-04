@@ -22,6 +22,7 @@ import {
   normalizeStockTicker,
   resolveCanonicalCompanyName,
   resolveStockSectorCategory,
+  TICKER_TO_STOCK_SECTOR,
 } from '../../src/lib/stockCategories.js';
 
 export const CURATED_STOCK_CATALOG: Omit<StockCatalogItem, 'priceInMad' | 'inPortfolio' | 'inWatchlist'>[] = [
@@ -148,6 +149,18 @@ export const CURATED_STOCK_CATALOG: Omit<StockCatalogItem, 'priceInMad' | 'inPor
     dividendYieldPercent: 0.34,
     thesis: '3B+ daily active users with AI-driven ad monetization efficiency',
   },
+  {
+    ticker: 'ORCL',
+    companyName: 'Oracle Corporation',
+    market: 'US',
+    sector: 'Technology & Cloud',
+    price: 178.4,
+    change24hPercent: 1.25,
+    currency: 'USD',
+    annualDividendPerShare: 1.6,
+    dividendYieldPercent: 0.9,
+    thesis: 'Enterprise database & OCI cloud infrastructure leader powering sovereign and AI workloads',
+  },
 
   // 3. Mechanics, Automotive & Industrials
   {
@@ -209,6 +222,18 @@ export const CURATED_STOCK_CATALOG: Omit<StockCatalogItem, 'priceInMad' | 'inPor
     annualDividendPerShare: 4.52,
     dividendYieldPercent: 2.11,
     thesis: 'Industrial automation, aerospace mechanics, and building control systems compounder',
+  },
+  {
+    ticker: 'USAR',
+    companyName: 'USA Rare Earth, Inc.',
+    market: 'US',
+    sector: 'Mechanics, Automotive & Industrials',
+    price: 11.8,
+    change24hPercent: 2.4,
+    currency: 'USD',
+    annualDividendPerShare: 0,
+    dividendYieldPercent: 0,
+    thesis: 'Domestic US neodymium magnet manufacturing & critical rare-earth industrial supply chain',
   },
 
   // 4. Banking & Financials
@@ -559,6 +584,11 @@ const COMMON_BINANCE_STOCK_TICKERS = [
   'JNJ',
   'O',
   'XOM',
+  'ORCL',
+  'USAR',
+  'MP',
+  'BA',
+  'LMT',
 ];
 
 let cachedRates = {
@@ -575,6 +605,8 @@ const quoteCache: Record<
     change24hPercent: number;
     currency: string;
     companyName?: string;
+    sector?: string;
+    industry?: string;
     dividendYieldPercent?: number;
     annualDividendPerShare?: number;
     lastUpdated: number;
@@ -641,7 +673,13 @@ export class InvestmentService {
     const result: ExternalStockQuoteMap = {};
     if (!tickers || tickers.length === 0) return result;
 
-    const uniqueTickers = Array.from(new Set(tickers.map((t) => t.trim().toUpperCase()).filter(Boolean)));
+    const uniqueTickers = Array.from(
+      new Set(
+        tickers
+          .map((t) => normalizeStockTicker(t) || t.trim().toUpperCase())
+          .filter(Boolean)
+      )
+    );
     const now = Date.now();
 
     await Promise.all(
@@ -653,6 +691,8 @@ export class InvestmentService {
             change24hPercent: cached.change24hPercent,
             currency: cached.currency,
             companyName: cached.companyName,
+            sector: cached.sector,
+            industry: cached.industry,
             dividendYieldPercent: cached.dividendYieldPercent,
             annualDividendPerShare: cached.annualDividendPerShare,
           };
@@ -666,12 +706,41 @@ export class InvestmentService {
             change24hPercent: catalogItem.change24hPercent,
             currency: 'MAD',
             companyName: catalogItem.companyName,
+            sector: catalogItem.sector,
             dividendYieldPercent: catalogItem.dividendYieldPercent,
             annualDividendPerShare: catalogItem.annualDividendPerShare,
             lastUpdated: now,
           };
           result[ticker] = quoteCache[ticker];
           return;
+        }
+
+        let yahooSector: string | undefined = catalogItem?.sector || TICKER_TO_STOCK_SECTOR[ticker];
+        let yahooIndustry: string | undefined;
+        let yahooSearchName: string | undefined;
+
+        // If ticker is not in our local 1,400+ dictionary, query Yahoo Finance search metadata for live sector & industry
+        if (!yahooSector) {
+          try {
+            const searchUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(ticker)}&quotesCount=4&newsCount=0`;
+            const sRes = await fetch(searchUrl, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+              signal: AbortSignal.timeout(2500),
+            });
+            if (sRes.ok) {
+              const sData = await sRes.json();
+              const quotes = Array.isArray(sData?.quotes) ? sData.quotes : [];
+              const exact =
+                quotes.find((q: any) => String(q.symbol || '').toUpperCase() === ticker) || quotes[0];
+              if (exact) {
+                yahooSector = exact.sectorDisp || exact.sector || undefined;
+                yahooIndustry = exact.industryDisp || exact.industry || undefined;
+                yahooSearchName = exact.longname || exact.shortname || undefined;
+              }
+            }
+          } catch {
+            // Ignore search metadata timeout
+          }
         }
 
         try {
@@ -688,13 +757,24 @@ export class InvestmentService {
               const prev = parseFloat(meta.previousClose || meta.chartPreviousClose) || price;
               const change24hPercent = prev > 0 ? ((price - prev) / prev) * 100 : 0;
               const currency = (meta.currency || catalogItem?.currency || 'USD').toUpperCase();
-              const companyName = meta.longName || meta.shortName || catalogItem?.companyName || ticker;
+              const companyName = resolveCanonicalCompanyName(
+                ticker,
+                meta.longName || meta.shortName || yahooSearchName || catalogItem?.companyName || ticker
+              );
+              const resolvedSector = resolveStockSectorCategory({
+                ticker,
+                existingSector: `${yahooSector || ''} ${yahooIndustry || ''}`.trim() || catalogItem?.sector,
+                companyName,
+                market: 'US',
+              });
 
               quoteCache[ticker] = {
                 price: Math.round(price * 100) / 100,
                 change24hPercent: Math.round(change24hPercent * 100) / 100,
                 currency,
                 companyName,
+                sector: resolvedSector,
+                industry: yahooIndustry,
                 dividendYieldPercent: catalogItem?.dividendYieldPercent || 0,
                 annualDividendPerShare: catalogItem?.annualDividendPerShare || 0,
                 lastUpdated: now,
@@ -713,8 +793,29 @@ export class InvestmentService {
             change24hPercent: catalogItem.change24hPercent,
             currency: catalogItem.currency,
             companyName: catalogItem.companyName,
+            sector: catalogItem.sector,
             dividendYieldPercent: catalogItem.dividendYieldPercent,
             annualDividendPerShare: catalogItem.annualDividendPerShare,
+            lastUpdated: now,
+          };
+          result[ticker] = quoteCache[ticker];
+        } else if (yahooSearchName || yahooSector) {
+          const companyName = resolveCanonicalCompanyName(ticker, yahooSearchName || ticker);
+          const resolvedSector = resolveStockSectorCategory({
+            ticker,
+            existingSector: `${yahooSector || ''} ${yahooIndustry || ''}`.trim(),
+            companyName,
+            market: 'US',
+          });
+          quoteCache[ticker] = {
+            price: 0,
+            change24hPercent: 0,
+            currency: 'USD',
+            companyName,
+            sector: resolvedSector,
+            industry: yahooIndustry,
+            dividendYieldPercent: 0,
+            annualDividendPerShare: 0,
             lastUpdated: now,
           };
           result[ticker] = quoteCache[ticker];
@@ -1244,9 +1345,29 @@ export class InvestmentService {
       };
     });
 
+    // Discover any additional EQ* or Funding stock tickers returned by Binance that weren't in the initial lookup list
+    const discoveredBinanceStockTickers = (binanceOverview.balances || [])
+      .filter((b) => {
+        const cls = classifyAssetClass({
+          ticker: b.asset,
+          walletType: b.walletType,
+          fundingTotal: b.fundingTotal,
+          isStablecoinOrFiat: b.isStablecoinOrFiat,
+          sector: b.category,
+        });
+        return b.category === 'Tokenized Stocks & Equities' || cls === 'STOCK';
+      })
+      .map((b) => normalizeStockTicker(b.asset))
+      .filter((t) => Boolean(t) && !liveQuotes[t]);
+
+    if (discoveredBinanceStockTickers.length > 0) {
+      const extraQuotes = await this.fetchLiveStockQuotes(discoveredBinanceStockTickers, options?.forceRefresh);
+      Object.assign(liveQuotes, extraQuotes);
+    }
+
     // Map live Binance holdings (Spot + Funding + Earn) into unified StockPosition format with full fee, breakeven, and dividend telemetry
     const binanceDerivedPositions: StockPosition[] = binanceOverview.balances
-      .filter((b) => b.valueMad >= 0.05)
+      .filter((b) => b.valueMad >= 0.5 || b.valueUsd >= 0.05)
       .map((b) => {
         const avgCostUsd = b.avgBuyPriceUsd ?? b.priceUsd;
         const costBasisUsd = b.costBasisUsd ?? b.valueUsd;
@@ -1264,16 +1385,22 @@ export class InvestmentService {
             ? 'Simple Earn'
             : 'Spot';
 
-        const cleanTicker = normalizeStockTicker(b.asset);
+        const cleanTicker = normalizeStockTicker(b.asset) || b.asset;
+        const liveQuoteForAsset = liveQuotes[cleanTicker] || liveQuotes[b.asset];
         const assetClass = classifyAssetClass({
-          ticker: cleanTicker,
+          ticker: b.asset,
           walletType: b.walletType,
           fundingTotal: b.fundingTotal,
           isStablecoinOrFiat: b.isStablecoinOrFiat,
           sector: b.category,
         });
         const isStockAsset =
-          b.category === 'Tokenized Stocks & Equities' || assetClass === 'STOCK';
+          (b.category === 'Tokenized Stocks & Equities' || assetClass === 'STOCK') &&
+          assetClass !== 'CRYPTO';
+
+        const canonicalCompany = isStockAsset
+          ? resolveCanonicalCompanyName(cleanTicker, liveQuoteForAsset?.companyName || b.assetName)
+          : b.assetName;
 
         const market: StockMarketType = isStockAsset ? 'US' : 'BINANCE';
         const resolvedSector = b.isStablecoinOrFiat
@@ -1281,20 +1408,23 @@ export class InvestmentService {
           : isStockAsset
           ? resolveStockSectorCategory({
               ticker: cleanTicker,
-              companyName: b.assetName,
+              existingSector:
+                liveQuoteForAsset?.sector ||
+                (liveQuoteForAsset?.industry ? `${liveQuoteForAsset.sector || ''} ${liveQuoteForAsset.industry}` : undefined),
+              companyName: canonicalCompany,
               market: 'US',
             })
           : b.category || 'Digital Assets';
 
-        const divYieldPct = b.dividendYieldPercent || 0;
-        const annualDividendUsd = b.annualDividendUsd ?? b.valueUsd * (divYieldPct / 100);
-        const annualDividendMad = b.annualDividendMad ?? annualDividendUsd * rates.USD_TO_MAD;
+        const divYieldPct = liveQuoteForAsset?.dividendYieldPercent || b.dividendYieldPercent || 0;
+        const annualDividendUsd = b.annualDividendUsd || b.valueUsd * (divYieldPct / 100);
+        const annualDividendMad = b.annualDividendMad || annualDividendUsd * rates.USD_TO_MAD;
         const divPerShareUsd = b.total > 0 ? annualDividendUsd / b.total : 0;
         const yieldOnCostPercent =
           avgCostUsd > 0 ? (divPerShareUsd / avgCostUsd) * 100 : divYieldPct;
 
-        const accruedDividendUsd = b.accruedDividendUsd ?? annualDividendUsd / 4;
-        const accruedDividendMad = b.accruedDividendMad ?? accruedDividendUsd * rates.USD_TO_MAD;
+        const accruedDividendUsd = b.accruedDividendUsd || annualDividendUsd / 4;
+        const accruedDividendMad = b.accruedDividendMad || accruedDividendUsd * rates.USD_TO_MAD;
 
         annualPassiveIncomeMad += annualDividendMad;
         totalAccruedDividendsMad += accruedDividendMad;
@@ -1330,6 +1460,8 @@ export class InvestmentService {
         const drip5YearProjectedValueMad = b.valueMad * Math.pow(1 + annualCompoundRate, 5);
         const drip5YearProjectedIncomeMad = drip5YearProjectedValueMad * (divYieldPct / 100);
 
+        const rawAssetTag = b.asset !== cleanTicker ? `${b.asset} · ` : '';
+
         return {
           id: `binance-${(b.walletType || 'spot').toLowerCase()}-${b.asset}`,
           userId,
@@ -1337,7 +1469,7 @@ export class InvestmentService {
           walletName: linkedBinanceAcc?.name || `Binance ${walletLabel}`,
           ticker: isStockAsset ? cleanTicker : b.asset,
           companyName: isStockAsset
-            ? `${b.assetName} (Binance Funding)`
+            ? `${canonicalCompany} (${rawAssetTag}Binance Funding)`
             : `${b.assetName} (Binance ${walletLabel})`,
           market,
           sector: resolvedSector,

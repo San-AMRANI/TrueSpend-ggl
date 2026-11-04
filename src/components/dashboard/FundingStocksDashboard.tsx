@@ -236,7 +236,7 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
   const [simHoldingMonths, setSimHoldingMonths] = useState<string>('12');
   const [expandedStockId, setExpandedStockId] = useState<string | null>(null);
 
-  // 1. Strictly filter ONLY Stock & ETF positions (never Spot Cryptocurrencies or Stablecoins)
+  // 1. Strictly filter ONLY Stock & ETF positions (never Spot Cryptocurrencies, Stablecoins, or <$0.05 delisted dust)
   const stockHoldings = useMemo(() => {
     const rawStocks = (safePositions || []).filter((p) => {
       const cls = classifyAssetClass({
@@ -244,7 +244,8 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
         market: p.market,
         sector: p.sector,
       });
-      return cls === 'STOCK' && !p.isWatchlistOnly && p.sharesNum > 0;
+      const hasRealValue = (p.marketValueMad ?? 0) >= 0.5 || (p.marketValueUsd ?? 0) >= 0.05;
+      return cls === 'STOCK' && !p.isWatchlistOnly && p.sharesNum > 0 && hasRealValue;
     });
 
     // Enrich each stock with its canonical StockSectorCategory and recalculated weight within the Stocks portfolio

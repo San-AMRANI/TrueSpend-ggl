@@ -156,6 +156,8 @@ const ASSET_METADATA: Record<
   COST: { name: 'Costco Wholesale', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0.52 },
   BRK: { name: 'Berkshire Hathaway', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
   'BRK-B': { name: 'Berkshire Hathaway (Class B)', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  USAR: { name: 'USA Rare Earth, Inc.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
+  MP: { name: 'MP Materials Corp.', category: 'Tokenized Stocks & Equities', dividendYieldPercent: 0 },
 
   // Layer 1 Core
   BTC: { name: 'Bitcoin', category: 'Layer 1 Core', dividendYieldPercent: 0 },
@@ -251,6 +253,8 @@ export interface ExternalStockQuoteMap {
     change24hPercent: number;
     currency: string;
     companyName?: string;
+    sector?: string;
+    industry?: string;
     dividendYieldPercent?: number;
     annualDividendPerShare?: number;
   };
@@ -902,8 +906,10 @@ export class BinanceService {
     const currentMarketPriceMad = currentMarketPriceUsd * rates.USD_TO_MAD;
 
     const cleanBase = baseAsset.replace(/^LD/, '');
-    const assetMeta = ASSET_METADATA[cleanBase];
-    const stockQuote = options?.externalStockQuotes?.[cleanBase];
+    const normalizedBase = normalizeStockTicker(cleanBase) || cleanBase;
+    const assetMeta = ASSET_METADATA[cleanBase] || ASSET_METADATA[normalizedBase];
+    const stockQuote =
+      options?.externalStockQuotes?.[cleanBase] || options?.externalStockQuotes?.[normalizedBase];
     const dividendYieldPercent =
       stockQuote?.dividendYieldPercent ?? assetMeta?.dividendYieldPercent ?? 0;
 
@@ -1135,6 +1141,7 @@ export class BinanceService {
           (b) =>
             b.asset.toUpperCase() === cleanBase ||
             b.asset.toUpperCase() === baseAsset ||
+            normalizeStockTicker(b.asset) === normalizedBase ||
             (b.defaultSymbol && b.defaultSymbol.toUpperCase() === symbol)
         );
         if (held && held.total > 0) {
@@ -1629,8 +1636,8 @@ export class BinanceService {
           options?.externalStockQuotes?.[normalizedStockAsset];
 
         const detectedAssetClass = classifyAssetClass({
-          ticker: normalizedStockAsset,
-          walletType: entry.fundingTotal > 0 ? 'FUNDING' : 'SPOT',
+          ticker: cleanAsset,
+          walletType: entry.fundingTotal > 0 ? 'FUNDING' : entry.earnTotal > 0 && entry.spotTotal <= 0 ? 'EARN' : 'SPOT',
           fundingTotal: entry.fundingTotal,
           isStablecoinOrFiat: USD_PEGGED_STABLECOINS.has(cleanAsset) || EUR_PEGGED_ASSETS.has(cleanAsset),
         });
@@ -2074,8 +2081,11 @@ export class BinanceService {
       const enrichedBalances: BinanceSpotAssetBalance[] = preliminaryBalances.map((b) => {
         const summary = tradeSummariesByAsset.get(b.asset);
         const cleanAsset = b.asset.replace(/^LD/, '');
-        const meta = ASSET_METADATA[cleanAsset];
-        const stockQuote = options?.externalStockQuotes?.[cleanAsset];
+        const normalizedStockAsset = normalizeStockTicker(cleanAsset);
+        const meta = ASSET_METADATA[cleanAsset] || ASSET_METADATA[normalizedStockAsset];
+        const stockQuote =
+          options?.externalStockQuotes?.[cleanAsset] ||
+          options?.externalStockQuotes?.[normalizedStockAsset];
         const divYieldPct =
           stockQuote?.dividendYieldPercent ?? meta?.dividendYieldPercent ?? b.dividendYieldPercent ?? 0;
 

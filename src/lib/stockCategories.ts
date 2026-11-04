@@ -246,6 +246,274 @@ export const KNOWN_CRYPTO_TICKERS = new Set<string>([
   'BERA',
   'KAITO',
   'IP',
+  // Legacy / Delisted / Altcoin Binance Crypto Tickers (Strictly Excluded from Stocks)
+  'NEBL',
+  'WTC',
+  'VEN',
+  'ICX',
+  'WAN',
+  'ONT',
+  'ONG',
+  'GAS',
+  'AION',
+  'ELF',
+  'LOOM',
+  'POA',
+  'QKC',
+  'RVN',
+  'DCR',
+  'LSK',
+  'STEEM',
+  'HIVE',
+  'NANO',
+  'XEM',
+  'ZRX',
+  'BAT',
+  'ENJ',
+  'KNC',
+  'SNT',
+  'LRC',
+  'STORJ',
+  'BNT',
+  'CVC',
+  'RLC',
+  'REQ',
+  'GNT',
+  'GLM',
+  'POWR',
+  'MTL',
+  'SUB',
+  'MTH',
+  'ENG',
+  'AST',
+  'BCD',
+  'BTG',
+  'SBTC',
+  'BCX',
+  'BIFI',
+  'SNM',
+  'VIB',
+  'OST',
+  'BRD',
+  'EDO',
+  'WINGS',
+  'NAV',
+  'TRIG',
+  'APPC',
+  'VIBE',
+  'PIVX',
+  'IOST',
+  'NULS',
+  'NCASH',
+  'STORM',
+  'STPT',
+  'SYS',
+  'GVT',
+  'GRS',
+  'ARDR',
+  'NXS',
+  'SKY',
+  'IOTX',
+  'AGI',
+  'AGIX',
+  'OCEAN',
+  'DATA',
+  'DENT',
+  'NPXS',
+  'PUNDIX',
+  'MITH',
+  'REN',
+  'BAND',
+  'OGN',
+  'NKN',
+  'ARPA',
+  'CTXC',
+  'TROY',
+  'VITE',
+  'FTT',
+  'LUNA',
+  'LUNC',
+  'USTC',
+  'SRM',
+  'ANC',
+  'MIR',
+  'VGX',
+  'CEL',
+  'BETH',
+  'WBETH',
+  'WBTC',
+  'STETH',
+  'RETH',
+  'CBETH',
+  'EZETH',
+  'WEETH',
+  'SOLV',
+  'BB',
+  'REZ',
+  'OMNI',
+  'SAGA',
+  'TNSR',
+  'AEVO',
+  'PORTAL',
+  'PIXEL',
+  'ALT',
+  'MANTA',
+  'XAI',
+  'NFP',
+  'ACE',
+  'JTO',
+  'NTRN',
+  'ARKM',
+  'MAV',
+  'CYBER',
+  'EDU',
+  'ID',
+  'RDNT',
+  'SYN',
+  'GNS',
+  'RPL',
+  'MAGIC',
+  'HOOK',
+  'HFT',
+  'OSMO',
+  'GAL',
+  'ACA',
+  'API3',
+  'GLMR',
+  'ACH',
+  'SPELL',
+  'HIGH',
+  'AMP',
+  'PLA',
+  'PYR',
+  'ALCX',
+  'MC',
+  'MOVR',
+  'QI',
+  'PORTO',
+  'LAZIO',
+  'SANTOS',
+  'CITY',
+  'PSG',
+  'JUV',
+  'ASR',
+  'ATM',
+  'OG',
+  'ALPINE',
+  'BETA',
+  'RARE',
+  'CHESS',
+  'DAR',
+  'BNX',
+  'RGT',
+  'RAD',
+  'ILV',
+  'YGG',
+  'FIDA',
+  'FRONT',
+  'CVP',
+  'FOR',
+  'EPX',
+  'MULTI',
+  'MOB',
+  'NEXO',
+  'WAXP',
+  'ORN',
+  'FARM',
+  'ALPACA',
+  'QUICK',
+  'MBOX',
+  'CLV',
+  'QNT',
+  'XEC',
+  'BTTC',
+  'VTHO',
+  'TFUEL',
+  'DOCK',
+  'POLY',
+  'POLYX',
+  'DGB',
+  'SC',
+  'XVG',
+  'KMD',
+  'BTS',
+  'WAVES',
+  'STRAT',
+  'ARK',
+  'REP',
+  'ZEN',
+  'XZC',
+  'FIRO',
+  'GXS',
+  'FUN',
+  'ADX',
+  'LTO',
+  'COTI',
+  'CHR',
+  'CTSI',
+  'STMX',
+  'UTK',
+  'AVA',
+  'YFI',
+  'YFII',
+  'ANT',
+  'NMR',
+  'RSR',
+  'PAXG',
+  'WNXM',
+  'TRB',
+  'BZRX',
+  'SUSHI',
+  'EGLD',
+  'FIO',
+  'UMA',
+  'BEL',
+  'WING',
+  'NBS',
+  'OXT',
+  'SUN',
+  'HNT',
+  'FLM',
+  'SCRT',
+  'SPARTA',
+  'BURGER',
+  'BAKE',
+  'VIDT',
+  'AERGO',
+  'AUDIO',
+  'CTK',
+  'AKRO',
+  'HARD',
+  'DNT',
+  'STRAX',
+  'UNFI',
+  'SKL',
+  'SFP',
+  'FXS',
+  'DODO',
+  'DEGO',
+  'ALICE',
+  'LINA',
+  'PERP',
+  'RAMP',
+  'SUPER',
+  'CFX',
+  'EPS',
+  'AUTO',
+  'TLM',
+  'FORTH',
+  'MASK',
+  'LPT',
+  'ATA',
+  'GTC',
+  'TORN',
+  'KEEP',
+  'ERN',
+  'KLAY',
+  'PHA',
+  'BOND',
+  'MLN',
+  'DEXE',
 ]);
 
 export const KNOWN_STABLECOIN_AND_FIAT_TICKERS = new Set<string>([
@@ -855,6 +1123,59 @@ export const TICKER_TO_STOCK_SECTOR: Record<string, StockSectorCategory> = {
   SAFRY: 'Mechanics, Automotive & Industrials',
   RYCEY: 'Mechanics, Automotive & Industrials',
   BAESY: 'Mechanics, Automotive & Industrials',
+  // Rare Earth Magnets, Critical Industrial Materials, Space, Robotics & Advanced Mechanics
+  USAR: 'Mechanics, Automotive & Industrials',
+  EQUSAR: 'Mechanics, Automotive & Industrials',
+  MP: 'Mechanics, Automotive & Industrials',
+  LAC: 'Mechanics, Automotive & Industrials',
+  SGML: 'Mechanics, Automotive & Industrials',
+  TMC: 'Mechanics, Automotive & Industrials',
+  PPTA: 'Mechanics, Automotive & Industrials',
+  NB: 'Mechanics, Automotive & Industrials',
+  RDW: 'Mechanics, Automotive & Industrials',
+  ASTS: 'Mechanics, Automotive & Industrials',
+  LUNR: 'Mechanics, Automotive & Industrials',
+  BKSY: 'Mechanics, Automotive & Industrials',
+  SPCE: 'Mechanics, Automotive & Industrials',
+  JOBY: 'Mechanics, Automotive & Industrials',
+  ACHR: 'Mechanics, Automotive & Industrials',
+  EVTL: 'Mechanics, Automotive & Industrials',
+  SERV: 'Mechanics, Automotive & Industrials',
+  RR: 'Mechanics, Automotive & Industrials',
+  OUST: 'Mechanics, Automotive & Industrials',
+  INVZ: 'Mechanics, Automotive & Industrials',
+  AEVA: 'Mechanics, Automotive & Industrials',
+  AUR: 'Mechanics, Automotive & Industrials',
+  KULR: 'Mechanics, Automotive & Industrials',
+  ENVX: 'Mechanics, Automotive & Industrials',
+  QS: 'Mechanics, Automotive & Industrials',
+  SLDP: 'Mechanics, Automotive & Industrials',
+  MVST: 'Mechanics, Automotive & Industrials',
+  EOSE: 'Mechanics, Automotive & Industrials',
+  FLNC: 'Mechanics, Automotive & Industrials',
+  POWL: 'Mechanics, Automotive & Industrials',
+  MOD: 'Mechanics, Automotive & Industrials',
+  PRIM: 'Mechanics, Automotive & Industrials',
+  MYRG: 'Mechanics, Automotive & Industrials',
+  GVA: 'Mechanics, Automotive & Industrials',
+  AGX: 'Mechanics, Automotive & Industrials',
+  IESC: 'Mechanics, Automotive & Industrials',
+  ATKR: 'Mechanics, Automotive & Industrials',
+  ALSN: 'Mechanics, Automotive & Industrials',
+  GTLS: 'Mechanics, Automotive & Industrials',
+  SPXC: 'Mechanics, Automotive & Industrials',
+  AIT: 'Mechanics, Automotive & Industrials',
+  MSM: 'Mechanics, Automotive & Industrials',
+  WCC: 'Mechanics, Automotive & Industrials',
+  CNM: 'Mechanics, Automotive & Industrials',
+  FERG: 'Mechanics, Automotive & Industrials',
+  SITE: 'Mechanics, Automotive & Industrials',
+  TREX: 'Mechanics, Automotive & Industrials',
+  AZEK: 'Mechanics, Automotive & Industrials',
+  IBP: 'Mechanics, Automotive & Industrials',
+  BLD: 'Mechanics, Automotive & Industrials',
+  MHK: 'Mechanics, Automotive & Industrials',
+  ZWS: 'Mechanics, Automotive & Industrials',
   // Casablanca BVC Mechanics, Construction, Automotive & Industrials
   TGCC: 'Mechanics, Automotive & Industrials',
   LHM: 'Mechanics, Automotive & Industrials',
@@ -2201,22 +2522,55 @@ export const TICKER_TO_COMPANY_NAME: Record<string, string> = {
   BOA: 'Bank of Africa',
   CSR: 'Cosumar',
   HPS: 'Hightech Payment Systems (HPS)',
+  USAR: 'USA Rare Earth, Inc.',
+  MP: 'MP Materials Corp.',
+  ASTS: 'AST SpaceMobile, Inc.',
+  LUNR: 'Intuitive Machines, Inc.',
+  JOBY: 'Joby Aviation, Inc.',
+  ACHR: 'Archer Aviation Inc.',
+  RDW: 'Redwire Corporation',
 };
 
 const QUOTE_SUFFIXES = ['USDT', 'FDUSD', 'USDC', 'BUSD', 'TUSD', 'USD', 'EUR', 'GBP', 'TRY', 'PERP'];
 
 /**
- * Normalizes any stock ticker, tokenized equity symbol (Ondo ON, Swarm/xStocks X, Backed b*, Dinari d*, Simple Earn LD*),
- * trading pair (e.g., "JPMUSDT", "NVDAONUSDT", "JPM-USD", "BRK.B"), or company name alias ("JPMorgan" -> "JPM").
+ * Real US/Global stock tickers that naturally begin with the letters "EQ"
+ * (so we don't strip "EQ" from Equinix EQIX, Equity Residential EQR, Equinor EQNR, Equitable EQH, EQT Corp EQT).
+ */
+const NATURAL_EQ_STOCK_TICKERS = new Set<string>(['EQIX', 'EQR', 'EQNR', 'EQH', 'EQT', 'EQBK']);
+
+/**
+ * Detects whether a raw Binance / exchange asset symbol represents an EQ-prefixed
+ * or Ondo/Swarm/Backed tokenized equity (e.g., EQORCL, EQNVDA, EQJPM, EQUSAR, NVDAON, JPMON).
+ */
+export function isTokenizedEquityTicker(rawTicker: string): boolean {
+  const raw = (rawTicker || '').trim().toUpperCase().replace(/^LD/, '');
+  if (!raw || KNOWN_CRYPTO_TICKERS.has(raw) || KNOWN_STABLECOIN_AND_FIAT_TICKERS.has(raw)) {
+    return false;
+  }
+  if (raw.startsWith('EQ') && raw.length >= 3 && !KNOWN_CRYPTO_TICKERS.has(raw)) {
+    return true;
+  }
+  const clean = normalizeStockTicker(raw);
+  return Boolean(TICKER_TO_STOCK_SECTOR[clean]);
+}
+
+/**
+ * Normalizes any stock ticker, tokenized equity symbol (Binance EQ*, Ondo ON, Swarm/xStocks X, Backed b*, Dinari d*, Simple Earn LD*),
+ * trading pair (e.g., "EQORCL", "EQNVDA", "EQJPM", "EQUSAR", "JPMUSDT", "NVDAONUSDT", "JPM-USD", "BRK.B"),
+ * or company name alias ("JPMorgan" -> "JPM").
  */
 export function normalizeStockTicker(rawTicker: string): string {
   const original = (rawTicker || '').trim().toUpperCase();
   if (!original) return '';
 
-  // 0. Check if the raw string is a known company name alias (e.g. "JPMORGAN", "JP MORGAN", "CATERPILLAR")
+  // 0. Check if the raw string is a known company name alias (e.g. "JPMORGAN", "JP MORGAN", "CATERPILLAR", "USA RARE EARTH")
   const cleanWords = original.replace(/[.,]/g, '').replace(/\s+/g, ' ').trim();
   if (COMPANY_NAME_TO_TICKER[cleanWords]) {
     return COMPANY_NAME_TO_TICKER[cleanWords];
+  }
+  if (cleanWords === 'USA RARE EARTH' || cleanWords === 'USA RARE EARTH INC') {
+    return 'USAR';
   }
 
   // Normalize share class dots/slashes: BRK.B -> BRK-B, BF.B -> BF-B
@@ -2228,15 +2582,15 @@ export function normalizeStockTicker(rawTicker: string): string {
     return COMPANY_NAME_TO_TICKER[clean];
   }
 
-  if (/^BRK[./]B$/i.test(clean)) return 'BRK-B';
-  if (/^BRK[./]A$/i.test(clean)) return 'BRK-A';
+  if (/^BRK[./]B$/i.test(clean) || /^EQBRK[./-]?B$/i.test(clean)) return 'BRK-B';
+  if (/^BRK[./]A$/i.test(clean) || /^EQBRK[./-]?A$/i.test(clean)) return 'BRK-A';
   if (/^BF[./]B$/i.test(clean)) return 'BF-B';
   if (/^BF[./]A$/i.test(clean)) return 'BF-A';
 
   // Strip common exchange suffixes (.US, .NYSE, .NASDAQ, .N, .O, .CAS, .MA, .PA, .L, .DE, .TO)
   clean = clean.replace(/\.(US|NYSE|NASDAQ|AMEX|ARCA|CAS|MA|PA|DE|SW|TO|HK|L|N|O)$/i, '');
 
-  // Strip pair separators like JPM/USDT, JPM-USD, JPM_USDT
+  // Strip pair separators like JPM/USDT, JPM-USD, JPM_USDT, EQNVDA/USDT
   for (const q of QUOTE_SUFFIXES) {
     const sepRegex = new RegExp(`[-/_:]${q}$`, 'i');
     if (sepRegex.test(clean)) {
@@ -2249,27 +2603,25 @@ export function normalizeStockTicker(rawTicker: string): string {
   clean = clean.replace(/[^A-Z0-9-]/g, '');
   if (!clean) return '';
 
-  // Direct hit before stripping prefixes/suffixes
-  if (TICKER_TO_STOCK_SECTOR[clean]) {
-    return clean;
-  }
-  if (COMPANY_NAME_TO_TICKER[clean]) {
-    return COMPANY_NAME_TO_TICKER[clean];
-  }
-
-  // Strip Simple Earn "LD" prefix (e.g., LDJPM, LDNVDA, LDAAPL)
+  // Strip Simple Earn "LD" prefix first (e.g., LDJPM, LDEQNVDA, LDNVDA, LDAAPL)
   if (clean.startsWith('LD') && clean.length > 2 && !TICKER_TO_STOCK_SECTOR[clean]) {
     const withoutLd = clean.slice(2);
-    if (TICKER_TO_STOCK_SECTOR[withoutLd] || KNOWN_CRYPTO_TICKERS.has(withoutLd) || withoutLd.length >= 1) {
+    if (
+      withoutLd.startsWith('EQ') ||
+      TICKER_TO_STOCK_SECTOR[withoutLd] ||
+      KNOWN_CRYPTO_TICKERS.has(withoutLd) ||
+      withoutLd.length >= 1
+    ) {
       clean = withoutLd;
     }
   }
 
-  // Strip quote currency suffixes (e.g., JPMUSDT -> JPM, NVDAONUSDT -> NVDAON, JPMUSD -> JPM)
+  // Strip quote currency suffixes (e.g., EQNVDAUSDT -> EQNVDA, JPMUSDT -> JPM, NVDAONUSDT -> NVDAON, JPMUSD -> JPM)
   for (const suffix of QUOTE_SUFFIXES) {
     if (clean.endsWith(suffix) && clean.length > suffix.length) {
       const stripped = clean.slice(0, -suffix.length);
       if (
+        stripped.startsWith('EQ') ||
         TICKER_TO_STOCK_SECTOR[stripped] ||
         KNOWN_CRYPTO_TICKERS.has(stripped) ||
         (stripped.endsWith('ON') && TICKER_TO_STOCK_SECTOR[stripped.slice(0, -2)]) ||
@@ -2281,8 +2633,28 @@ export function normalizeStockTicker(rawTicker: string): string {
     }
   }
 
+  // Handle Binance Equities "EQ" prefix (e.g., EQORCL -> ORCL, EQNVDA -> NVDA, EQJPM -> JPM, EQUSAR -> USAR, EQV -> V)
+  if (clean.startsWith('EQ') && clean.length >= 3 && !NATURAL_EQ_STOCK_TICKERS.has(clean)) {
+    const withoutEq = clean.slice(2).replace(/^-/, '');
+    if (withoutEq.length >= 1) {
+      clean = withoutEq;
+    }
+  }
+
+  // Handle "STK" prefix/suffix if present (e.g. STKNVDA -> NVDA)
+  if (clean.startsWith('STK') && clean.length >= 4 && !TICKER_TO_STOCK_SECTOR[clean]) {
+    const withoutStk = clean.slice(3).replace(/^-/, '');
+    if (TICKER_TO_STOCK_SECTOR[withoutStk]) {
+      clean = withoutStk;
+    }
+  }
+
+  // Direct hit after stripping LD / Quote / EQ prefix
   if (TICKER_TO_STOCK_SECTOR[clean]) {
     return clean;
+  }
+  if (COMPANY_NAME_TO_TICKER[clean]) {
+    return COMPANY_NAME_TO_TICKER[clean];
   }
 
   // Handle Ondo Global Markets tokenized stock suffix "ON" (e.g. JPMON -> JPM, NVDAON -> NVDA, VON -> V, CON -> C, FON -> F, OON -> O)
@@ -2328,15 +2700,20 @@ export function resolveCanonicalCompanyName(ticker: string, fallbackName?: strin
   if (TICKER_TO_COMPANY_NAME[clean]) {
     return TICKER_TO_COMPANY_NAME[clean];
   }
-  if (fallbackName && fallbackName.trim() && fallbackName.trim().toUpperCase() !== clean) {
+  if (
+    fallbackName &&
+    fallbackName.trim() &&
+    fallbackName.trim().toUpperCase() !== clean &&
+    fallbackName.trim().toUpperCase() !== ticker.trim().toUpperCase()
+  ) {
     return fallbackName.trim();
   }
   return TICKER_TO_COMPANY_NAME[clean] || fallbackName?.trim() || clean;
 }
 
 /**
- * Determines whether a given ticker/position is a Stock/ETF (including Funding Wallet equities)
- * vs. a Spot Cryptocurrency or Stablecoin.
+ * Determines whether a given ticker/position is a Stock/ETF (including Funding Wallet equities like EQORCL, EQNVDA, EQJPM, EQUSAR)
+ * vs. a Spot Cryptocurrency (including delisted tokens like NEBL, WTC) or Stablecoin.
  */
 export function classifyAssetClass(params: {
   ticker: string;
@@ -2347,6 +2724,7 @@ export function classifyAssetClass(params: {
   isStablecoinOrFiat?: boolean;
 }): 'STOCK' | 'CRYPTO' | 'STABLECOIN' {
   const raw = (params.ticker || '').trim().toUpperCase();
+  const rawWithoutLd = raw.replace(/^LD/, '');
   const clean = normalizeStockTicker(raw);
 
   if (
@@ -2358,23 +2736,37 @@ export function classifyAssetClass(params: {
     return 'STABLECOIN';
   }
 
-  // Known stock ticker in our 850+ dictionary
+  // 1. Known cryptocurrency ticker (e.g. BTC, ETH, SOL, BNB, NEBL, WTC) -> ALWAYS CRYPTO
+  if (KNOWN_CRYPTO_TICKERS.has(raw) || KNOWN_CRYPTO_TICKERS.has(rawWithoutLd) || KNOWN_CRYPTO_TICKERS.has(clean)) {
+    return 'CRYPTO';
+  }
+
+  // 2. Binance Equities "EQ*" prefix (e.g. EQORCL, EQNVDA, EQJPM, EQUSAR) -> ALWAYS STOCK
+  if (rawWithoutLd.startsWith('EQ') && rawWithoutLd.length >= 3) {
+    return 'STOCK';
+  }
+
+  // 3. Known stock ticker in our 1,400+ dictionary
   if (TICKER_TO_STOCK_SECTOR[clean] || TICKER_TO_STOCK_SECTOR[raw]) {
     return 'STOCK';
   }
 
-  // Known cryptocurrency ticker -> always CRYPTO
-  if (KNOWN_CRYPTO_TICKERS.has(clean) || KNOWN_CRYPTO_TICKERS.has(raw)) {
-    return 'CRYPTO';
-  }
-
-  // Explicit market tag from position record
+  // 4. Explicit market tag from manual position record
   const mkt = (params.market || '').toUpperCase();
   if (mkt === 'US' || mkt === 'BVC' || mkt === 'ETF' || mkt === 'GLOBAL') {
     return 'STOCK';
   }
+  if (mkt === 'CRYPTO' || mkt === 'BINANCE') {
+    return 'CRYPTO';
+  }
 
-  // Explicit stock sector tag
+  // 5. Explicit Spot or Earn wallet asset that is NOT in TICKER_TO_STOCK_SECTOR and does NOT start with EQ -> CRYPTO
+  const wType = (params.walletType || '').toUpperCase();
+  if (wType === 'SPOT' || wType === 'EARN') {
+    return 'CRYPTO';
+  }
+
+  // 6. Explicit stock sector tag
   const sec = (params.sector || '').toLowerCase();
   if (
     sec.includes('stock') ||
@@ -2393,23 +2785,20 @@ export function classifyAssetClass(params: {
     return 'STOCK';
   }
 
-  // If held in Binance Funding Wallet and not a known cryptocurrency or stablecoin, treat as Funding Stock
+  // 7. If held in Binance Funding Wallet and not a known cryptocurrency or stablecoin, treat as Funding Stock
   if (
-    (params.walletType === 'FUNDING' || (params.fundingTotal && params.fundingTotal > 0)) &&
-    !KNOWN_CRYPTO_TICKERS.has(clean)
+    (wType === 'FUNDING' || (params.fundingTotal && params.fundingTotal > 0)) &&
+    !KNOWN_CRYPTO_TICKERS.has(clean) &&
+    !KNOWN_CRYPTO_TICKERS.has(raw)
   ) {
     return 'STOCK';
   }
 
-  if (mkt === 'CRYPTO' || mkt === 'BINANCE') {
-    return 'CRYPTO';
-  }
-
-  return 'STOCK';
+  return 'CRYPTO';
 }
 
 /**
- * Internal helper that matches company names, brand names, and industry descriptions
+ * Internal helper that matches company names, brand names, and Yahoo Finance sector/industry descriptions
  * using strict word-boundary regular expressions so "retail" or "airlines" never false-match "ai".
  */
 function matchSectorFromText(text: string): StockSectorCategory | null {
@@ -2441,7 +2830,7 @@ function matchSectorFromText(text: string): StockSectorCategory | null {
 
   // 2. Banking & Financials (checked early so JPMorgan Chase, Goldman Sachs, Morgan Stanley, Berkshire, Visa, etc. always match)
   if (
-    /\b(jpmorgan|jp\s*morgan|chase|goldman\s*sachs|morgan\s*stanley|citigroup|citibank|wells\s*fargo|bank\s*of\s*america|bofa|blackrock|blackstone|kkr|apollo\s*global|carlyle|brookfield|charles\s*schwab|schwab|interactive\s*brokers|robinhood|coinbase|visa|mastercard|american\s*express|amex|discover\s*financial|synchrony|capital\s*one|paypal|affirm|sofi|nubank|upstart|fiserv|fidelity\s*national|global\s*payments|berkshire\s*hathaway|chubb|progressive|travelers|allstate|metlife|prudential|aflac|aig|hartford|marsh|aon|moody|s&p\s*global|msci|nasdaq|cboe|intercontinental\s*exchange|cme\s*group|state\s*street|bny\s*mellon|northern\s*trust|us\s*bancorp|pnc|truist|fifth\s*third|huntington\s*bancshares|regions\s*financial|citizens\s*financial|keycorp|ally\s*financial|hsbc|royal\s*bank|toronto-dominion|td\s*bank|scotiabank|barclays|lloyds|natwest|ubs|deutsche\s*bank|santander|bbva|ing\s*groep|bnp\s*paribas|mitsubishi\s*ufj|sumitomo\s*mitsui|mizuho|itau|bradesco|hdfc\s*bank|icici|attijariwafa|attijari|banque\s*populaire|cih\s*bank|bmci|credit\s*du\s*maroc|wafa\s*assurance|sanlam|atlantasanad|bank|banking|bancorp|bancshares|financial|financials|finance|insurance|insurer|reinsurance|assurance|asset\s*management|wealth\s*management|brokerage|fintech|payment|payments|credit\s*card|lending|mortgage|bancaire)\b/i.test(
+    /\b(jpmorgan|jp\s*morgan|chase|goldman\s*sachs|morgan\s*stanley|citigroup|citibank|wells\s*fargo|bank\s*of\s*america|bofa|blackrock|blackstone|kkr|apollo\s*global|carlyle|brookfield|charles\s*schwab|schwab|interactive\s*brokers|robinhood|coinbase|visa|mastercard|american\s*express|amex|discover\s*financial|synchrony|capital\s*one|paypal|affirm|sofi|nubank|upstart|fiserv|fidelity\s*national|global\s*payments|berkshire\s*hathaway|chubb|progressive|travelers|allstate|metlife|prudential|aflac|aig|hartford|marsh|aon|moody|s&p\s*global|msci|nasdaq|cboe|intercontinental\s*exchange|cme\s*group|state\s*street|bny\s*mellon|northern\s*trust|us\s*bancorp|pnc|truist|fifth\s*third|huntington\s*bancshares|regions\s*financial|citizens\s*financial|keycorp|ally\s*financial|hsbc|royal\s*bank|toronto-dominion|td\s*bank|scotiabank|barclays|lloyds|natwest|ubs|deutsche\s*bank|santander|bbva|ing\s*groep|bnp\s*paribas|mitsubishi\s*ufj|sumitomo\s*mitsui|mizuho|itau|bradesco|hdfc\s*bank|icici|attijariwafa|attijari|banque\s*populaire|cih\s*bank|bmci|credit\s*du\s*maroc|wafa\s*assurance|sanlam|atlantasanad|bank|banks|banking|bancorp|bancshares|financial\s*services|financial|financials|finance|capital\s*markets|credit\s*services|insurance|insurer|reinsurance|assurance|asset\s*management|wealth\s*management|brokerage|fintech|payment|payments|credit\s*card|lending|mortgage|bancaire)\b/i.test(
       s
     )
   ) {
@@ -2459,7 +2848,7 @@ function matchSectorFromText(text: string): StockSectorCategory | null {
 
   // 4. Mechanics, Automotive & Industrials
   if (
-    /\b(caterpillar|john\s*deere|deere|ge\s*aerospace|ge\s*vernova|general\s*electric|honeywell|boeing|lockheed\s*martin|raytheon|rtx|northrop\s*grumman|general\s*dynamics|l3harris|transdigm|heico|howmet|textron|axon\s*enterprise|rocket\s*lab|union\s*pacific|csx|norfolk\s*southern|canadian\s*pacific|canadian\s*national|wabtec|united\s*parcel|ups|fedex|j\.?b\.?\s*hunt|old\s*dominion|xpo|delta\s*air|united\s*airlines|american\s*airlines|southwest\s*airlines|ryanair|uber|lyft|tesla|ford\s*motor|general\s*motors|toyota|honda\s*motor|stellantis|ferrari|volkswagen|mercedes|bmw|porsche|byd|rivian|lucid\s*group|nio|xpeng|li\s*auto|aptiv|borgwarner|lear|autoliv|magna|goodyear|3m\s*company|eaton|emerson\s*electric|illinois\s*tool|parker-hannifin|parker\s*hannifin|rockwell\s*automation|cummins|paccar|oshkosh|agco|stanley\s*black|snap-on|ingersoll\s*rand|dover|xylem|fortive|ametek|otis\s*worldwide|carrier\s*global|trane\s*technologies|johnson\s*controls|lennox|watsco|masco|fastenal|grainger|united\s*rentals|quanta\s*services|emcor|comfort\s*systems|jacobs\s*solutions|aecom|fluor|vulcan\s*materials|martin\s*marietta|crh|sherwin-williams|ppg\s*industries|nucor|steel\s*dynamics|cleveland-cliffs|alcoa|waste\s*management|republic\s*services|waste\s*connections|copart|cintas|equifax|transunion|rollins|generac|hubbell|siemens|airbus|safran|rolls-royce|bae\s*systems|abb\s*ltd|tgcc|lafargeholcim|lafarge|marsa\s*maroc|sonasid|ciments\s*du\s*maroc|jet\s*contractors|snep|aluminium\s*du\s*maroc|colorado|auto\s*hall|ennakl|mechanic|mechanics|mechanical|automotive|automobile|automaker|electric\s*vehicle|industrial|industrials|machinery|heavy\s*equipment|aerospace|defense|aviation|airline|airlines|railroad|railway|freight|logistics|trucking|shipping|construction|building\s*materials|cement|steel|manufacturing|robotics|engineering|elevator|hvac|tractor|excavator|turbine)\b/i.test(
+    /\b(usa\s*rare\s*earth|mp\s*materials|rare\s*earth|neodymium|magnet|magnets|caterpillar|john\s*deere|deere|ge\s*aerospace|ge\s*vernova|general\s*electric|honeywell|boeing|lockheed\s*martin|raytheon|rtx|northrop\s*grumman|general\s*dynamics|l3harris|transdigm|heico|howmet|textron|axon\s*enterprise|rocket\s*lab|redwire|intuitive\s*machines|joby\s*aviation|archer\s*aviation|ast\s*spacemobile|union\s*pacific|csx|norfolk\s*southern|canadian\s*pacific|canadian\s*national|wabtec|united\s*parcel|ups|fedex|j\.?b\.?\s*hunt|old\s*dominion|xpo|delta\s*air|united\s*airlines|american\s*airlines|southwest\s*airlines|ryanair|uber|lyft|tesla|ford\s*motor|general\s*motors|toyota|honda\s*motor|stellantis|ferrari|volkswagen|mercedes|bmw|porsche|byd|rivian|lucid\s*group|nio|xpeng|li\s*auto|aptiv|borgwarner|lear|autoliv|magna|goodyear|3m\s*company|eaton|emerson\s*electric|illinois\s*tool|parker-hannifin|parker\s*hannifin|rockwell\s*automation|cummins|paccar|oshkosh|agco|stanley\s*black|snap-on|ingersoll\s*rand|dover|xylem|fortive|ametek|otis\s*worldwide|carrier\s*global|trane\s*technologies|johnson\s*controls|lennox|watsco|masco|fastenal|grainger|united\s*rentals|quanta\s*services|emcor|comfort\s*systems|jacobs\s*solutions|aecom|fluor|vulcan\s*materials|martin\s*marietta|crh|sherwin-williams|ppg\s*industries|nucor|steel\s*dynamics|cleveland-cliffs|alcoa|waste\s*management|republic\s*services|waste\s*connections|copart|cintas|equifax|transunion|rollins|generac|hubbell|siemens|airbus|safran|rolls-royce|bae\s*systems|abb\s*ltd|tgcc|lafargeholcim|lafarge|marsa\s*maroc|sonasid|ciments\s*du\s*maroc|jet\s*contractors|snep|aluminium\s*du\s*maroc|colorado|auto\s*hall|ennakl|mechanic|mechanics|mechanical|automotive|automobile|automaker|auto\s*manufacturers|auto\s*parts|electric\s*vehicle|industrial|industrials|machinery|heavy\s*equipment|aerospace|defense|aviation|airline|airlines|railroad|railway|freight|logistics|trucking|shipping|construction|building\s*materials|cement|steel|manufacturing|robotics|engineering|elevator|hvac|tractor|excavator|turbine|electrical\s*equipment)\b/i.test(
       s
     )
   ) {
@@ -2478,7 +2867,7 @@ function matchSectorFromText(text: string): StockSectorCategory | null {
 
   // 6. Healthcare & Biotech
   if (
-    /\b(eli\s*lilly|novo\s*nordisk|unitedhealth|johnson\s*&\s*johnson|abbvie|merck|pfizer|astrazeneca|novartis|roche|sanofi|gsk|glaxosmithkline|takeda|bristol-myers|bristol\s*myers|amgen|gilead|vertex\s*pharma|regeneron|biogen|alnylam|biomarin|incyte|moderna|biontech|novavax|crispr|intellia|teva|viatris|zoetis|idexx|thermo\s*fisher|abbott|danaher|intuitive\s*surgical|stryker|boston\s*scientific|medtronic|edwards\s*lifesciences|zimmer\s*biomet|becton\s*dickinson|baxter|ge\s*healthcare|philips|alcon|resmed|dexcom|insulet|align\s*technology|hologic|steris|teleflex|waters\s*corp|agilent|mettler-toledo|revvity|bio-techne|illumina|exact\s*sciences|guardant|natera|iqvia|charles\s*river|medpace|hims|teladoc|cvs\s*health|cigna|elevance|humana|centene|molina|hca\s*healthcare|universal\s*health|tenet\s*healthcare|davita|labcorp|quest\s*diagnostics|mckesson|cencora|cardinal\s*health|walgreens|akdital|sothema|promopharm|healthcare|health\s*care|pharma|pharmaceutical|pharmaceuticals|biotech|biotechnology|biopharma|therapeutics|medical|medtech|surgical|diagnostics|genomics|oncology|hospital|clinics|vaccine|biosciences|life\s*sciences)\b/i.test(
+    /\b(eli\s*lilly|novo\s*nordisk|unitedhealth|johnson\s*&\s*johnson|abbvie|merck|pfizer|astrazeneca|novartis|roche|sanofi|gsk|glaxosmithkline|takeda|bristol-myers|bristol\s*myers|amgen|gilead|vertex\s*pharma|regeneron|biogen|alnylam|biomarin|incyte|moderna|biontech|novavax|crispr|intellia|teva|viatris|zoetis|idexx|thermo\s*fisher|abbott|danaher|intuitive\s*surgical|stryker|boston\s*scientific|medtronic|edwards\s*lifesciences|zimmer\s*biomet|becton\s*dickinson|baxter|ge\s*healthcare|philips|alcon|resmed|dexcom|insulet|align\s*technology|hologic|steris|teleflex|waters\s*corp|agilent|mettler-toledo|revvity|bio-techne|illumina|exact\s*sciences|guardant|natera|iqvia|charles\s*river|medpace|hims|teladoc|cvs\s*health|cigna|elevance|humana|centene|molina|hca\s*healthcare|universal\s*health|tenet\s*healthcare|davita|labcorp|quest\s*diagnostics|mckesson|cencora|cardinal\s*health|walgreens|akdital|sothema|promopharm|healthcare|health\s*care|pharma|pharmaceutical|pharmaceuticals|drug\s*manufacturers|biotech|biotechnology|biopharma|therapeutics|medical|medtech|surgical|diagnostics|genomics|oncology|hospital|clinics|vaccine|biosciences|life\s*sciences)\b/i.test(
       s
     )
   ) {
@@ -2487,7 +2876,7 @@ function matchSectorFromText(text: string): StockSectorCategory | null {
 
   // 7. Consumer & Retail
   if (
-    /\b(walmart|costco|target\s*corp|bj's\s*wholesale|dollar\s*general|dollar\s*tree|five\s*below|home\s*depot|lowe's|lowes|tractor\s*supply|williams-sonoma|wayfair|o'reilly\s*automotive|autozone|genuine\s*parts|carmax|autonation|carvana|mcdonald's|mcdonalds|starbucks|chipotle|yum!\s*brands|restaurant\s*brands|domino's|wendy's|shake\s*shack|wingstop|cava|dutch\s*bros|darden|texas\s*roadhouse|doordash|instacart|coca-cola|coca\s*cola|pepsico|pepsi|monster\s*beverage|celsius|keurig\s*dr\s*pepper|constellation\s*brands|molson\s*coors|anheuser-busch|diageo|brown-forman|procter\s*&\s*gamble|colgate-palmolive|kimberly-clark|church\s*&\s*dwight|clorox|estee\s*lauder|ulta\s*beauty|e\.l\.f\.\s*beauty|kenvue|nike|lululemon|on\s*holding|deckers|crocs|skechers|under\s*armour|adidas|ralph\s*lauren|tapestry|capri\s*holdings|lvmh|hermes|kering|richemont|tjx|ross\s*stores|burlington\s*stores|macy's|kohl's|nordstrom|gap\s*inc|abercrombie|american\s*eagle|urban\s*outfitters|levi\s*strauss|best\s*buy|gamestop|dick's\s*sporting|chewy|etsy|ebay|philip\s*morris|altria|british\s*american\s*tobacco|general\s*mills|kellanova|kraft\s*heinz|mondelez|hershey|campbell\s*soup|conagra|smucker|hormel|tyson\s*foods|mccormick|lamb\s*weston|archer-daniels-midland|bunge|kroger|albertsons|sprouts\s*farmers|sysco|us\s*foods|walt\s*disney|disney|warner\s*bros|paramount|fox\s*corp|new\s*york\s*times|live\s*nation|tko\s*group|mattel|hasbro|yeti|airbnb|booking\s*holdings|expedia|tripadvisor|marriott|hilton|hyatt|carnival|royal\s*caribbean|norwegian\s*cruise|las\s*vegas\s*sands|wynn\s*resorts|mgm\s*resorts|caesars|draftkings|flutter|alibaba|jd\.com|pinduoduo|mercadolibre|d\.r\.\s*horton|lennar|pultegroup|nvr|toll\s*brothers|whirlpool|cosumar|label\s*vie|societe\s*des\s*boissons|lesieur|oulmes|unimer|mutandis|consumer|retail|retailer|supermarket|grocery|hypermarket|e-commerce|ecommerce|marketplace|apparel|footwear|fashion|luxury|cosmetics|beauty|beverage|beverages|soft\s*drinks|brewery|tobacco|food|foods|snacks|confectionery|restaurant|restaurants|fast\s*food|hospitality|hotel|hotels|resort|cruise|casino|gaming|entertainment|streaming|homebuilder|household|appliances)\b/i.test(
+    /\b(walmart|costco|target\s*corp|bj's\s*wholesale|dollar\s*general|dollar\s*tree|five\s*below|home\s*depot|lowe's|lowes|tractor\s*supply|williams-sonoma|wayfair|o'reilly\s*automotive|autozone|genuine\s*parts|carmax|autonation|carvana|mcdonald's|mcdonalds|starbucks|chipotle|yum!\s*brands|restaurant\s*brands|domino's|wendy's|shake\s*shack|wingstop|cava|dutch\s*bros|darden|texas\s*roadhouse|doordash|instacart|coca-cola|coca\s*cola|pepsico|pepsi|monster\s*beverage|celsius|keurig\s*dr\s*pepper|constellation\s*brands|molson\s*coors|anheuser-busch|diageo|brown-forman|procter\s*&\s*gamble|colgate-palmolive|kimberly-clark|church\s*&\s*dwight|clorox|estee\s*lauder|ulta\s*beauty|e\.l\.f\.\s*beauty|kenvue|nike|lululemon|on\s*holding|deckers|crocs|skechers|under\s*armour|adidas|ralph\s*lauren|tapestry|capri\s*holdings|lvmh|hermes|kering|richemont|tjx|ross\s*stores|burlington\s*stores|macy's|kohl's|nordstrom|gap\s*inc|abercrombie|american\s*eagle|urban\s*outfitters|levi\s*strauss|best\s*buy|gamestop|dick's\s*sporting|chewy|etsy|ebay|philip\s*morris|altria|british\s*american\s*tobacco|general\s*mills|kellanova|kraft\s*heinz|mondelez|hershey|campbell\s*soup|conagra|smucker|hormel|tyson\s*foods|mccormick|lamb\s*weston|archer-daniels-midland|bunge|kroger|albertsons|sprouts\s*farmers|sysco|us\s*foods|walt\s*disney|disney|warner\s*bros|paramount|fox\s*corp|new\s*york\s*times|live\s*nation|tko\s*group|mattel|hasbro|yeti|airbnb|booking\s*holdings|expedia|tripadvisor|marriott|hilton|hyatt|carnival|royal\s*caribbean|norwegian\s*cruise|las\s*vegas\s*sands|wynn\s*resorts|mgm\s*resorts|caesars|draftkings|flutter|alibaba|jd\.com|pinduoduo|mercadolibre|d\.r\.\s*horton|lennar|pultegroup|nvr|toll\s*brothers|whirlpool|cosumar|label\s*vie|societe\s*des\s*boissons|lesieur|oulmes|unimer|mutandis|consumer\s*cyclical|consumer\s*defensive|consumer\s*staples|consumer\s*discretionary|consumer|retail|retailer|supermarket|grocery|hypermarket|e-commerce|ecommerce|marketplace|apparel|footwear|fashion|luxury|cosmetics|beauty|beverage|beverages|soft\s*drinks|brewery|tobacco|food|foods|snacks|confectionery|restaurant|restaurants|fast\s*food|hospitality|hotel|hotels|resort|cruise|casino|gaming|entertainment|streaming|homebuilder|household|appliances)\b/i.test(
       s
     )
   ) {
@@ -2496,7 +2885,7 @@ function matchSectorFromText(text: string): StockSectorCategory | null {
 
   // 8. Energy, Utilities & Real Estate
   if (
-    /\b(exxon\s*mobil|exxon|chevron|shell\s*plc|totalenergies|bp\s*p\.l\.c|equinor|petrobras|conocophillips|eog\s*resources|occidental\s*petroleum|devon\s*energy|diamondback\s*energy|coterra|apache|ovintiv|hess\s*corp|marathon\s*oil|marathon\s*petroleum|phillips\s*66|valero|schlumberger|slb|halliburton|baker\s*hughes|kinder\s*morgan|williams\s*companies|oneok|enterprise\s*products|energy\s*transfer|cheniere\s*energy|enbridge|tc\s*energy|suncor|canadian\s*natural|cameco|uranium\s*energy|nexgen|first\s*solar|enphase|solaredge|sunrun|nextracker|nextera\s*energy|southern\s*company|duke\s*energy|constellation\s*energy|vistra|nrg\s*energy|american\s*electric|sempra|dominion\s*energy|exelon|xcel\s*energy|public\s*service\s*enterprise|consolidated\s*edison|edison\s*international|pg&e|wec\s*energy|eversource|american\s*water|dte\s*energy|entergy|realty\s*income|prologis|american\s*tower|crown\s*castle|sba\s*communications|equinix|digital\s*realty|iron\s*mountain|simon\s*property|vici\s*properties|public\s*storage|extra\s*space|cubesmart|welltower|ventas|avalonbay|equity\s*residential|mid-america\s*apartment|essex\s*property|invitation\s*homes|alexandria\s*real\s*estate|boston\s*properties|kimco|regency\s*centers|federal\s*realty|w\.p\.\s*carey|weyerhaeuser|cbre|jones\s*lang\s*lasalle|costar|zillow|linde|air\s*products|ecolab|newmont|barrick\s*gold|agnico\s*eagle|franco-nevada|wheaton\s*precious|freeport-mcmoran|southern\s*copper|rio\s*tinto|bhp\s*group|vale\s*s\.a|albemarle|sociedad\s*quimica|dow\s*inc|dupont|lyondellbasell|cf\s*industries|mosaic|nutrien|corteva|at&t|verizon|t-mobile|comcast|charter\s*communications|vodafone|orange\s*s\.a|telefonica|america\s*movil|maroc\s*telecom|itissalat|taqa\s*morocco|managem|addoha|dar\s*saada|alliances|balima|immorente|aradei|total\s*maroc|afriquia\s*gaz|smi|energy|petroleum|oil\s*&\s*gas|crude\s*oil|natural\s*gas|lng|midstream|pipeline|refining|oilfield|drilling|solar|renewable|nuclear|uranium|utility|utilities|electric\s*power|water\s*utility|grid|reit|real\s*estate|property|properties|data\s*center\s*reit|cell\s*tower|mining|gold\s*mining|copper|lithium|chemicals|fertilizer|telecom|telecommunications|wireless\s*carrier)\b/i.test(
+    /\b(exxon\s*mobil|exxon|chevron|shell\s*plc|totalenergies|bp\s*p\.l\.c|equinor|petrobras|conocophillips|eog\s*resources|occidental\s*petroleum|devon\s*energy|diamondback\s*energy|coterra|apache|ovintiv|hess\s*corp|marathon\s*oil|marathon\s*petroleum|phillips\s*66|valero|schlumberger|slb|halliburton|baker\s*hughes|kinder\s*morgan|williams\s*companies|oneok|enterprise\s*products|energy\s*transfer|cheniere\s*energy|enbridge|tc\s*energy|suncor|canadian\s*natural|cameco|uranium\s*energy|nexgen|first\s*solar|enphase|solaredge|sunrun|nextracker|nextera\s*energy|southern\s*company|duke\s*energy|constellation\s*energy|vistra|nrg\s*energy|american\s*electric|sempra|dominion\s*energy|exelon|xcel\s*energy|public\s*service\s*enterprise|consolidated\s*edison|edison\s*international|pg&e|wec\s*energy|eversource|american\s*water|dte\s*energy|entergy|realty\s*income|prologis|american\s*tower|crown\s*castle|sba\s*communications|equinix|digital\s*realty|iron\s*mountain|simon\s*property|vici\s*properties|public\s*storage|extra\s*space|cubesmart|welltower|ventas|avalonbay|equity\s*residential|mid-america\s*apartment|essex\s*property|invitation\s*homes|alexandria\s*real\s*estate|boston\s*properties|kimco|regency\s*centers|federal\s*realty|w\.p\.\s*carey|weyerhaeuser|cbre|jones\s*lang\s*lasalle|costar|zillow|linde|air\s*products|ecolab|newmont|barrick\s*gold|agnico\s*eagle|franco-nevada|wheaton\s*precious|freeport-mcmoran|southern\s*copper|rio\s*tinto|bhp\s*group|vale\s*s\.a|albemarle|sociedad\s*quimica|dow\s*inc|dupont|lyondellbasell|cf\s*industries|mosaic|nutrien|corteva|at&t|verizon|t-mobile|comcast|charter\s*communications|vodafone|orange\s*s\.a|telefonica|america\s*movil|maroc\s*telecom|itissalat|taqa\s*morocco|managem|addoha|dar\s*saada|alliances|balima|immorente|aradei|total\s*maroc|afriquia\s*gaz|smi|energy|petroleum|oil\s*&\s*gas|crude\s*oil|natural\s*gas|lng|midstream|pipeline|refining|oilfield|drilling|solar|renewable|nuclear|uranium|utility|utilities|electric\s*power|water\s*utility|grid|reit|real\s*estate|property|properties|data\s*center\s*reit|cell\s*tower|basic\s*materials|mining|gold\s*mining|copper|lithium|chemicals|fertilizer|telecom|telecommunications|wireless\s*carrier)\b/i.test(
       s
     )
   ) {
