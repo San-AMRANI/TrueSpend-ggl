@@ -11,6 +11,7 @@ import type {
 import {
   classifyAssetClass,
   normalizeStockTicker,
+  resolveCanonicalCompanyName,
   TICKER_TO_STOCK_SECTOR,
 } from '../../src/lib/stockCategories.js';
 
@@ -1645,8 +1646,10 @@ export class BinanceService {
             }
           : {
               name:
-                stockQuote?.companyName ||
-                (entry.asset.startsWith('LD') ? `${cleanAsset} (Simple Earn)` : cleanAsset),
+                detectedAssetClass === 'STOCK' || TICKER_TO_STOCK_SECTOR[normalizedStockAsset]
+                  ? resolveCanonicalCompanyName(normalizedStockAsset, stockQuote?.companyName || cleanAsset)
+                  : stockQuote?.companyName ||
+                    (entry.asset.startsWith('LD') ? `${cleanAsset} (Simple Earn)` : cleanAsset),
               category: (detectedAssetClass === 'STOCK' || stockQuote || TICKER_TO_STOCK_SECTOR[normalizedStockAsset]
                 ? 'Tokenized Stocks & Equities'
                 : 'Digital Assets') as BinanceAssetCategory,

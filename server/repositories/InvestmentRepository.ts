@@ -1,6 +1,7 @@
 import { db } from '../../src/db/index.js';
 import { stockPositions, stockOrders, wallets } from '../../src/db/schema.js';
 import { eq, desc, and, sql } from 'drizzle-orm';
+import { resolveStockSectorCategory } from '../../src/lib/stockCategories.js';
 
 export interface CreateStockPositionParams {
   userId: string;
@@ -76,15 +77,25 @@ export class InvestmentRepository {
   }
 
   async createPosition(data: CreateStockPositionParams) {
+    const cleanTicker = data.ticker.toUpperCase().trim();
+    const cleanCompanyName = data.companyName.trim();
+    const cleanMarket = data.market || 'US';
+    const resolvedSector = resolveStockSectorCategory({
+      ticker: cleanTicker,
+      existingSector: data.sector,
+      companyName: cleanCompanyName,
+      market: cleanMarket,
+    });
+
     const inserted = await db
       .insert(stockPositions)
       .values({
         userId: data.userId,
         walletId: data.walletId || null,
-        ticker: data.ticker.toUpperCase().trim(),
-        companyName: data.companyName.trim(),
-        market: data.market || 'US',
-        sector: data.sector || 'Technology',
+        ticker: cleanTicker,
+        companyName: cleanCompanyName,
+        market: cleanMarket,
+        sector: resolvedSector,
         shares: data.shares || '0',
         avgCostPerShare: data.avgCostPerShare || '0',
         currentPrice: data.currentPrice || data.avgCostPerShare || '0',

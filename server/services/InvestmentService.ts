@@ -20,6 +20,7 @@ import type {
 import {
   classifyAssetClass,
   normalizeStockTicker,
+  resolveCanonicalCompanyName,
   resolveStockSectorCategory,
 } from '../../src/lib/stockCategories.js';
 
@@ -776,18 +777,30 @@ export class InvestmentService {
           const currency = (live?.currency || 'USD') as 'USD' | 'MAD' | 'EUR';
           const market: StockMarketType = eq.quoteType === 'ETF' ? 'ETF' : 'US';
 
-          localMatches.push({
-            ticker: sym,
-            companyName: eq.longname || eq.shortname || live?.companyName || sym,
+          const cleanSym = normalizeStockTicker(sym) || sym;
+          const resolvedName = resolveCanonicalCompanyName(
+            cleanSym,
+            eq.longname || eq.shortname || live?.companyName || sym
+          );
+          const resolvedSector = resolveStockSectorCategory({
+            ticker: cleanSym,
+            existingSector: eq.sector || eq.industry,
+            companyName: resolvedName,
             market,
-            sector: eq.sector || (eq.quoteType === 'ETF' ? 'Index / ETF' : 'Equities'),
+          });
+
+          localMatches.push({
+            ticker: cleanSym,
+            companyName: resolvedName,
+            market,
+            sector: resolvedSector,
             price,
             change24hPercent: live?.change24hPercent || 0,
             currency,
             priceInMad: Math.round(this.toMad(price, currency, rates) * 100) / 100,
             annualDividendPerShare: 0,
             dividendYieldPercent: 0,
-            thesis: `${eq.exchDisp || eq.exchange || 'Global'} listed ${eq.quoteType === 'ETF' ? 'ETF' : 'equity'}`,
+            thesis: `${eq.exchDisp || eq.exchange || 'Global'} listed ${eq.quoteType === 'ETF' ? 'ETF' : 'equity'} (${resolvedSector})`,
           });
         }
       }
@@ -812,7 +825,7 @@ export class InvestmentService {
     ]);
 
     // Fetch live quotes for manual user positions AND common Binance tokenized stocks in parallel
-    const userTickers = rawPositions.map((p) => p.ticker);
+    const userTickers = rawPositions.map((p) => normalizeStockTicker(p.ticker) || p.ticker);
     const allLookupTickers = Array.from(new Set([...userTickers, ...COMMON_BINANCE_STOCK_TICKERS]));
     const liveQuotes = await this.fetchLiveStockQuotes(allLookupTickers, options?.forceRefresh);
 
@@ -1038,9 +1051,12 @@ export class InvestmentService {
     const positionMapById = new Map(rawPositions.map((p) => [p.id, p]));
 
     const enrichedManual: StockPosition[] = rawPositions.map((pos) => {
-      const ticker = pos.ticker.toUpperCase();
-      const live = liveQuotes[ticker];
-      const catalogItem = CURATED_STOCK_CATALOG.find((c) => c.ticker === ticker);
+      const rawTicker = pos.ticker.toUpperCase();
+      const ticker = normalizeStockTicker(rawTicker) || rawTicker;
+      const live = liveQuotes[ticker] || liveQuotes[rawTicker];
+      const catalogItem = CURATED_STOCK_CATALOG.find(
+        (c) => c.ticker === ticker || c.ticker === rawTicker
+      );
 
       const sharesNum = Math.max(0, parseFloat(pos.shares || '0') || 0);
       const avgCostNum = Math.max(0, parseFloat(pos.avgCostPerShare || '0') || 0);
@@ -1137,6 +1153,10 @@ export class InvestmentService {
       }
 
       const resolvedMarket = (pos.market || catalogItem?.market || 'US') as StockMarketType;
+      const resolvedCompanyName = resolveCanonicalCompanyName(
+        ticker,
+        pos.companyName || live?.companyName || catalogItem?.companyName
+      );
       const assetClass = classifyAssetClass({
         ticker,
         market: resolvedMarket,
@@ -1147,16 +1167,27 @@ export class InvestmentService {
           ? resolveStockSectorCategory({
               ticker,
               existingSector: pos.sector || catalogItem?.sector,
-              companyName: pos.companyName || catalogItem?.companyName,
+              companyName: resolvedCompanyName,
               market: resolvedMarket,
             })
           : pos.sector || catalogItem?.sector || 'Digital Assets';
+
+      // Auto-heal stale legacy database sectors (e.g. 'Technology' or 'Technology & Cloud' on JPMorgan/CAT/etc.)
+      if (assetClass === 'STOCK' && (pos.sector !== resolvedSector || pos.companyName !== resolvedCompanyName)) {
+        investmentRepository
+          .updatePosition(pos.id, userId, {
+            sector: resolvedSector,
+            companyName: resolvedCompanyName,
+          })
+          .catch(() => {});
+      }
 
       return {
         ...pos,
         createdAt: pos.createdAt instanceof Date ? pos.createdAt.toISOString() : String(pos.createdAt || new Date().toISOString()),
         updatedAt: pos.updatedAt instanceof Date ? pos.updatedAt.toISOString() : String(pos.updatedAt || new Date().toISOString()),
         ticker,
+        companyName: resolvedCompanyName,
         market: resolvedMarket,
         sector: resolvedSector,
         currentPrice: currentPriceNum.toFixed(2),
@@ -2630,20 +2661,19 @@ export class InvestmentService {
       syncWithWallet?: boolean;
     }
   ) {
-    const ticker = (payload.ticker || '').trim().toUpperCase();
-    if (!ticker) throw new Error('Stock ticker is required (e.g. NVDA, AAPL, VOO, ATW)');
+    const rawInputTicker = (payload.ticker || '').trim().toUpperCase();
+    const ticker = normalizeStockTicker(rawInputTicker) || rawInputTicker;
+    if (!ticker) throw new Error('Stock ticker is required (e.g. NVDA, AAPL, VOO, JPM, CAT)');
 
     const catalogItem = CURATED_STOCK_CATALOG.find((c) => c.ticker === ticker);
     const liveMap = await this.fetchLiveStockQuotes([ticker]);
     const live = liveMap[ticker];
     const rates = await this.getExchangeRates();
 
-    const companyName = (
-      payload.companyName ||
-      live?.companyName ||
-      catalogItem?.companyName ||
-      ticker
-    ).trim();
+    const companyName = resolveCanonicalCompanyName(
+      ticker,
+      payload.companyName || live?.companyName || catalogItem?.companyName || ticker
+    );
     const market = payload.market || catalogItem?.market || 'US';
     const sector = resolveStockSectorCategory({
       ticker,

@@ -54,8 +54,12 @@ import type {
 import {
   ALL_STOCK_SECTOR_CATEGORIES,
   classifyAssetClass,
+  COMPANY_NAME_TO_TICKER,
+  normalizeStockTicker,
+  resolveCanonicalCompanyName,
   resolveStockSectorCategory,
   STOCK_SECTOR_METADATA,
+  TICKER_TO_COMPANY_NAME,
   type StockSectorCategory,
 } from '../../lib/stockCategories';
 
@@ -247,10 +251,12 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
     const totalStocksMad = rawStocks.reduce((sum, p) => sum + p.marketValueMad, 0);
 
     return rawStocks.map((p) => {
+      const cleanTicker = normalizeStockTicker(p.ticker) || p.ticker;
+      const cleanCompanyName = resolveCanonicalCompanyName(cleanTicker, p.companyName);
       const canonicalSector = resolveStockSectorCategory({
-        ticker: p.ticker,
+        ticker: cleanTicker,
         existingSector: p.sector,
-        companyName: p.companyName,
+        companyName: cleanCompanyName,
         market: p.market,
       });
       const stockWeightPercent =
@@ -258,6 +264,8 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
 
       return {
         ...p,
+        ticker: cleanTicker,
+        companyName: cleanCompanyName,
         canonicalSector,
         stockWeightPercent,
       };
@@ -743,9 +751,11 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
   };
 
   const handleTickerInputInModal = (nextTickerRaw: string) => {
-    const clean = nextTickerRaw.toUpperCase();
-    setFormTicker(clean);
-    const found = enrichedCatalog.find((c) => c.ticker === clean);
+    const rawUpper = nextTickerRaw.toUpperCase();
+    const norm = normalizeStockTicker(rawUpper) || rawUpper;
+    setFormTicker(rawUpper);
+
+    const found = enrichedCatalog.find((c) => c.ticker === norm || c.ticker === rawUpper);
     if (found) {
       setFormCompanyName(found.companyName);
       setFormSector(found.canonicalSector);
@@ -753,10 +763,38 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
       setFormCurrency((found.currency === 'MAD' ? 'MAD' : 'USD') as 'USD' | 'MAD');
       setFormAvgCost(String(found.price));
       setFormDividendPerShare(String(found.annualDividendPerShare || 0));
-    } else if (clean.length >= 1) {
-      const inferredSector = resolveStockSectorCategory({ ticker: clean });
+      setFormThesis(`Held in Binance Funding Wallet (${found.canonicalSector})`);
+    } else if (rawUpper.length >= 1) {
+      const knownName = TICKER_TO_COMPANY_NAME[norm];
+      const nextCompanyName = knownName || formCompanyName;
+      if (knownName) {
+        setFormCompanyName(knownName);
+      }
+      const inferredSector = resolveStockSectorCategory({
+        ticker: norm,
+        companyName: knownName || '',
+        market: formMarket,
+      });
       setFormSector(inferredSector);
+      setFormThesis(`Held in Binance Funding Wallet (${inferredSector})`);
+      void nextCompanyName;
     }
+  };
+
+  const handleCompanyNameInputInModal = (nextName: string) => {
+    setFormCompanyName(nextName);
+    const upperClean = nextName.trim().toUpperCase().replace(/[.,]/g, '').replace(/\s+/g, ' ');
+    const mappedTicker = COMPANY_NAME_TO_TICKER[upperClean];
+    const effectiveTicker = mappedTicker || normalizeStockTicker(formTicker) || formTicker;
+    if (mappedTicker && (!formTicker || formTicker === 'NVDA')) {
+      setFormTicker(mappedTicker);
+    }
+    const inferredSector = resolveStockSectorCategory({
+      ticker: effectiveTicker,
+      companyName: nextName,
+      market: formMarket,
+    });
+    setFormSector(inferredSector);
   };
 
   const handleSaveStockPosition = async (e: React.FormEvent) => {
@@ -777,12 +815,24 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
       return;
     }
 
+    const finalTicker = normalizeStockTicker(formTicker.trim()) || formTicker.trim().toUpperCase();
+    const finalCompanyName = resolveCanonicalCompanyName(
+      finalTicker,
+      formCompanyName.trim() || finalTicker
+    );
+    const finalSector = resolveStockSectorCategory({
+      ticker: finalTicker,
+      existingSector: formSector,
+      companyName: finalCompanyName,
+      market: formMarket,
+    });
+
     try {
       if (editingPosition && !editingPosition.id.startsWith('binance-')) {
         await onUpdatePosition(editingPosition.id, {
-          companyName: formCompanyName.trim() || formTicker.trim(),
+          companyName: finalCompanyName,
           market: formMarket,
-          sector: formSector,
+          sector: finalSector,
           shares,
           avgCostPerShare: avgCost,
           currency: formCurrency,
@@ -791,10 +841,10 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
         });
       } else {
         await onUpsertPosition({
-          ticker: formTicker.trim().toUpperCase(),
-          companyName: formCompanyName.trim() || formTicker.trim().toUpperCase(),
+          ticker: finalTicker,
+          companyName: finalCompanyName,
           market: formMarket,
-          sector: formSector,
+          sector: finalSector,
           shares,
           avgCostPerShare: avgCost,
           currency: formCurrency,
@@ -809,7 +859,7 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
       window.dispatchEvent(
         new CustomEvent('truespend:toast', {
           detail: {
-            message: `Saved ${formTicker.toUpperCase()} under ${formSector} in your Funding Stocks portfolio.`,
+            message: `Saved ${finalTicker} under ${finalSector} in your Funding Stocks portfolio.`,
             type: 'success',
           },
         })
@@ -2096,7 +2146,7 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
                     type="text"
                     required
                     value={formCompanyName}
-                    onChange={(e) => setFormCompanyName(e.target.value)}
+                    onChange={(e) => handleCompanyNameInputInModal(e.target.value)}
                     placeholder="NVIDIA Corporation"
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white"
                   />
