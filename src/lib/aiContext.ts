@@ -192,29 +192,32 @@ export function buildAiContextSnapshot({
       : null,
 
     // Historical Financial Periods Ledger (Exact opening/closing liquidity, net cashflow saved, and living spend per payroll period)
-    historicalFinancialPeriods: generateFinancialPeriodsLedger(transactions, payrolls, kpis).map(
-      (p) => ({
-        label: p.label,
-        dateRangeLabel: p.dateRangeLabel,
-        startDate: p.startKey,
-        endDate: p.endKey,
-        isCurrentActivePeriod: p.isCurrentPeriod,
-        openingLiquidityMad: p.openingLiquidity,
-        salaryIncomeMad: p.salaryIncome,
-        otherIncomeMad: p.otherIncome,
-        totalIncomeMad: p.totalIncome,
-        grossOutflowMad: p.grossOutflow,
-        netLivingExpenseMad: p.netLivingExpense,
-        reimbursableFrontedMad: p.reimbursableAmount,
-        debtRepaymentsMad: p.debtRepayments,
-        investmentDeployedMad: p.investmentDeployed,
-        netCashflowSavedMad: p.netCashflowSaved,
-        netEconomicSavedMad: p.netEconomicSaved,
-        endingLiquidityMad: p.closingLiquidity,
-        savingsRatePercent: p.savingsRate,
-        transactionCount: p.transactionCount,
-      })
-    ),
+    historicalFinancialPeriods: generateFinancialPeriodsLedger(
+      transactions,
+      payrolls,
+      amountOf(kpis?.totalLiquidity),
+      kpis?.accounts || []
+    ).map((p) => ({
+      label: p.label,
+      dateRangeLabel: p.displayLabel,
+      startDate: p.startDate,
+      endDate: p.endDate,
+      isCurrentActivePeriod: p.isCurrent,
+      openingLiquidityMad: p.openingLiquidity,
+      salaryIncomeMad: p.salaryIncome,
+      otherIncomeMad: p.otherIncome,
+      totalIncomeMad: p.totalIncome,
+      grossOutflowMad: p.grossOutflow,
+      netLivingExpenseMad: p.netLivingExpense,
+      reimbursableFrontedMad: p.reimbursableAmount,
+      debtRepaymentsMad: p.debtRepayments,
+      investmentDeployedMad: p.investmentDeployed,
+      netCashflowSavedMad: p.netCashflowSaved,
+      netEconomicSavedMad: p.netEconomicSaved,
+      endingLiquidityMad: p.closingLiquidity,
+      savingsRatePercent: p.cashSavingsRate,
+      transactionCount: p.transactionCount,
+    })),
 
     // Unified Net Worth Breakdown (explains Actual Holdings vs Pending Receivables & Payables)
     unifiedNetWorthBreakdown: kpis
@@ -232,12 +235,12 @@ export function buildAiContextSnapshot({
           const pendingReceivables = amountOf(
             debts
               .filter((d) => d.type === 'Receivable' && d.status === 'Pending')
-              .reduce((s, d) => s + amountOf(d.amount), 0)
+              .reduce((s, d) => s + amountOf(d.remainingBalance ?? d.originalAmount), 0)
           );
           const pendingPayables = amountOf(
             debts
               .filter((d) => d.type === 'Payable' && d.status === 'Pending')
-              .reduce((s, d) => s + amountOf(d.amount), 0)
+              .reduce((s, d) => s + amountOf(d.remainingBalance ?? d.originalAmount), 0)
           );
           const netDebtPosition = amountOf(pendingReceivables - pendingPayables);
           return {

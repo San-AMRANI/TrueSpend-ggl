@@ -115,7 +115,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     if (kpis && typeof kpis.totalLiquidity === 'number') {
       return kpis.totalLiquidity;
     }
-    return wallets.reduce((sum, w) => sum + (parseFloat(String(w.balance ?? w.currentBalance ?? 0)) || 0), 0);
+    return wallets.reduce((sum, w) => sum + (parseFloat(String(w.balance ?? w.initialBalance ?? 0)) || 0), 0);
   }, [kpis, wallets]);
 
   // Complete Financial Periods Ledger (reconciled 100% with Historical Cash Flow)
