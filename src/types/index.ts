@@ -546,6 +546,174 @@ export interface WalletCapitalFlowEntry {
   notes: string;
 }
 
+export type HeldInstrumentType =
+  | 'EQUITY'
+  | 'ETF'
+  | 'TOKENIZED_EQUITY'
+  | 'ADR'
+  | 'INDEX'
+  | 'CRYPTO'
+  | 'Common Stock'
+  | 'Tokenized / Synthetic Equity'
+  | 'Casablanca BVC Equity'
+  | 'ADR / Global Equity'
+  | 'Spot Cryptocurrency'
+  | 'Unclassified';
+
+export type PriceFreshnessState = 'LIVE' | 'EOD_CACHED' | 'DELAYED' | 'STALE' | 'ESTIMATED';
+
+export interface DailyOhlcvBar {
+  date: string; // YYYY-MM-DD
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  currency: string;
+  provider: string;
+  isAdjusted: boolean;
+}
+
+export interface TechnicalIndicatorPoint {
+  date: string;
+  close: number;
+  sma20: number | null;
+  sma50: number | null;
+  sma200: number | null;
+  ema12: number | null;
+  ema26: number | null;
+  bollingerUpper: number | null;
+  bollingerMiddle: number | null;
+  bollingerLower: number | null;
+  rsi14: number | null;
+  macdLine: number | null;
+  macdSignal: number | null;
+  macdHistogram: number | null;
+}
+
+export interface InstrumentDetailPayload {
+  symbol: string;
+  rawHeldSymbol: string;
+  underlyingSymbol: string;
+  displayName: string;
+  instrumentType: HeldInstrumentType;
+  exchange: string;
+  country: string;
+  sector: string;
+  industry: string | null;
+  currency: string;
+  provider: string;
+  freshnessState: PriceFreshnessState;
+  lastUpdatedAt: string;
+  bars: DailyOhlcvBar[];
+  indicators: TechnicalIndicatorPoint[];
+  fundamentals: {
+    description: string;
+    marketCapUsd: number | null;
+    peRatio: number | null;
+    eps: number | null;
+    dividendYieldPercent: number | null;
+    payoutRatioPercent: number | null;
+    isLicensedAvailable: boolean;
+    unavailableReason?: string;
+  };
+}
+
+export interface DividendEventRecord {
+  id: string;
+  userId: string;
+  positionId?: string | null;
+  ticker: string;
+  companyName: string;
+  declarationDate?: string | null;
+  exDividendDate?: string | null;
+  recordDate?: string | null;
+  paymentDate: string;
+  dividendPerShare: number;
+  eligibleShares: number;
+  currency: string;
+  grossAmount: number;
+  withholdingTax: number;
+  feeAmount: number;
+  netAmount: number;
+  netAmountMad: number;
+  fxRateUsed: number;
+  status: 'paid' | 'confirmed' | 'estimated' | 'manual';
+  source: string;
+  notes?: string | null;
+  verifiedAt: string;
+}
+
+export interface TwelveDataBudgetStatus {
+  provider: 'twelve_data' | 'hybrid_cache';
+  apiKeyConfigured: boolean;
+  displayLicenseConfirmed: boolean;
+  licenseNotice: string;
+  utcDate: string;
+  dailyHardLimit: number;
+  dailyTargetLimit: number;
+  dailyWarningThreshold: number;
+  providerDailyQuota: number;
+  perMinuteLimit: number;
+  creditsUsedToday: number;
+  creditsRemainingAppBudget: number;
+  creditsUsedCurrentMinute: number;
+  providerCreditsLeftHeader: number | null;
+  cachedSymbolsCount: number;
+  cachedBarsCount: number;
+  lastRefreshAt: string | null;
+  status: 'nominal' | 'warning' | 'budget_reached' | 'cache_only';
+}
+
+export interface InvestmentGoalItem {
+  id: string;
+  type: 'PORTFOLIO_VALUE' | 'ANNUAL_DIVIDEND' | 'MONTHLY_CONTRIBUTION' | 'CATEGORY_CAP';
+  title: string;
+  targetAmountMad: number;
+  currentAmountMad: number;
+  targetDate: string;
+  assumedAnnualReturnPercent: number;
+  monthlyContributionMad: number;
+}
+
+export interface InvestmentSettingsConfig {
+  reportingCurrency: 'MAD' | 'USD' | 'EUR';
+  selectedBenchmarks: string[];
+  riskFreeRatePercent: number;
+  manualUsdMadRate: number | null;
+  twelveDataDisplayApproved: boolean;
+  targetAllocations: { category: string; targetPercent: number }[];
+  goals: InvestmentGoalItem[];
+}
+
+export interface TraceableAiInsight {
+  id: string;
+  type:
+    | 'PERFORMANCE_SUMMARY'
+    | 'TOP_CONTRIBUTOR'
+    | 'TOP_DETRACTOR'
+    | 'CONCENTRATION_WARNING'
+    | 'DRAWDOWN_VOLATILITY'
+    | 'DIVIDEND_UPDATE'
+    | 'CONCENTRATION'
+    | 'SYNTHETIC_EXPOSURE'
+    | 'FEE_DRAG'
+    | 'BENCHMARK_DIVERGENCE'
+    | 'DIVIDEND_MIX'
+    | 'DRAWDOWN_RISK'
+    | 'REBALANCING';
+  severity: 'positive' | 'warning' | 'critical' | 'neutral' | 'info';
+  title: string;
+  metricBadge: string;
+  periodLabel: string;
+  asOfTimestamp: string;
+  relatedTickers: string[];
+  observedFact: string;
+  calculationExplanation: string;
+  interpretationAndContext: string;
+  dataFreshnessNote: string;
+}
+
 export interface StockPosition {
   id: string;
   userId: string;
@@ -555,6 +723,18 @@ export interface StockPosition {
   companyName: string;
   market: StockMarketType;
   sector: string;
+  instrumentType?: HeldInstrumentType | string;
+  rawHeldTicker?: string | null;
+  underlyingTicker?: string | null;
+  exchange?: string | null;
+  country?: string | null;
+  targetPrice?: number | string | null;
+  targetPriceNum?: number | null;
+  alertAbove?: number | string | null;
+  alertBelow?: number | string | null;
+  dataSource?: string | null;
+  priceUpdatedAt?: string | Date | null;
+  freshnessState?: PriceFreshnessState;
   shares: string;
   avgCostPerShare: string;
   currentPrice: string;
@@ -634,6 +814,10 @@ export interface StockOrder {
   totalNativeAmount: string;
   totalMadAmount: string;
   exchangeRateUsed: string;
+  feeNative?: string;
+  taxNative?: string;
+  splitRatio?: string;
+  accountSource?: string;
   realizedPnlMad: string;
   notes?: string | null;
   executedAt: string;
@@ -783,6 +967,10 @@ export interface InvestmentsData {
   capitalReconciliation?: CapitalReconciliationSnapshot;
   portfolioHistory?: PortfolioHistoryPoint[];
   smartInsights?: SmartInvestmentInsight[];
+  marketDataStatus?: TwelveDataBudgetStatus;
+  dividendEvents?: DividendEventRecord[];
+  investmentSettings?: InvestmentSettingsConfig;
+  storedDailyBarsBySymbol?: Record<string, DailyOhlcvBar[]>;
   rates: {
     USD_TO_MAD: number;
     EUR_TO_MAD: number;

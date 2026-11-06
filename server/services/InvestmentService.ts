@@ -24,6 +24,8 @@ import {
   resolveStockSectorCategory,
   TICKER_TO_STOCK_SECTOR,
 } from '../../src/lib/stockCategories.js';
+import { resolveInstrumentIdentity } from '../../src/lib/investmentIntelligence.js';
+import { marketDataService } from './MarketDataService.js';
 
 export const CURATED_STOCK_CATALOG: Omit<StockCatalogItem, 'priceInMad' | 'inPortfolio' | 'inWatchlist'>[] = [
   // 1. AI & Semiconductors
@@ -1922,8 +1924,78 @@ export class InvestmentService {
       };
     });
 
+    // Enrich positions with canonical Instrument Identity (instrumentType, rawHeldTicker, underlyingTicker, exchange, country, freshnessState)
+    const enrichedPositions = activePositions.map((pos) => {
+      const identity = resolveInstrumentIdentity({
+        rawTicker: pos.rawHeldTicker || pos.ticker,
+        companyName: pos.companyName,
+        market: pos.market,
+        sector: pos.sector,
+        source: pos.source,
+      });
+      return {
+        ...pos,
+        instrumentType: pos.instrumentType || identity.instrumentType,
+        rawHeldTicker: pos.rawHeldTicker || identity.rawHeldTicker,
+        underlyingTicker: pos.underlyingTicker || identity.underlyingTicker,
+        exchange: pos.exchange || identity.exchange,
+        country: pos.country || identity.country,
+        freshnessState: pos.freshnessState || ('LIVE' as const),
+      };
+    });
+
+    // Load User Investment Settings, Dividend Ledger, Market Data Cache Status, and Stored Daily Bars
+    const investmentSettings = await marketDataService.getUserInvestmentSettings(userId);
+    const [marketDataStatus, dividendEvents] = await Promise.all([
+      marketDataService.getBudgetAndCacheStatus(investmentSettings.twelveDataDisplayApproved),
+      marketDataService.getDividendEventsForUser(userId, enrichedPositions, rates.USD_TO_MAD),
+    ]);
+
+    // Fetch/cache daily OHLCV bars for held stocks + benchmarks (SPY, QQQ, MASI)
+    const barSymbols = Array.from(
+      new Set([
+        ...enrichedPositions
+          .filter((p) => classifyAssetClass({ ticker: p.ticker, market: p.market, sector: p.sector }) === 'STOCK')
+          .map((p) => p.underlyingTicker || normalizeStockTicker(p.ticker) || p.ticker),
+        'SPY',
+        'QQQ',
+        'MASI',
+      ])
+    ).slice(0, 12);
+
+    const storedDailyBarsBySymbol: Record<string, any[]> = {};
+    await Promise.all(
+      barSymbols.map(async (sym) => {
+        const posMatch = enrichedPositions.find(
+          (p) => (p.underlyingTicker || normalizeStockTicker(p.ticker) || p.ticker) === sym
+        );
+        const bars = await marketDataService.getDailyBarsForSymbol(sym, {
+          currentLivePrice: posMatch?.currentPriceNum,
+          currency: posMatch?.currency,
+          userDisplayApproved: investmentSettings.twelveDataDisplayApproved,
+        });
+        if (bars.length > 0) {
+          storedDailyBarsBySymbol[sym] = bars;
+        }
+      })
+    );
+
+    // Record daily portfolio snapshot in PostgreSQL
+    await marketDataService.recordDailyPortfolioSnapshot({
+      userId,
+      totalMarketValueMad: totalPortfolioValueMad,
+      investmentCashMad: investmentWalletBalanceMad,
+      netContributionsMad: effectiveInitialCapitalMad,
+      costBasisMad: totalCostBasisMad,
+      unrealizedPnlMad: totalUnrealizedPnlMad,
+      realizedPnlMad: totalRealizedPnlMad,
+      dividendsReceivedMad: totalDividendsCollectedMad,
+      usdToMadRate: rates.USD_TO_MAD,
+      positions: enrichedPositions,
+    });
+
     return {
-      positions: activePositions,
+      positions: enrichedPositions,
       watchlistPositions,
       orders,
       catalog,
@@ -1934,6 +2006,10 @@ export class InvestmentService {
       capitalReconciliation,
       portfolioHistory,
       smartInsights,
+      marketDataStatus,
+      dividendEvents,
+      investmentSettings,
+      storedDailyBarsBySymbol,
       rates,
       buyingPower: {
         safeToSpendMad,
@@ -3274,6 +3350,51 @@ export class InvestmentService {
       destinationWallet: destWallet,
     };
   }
+
+  async getInstrumentDetail(userId: string, rawSymbol: string, forceRefresh = false) {
+    const clean = normalizeStockTicker(rawSymbol) || rawSymbol.trim().toUpperCase();
+    const pos = await investmentRepository.findPositionByTicker(clean, userId);
+    const settings = await marketDataService.getUserInvestmentSettings(userId);
+    if (forceRefresh) {
+      await marketDataService.getDailyBarsForSymbol(clean, {
+        forceRefresh: true,
+        userDisplayApproved: settings.twelveDataDisplayApproved,
+      });
+    }
+    return await marketDataService.getInstrumentDetail(clean, pos as any);
+  }
+
+  async createDividendEvent(userId: string, payload: Record<string, any>) {
+    const rates = await this.getExchangeRates();
+    return await marketDataService.createDividendEvent(userId, payload, rates.USD_TO_MAD);
+  }
+
+  async deleteDividendEvent(userId: string, eventId: string) {
+    return await marketDataService.deleteDividendEvent(userId, eventId);
+  }
+
+  async updateInvestmentSettings(userId: string, payload: Record<string, any>) {
+    return await marketDataService.updateUserInvestmentSettings(userId, payload);
+  }
+
+  async refreshMarketData(userId: string, symbols?: string[]) {
+    const settings = await marketDataService.getUserInvestmentSettings(userId);
+    const targetSymbols =
+      Array.isArray(symbols) && symbols.length > 0
+        ? symbols.slice(0, 6)
+        : ['SPY', 'QQQ', 'NVDA', 'ORCL', 'JPM'];
+    for (const sym of targetSymbols) {
+      await marketDataService.getDailyBarsForSymbol(sym, {
+        forceRefresh: true,
+        userDisplayApproved: settings.twelveDataDisplayApproved,
+      });
+    }
+    const status = await marketDataService.getBudgetAndCacheStatus(
+      settings.twelveDataDisplayApproved
+    );
+    return { status };
+  }
 }
 
 export const investmentService = new InvestmentService();
+

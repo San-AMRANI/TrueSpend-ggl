@@ -41,5 +41,13 @@ router.delete('/investments/orders/:id', (req, res) => investmentController.dele
 router.post('/investments/payday-allocate', (req, res) => investmentController.executePaydayBatchBuy(req as any, res));
 router.post('/investments/fund-wallet', (req, res) => investmentController.fundInvestmentWallet(req as any, res));
 
+// Instrument Detail & Technical Indicators, Dividend Ledger, Settings & Market Data Budget
+router.get('/investments/instrument/:symbol', (req, res) => investmentController.getInstrumentDetail(req as any, res));
+router.post('/investments/dividends', (req, res) => investmentController.createDividendEvent(req as any, res));
+router.delete('/investments/dividends/:id', (req, res) => investmentController.deleteDividendEvent(req as any, res));
+router.put('/investments/settings', (req, res) => investmentController.updateInvestmentSettings(req as any, res));
+router.post('/investments/market-data/refresh', (req, res) => investmentController.refreshMarketData(req as any, res));
+
 export default router;
+
 

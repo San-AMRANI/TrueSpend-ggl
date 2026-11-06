@@ -131,6 +131,129 @@ export const createPool = () => {
         CREATE INDEX IF NOT EXISTS "stock_orders_user_id_idx" ON "stock_orders"("user_id");
         CREATE INDEX IF NOT EXISTS "stock_orders_position_id_idx" ON "stock_orders"("position_id");
 
+        ALTER TABLE "stock_positions" ADD COLUMN IF NOT EXISTS "instrument_type" text DEFAULT 'Common Stock';
+        ALTER TABLE "stock_positions" ADD COLUMN IF NOT EXISTS "raw_held_ticker" text;
+        ALTER TABLE "stock_positions" ADD COLUMN IF NOT EXISTS "underlying_ticker" text;
+        ALTER TABLE "stock_positions" ADD COLUMN IF NOT EXISTS "exchange" text DEFAULT 'NYSE / NASDAQ';
+        ALTER TABLE "stock_positions" ADD COLUMN IF NOT EXISTS "country" text DEFAULT 'United States';
+        ALTER TABLE "stock_positions" ADD COLUMN IF NOT EXISTS "target_price" numeric;
+        ALTER TABLE "stock_positions" ADD COLUMN IF NOT EXISTS "alert_above" numeric;
+        ALTER TABLE "stock_positions" ADD COLUMN IF NOT EXISTS "alert_below" numeric;
+        ALTER TABLE "stock_positions" ADD COLUMN IF NOT EXISTS "data_source" text DEFAULT 'manual';
+        ALTER TABLE "stock_positions" ADD COLUMN IF NOT EXISTS "price_updated_at" timestamp;
+
+        ALTER TABLE "stock_orders" ADD COLUMN IF NOT EXISTS "fee_native" numeric DEFAULT 0;
+        ALTER TABLE "stock_orders" ADD COLUMN IF NOT EXISTS "tax_native" numeric DEFAULT 0;
+        ALTER TABLE "stock_orders" ADD COLUMN IF NOT EXISTS "split_ratio" numeric DEFAULT 1;
+        ALTER TABLE "stock_orders" ADD COLUMN IF NOT EXISTS "account_source" text DEFAULT 'manual';
+
+        CREATE TABLE IF NOT EXISTS "market_data_symbols" (
+          "symbol" text PRIMARY KEY,
+          "raw_held_symbol" text,
+          "underlying_symbol" text,
+          "display_name" text NOT NULL,
+          "instrument_type" text NOT NULL DEFAULT 'Common Stock',
+          "exchange" text NOT NULL DEFAULT 'NASDAQ',
+          "mic_code" text,
+          "country" text NOT NULL DEFAULT 'United States',
+          "sector" text NOT NULL DEFAULT 'Technology & Cloud',
+          "industry" text,
+          "currency" text NOT NULL DEFAULT 'USD',
+          "provider" text NOT NULL DEFAULT 'cached_eod',
+          "is_active" boolean NOT NULL DEFAULT true,
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "market_data_daily_bars" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "symbol" text NOT NULL,
+          "bar_date" text NOT NULL,
+          "open" numeric NOT NULL,
+          "high" numeric NOT NULL,
+          "low" numeric NOT NULL,
+          "close" numeric NOT NULL,
+          "volume" numeric NOT NULL DEFAULT 0,
+          "currency" text NOT NULL DEFAULT 'USD',
+          "provider" text NOT NULL DEFAULT 'cached_eod',
+          "is_adjusted" boolean NOT NULL DEFAULT true,
+          "fetched_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS "market_data_daily_bars_symbol_date_unique" ON "market_data_daily_bars"("symbol", "bar_date");
+
+        CREATE TABLE IF NOT EXISTS "market_data_usage" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "utc_date" text NOT NULL,
+          "utc_minute" text NOT NULL,
+          "provider" text NOT NULL DEFAULT 'twelve_data',
+          "endpoint" text NOT NULL,
+          "credit_weight" integer NOT NULL DEFAULT 1,
+          "symbols_count" integer NOT NULL DEFAULT 1,
+          "credits_reserved" integer NOT NULL DEFAULT 1,
+          "credits_used_header" integer,
+          "credits_left_header" integer,
+          "status" text NOT NULL DEFAULT 'reserved',
+          "request_id" text,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "portfolio_daily_snapshots" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "snapshot_date" text NOT NULL,
+          "base_currency" text NOT NULL DEFAULT 'MAD',
+          "total_market_value_mad" numeric NOT NULL DEFAULT 0,
+          "investment_cash_mad" numeric NOT NULL DEFAULT 0,
+          "net_contributions_mad" numeric NOT NULL DEFAULT 0,
+          "cost_basis_mad" numeric NOT NULL DEFAULT 0,
+          "unrealized_pnl_mad" numeric NOT NULL DEFAULT 0,
+          "realized_pnl_mad" numeric NOT NULL DEFAULT 0,
+          "dividends_received_mad" numeric NOT NULL DEFAULT 0,
+          "usd_to_mad_rate" numeric NOT NULL DEFAULT 9.95,
+          "is_estimated" boolean NOT NULL DEFAULT false,
+          "positions_json" text,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS "portfolio_daily_snapshots_user_date_unique" ON "portfolio_daily_snapshots"("user_id", "snapshot_date");
+
+        CREATE TABLE IF NOT EXISTS "investment_dividend_events" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "position_id" uuid REFERENCES "stock_positions"("id") ON DELETE SET NULL,
+          "ticker" text NOT NULL,
+          "company_name" text NOT NULL,
+          "declaration_date" text,
+          "ex_dividend_date" text,
+          "record_date" text,
+          "payment_date" text NOT NULL,
+          "dividend_per_share" numeric NOT NULL DEFAULT 0,
+          "eligible_shares" numeric NOT NULL DEFAULT 0,
+          "currency" text NOT NULL DEFAULT 'USD',
+          "gross_amount" numeric NOT NULL DEFAULT 0,
+          "withholding_tax" numeric NOT NULL DEFAULT 0,
+          "fee_amount" numeric NOT NULL DEFAULT 0,
+          "net_amount" numeric NOT NULL DEFAULT 0,
+          "net_amount_mad" numeric NOT NULL DEFAULT 0,
+          "fx_rate_used" numeric NOT NULL DEFAULT 9.95,
+          "status" text NOT NULL DEFAULT 'confirmed',
+          "source" text NOT NULL DEFAULT 'manual',
+          "notes" text,
+          "verified_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS "investment_dividend_events_user_id_idx" ON "investment_dividend_events"("user_id");
+
+        CREATE TABLE IF NOT EXISTS "investment_settings" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL UNIQUE REFERENCES "users"("id") ON DELETE CASCADE,
+          "reporting_currency" text NOT NULL DEFAULT 'MAD',
+          "selected_benchmarks" text NOT NULL DEFAULT '["SPY","QQQ","MASI"]',
+          "risk_free_rate_percent" numeric NOT NULL DEFAULT 3.5,
+          "manual_usd_mad_rate" numeric,
+          "twelve_data_display_approved" boolean NOT NULL DEFAULT false,
+          "target_allocations_json" text,
+          "goals_json" text,
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+
         ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "username" text;
         ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "display_name" text;
         ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password_hash" text;

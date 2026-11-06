@@ -62,6 +62,11 @@ import {
   TICKER_TO_COMPANY_NAME,
   type StockSectorCategory,
 } from '../../lib/stockCategories';
+import { InstrumentDetailModal } from './InstrumentDetailModal';
+import {
+  StocksIntelligenceSuite,
+  type StocksSuiteSection,
+} from './StocksIntelligenceSuite';
 
 interface FundingStocksDashboardProps {
   investmentsData?: InvestmentsData | null;
@@ -208,6 +213,11 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'US' | 'ETF' | 'BVC'>('ALL');
   const [stockSearch, setStockSearch] = useState('');
   const [sortBy, setSortBy] = useState<'weight_desc' | 'pnl_desc' | 'yield_desc' | 'change24h_desc'>('weight_desc');
+  const [activeSuiteSection, setActiveSuiteSection] = useState<StocksSuiteSection>('all');
+  const [inspectedInstrument, setInspectedInstrument] = useState<{
+    symbol: string;
+    position?: StockPosition | null;
+  } | null>(null);
 
   // Add / Calibrate Funding Stock Modal State
   const [showAddStockModal, setShowAddStockModal] = useState(false);
@@ -1785,6 +1795,15 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
+                        onClick={() =>
+                          setInspectedInstrument({ symbol: pos.ticker, position: pos })
+                        }
+                        className="px-2.5 py-1 rounded-md font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+                      >
+                        Chart &amp; Technicals
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleInspectForensics(pos.ticker)}
                         className="px-2.5 py-1 rounded-md font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors cursor-pointer"
                       >
@@ -2085,6 +2104,13 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
                   </button>
                   <button
                     type="button"
+                    onClick={() => setInspectedInstrument({ symbol: item.ticker, position: null })}
+                    className="py-1.5 px-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 font-semibold hover:border-indigo-500 transition-colors cursor-pointer"
+                  >
+                    Chart
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setSimTicker(item.ticker)}
                     className="py-1.5 px-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:border-indigo-500 transition-colors cursor-pointer"
                   >
@@ -2096,6 +2122,60 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
           })}
         </div>
       </div>
+
+      {/* =====================================================================
+          7. COMPLETE STOCKS & PORTFOLIO INTELLIGENCE SUITE (WORKSTREAMS 1–9)
+         ===================================================================== */}
+      <StocksIntelligenceSuite
+        activeSection={activeSuiteSection}
+        onChangeSection={setActiveSuiteSection}
+        investmentsData={investmentsData}
+        stockPositions={stockHoldings}
+        watchlistPositions={investmentsData?.watchlistPositions || []}
+        usdToMadRate={usdToMadRate}
+        totalStockValueUsd={stocksSummary.effectiveStocksValueUsd}
+        totalStockValueMad={stocksSummary.effectiveStocksValueMad}
+        totalStockCostUsd={stocksSummary.totalCostBasisUsd}
+        totalStockNetPnlUsd={stocksSummary.netPnlAfterFeesUsd}
+        totalStockFeesUsd={stocksSummary.totalFeeLossUsd}
+        annualStockDividendsUsd={stocksSummary.annualDividendUsd}
+        stockDividendYieldPct={stocksSummary.weightedYieldPercent}
+        spotCryptoStats={{
+          totalCryptoUsd: spotCryptoSummary.totalCryptoUsd,
+          totalCryptoMad: spotCryptoSummary.totalCryptoMad,
+          cryptoCount: spotCryptoSummary.count,
+          stablecoinUsd: safeBinance?.stablecoinReserveUsd || 0,
+        }}
+        onInspectInstrument={(symbol, pos) =>
+          setInspectedInstrument({ symbol, position: pos || null })
+        }
+        onUpsertPosition={onUpsertPosition}
+        onUpdatePosition={onUpdatePosition}
+        onDeletePosition={onDeletePosition}
+        onQuickAddStock={(ticker) =>
+          openAddStockModalWithPreset(ticker ? { ticker } : undefined)
+        }
+      />
+
+      {inspectedInstrument && (
+        <InstrumentDetailModal
+          symbol={inspectedInstrument.symbol}
+          position={inspectedInstrument.position}
+          orders={investmentsData?.orders || []}
+          dividendEvents={investmentsData?.dividendEvents || []}
+          storedBars={
+            investmentsData?.storedDailyBarsBySymbol?.[
+              normalizeStockTicker(inspectedInstrument.symbol) || inspectedInstrument.symbol
+            ]
+          }
+          usdToMadRate={usdToMadRate}
+          onClose={() => setInspectedInstrument(null)}
+          onQuickAddStock={(ticker) => {
+            setInspectedInstrument(null);
+            openAddStockModalWithPreset({ ticker });
+          }}
+        />
+      )}
 
       {/* =====================================================================
           MODAL 1: ADD / CALIBRATE FUNDING STOCK POSITION

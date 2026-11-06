@@ -200,7 +200,69 @@ export class InvestmentController {
       res.status(400).json({ error: e?.message || 'Failed to fund investment wallet' });
     }
   }
+
+  async getInstrumentDetail(req: AuthRequest, res: Response) {
+    applyPrivateNoCacheHeaders(res);
+    try {
+      const symbol = String(req.params.symbol || '').trim().toUpperCase();
+      if (!symbol) {
+        return res.status(400).json({ error: 'Symbol is required' });
+      }
+      const forceRefresh = req.query.refresh === 'true';
+      const detail = await investmentService.getInstrumentDetail(req.dbUser.id, symbol, forceRefresh);
+      return res.json(detail);
+    } catch (e: any) {
+      console.error('InvestmentController.getInstrumentDetail error:', e?.message || 'Unknown error');
+      return res.status(400).json({ error: e?.message || 'Failed to load instrument detail' });
+    }
+  }
+
+  async createDividendEvent(req: AuthRequest, res: Response) {
+    applyPrivateNoCacheHeaders(res);
+    try {
+      const created = await investmentService.createDividendEvent(req.dbUser.id, req.body || {});
+      return res.status(201).json(created);
+    } catch (e: any) {
+      console.error('InvestmentController.createDividendEvent error:', e?.message || 'Unknown error');
+      return res.status(400).json({ error: e?.message || 'Failed to record dividend event' });
+    }
+  }
+
+  async deleteDividendEvent(req: AuthRequest, res: Response) {
+    applyPrivateNoCacheHeaders(res);
+    try {
+      const result = await investmentService.deleteDividendEvent(req.dbUser.id, req.params.id);
+      return res.json(result);
+    } catch (e: any) {
+      console.error('InvestmentController.deleteDividendEvent error:', e?.message || 'Unknown error');
+      return res.status(400).json({ error: e?.message || 'Failed to delete dividend event' });
+    }
+  }
+
+  async updateInvestmentSettings(req: AuthRequest, res: Response) {
+    applyPrivateNoCacheHeaders(res);
+    try {
+      const updated = await investmentService.updateInvestmentSettings(req.dbUser.id, req.body || {});
+      return res.json(updated);
+    } catch (e: any) {
+      console.error('InvestmentController.updateInvestmentSettings error:', e?.message || 'Unknown error');
+      return res.status(400).json({ error: e?.message || 'Failed to update investment settings' });
+    }
+  }
+
+  async refreshMarketData(req: AuthRequest, res: Response) {
+    applyPrivateNoCacheHeaders(res);
+    try {
+      const symbols = Array.isArray(req.body?.symbols) ? req.body.symbols : undefined;
+      const result = await investmentService.refreshMarketData(req.dbUser.id, symbols);
+      return res.json(result);
+    } catch (e: any) {
+      console.error('InvestmentController.refreshMarketData error:', e?.message || 'Unknown error');
+      return res.status(400).json({ error: e?.message || 'Failed to refresh market data' });
+    }
+  }
 }
 
 export const investmentController = new InvestmentController();
+
 
