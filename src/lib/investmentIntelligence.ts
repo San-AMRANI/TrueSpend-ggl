@@ -1,3 +1,4 @@
+// Investment Intelligence Engine — Identity, Technicals, Returns, Benchmarks, Risk, Traceable AI & Simulators
 import type {
   DailyOhlcvBar,
   DividendEventRecord,

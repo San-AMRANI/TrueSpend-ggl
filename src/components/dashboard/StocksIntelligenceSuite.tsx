@@ -1,3 +1,4 @@
+// StocksIntelligenceSuite — Complete Stocks & Portfolio Intelligence Suite (Workstreams 1-9)
 import React, { useMemo, useState } from 'react';
 import {
   Calendar,
