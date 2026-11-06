@@ -213,7 +213,10 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
   const [marketFilter, setMarketFilter] = useState<'ALL' | 'US' | 'ETF' | 'BVC'>('ALL');
   const [stockSearch, setStockSearch] = useState('');
   const [sortBy, setSortBy] = useState<'weight_desc' | 'pnl_desc' | 'yield_desc' | 'change24h_desc'>('weight_desc');
-  const [activeSuiteSection, setActiveSuiteSection] = useState<StocksSuiteSection>('all');
+  const [activeSuiteSection, setActiveSuiteSection] = useState<StocksSuiteSection>('overview');
+  const [showEmptySectors, setShowEmptySectors] = useState(false);
+  const [showQuickPresets, setShowQuickPresets] = useState(false);
+  const [holdingsViewMode, setHoldingsViewMode] = useState<'cards' | 'table'>('cards');
   const [inspectedInstrument, setInspectedInstrument] = useState<{
     symbol: string;
     position?: StockPosition | null;
@@ -1154,453 +1157,550 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
       </div>
 
       {/* =====================================================================
-          2. STOCKS CATEGORY DOMINANCE & SECTOR ALLOCATION ANALYZER
-             (AI & Semiconductors, Tech & Cloud, Mechanics & Auto, Banking, etc.)
+          WORKSPACE NAVIGATION TABS (SINGLE-LEVEL DECLUTTERED WORKSPACE)
          ===================================================================== */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-4">
-          <div>
-            <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <PieChartIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-              <span>Stocks Breakdown by Category (AI, Tech, Mechanics, Banking &amp; More)</span>
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              See which stock sector represents the highest percentage of your Funding &amp; Equities portfolio. Click any category card to filter your holdings or add a stock in that sector.
-            </p>
-          </div>
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-2 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 shadow-2xs">
+        <div className="flex items-center gap-1 overflow-x-auto pb-1 lg:pb-0">
+          {(
+            [
+              {
+                id: 'overview',
+                label: 'Overview & Sectors',
+                badge: `${categoryBreakdown.active.length}/8`,
+              },
+              {
+                id: 'holdings',
+                label: 'My Positions',
+                badge: String(stockHoldings.length),
+              },
+              {
+                id: 'performance',
+                label: 'Performance & Benchmarks',
+              },
+              {
+                id: 'dividends',
+                label: 'Dividends',
+              },
+              {
+                id: 'risk',
+                label: 'Risk & AI Insights',
+              },
+              {
+                id: 'watchlist',
+                label: 'Watchlist & Catalog',
+                badge: String(
+                  (investmentsData?.watchlistPositions?.length || 0) + enrichedCatalog.length
+                ),
+              },
+              {
+                id: 'planning',
+                label: 'Simulators & Goals',
+              },
+            ] as Array<{ id: StocksSuiteSection; label: string; badge?: string }>
+          ).map((tab) => {
+            const isActive = activeSuiteSection === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveSuiteSection(tab.id)}
+                className={`px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all inline-flex items-center gap-1.5 cursor-pointer ${
+                  isActive
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800/70'
+                }`}
+              >
+                <span>{tab.label}</span>
+                {tab.badge && (
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono tabular-nums ${
+                      isActive
+                        ? 'bg-indigo-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
+                    }`}
+                  >
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
 
+        <div className="flex items-center justify-end gap-2 px-2 border-t lg:border-t-0 pt-2 lg:pt-0 border-gray-100 dark:border-gray-800 shrink-0">
           {selectedSectorFilter !== 'ALL' && (
             <button
               type="button"
               onClick={() => setSelectedSectorFilter('ALL')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 cursor-pointer self-start"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 cursor-pointer whitespace-nowrap shrink-0"
             >
-              <X className="h-3.5 w-3.5" />
-              Clear Filter ({selectedSectorFilter})
+              <X className="h-3 w-3" />
+              Sector: {selectedSectorFilter}
             </button>
           )}
-        </div>
-
-        {/* Stacked Horizontal Percentage Bar when user holds stocks */}
-        {categoryBreakdown.active.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="font-semibold text-gray-700 dark:text-gray-300">
-                Live Category Weight Distribution (100% of Held Stocks)
-              </span>
-              <span className="font-mono tabular-nums text-gray-500">
-                Most Held:{' '}
-                <strong className="text-gray-900 dark:text-white">
-                  {categoryBreakdown.dominantCategory?.category} (
-                  {categoryBreakdown.dominantCategory?.weightPercent.toFixed(1)}%)
-                </strong>
-              </span>
-            </div>
-
-            <div className="h-4 w-full rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 flex p-0.5 gap-0.5">
-              {categoryBreakdown.active.map((cat) => (
-                <button
-                  key={cat.category}
-                  type="button"
-                  onClick={() =>
-                    setSelectedSectorFilter((prev) =>
-                      prev === cat.category ? 'ALL' : cat.category
-                    )
-                  }
-                  style={{
-                    width: `${Math.max(4, cat.weightPercent)}%`,
-                    backgroundColor: cat.colorHex,
-                  }}
-                  title={`${cat.category}: ${cat.weightPercent.toFixed(1)}% (${formatUsd(cat.valueUsd)})`}
-                  className="h-full first:rounded-l-md last:rounded-r-md transition-opacity hover:opacity-85 cursor-pointer"
-                />
-              ))}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1 text-xs">
-              {categoryBreakdown.active.map((cat) => (
-                <button
-                  key={cat.category}
-                  type="button"
-                  onClick={() =>
-                    setSelectedSectorFilter((prev) =>
-                      prev === cat.category ? 'ALL' : cat.category
-                    )
-                  }
-                  className={`inline-flex items-center gap-1.5 font-medium transition-colors cursor-pointer ${
-                    selectedSectorFilter === cat.category
-                      ? 'text-indigo-600 dark:text-indigo-400 font-bold underline'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                  }`}
-                >
-                  <span
-                    className="h-2.5 w-2.5 rounded-xs shrink-0"
-                    style={{ backgroundColor: cat.colorHex }}
-                  />
-                  <span>{cat.category}</span>
-                  <span className="font-mono tabular-nums font-bold text-gray-900 dark:text-white">
-                    {cat.weightPercent.toFixed(1)}%
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 8 Interactive Category Cards */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {categoryBreakdown.all.map((cat, idx) => {
-            const isSelected = selectedSectorFilter === cat.category;
-            const isTopCategory =
-              idx === 0 && cat.positionsCount > 0 && cat.weightPercent > 0;
-            const meta = STOCK_SECTOR_METADATA[cat.category];
-
-            return (
-              <div
-                key={cat.category}
-                onClick={() =>
-                  setSelectedSectorFilter((prev) =>
-                    prev === cat.category ? 'ALL' : cat.category
-                  )
-                }
-                className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-3 ${
-                  isSelected
-                    ? 'border-indigo-600 dark:border-indigo-400 bg-indigo-50/40 dark:bg-indigo-950/30'
-                    : isTopCategory
-                    ? 'border-indigo-300 dark:border-indigo-800/80 bg-gray-50/80 dark:bg-gray-950/60 hover:border-indigo-500'
-                    : 'border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-950/30 hover:border-gray-300 dark:hover:border-gray-700'
-                }`}
-              >
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="h-8 w-8 rounded-lg flex items-center justify-center text-white shrink-0"
-                        style={{ backgroundColor: cat.colorHex }}
-                      >
-                        {getSectorIcon(cat.category)}
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-gray-900 dark:text-white leading-tight">
-                          {cat.category}
-                        </div>
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400">
-                          {cat.positionsCount > 0
-                            ? `${cat.positionsCount} stock${cat.positionsCount === 1 ? '' : 's'} (${cat.tickers.join(', ')})`
-                            : `Examples: ${meta.examples.slice(0, 4).join(', ')}`}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-right font-mono tabular-nums shrink-0">
-                      <div
-                        className={`text-sm font-extrabold ${
-                          cat.weightPercent > 0
-                            ? 'text-gray-900 dark:text-white'
-                            : 'text-gray-400 dark:text-gray-600'
-                        }`}
-                      >
-                        {cat.weightPercent.toFixed(1)}%
-                      </div>
-                      {isTopCategory && (
-                        <div className="text-[10px] font-sans font-bold text-indigo-600 dark:text-indigo-400">
-                          #1 Category
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Mini Progress Bar */}
-                  <div className="h-1.5 w-full rounded-full bg-gray-200/80 dark:bg-gray-800 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${Math.min(100, Math.max(cat.positionsCount > 0 ? 4 : 0, cat.weightPercent))}%`,
-                        backgroundColor: cat.colorHex,
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-gray-200/60 dark:border-gray-800/80 flex items-center justify-between text-xs font-mono tabular-nums">
-                  {cat.positionsCount > 0 ? (
-                    <>
-                      <div>
-                        <span className="font-bold text-gray-900 dark:text-white">
-                          {formatUsd(cat.valueUsd)}
-                        </span>
-                        <span className="text-[11px] text-gray-500 ml-1">
-                          ({formatMad(cat.valueMad, 0)})
-                        </span>
-                      </div>
-                      <span
-                        className={`text-[11px] font-semibold ${
-                          cat.netPnlUsd >= 0
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-rose-600 dark:text-rose-400'
-                        }`}
-                      >
-                        {formatSignedUsd(cat.netPnlUsd)}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-sans text-[11px] text-gray-400">0% allocation</span>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openAddStockModalWithPreset({
-                            ticker: meta.examples[0],
-                            sector: cat.category,
-                          });
-                        }}
-                        className="font-sans text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
-                      >
-                        + Add {meta.examples[0]}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          <button
+            type="button"
+            onClick={() => openAddStockModalWithPreset()}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add / Sync Stock
+          </button>
         </div>
       </div>
 
       {/* =====================================================================
-          3. FRIENDLY STOCKS INSIGHTS & STRATEGIC VISION PANEL (4 CARDS)
+          2. STOCKS CATEGORY DOMINANCE & SECTOR ALLOCATION ANALYZER
+             (Shown in 'overview' tab; Empty 0% categories collapsed by default)
          ===================================================================== */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-amber-500" />
-              <span>Smart Stocks Insights &amp; Category Recommendations</span>
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Clear, plain-English insights into your stock sector concentration, Funding vs. Spot separation, breakeven targets, and dividend growth.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          {friendlyStockInsights.map((ins) => (
-            <div
-              key={ins.id}
-              className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/40 space-y-2"
-            >
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="font-bold text-gray-900 dark:text-white text-sm">
-                  {ins.title}
-                </span>
-                <span
-                  className={`font-semibold text-[11px] shrink-0 ${
-                    ins.tone === 'emerald'
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : ins.tone === 'amber'
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-indigo-600 dark:text-indigo-400'
-                  }`}
-                >
-                  {ins.badge}
-                </span>
-              </div>
-              <div className="font-mono tabular-nums text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                {ins.metric}
-              </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                {ins.body}
+      {(activeSuiteSection === 'overview' || activeSuiteSection === 'all') && (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <PieChartIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                <span>Stocks Breakdown by Category ({categoryBreakdown.active.length} Active Sectors)</span>
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Live sector weights across your held Funding &amp; Equity positions. Click any category to filter positions or expand unallocated sectors.
               </p>
             </div>
-          ))}
-        </div>
-      </div>
 
-      {/* =====================================================================
-          4. MY FUNDING & US STOCK HOLDINGS (WITH QUICK CATEGORY PRESETS)
-         ===================================================================== */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 space-y-5">
-        <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-4">
-          <div>
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">
-              My Funding &amp; Stock Positions ({displayedStockHoldings.length})
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Every stock position below is categorized by industry (AI, Tech, Mechanics, Banking, etc.) with live mark-to-market P&amp;L, breakeven price, and 1-click category editing.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Category Filter Dropdown */}
-            <select
-              value={selectedSectorFilter}
-              onChange={(e) => setSelectedSectorFilter(e.target.value as any)}
-              aria-label="Filter by stock category"
-              className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200 font-medium"
-            >
-              <option value="ALL">All Stock Categories (8)</option>
-              {ALL_STOCK_SECTOR_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-
-            {/* Sort Dropdown */}
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              aria-label="Sort stocks"
-              className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200 font-medium"
-            >
-              <option value="weight_desc">Sort: Highest Weight %</option>
-              <option value="pnl_desc">Sort: Best Net Profit</option>
-              <option value="yield_desc">Sort: Highest Dividend Yield</option>
-              <option value="change24h_desc">Sort: 24h Performance</option>
-            </select>
-
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={stockSearch}
-                onChange={(e) => setStockSearch(e.target.value)}
-                placeholder="Search NVDA, CAT, JPM..."
-                className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => openAddStockModalWithPreset()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Stock
-            </button>
-          </div>
-        </div>
-
-        {/* 1-Click Quick-Add Bar for Popular Funding Stocks across AI, Tech, Mechanics & Banking */}
-        <div className="p-3.5 rounded-xl bg-gray-50/80 dark:bg-gray-950/60 border border-gray-200/70 dark:border-gray-800 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="text-gray-600 dark:text-gray-400">
-            <strong className="text-gray-900 dark:text-white">Quick-Sync Funding Stocks by Category:</strong>{' '}
-            Click any ticker to log or calibrate a stock from your Funding Wallet:
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {[
-              { ticker: 'NVDA', label: 'NVDA (AI)', sector: 'AI & Semiconductors' as StockSectorCategory },
-              { ticker: 'AMD', label: 'AMD (AI)', sector: 'AI & Semiconductors' as StockSectorCategory },
-              { ticker: 'AAPL', label: 'AAPL (Tech)', sector: 'Technology & Cloud' as StockSectorCategory },
-              { ticker: 'MSFT', label: 'MSFT (Tech)', sector: 'Technology & Cloud' as StockSectorCategory },
-              { ticker: 'TSLA', label: 'TSLA (Auto/Mech)', sector: 'Mechanics, Automotive & Industrials' as StockSectorCategory },
-              { ticker: 'CAT', label: 'CAT (Mechanics)', sector: 'Mechanics, Automotive & Industrials' as StockSectorCategory },
-              { ticker: 'DE', label: 'DE (Mechanics)', sector: 'Mechanics, Automotive & Industrials' as StockSectorCategory },
-              { ticker: 'JPM', label: 'JPM (Banking)', sector: 'Banking & Financials' as StockSectorCategory },
-              { ticker: 'V', label: 'V (Banking)', sector: 'Banking & Financials' as StockSectorCategory },
-              { ticker: 'VOO', label: 'VOO (S&P 500)', sector: 'Index & Dividend ETFs' as StockSectorCategory },
-            ].map((preset) => (
-              <button
-                key={preset.ticker}
-                type="button"
-                onClick={() =>
-                  openAddStockModalWithPreset({
-                    ticker: preset.ticker,
-                    sector: preset.sector,
-                  })
-                }
-                className="px-2.5 py-1 rounded-md text-[11px] font-mono font-semibold bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
-              >
-                + {preset.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Held Stock Cards */}
-        {displayedStockHoldings.length === 0 ? (
-          <div className="p-8 rounded-xl border border-dashed border-gray-300 dark:border-gray-800 text-center space-y-3">
-            <div className="mx-auto h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-              <Briefcase className="h-5 w-5" />
-            </div>
-            <div className="space-y-1 max-w-lg mx-auto">
-              <h4 className="text-sm font-bold text-gray-900 dark:text-white">
-                {stockHoldings.length === 0
-                  ? 'Ready to Track Your Funding Wallet US Stocks by Category'
-                  : `No stocks match "${selectedSectorFilter !== 'ALL' ? selectedSectorFilter : stockSearch}"`}
-              </h4>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {stockHoldings.length === 0
-                  ? 'Spot cryptocurrencies (BTC, ETH, SOL, etc.) are kept strictly in the Spot Crypto tab. Click "+ Add / Sync Funding Stock" or any quick-preset above (NVDA, AAPL, TSLA, CAT, JPM) to log your Funding stocks and unlock live sector percentages.'
-                  : 'Try clearing the active sector filter or adding a stock in this category.'}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => openAddStockModalWithPreset()}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-              >
-                <Plus className="h-4 w-4" />
-                Add / Sync Funding Stock
-              </button>
+            <div className="flex flex-wrap items-center gap-2 self-start">
               {selectedSectorFilter !== 'ALL' && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedSectorFilter('ALL')}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 transition-colors cursor-pointer"
-                >
-                  Show All Categories
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSuiteSection('holdings')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    View {selectedSectorFilter} Positions →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSectorFilter('ALL')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Clear Filter
+                  </button>
+                </>
               )}
+              {categoryBreakdown.active.length > 0 &&
+                categoryBreakdown.active.length < categoryBreakdown.all.length && (
+                  <button
+                    type="button"
+                    onClick={() => setShowEmptySectors((prev) => !prev)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    {showEmptySectors
+                      ? 'Hide Empty Sectors (0%)'
+                      : `Show All 8 Sectors (+${categoryBreakdown.all.length - categoryBreakdown.active.length} Empty)`}
+                  </button>
+                )}
             </div>
           </div>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {displayedStockHoldings.map((pos) => {
-              const sectorMeta = STOCK_SECTOR_METADATA[pos.canonicalSector];
-              const grossPnlMad = pos.unrealizedPnlMad;
-              const grossPnlUsd = pos.unrealizedPnlUsd ?? grossPnlMad / usdToMadRate;
-              const feeLossMad = pos.totalFeeLossMad ?? 0;
-              const feeLossUsd = pos.totalFeeLossUsd ?? feeLossMad / usdToMadRate;
-              const netPnlMad = pos.netPnlAfterFeesMad ?? grossPnlMad - feeLossMad;
-              const netPnlUsd = pos.netPnlAfterFeesUsd ?? grossPnlUsd - feeLossUsd;
-              const totalRetMad = pos.totalReturnWithDividendMad ?? netPnlMad;
-              const totalRetUsd = pos.totalReturnWithDividendUsd ?? netPnlUsd;
-              const isExpanded = expandedStockId === pos.id;
+
+          {/* Stacked Horizontal Percentage Bar when user holds stocks */}
+          {categoryBreakdown.active.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-gray-700 dark:text-gray-300">
+                  Live Category Weight Distribution (100% of Held Stocks)
+                </span>
+                <span className="font-mono tabular-nums text-gray-500">
+                  Most Held:{' '}
+                  <strong className="text-gray-900 dark:text-white">
+                    {categoryBreakdown.dominantCategory?.category} (
+                    {categoryBreakdown.dominantCategory?.weightPercent.toFixed(1)}%)
+                  </strong>
+                </span>
+              </div>
+
+              <div className="h-4 w-full rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 flex p-0.5 gap-0.5">
+                {categoryBreakdown.active.map((cat) => (
+                  <button
+                    key={cat.category}
+                    type="button"
+                    onClick={() =>
+                      setSelectedSectorFilter((prev) =>
+                        prev === cat.category ? 'ALL' : cat.category
+                      )
+                    }
+                    style={{
+                      width: `${Math.max(4, cat.weightPercent)}%`,
+                      backgroundColor: cat.colorHex,
+                    }}
+                    title={`${cat.category}: ${cat.weightPercent.toFixed(1)}% (${formatUsd(cat.valueUsd)})`}
+                    className="h-full first:rounded-l-md last:rounded-r-md transition-opacity hover:opacity-85 cursor-pointer"
+                  />
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pt-1 text-xs">
+                {categoryBreakdown.active.map((cat) => (
+                  <button
+                    key={cat.category}
+                    type="button"
+                    onClick={() =>
+                      setSelectedSectorFilter((prev) =>
+                        prev === cat.category ? 'ALL' : cat.category
+                      )
+                    }
+                    className={`inline-flex items-center gap-1.5 font-medium transition-colors cursor-pointer ${
+                      selectedSectorFilter === cat.category
+                        ? 'text-indigo-600 dark:text-indigo-400 font-bold underline'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-xs shrink-0"
+                      style={{ backgroundColor: cat.colorHex }}
+                    />
+                    <span>{cat.category}</span>
+                    <span className="font-mono tabular-nums font-bold text-gray-900 dark:text-white">
+                      {cat.weightPercent.toFixed(1)}%
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Active Category Cards (or all 8 when showEmptySectors is enabled or no stocks held yet) */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {(showEmptySectors || categoryBreakdown.active.length === 0
+              ? categoryBreakdown.all
+              : categoryBreakdown.active
+            ).map((cat, idx) => {
+              const isSelected = selectedSectorFilter === cat.category;
+              const isTopCategory =
+                idx === 0 && cat.positionsCount > 0 && cat.weightPercent > 0;
+              const meta = STOCK_SECTOR_METADATA[cat.category];
 
               return (
                 <div
-                  key={pos.id}
-                  className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4 hover:border-indigo-500/40 transition-colors"
+                  key={cat.category}
+                  onClick={() =>
+                    setSelectedSectorFilter((prev) =>
+                      prev === cat.category ? 'ALL' : cat.category
+                    )
+                  }
+                  className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                    isSelected
+                      ? 'border-indigo-600 dark:border-indigo-400 bg-indigo-50/40 dark:bg-indigo-950/30'
+                      : isTopCategory
+                      ? 'border-indigo-300 dark:border-indigo-800/80 bg-gray-50/80 dark:bg-gray-950/60 hover:border-indigo-500'
+                      : 'border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-950/30 hover:border-gray-300 dark:hover:border-gray-700'
+                  }`}
                 >
-                  {/* Top Row: Ticker, Company Name, Category Selector & Market Value */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <div
-                        className="h-10 w-10 rounded-xl flex items-center justify-center font-mono font-bold text-xs text-white shrink-0"
-                        style={{ backgroundColor: sectorMeta?.colorHex || '#4f46e5' }}
-                      >
-                        {pos.ticker.slice(0, 4)}
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-8 w-8 rounded-lg flex items-center justify-center text-white shrink-0"
+                          style={{ backgroundColor: cat.colorHex }}
+                        >
+                          {getSectorIcon(cat.category)}
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-gray-900 dark:text-white leading-tight">
+                            {cat.category}
+                          </div>
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                            {cat.positionsCount > 0
+                              ? `${cat.positionsCount} stock${cat.positionsCount === 1 ? '' : 's'} (${cat.tickers.join(', ')})`
+                              : `Examples: ${meta.examples.slice(0, 4).join(', ')}`}
+                          </div>
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-base text-gray-900 dark:text-white">
-                            {pos.ticker}
+
+                      <div className="text-right font-mono tabular-nums shrink-0">
+                        <div
+                          className={`text-sm font-extrabold ${
+                            cat.weightPercent > 0
+                              ? 'text-gray-900 dark:text-white'
+                              : 'text-gray-400 dark:text-gray-600'
+                          }`}
+                        >
+                          {cat.weightPercent.toFixed(1)}%
+                        </div>
+                        {isTopCategory && (
+                          <div className="text-[10px] font-sans font-bold text-indigo-600 dark:text-indigo-400">
+                            #1 Category
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Mini Progress Bar */}
+                    <div className="h-1.5 w-full rounded-full bg-gray-200/80 dark:bg-gray-800 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(100, Math.max(cat.positionsCount > 0 ? 4 : 0, cat.weightPercent))}%`,
+                          backgroundColor: cat.colorHex,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-gray-200/60 dark:border-gray-800/80 flex items-center justify-between text-xs font-mono tabular-nums">
+                    {cat.positionsCount > 0 ? (
+                      <>
+                        <div>
+                          <span className="font-bold text-gray-900 dark:text-white">
+                            {formatUsd(cat.valueUsd)}
                           </span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {pos.companyName.replace(/\s*\(Binance.*\)$/i, '')}
-                          </span>
-                          <span className="text-xs text-gray-400">·</span>
-                          <span className="text-xs font-mono font-semibold text-indigo-600 dark:text-indigo-400">
-                            {pos.stockWeightPercent.toFixed(1)}% of Stocks
+                          <span className="text-[11px] text-gray-500 ml-1">
+                            ({formatMad(cat.valueMad, 0)})
                           </span>
                         </div>
+                        <span
+                          className={`text-[11px] font-semibold ${
+                            cat.netPnlUsd >= 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {formatSignedUsd(cat.netPnlUsd)}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-sans text-[11px] text-gray-400">0% allocation</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openAddStockModalWithPreset({
+                              ticker: meta.examples[0],
+                              sector: cat.category,
+                            });
+                          }}
+                          className="font-sans text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          + Add {meta.examples[0]}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-                        {/* Inline Category Selector & Wallet Source */}
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
+      {/* =====================================================================
+          4. MY FUNDING & US STOCK HOLDINGS (COMPACT TABLE OR CARDS VIEW)
+         ===================================================================== */}
+      {(activeSuiteSection === 'holdings' || activeSuiteSection === 'all') && (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 space-y-5">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-4">
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                My Funding &amp; Stock Positions ({displayedStockHoldings.length})
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Switch between compact table view and detailed position cards. Click any ticker to open interactive candlestick charts &amp; technicals.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* View Switcher: Cards vs Table */}
+              <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-950 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setHoldingsViewMode('cards')}
+                  className={`px-2.5 py-1 rounded-md font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    holdingsViewMode === 'cards'
+                      ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-300'
+                  }`}
+                >
+                  Detailed Cards
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHoldingsViewMode('table')}
+                  className={`px-2.5 py-1 rounded-md font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    holdingsViewMode === 'table'
+                      ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs'
+                      : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-300'
+                  }`}
+                >
+                  Compact Table
+                </button>
+              </div>
+
+              {/* Category Filter Dropdown */}
+              <select
+                value={selectedSectorFilter}
+                onChange={(e) => setSelectedSectorFilter(e.target.value as any)}
+                aria-label="Filter by stock category"
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200 font-medium"
+              >
+                <option value="ALL">All Categories (8)</option>
+                {ALL_STOCK_SECTOR_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+
+              {/* Sort Dropdown */}
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                aria-label="Sort stocks"
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200 font-medium"
+              >
+                <option value="weight_desc">Sort: Highest Weight %</option>
+                <option value="pnl_desc">Sort: Best Net Profit</option>
+                <option value="yield_desc">Sort: Highest Dividend Yield</option>
+                <option value="change24h_desc">Sort: 24h Performance</option>
+              </select>
+
+              {/* Search Input */}
+              <div className="relative">
+                <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={stockSearch}
+                  onChange={(e) => setStockSearch(e.target.value)}
+                  placeholder="Search NVDA, CAT, JPM..."
+                  className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowQuickPresets((prev) => !prev)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-700 dark:text-gray-300 hover:bg-gray-100 cursor-pointer whitespace-nowrap shrink-0"
+              >
+                {showQuickPresets ? 'Hide Presets' : 'Quick-Sync Tickers'}
+              </button>
+            </div>
+          </div>
+
+          {/* Collapsible 1-Click Quick-Add Bar for Popular Funding Stocks */}
+          {showQuickPresets && (
+            <div className="p-3.5 rounded-xl bg-gray-50/80 dark:bg-gray-950/60 border border-gray-200/70 dark:border-gray-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="text-gray-600 dark:text-gray-400">
+                <strong className="text-gray-900 dark:text-white">Quick-Sync Funding Stocks by Category:</strong>{' '}
+                Click any ticker to log or calibrate a stock from your Funding Wallet:
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { ticker: 'NVDA', label: 'NVDA (AI)', sector: 'AI & Semiconductors' as StockSectorCategory },
+                  { ticker: 'AMD', label: 'AMD (AI)', sector: 'AI & Semiconductors' as StockSectorCategory },
+                  { ticker: 'AAPL', label: 'AAPL (Tech)', sector: 'Technology & Cloud' as StockSectorCategory },
+                  { ticker: 'MSFT', label: 'MSFT (Tech)', sector: 'Technology & Cloud' as StockSectorCategory },
+                  { ticker: 'TSLA', label: 'TSLA (Auto/Mech)', sector: 'Mechanics, Automotive & Industrials' as StockSectorCategory },
+                  { ticker: 'CAT', label: 'CAT (Mechanics)', sector: 'Mechanics, Automotive & Industrials' as StockSectorCategory },
+                  { ticker: 'DE', label: 'DE (Mechanics)', sector: 'Mechanics, Automotive & Industrials' as StockSectorCategory },
+                  { ticker: 'JPM', label: 'JPM (Banking)', sector: 'Banking & Financials' as StockSectorCategory },
+                  { ticker: 'V', label: 'V (Banking)', sector: 'Banking & Financials' as StockSectorCategory },
+                  { ticker: 'VOO', label: 'VOO (S&P 500)', sector: 'Index & Dividend ETFs' as StockSectorCategory },
+                ].map((preset) => (
+                  <button
+                    key={preset.ticker}
+                    type="button"
+                    onClick={() =>
+                      openAddStockModalWithPreset({
+                        ticker: preset.ticker,
+                        sector: preset.sector,
+                      })
+                    }
+                    className="px-2.5 py-1 rounded-md text-[11px] font-mono font-semibold bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                  >
+                    + {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Held Stock Positions (Empty State / Compact Table / Detailed Cards) */}
+          {displayedStockHoldings.length === 0 ? (
+            <div className="p-8 rounded-xl border border-dashed border-gray-300 dark:border-gray-800 text-center space-y-3">
+              <div className="mx-auto h-10 w-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                <Briefcase className="h-5 w-5" />
+              </div>
+              <div className="space-y-1 max-w-lg mx-auto">
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                  {stockHoldings.length === 0
+                    ? 'Ready to Track Your Funding Wallet US Stocks by Category'
+                    : `No stocks match "${selectedSectorFilter !== 'ALL' ? selectedSectorFilter : stockSearch}"`}
+                </h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {stockHoldings.length === 0
+                    ? 'Spot cryptocurrencies (BTC, ETH, SOL, etc.) are kept strictly in the Spot Crypto tab. Click "+ Add / Sync Stock" to log your Funding stocks and unlock live sector percentages.'
+                    : 'Try clearing the active sector filter or adding a stock in this category.'}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => openAddStockModalWithPreset()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add / Sync Funding Stock
+                </button>
+                {selectedSectorFilter !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSectorFilter('ALL')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 transition-colors cursor-pointer"
+                  >
+                    Show All Categories
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : holdingsViewMode === 'table' ? (
+            <div className="overflow-x-auto border border-gray-200 dark:border-gray-800 rounded-xl">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-950/60 text-[11px] uppercase text-gray-500 font-semibold">
+                    <th className="py-2.5 px-3">Ticker &amp; Company</th>
+                    <th className="py-2.5 px-3">Category</th>
+                    <th className="py-2.5 px-3 text-right">Shares</th>
+                    <th className="py-2.5 px-3 text-right">Avg Buy</th>
+                    <th className="py-2.5 px-3 text-right">Live Price</th>
+                    <th className="py-2.5 px-3 text-right">Breakeven</th>
+                    <th className="py-2.5 px-3 text-right">Market Value</th>
+                    <th className="py-2.5 px-3 text-right">Net P&amp;L</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70 font-mono tabular-nums">
+                  {displayedStockHoldings.map((pos) => {
+                    const grossPnlMad = pos.unrealizedPnlMad;
+                    const grossPnlUsd = pos.unrealizedPnlUsd ?? grossPnlMad / usdToMadRate;
+                    const feeLossMad = pos.totalFeeLossMad ?? 0;
+                    const feeLossUsd = pos.totalFeeLossUsd ?? feeLossMad / usdToMadRate;
+                    const netPnlUsd = pos.netPnlAfterFeesUsd ?? grossPnlUsd - feeLossUsd;
+                    const valUsd = pos.marketValueUsd ?? pos.marketValueMad / usdToMadRate;
+                    return (
+                      <tr
+                        key={pos.id}
+                        className="hover:bg-gray-50/70 dark:hover:bg-gray-950/40 transition-colors"
+                      >
+                        <td className="py-2.5 px-3 font-sans">
+                          <div className="font-bold text-gray-900 dark:text-white">
+                            {pos.ticker}{' '}
+                            <span className="text-[11px] font-mono text-indigo-600 dark:text-indigo-400">
+                              ({pos.stockWeightPercent.toFixed(1)}%)
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-gray-500 truncate max-w-[180px]">
+                            {pos.companyName.replace(/\s*\(Binance.*\)$/i, '')}
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 font-sans">
                           <select
                             value={pos.canonicalSector}
                             onChange={(e) =>
@@ -1610,7 +1710,7 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
                               )
                             }
                             aria-label={`Category for ${pos.ticker}`}
-                            className="px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[11px] font-semibold text-gray-800 dark:text-gray-200 cursor-pointer"
+                            className="px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[11px] font-semibold text-gray-800 dark:text-gray-200"
                           >
                             {ALL_STOCK_SECTOR_CATEGORIES.map((cat) => (
                               <option key={cat} value={cat}>
@@ -1618,517 +1718,526 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
                               </option>
                             ))}
                           </select>
-                          <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                            {pos.market === 'BVC'
-                              ? 'Casablanca BVC'
-                              : pos.market === 'ETF'
-                              ? 'Index / Dividend ETF'
-                              : 'Funding Wallet · US Stock'}
-                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-semibold text-gray-900 dark:text-white">
+                          {formatQty(pos.sharesNum)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-gray-600 dark:text-gray-400">
+                          {pos.currency === 'MAD'
+                            ? formatMad(pos.avgCostNum)
+                            : formatUsd(pos.avgCostNum)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-semibold text-gray-900 dark:text-white">
+                          {pos.currency === 'MAD'
+                            ? formatMad(pos.currentPriceNum)
+                            : formatUsd(pos.currentPriceNum)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-indigo-600 dark:text-indigo-400 font-semibold">
+                          {pos.currency === 'MAD'
+                            ? formatMad(pos.breakevenPriceMad ?? pos.avgCostNum)
+                            : formatUsd(pos.breakevenPriceUsd ?? pos.avgCostNum)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-gray-900 dark:text-white">
+                          {formatUsd(valUsd)}
+                        </td>
+                        <td
+                          className={`py-2.5 px-3 text-right font-bold ${
+                            netPnlUsd >= 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {formatSignedUsd(netPnlUsd)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-sans">
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setInspectedInstrument({ symbol: pos.ticker, position: pos })
+                              }
+                              className="px-2 py-1 rounded bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 cursor-pointer"
+                            >
+                              Chart
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openEditPositionModal(pos)}
+                              className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-[11px] font-semibold hover:bg-gray-200 cursor-pointer"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {displayedStockHoldings.map((pos) => {
+                const sectorMeta = STOCK_SECTOR_METADATA[pos.canonicalSector];
+                const grossPnlMad = pos.unrealizedPnlMad;
+                const grossPnlUsd = pos.unrealizedPnlUsd ?? grossPnlMad / usdToMadRate;
+                const feeLossMad = pos.totalFeeLossMad ?? 0;
+                const feeLossUsd = pos.totalFeeLossUsd ?? feeLossMad / usdToMadRate;
+                const netPnlMad = pos.netPnlAfterFeesMad ?? grossPnlMad - feeLossMad;
+                const netPnlUsd = pos.netPnlAfterFeesUsd ?? grossPnlUsd - feeLossUsd;
+                const totalRetMad = pos.totalReturnWithDividendMad ?? netPnlMad;
+                const totalRetUsd = pos.totalReturnWithDividendUsd ?? netPnlUsd;
+                const isExpanded = expandedStockId === pos.id;
+
+                return (
+                  <div
+                    key={pos.id}
+                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4 hover:border-indigo-500/40 transition-colors"
+                  >
+                    {/* Top Row: Ticker, Company Name, Category Selector & Market Value */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div
+                          className="h-10 w-10 rounded-xl flex items-center justify-center font-mono font-bold text-xs text-white shrink-0"
+                          style={{ backgroundColor: sectorMeta?.colorHex || '#4f46e5' }}
+                        >
+                          {pos.ticker.slice(0, 4)}
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-base text-gray-900 dark:text-white">
+                              {pos.ticker}
+                            </span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {pos.companyName.replace(/\s*\(Binance.*\)$/i, '')}
+                            </span>
+                            <span className="text-xs text-gray-400">·</span>
+                            <span className="text-xs font-mono font-semibold text-indigo-600 dark:text-indigo-400">
+                              {pos.stockWeightPercent.toFixed(1)}% of Stocks
+                            </span>
+                          </div>
+
+                          {/* Inline Category Selector & Wallet Source */}
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <select
+                              value={pos.canonicalSector}
+                              onChange={(e) =>
+                                handleInlineCategoryChange(
+                                  pos,
+                                  e.target.value as StockSectorCategory
+                                )
+                              }
+                              aria-label={`Category for ${pos.ticker}`}
+                              className="px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[11px] font-semibold text-gray-800 dark:text-gray-200 cursor-pointer"
+                            >
+                              {ALL_STOCK_SECTOR_CATEGORIES.map((cat) => (
+                                <option key={cat} value={cat}>
+                                  {cat}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                              {pos.market === 'BVC'
+                                ? 'Casablanca BVC'
+                                : pos.market === 'ETF'
+                                ? 'Index / Dividend ETF'
+                                : 'Funding Wallet · US Stock'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right font-mono tabular-nums shrink-0">
+                        <div className="text-base font-bold text-gray-900 dark:text-white">
+                          {formatUsd(pos.marketValueUsd ?? pos.marketValueMad / usdToMadRate)}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {formatMad(pos.marketValueMad, 2)}
+                        </div>
+                        <div
+                          className={`text-[11px] font-semibold ${
+                            (pos.change24hPercent || 0) >= 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          24h: {(pos.change24hPercent || 0) >= 0 ? '+' : ''}
+                          {(pos.change24hPercent || 0).toFixed(2)}%
                         </div>
                       </div>
                     </div>
 
-                    <div className="text-right font-mono tabular-nums shrink-0">
-                      <div className="text-base font-bold text-gray-900 dark:text-white">
-                        {formatUsd(pos.marketValueUsd ?? pos.marketValueMad / usdToMadRate)}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {formatMad(pos.marketValueMad, 2)}
-                      </div>
-                      <div
-                        className={`text-[11px] font-semibold ${
-                          (pos.change24hPercent || 0) >= 0
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-rose-600 dark:text-rose-400'
-                        }`}
-                      >
-                        24h: {(pos.change24hPercent || 0) >= 0 ? '+' : ''}
-                        {(pos.change24hPercent || 0).toFixed(2)}%
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Share Count, Avg Cost, Live Price & Breakeven Line */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono tabular-nums py-2 px-3 rounded-lg bg-gray-50 dark:bg-gray-950/60 border border-gray-100 dark:border-gray-800">
-                    <span>
-                      <span className="font-sans text-gray-500">Shares:</span>{' '}
-                      <strong className="text-gray-900 dark:text-white">
-                        {formatQty(pos.sharesNum)}
-                      </strong>
-                    </span>
-                    <span>
-                      <span className="font-sans text-gray-500">Avg Buy:</span>{' '}
-                      <strong className="text-gray-900 dark:text-white">
-                        {pos.currency === 'MAD'
-                          ? formatMad(pos.avgCostNum)
-                          : formatUsd(pos.avgCostNum)}
-                      </strong>
-                    </span>
-                    <span>
-                      <span className="font-sans text-gray-500">Live:</span>{' '}
-                      <strong className="text-gray-900 dark:text-white">
-                        {pos.currency === 'MAD'
-                          ? formatMad(pos.currentPriceNum)
-                          : formatUsd(pos.currentPriceNum)}
-                      </strong>
-                    </span>
-                    <span>
-                      <span className="font-sans text-gray-500">Breakeven:</span>{' '}
-                      <strong className="text-indigo-600 dark:text-indigo-400">
-                        {pos.currency === 'MAD'
-                          ? formatMad(pos.breakevenPriceMad ?? pos.avgCostNum)
-                          : formatUsd(pos.breakevenPriceUsd ?? pos.avgCostNum)}
-                      </strong>
-                    </span>
-                  </div>
-
-                  {/* 4-Column Metrics Grid */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono tabular-nums">
-                    <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
-                      <div className="font-sans text-[10px] uppercase text-gray-400">
-                        Net P&amp;L (After Fees)
-                      </div>
-                      <div
-                        className={`font-bold mt-0.5 ${
-                          netPnlUsd >= 0
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-rose-600 dark:text-rose-400'
-                        }`}
-                      >
-                        {formatSignedUsd(netPnlUsd)}
-                      </div>
-                      <div className="text-[11px] text-gray-500">
-                        {formatSignedMad(netPnlMad, 1)} (
-                        {(pos.netPnlAfterFeesPercent ?? pos.unrealizedPnlPercent) >= 0 ? '+' : ''}
-                        {(pos.netPnlAfterFeesPercent ?? pos.unrealizedPnlPercent).toFixed(1)}%)
-                      </div>
+                    {/* Share Count, Avg Cost, Live Price & Breakeven Line */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono tabular-nums py-2 px-3 rounded-lg bg-gray-50 dark:bg-gray-950/60 border border-gray-100 dark:border-gray-800">
+                      <span>
+                        <span className="font-sans text-gray-500">Shares:</span>{' '}
+                        <strong className="text-gray-900 dark:text-white">
+                          {formatQty(pos.sharesNum)}
+                        </strong>
+                      </span>
+                      <span>
+                        <span className="font-sans text-gray-500">Avg Buy:</span>{' '}
+                        <strong className="text-gray-900 dark:text-white">
+                          {pos.currency === 'MAD'
+                            ? formatMad(pos.avgCostNum)
+                            : formatUsd(pos.avgCostNum)}
+                        </strong>
+                      </span>
+                      <span>
+                        <span className="font-sans text-gray-500">Live:</span>{' '}
+                        <strong className="text-gray-900 dark:text-white">
+                          {pos.currency === 'MAD'
+                            ? formatMad(pos.currentPriceNum)
+                            : formatUsd(pos.currentPriceNum)}
+                        </strong>
+                      </span>
+                      <span>
+                        <span className="font-sans text-gray-500">Breakeven:</span>{' '}
+                        <strong className="text-indigo-600 dark:text-indigo-400">
+                          {pos.currency === 'MAD'
+                            ? formatMad(pos.breakevenPriceMad ?? pos.avgCostNum)
+                            : formatUsd(pos.breakevenPriceUsd ?? pos.avgCostNum)}
+                        </strong>
+                      </span>
                     </div>
 
-                    <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
-                      <div className="font-sans text-[10px] uppercase text-gray-400">
-                        Fee Drag
+                    {/* 4-Column Metrics Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono tabular-nums">
+                      <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
+                        <div className="font-sans text-[10px] uppercase text-gray-400">
+                          Net P&amp;L (After Fees)
+                        </div>
+                        <div
+                          className={`font-bold mt-0.5 ${
+                            netPnlUsd >= 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {formatSignedUsd(netPnlUsd)}
+                        </div>
+                        <div className="text-[11px] text-gray-500">
+                          {formatSignedMad(netPnlMad, 1)} (
+                          {(pos.netPnlAfterFeesPercent ?? pos.unrealizedPnlPercent) >= 0 ? '+' : ''}
+                          {(pos.netPnlAfterFeesPercent ?? pos.unrealizedPnlPercent).toFixed(1)}%)
+                        </div>
                       </div>
-                      <div className="font-bold text-rose-600 dark:text-rose-400 mt-0.5">
-                        -{formatUsd(feeLossUsd, 3)}
-                      </div>
-                      <div className="text-[11px] text-gray-500">
-                        -{formatMad(feeLossMad, 2)} ({(pos.feeDragPercent ?? 0.2).toFixed(2)}%)
-                      </div>
-                    </div>
 
-                    <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
-                      <div className="font-sans text-[10px] uppercase text-gray-400">
-                        Annual Dividend
+                      <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
+                        <div className="font-sans text-[10px] uppercase text-gray-400">
+                          Fee Drag
+                        </div>
+                        <div className="font-bold text-rose-600 dark:text-rose-400 mt-0.5">
+                          -{formatUsd(feeLossUsd, 3)}
+                        </div>
+                        <div className="text-[11px] text-gray-500">
+                          -{formatMad(feeLossMad, 2)} ({(pos.feeDragPercent ?? 0.2).toFixed(2)}%)
+                        </div>
                       </div>
-                      <div className="font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                        +{formatUsd((pos.annualDividendMad || 0) / usdToMadRate)}/yr
+
+                      <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
+                        <div className="font-sans text-[10px] uppercase text-gray-400">
+                          Annual Dividend
+                        </div>
+                        <div className="font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
+                          +{formatUsd((pos.annualDividendMad || 0) / usdToMadRate)}/yr
+                        </div>
+                        <div className="text-[11px] text-gray-500">
+                          Yield {pos.dividendYieldPercent.toFixed(2)}%
+                        </div>
                       </div>
-                      <div className="text-[11px] text-gray-500">
-                        Yield {pos.dividendYieldPercent.toFixed(2)}%
+
+                      <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
+                        <div className="font-sans text-[10px] uppercase text-gray-400">
+                          5-Yr Compounding
+                        </div>
+                        <div className="font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                          {formatUsd(
+                            (pos.drip5YearProjectedValueMad ?? pos.marketValueMad * 1.47) /
+                              usdToMadRate
+                          )}
+                        </div>
+                        <div className="text-[11px] text-gray-500">
+                          {formatMad(pos.drip5YearProjectedValueMad ?? pos.marketValueMad * 1.47, 0)}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="p-2.5 rounded-lg bg-gray-50/70 dark:bg-gray-950/50 border border-gray-100 dark:border-gray-800/80">
-                      <div className="font-sans text-[10px] uppercase text-gray-400">
-                        5-Yr Compounding
-                      </div>
-                      <div className="font-bold text-indigo-600 dark:text-indigo-400 mt-0.5">
-                        {formatUsd(
-                          (pos.drip5YearProjectedValueMad ?? pos.marketValueMad * 1.47) /
-                            usdToMadRate
-                        )}
-                      </div>
-                      <div className="text-[11px] text-gray-500">
-                        {formatMad(pos.drip5YearProjectedValueMad ?? pos.marketValueMad * 1.47, 0)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Action Footer */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOrderModalStock(pos);
-                          setOrderAction('BUY');
-                          setOrderShares('1');
-                          setOrderPrice(String(pos.currentPriceNum));
-                        }}
-                        className="px-2.5 py-1 rounded-md font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors cursor-pointer"
-                      >
-                        + Buy More
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOrderModalStock(pos);
-                          setOrderAction('SELL');
-                          setOrderShares(String(pos.sharesNum));
-                          setOrderPrice(String(pos.currentPriceNum));
-                        }}
-                        className="px-2.5 py-1 rounded-md font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 transition-colors cursor-pointer"
-                      >
-                        Sell
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openEditPositionModal(pos)}
-                        className="px-2.5 py-1 rounded-md font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
-                      >
-                        <Edit3 className="h-3 w-3" />
-                        Edit
-                      </button>
-                      {!pos.id.startsWith('binance-') && (
+                    {/* Action Footer */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={() => onDeletePosition(pos.id)}
-                          className="p-1 rounded-md text-gray-400 hover:text-rose-600 transition-colors cursor-pointer"
-                          title="Remove position"
+                          onClick={() => {
+                            setOrderModalStock(pos);
+                            setOrderAction('BUY');
+                            setOrderShares('1');
+                            setOrderPrice(String(pos.currentPriceNum));
+                          }}
+                          className="px-2.5 py-1 rounded-md font-semibold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors cursor-pointer"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          + Buy More
                         </button>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setInspectedInstrument({ symbol: pos.ticker, position: pos })
-                        }
-                        className="px-2.5 py-1 rounded-md font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-                      >
-                        Chart &amp; Technicals
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleInspectForensics(pos.ticker)}
-                        className="px-2.5 py-1 rounded-md font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors cursor-pointer"
-                      >
-                        Trade Forensics →
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedStockId((prev) => (prev === pos.id ? null : pos.id))
-                        }
-                        className="text-gray-500 hover:text-gray-900 dark:hover:text-white font-semibold cursor-pointer"
-                      >
-                        {isExpanded ? 'Less' : 'Thesis'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-xs space-y-2">
-                      <p className="text-gray-600 dark:text-gray-400">
-                        <strong>Investment Thesis:</strong>{' '}
-                        {pos.convictionThesis || `Core ${pos.canonicalSector} equity holding.`}
-                      </p>
-                      <div className="grid grid-cols-3 gap-2 font-mono tabular-nums text-[11px] bg-gray-50 dark:bg-gray-950 p-2.5 rounded-lg">
-                        <div>
-                          <span className="text-gray-400 block font-sans">Distance to Breakeven</span>
-                          <span className="font-bold text-gray-900 dark:text-white">
-                            {(pos.distanceToBreakevenPercent ?? 0) >= 0 ? '+' : ''}
-                            {(pos.distanceToBreakevenPercent ?? 0).toFixed(2)}%
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400 block font-sans">Total Return + Divs</span>
-                          <span
-                            className={`font-bold ${
-                              totalRetUsd >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                            }`}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOrderModalStock(pos);
+                            setOrderAction('SELL');
+                            setOrderShares(String(pos.sharesNum));
+                            setOrderPrice(String(pos.currentPriceNum));
+                          }}
+                          className="px-2.5 py-1 rounded-md font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 transition-colors cursor-pointer"
+                        >
+                          Sell
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openEditPositionModal(pos)}
+                          className="px-2.5 py-1 rounded-md font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit3 className="h-3 w-3" />
+                          Edit
+                        </button>
+                        {!pos.id.startsWith('binance-') && (
+                          <button
+                            type="button"
+                            onClick={() => onDeletePosition(pos.id)}
+                            className="p-1 rounded-md text-gray-400 hover:text-rose-600 transition-colors cursor-pointer"
+                            title="Remove position"
                           >
-                            {formatSignedUsd(totalRetUsd)}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-gray-400 block font-sans">Surplus Buying Power</span>
-                          <span className="font-bold text-indigo-600">
-                            +{formatQty(pos.affordableSharesFromSurplus)} {pos.ticker}
-                          </span>
-                        </div>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setInspectedInstrument({ symbol: pos.ticker, position: pos })
+                          }
+                          className="px-2.5 py-1 rounded-md font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+                        >
+                          Chart &amp; Technicals
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInspectForensics(pos.ticker)}
+                          className="px-2.5 py-1 rounded-md font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 transition-colors cursor-pointer"
+                        >
+                          Trade Forensics →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedStockId((prev) => (prev === pos.id ? null : pos.id))
+                          }
+                          className="text-gray-500 hover:text-gray-900 dark:hover:text-white font-semibold cursor-pointer"
+                        >
+                          {isExpanded ? 'Less' : 'Thesis'}
+                        </button>
                       </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+
+                    {isExpanded && (
+                      <div className="pt-3 border-t border-gray-100 dark:border-gray-800 text-xs space-y-2">
+                        <p className="text-gray-600 dark:text-gray-400">
+                          <strong>Investment Thesis:</strong>{' '}
+                          {pos.convictionThesis || `Core ${pos.canonicalSector} equity holding.`}
+                        </p>
+                        <div className="grid grid-cols-3 gap-2 font-mono tabular-nums text-[11px] bg-gray-50 dark:bg-gray-950 p-2.5 rounded-lg">
+                          <div>
+                            <span className="text-gray-400 block font-sans">Distance to Breakeven</span>
+                            <span className="font-bold text-gray-900 dark:text-white">
+                              {(pos.distanceToBreakevenPercent ?? 0) >= 0 ? '+' : ''}
+                              {(pos.distanceToBreakevenPercent ?? 0).toFixed(2)}%
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 block font-sans">Total Return + Divs</span>
+                            <span
+                              className={`font-bold ${
+                                totalRetUsd >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                              }`}
+                            >
+                              {formatSignedUsd(totalRetUsd)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 block font-sans">Surplus Buying Power</span>
+                            <span className="font-bold text-indigo-600">
+                              +{formatQty(pos.affordableSharesFromSurplus)} {pos.ticker}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* =====================================================================
           5. SMART STOCK TRADE, FEE LOSS, DIVIDEND & BREAKEVEN SIMULATOR
+             (Shown in 'planning' tab alongside Compounding & Rebalancing)
          ===================================================================== */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
-          <div>
-            <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Calculator className="h-4 w-4 text-indigo-500" />
-              <span>Funding Stock Profit, Breakeven &amp; Dividend Simulator</span>
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Test any AI, Tech, Mechanics, or Banking stock before buying to see exact round-trip fees, breakeven stock price, and projected net return.
-            </p>
-          </div>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-12 items-center">
-          <div className="lg:col-span-5 grid gap-3 sm:grid-cols-2 text-xs">
-            <div className="sm:col-span-2">
-              <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Select Stock / ETF by Category
-              </label>
-              <select
-                value={simTicker}
-                onChange={(e) => setSimTicker(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white font-mono"
-              >
-                {enrichedCatalog.map((c) => (
-                  <option key={c.ticker} value={c.ticker}>
-                    [{c.canonicalSector}] {c.ticker} — {c.companyName} ({c.price} {c.currency})
-                  </option>
-                ))}
-              </select>
-            </div>
-
+      {(activeSuiteSection === 'planning' || activeSuiteSection === 'all') && (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 dark:border-gray-800 pb-3">
             <div>
-              <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Investment Amount (USD)
-              </label>
-              <input
-                type="number"
-                step="1"
-                min="1"
-                value={simInvestUsd}
-                onChange={(e) => setSimInvestUsd(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-mono text-gray-900 dark:text-white"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Expected Price Gain (%)
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                value={simTargetMovePct}
-                onChange={(e) => setSimTargetMovePct(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-mono text-gray-900 dark:text-white"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Holding Period (Months)
-              </label>
-              <input
-                type="number"
-                step="1"
-                min="1"
-                max="120"
-                value={simHoldingMonths}
-                onChange={(e) => setSimHoldingMonths(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-mono text-gray-900 dark:text-white"
-              />
+              <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Calculator className="h-4 w-4 text-indigo-500" />
+                <span>Funding Stock Profit, Breakeven &amp; Dividend Simulator</span>
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Test any AI, Tech, Mechanics, or Banking stock before buying to see exact round-trip fees, breakeven stock price, and projected net return.
+              </p>
             </div>
           </div>
 
-          <div className="lg:col-span-7 grid gap-3 sm:grid-cols-3 text-xs font-mono tabular-nums bg-gray-50/70 dark:bg-gray-950/60 p-4 rounded-xl border border-gray-200/80 dark:border-gray-800">
-            <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-1">
-              <div className="font-sans text-[11px] text-gray-400 uppercase font-semibold">
-                Shares &amp; Breakeven
+          <div className="grid gap-6 lg:grid-cols-12 items-center">
+            <div className="lg:col-span-5 grid gap-3 sm:grid-cols-2 text-xs">
+              <div className="sm:col-span-2">
+                <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Select Stock / ETF by Category
+                </label>
+                <select
+                  value={simTicker}
+                  onChange={(e) => setSimTicker(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white font-mono"
+                >
+                  {enrichedCatalog.map((c) => (
+                    <option key={c.ticker} value={c.ticker}>
+                      [{c.canonicalSector}] {c.ticker} — {c.companyName} ({c.price} {c.currency})
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="text-sm font-bold text-gray-900 dark:text-white">
-                {formatQty(stockSimulation.sharesAcquired)} {stockSimulation.stock.ticker}
+
+              <div>
+                <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Investment Amount (USD)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  min="1"
+                  value={simInvestUsd}
+                  onChange={(e) => setSimInvestUsd(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-mono text-gray-900 dark:text-white"
+                />
               </div>
-              <div className="text-[11px] text-gray-500">
-                Entry: {formatUsd(stockSimulation.stockPriceUsd)}
+
+              <div>
+                <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Expected Price Gain (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={simTargetMovePct}
+                  onChange={(e) => setSimTargetMovePct(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-mono text-gray-900 dark:text-white"
+                />
               </div>
-              <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
-                Breakeven: {formatUsd(stockSimulation.breakevenStockPriceUsd)}
+
+              <div className="sm:col-span-2">
+                <label className="block font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                  Holding Period (Months)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  min="1"
+                  max="120"
+                  value={simHoldingMonths}
+                  onChange={(e) => setSimHoldingMonths(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 font-mono text-gray-900 dark:text-white"
+                />
               </div>
             </div>
 
-            <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-1">
-              <div className="font-sans text-[11px] text-gray-400 uppercase font-semibold">
-                Fees vs. Dividends
+            <div className="lg:col-span-7 grid gap-3 sm:grid-cols-3 text-xs font-mono tabular-nums bg-gray-50/70 dark:bg-gray-950/60 p-4 rounded-xl border border-gray-200/80 dark:border-gray-800">
+              <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-1">
+                <div className="font-sans text-[11px] text-gray-400 uppercase font-semibold">
+                  Shares &amp; Breakeven
+                </div>
+                <div className="text-sm font-bold text-gray-900 dark:text-white">
+                  {formatQty(stockSimulation.sharesAcquired)} {stockSimulation.stock.ticker}
+                </div>
+                <div className="text-[11px] text-gray-500">
+                  Entry: {formatUsd(stockSimulation.stockPriceUsd)}
+                </div>
+                <div className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
+                  Breakeven: {formatUsd(stockSimulation.breakevenStockPriceUsd)}
+                </div>
               </div>
-              <div className="text-sm font-bold text-rose-600 dark:text-rose-400">
-                Fees: -{formatUsd(stockSimulation.totalRoundTripFeesUsd, 3)}
-              </div>
-              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                Divs: +{formatUsd(stockSimulation.proratedDividendUsd, 2)}
-              </div>
-              <div className="text-[11px] text-gray-500 font-sans truncate">
-                {stockSimulation.stock.canonicalSector}
-              </div>
-            </div>
 
-            <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-1">
-              <div className="font-sans text-[11px] text-gray-400 uppercase font-semibold">
-                Net Projected Profit
+              <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-1">
+                <div className="font-sans text-[11px] text-gray-400 uppercase font-semibold">
+                  Fees vs. Dividends
+                </div>
+                <div className="text-sm font-bold text-rose-600 dark:text-rose-400">
+                  Fees: -{formatUsd(stockSimulation.totalRoundTripFeesUsd, 3)}
+                </div>
+                <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                  Divs: +{formatUsd(stockSimulation.proratedDividendUsd, 2)}
+                </div>
+                <div className="text-[11px] text-gray-500 font-sans truncate">
+                  {stockSimulation.stock.canonicalSector}
+                </div>
               </div>
-              <div
-                className={`text-sm font-bold ${
-                  stockSimulation.totalNetReturnUsd >= 0
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-rose-600 dark:text-rose-400'
-                }`}
-              >
-                {formatSignedUsd(stockSimulation.totalNetReturnUsd)} (
-                {stockSimulation.totalNetRoiPct >= 0 ? '+' : ''}
-                {stockSimulation.totalNetRoiPct.toFixed(1)}%)
-              </div>
-              <div className="text-[11px] text-gray-500">
-                {formatSignedMad(stockSimulation.totalNetReturnMad, 1)}
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  openAddStockModalWithPreset({
-                    ticker: stockSimulation.stock.ticker,
-                    companyName: stockSimulation.stock.companyName,
-                    sector: stockSimulation.stock.canonicalSector,
-                    market: stockSimulation.stock.market,
-                    price: stockSimulation.stock.price,
-                  })
-                }
-                className="font-sans text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline pt-0.5 block cursor-pointer"
-              >
-                + Log {stockSimulation.stock.ticker} in Funding →
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      {/* =====================================================================
-          6. STOCKS CATALOG & BENCHMARK EXPLORER BY SECTOR
-         ===================================================================== */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-3">
-          <div>
-            <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Globe className="h-4 w-4 text-indigo-500" />
-              <span>Explore US Stocks, Mechanics, Banking, AI &amp; ETFs Catalog</span>
-            </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Browse curated stocks across AI, Technology, Mechanics &amp; Industrials, Banking, Consumer, Healthcare, Energy, and ETFs.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-950 text-xs">
-              {(['ALL', 'US', 'ETF', 'BVC'] as const).map((mkt) => (
-                <button
-                  key={mkt}
-                  type="button"
-                  onClick={() => setMarketFilter(mkt)}
-                  className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
-                    marketFilter === mkt
-                      ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs font-semibold'
-                      : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-300'
+              <div className="p-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 space-y-1">
+                <div className="font-sans text-[11px] text-gray-400 uppercase font-semibold">
+                  Net Projected Profit
+                </div>
+                <div
+                  className={`text-sm font-bold ${
+                    stockSimulation.totalNetReturnUsd >= 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-rose-600 dark:text-rose-400'
                   }`}
                 >
-                  {mkt === 'ALL' ? 'All Markets' : mkt}
+                  {formatSignedUsd(stockSimulation.totalNetReturnUsd)} (
+                  {stockSimulation.totalNetRoiPct >= 0 ? '+' : ''}
+                  {stockSimulation.totalNetRoiPct.toFixed(1)}%)
+                </div>
+                <div className="text-[11px] text-gray-500">
+                  {formatSignedMad(stockSimulation.totalNetReturnMad, 1)}
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    openAddStockModalWithPreset({
+                      ticker: stockSimulation.stock.ticker,
+                      companyName: stockSimulation.stock.companyName,
+                      sector: stockSimulation.stock.canonicalSector,
+                      market: stockSimulation.stock.market,
+                      price: stockSimulation.stock.price,
+                    })
+                  }
+                  className="font-sans text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline pt-0.5 block cursor-pointer"
+                >
+                  + Log {stockSimulation.stock.ticker} in Funding →
                 </button>
-              ))}
+              </div>
             </div>
           </div>
         </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {filteredCatalog.map((item) => {
-            const meta = STOCK_SECTOR_METADATA[item.canonicalSector];
-            return (
-              <div
-                key={item.ticker}
-                className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/40 flex flex-col justify-between gap-2.5 text-xs"
-              >
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className="h-2.5 w-2.5 rounded-xs shrink-0"
-                        style={{ backgroundColor: meta?.colorHex || '#4f46e5' }}
-                      />
-                      <span className="font-mono font-bold text-sm text-gray-900 dark:text-white">
-                        {item.ticker}
-                      </span>
-                    </div>
-                    <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 truncate">
-                      {item.canonicalSector}
-                    </span>
-                  </div>
-                  <div className="text-gray-600 dark:text-gray-300 font-medium truncate mt-0.5">
-                    {item.companyName}
-                  </div>
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500 line-clamp-2 mt-1">
-                    {item.thesis}
-                  </p>
-                  <div className="mt-2 flex items-baseline justify-between font-mono tabular-nums">
-                    <span className="font-bold text-gray-900 dark:text-white">
-                      {item.currency === 'MAD'
-                        ? formatMad(item.price, 2)
-                        : formatUsd(item.price, 2)}
-                    </span>
-                    <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">
-                      Yield: {item.dividendYieldPercent.toFixed(2)}%
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-gray-200/60 dark:border-gray-800 flex items-center justify-between gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openAddStockModalWithPreset({
-                        ticker: item.ticker,
-                        companyName: item.companyName,
-                        sector: item.canonicalSector,
-                        market: item.market,
-                        price: item.price,
-                        currency: item.currency as 'USD' | 'MAD',
-                        annualDividendPerShare: item.annualDividendPerShare,
-                      })
-                    }
-                    className="flex-1 py-1.5 px-2 rounded bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-colors cursor-pointer"
-                  >
-                    + Add to Funding
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInspectedInstrument({ symbol: item.ticker, position: null })}
-                    className="py-1.5 px-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 font-semibold hover:border-indigo-500 transition-colors cursor-pointer"
-                  >
-                    Chart
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSimTicker(item.ticker)}
-                    className="py-1.5 px-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:border-indigo-500 transition-colors cursor-pointer"
-                  >
-                    Simulate
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      )}
 
       {/* =====================================================================
           7. COMPLETE STOCKS & PORTFOLIO INTELLIGENCE SUITE (WORKSTREAMS 1–9)
+             (Single-level tab integration via hideInternalNav={true})
          ===================================================================== */}
       <StocksIntelligenceSuite
         activeSection={activeSuiteSection}
         onChangeSection={setActiveSuiteSection}
+        hideInternalNav={true}
         investmentsData={investmentsData}
         stockPositions={stockHoldings}
         watchlistPositions={investmentsData?.watchlistPositions || []}
@@ -2156,6 +2265,179 @@ export const FundingStocksDashboard: React.FC<FundingStocksDashboardProps> = ({
           openAddStockModalWithPreset(ticker ? { ticker } : undefined)
         }
       />
+
+      {/* =====================================================================
+          3. FRIENDLY STOCKS INSIGHTS & STRATEGIC VISION PANEL (4 CARDS)
+             (Shown in 'overview' tab)
+         ===================================================================== */}
+      {(activeSuiteSection === 'overview' || activeSuiteSection === 'all') && (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-amber-500" />
+                <span>Smart Stocks Insights &amp; Category Recommendations</span>
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Clear, plain-English insights into your stock sector concentration, Funding vs. Spot separation, breakeven targets, and dividend growth.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {friendlyStockInsights.map((ins) => (
+              <div
+                key={ins.id}
+                className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/40 space-y-2"
+              >
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-bold text-gray-900 dark:text-white text-sm">
+                    {ins.title}
+                  </span>
+                  <span
+                    className={`font-semibold text-[11px] shrink-0 ${
+                      ins.tone === 'emerald'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : ins.tone === 'amber'
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-indigo-600 dark:text-indigo-400'
+                    }`}
+                  >
+                    {ins.badge}
+                  </span>
+                </div>
+                <div className="font-mono tabular-nums text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                  {ins.metric}
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                  {ins.body}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================================
+          6. STOCKS CATALOG & BENCHMARK EXPLORER BY SECTOR
+             (Shown in 'watchlist' tab)
+         ===================================================================== */}
+      {(activeSuiteSection === 'watchlist' || activeSuiteSection === 'all') && (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 sm:p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-3">
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Globe className="h-4 w-4 text-indigo-500" />
+                <span>Explore US Stocks, Mechanics, Banking, AI &amp; ETFs Catalog</span>
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Browse curated stocks across AI, Technology, Mechanics &amp; Industrials, Banking, Consumer, Healthcare, Energy, and ETFs.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-950 text-xs">
+                {(['ALL', 'US', 'ETF', 'BVC'] as const).map((mkt) => (
+                  <button
+                    key={mkt}
+                    type="button"
+                    onClick={() => setMarketFilter(mkt)}
+                    className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                      marketFilter === mkt
+                        ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs font-semibold'
+                        : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-300'
+                    }`}
+                  >
+                    {mkt === 'ALL' ? 'All Markets' : mkt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {filteredCatalog.map((item) => {
+              const meta = STOCK_SECTOR_METADATA[item.canonicalSector];
+              return (
+                <div
+                  key={item.ticker}
+                  className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/40 flex flex-col justify-between gap-2.5 text-xs"
+                >
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="h-2.5 w-2.5 rounded-xs shrink-0"
+                          style={{ backgroundColor: meta?.colorHex || '#4f46e5' }}
+                        />
+                        <span className="font-mono font-bold text-sm text-gray-900 dark:text-white">
+                          {item.ticker}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 truncate">
+                        {item.canonicalSector}
+                      </span>
+                    </div>
+                    <div className="text-gray-600 dark:text-gray-300 font-medium truncate mt-0.5">
+                      {item.companyName}
+                    </div>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 line-clamp-2 mt-1">
+                      {item.thesis}
+                    </p>
+                    <div className="mt-2 flex items-baseline justify-between font-mono tabular-nums">
+                      <span className="font-bold text-gray-900 dark:text-white">
+                        {item.currency === 'MAD'
+                          ? formatMad(item.price, 2)
+                          : formatUsd(item.price, 2)}
+                      </span>
+                      <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">
+                        Yield: {item.dividendYieldPercent.toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-gray-200/60 dark:border-gray-800 flex items-center justify-between gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openAddStockModalWithPreset({
+                          ticker: item.ticker,
+                          companyName: item.companyName,
+                          sector: item.canonicalSector,
+                          market: item.market,
+                          price: item.price,
+                          currency: item.currency as 'USD' | 'MAD',
+                          annualDividendPerShare: item.annualDividendPerShare,
+                        })
+                      }
+                      className="flex-1 py-1.5 px-2 rounded bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-colors cursor-pointer"
+                    >
+                      + Add to Funding
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInspectedInstrument({ symbol: item.ticker, position: null })}
+                      className="py-1.5 px-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 font-semibold hover:border-indigo-500 transition-colors cursor-pointer"
+                    >
+                      Chart
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSimTicker(item.ticker);
+                        setActiveSuiteSection('planning');
+                      }}
+                      className="py-1.5 px-2 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 font-semibold hover:border-indigo-500 transition-colors cursor-pointer"
+                    >
+                      Simulate
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {inspectedInstrument && (
         <InstrumentDetailModal

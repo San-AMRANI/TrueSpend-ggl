@@ -96,6 +96,7 @@ interface StocksIntelligenceSuiteProps {
   onUpdatePosition: (id: string, payload: any) => Promise<any>;
   onDeletePosition: (id: string) => Promise<any>;
   onQuickAddStock: (ticker?: string) => void;
+  hideInternalNav?: boolean;
 }
 
 export const StocksIntelligenceSuite: React.FC<StocksIntelligenceSuiteProps> = ({
@@ -118,6 +119,7 @@ export const StocksIntelligenceSuite: React.FC<StocksIntelligenceSuiteProps> = (
   onUpdatePosition,
   onDeletePosition,
   onQuickAddStock,
+  hideInternalNav = false,
 }) => {
   const storedDailyBars = useMemo(
     () => investmentsData?.storedDailyBarsBySymbol || {},
@@ -601,71 +603,77 @@ export const StocksIntelligenceSuite: React.FC<StocksIntelligenceSuiteProps> = (
         ? 'Moderate Concentration'
         : 'Well Diversified';
 
+  if (activeSection === 'holdings') {
+    return null;
+  }
+
   return (
     <div className="space-y-6">
       {/* =====================================================================
           SECTION NAVIGATION & TWELVE DATA CACHE GOVERNANCE BAR (§1.2 & §12)
          ===================================================================== */}
-      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-2xs space-y-3">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {(
-              [
-                { id: 'all', label: 'Complete Suite (All)' },
-                { id: 'overview', label: '1. Overview & Exposure' },
-                { id: 'holdings', label: '2. Holdings & Sectors' },
-                { id: 'performance', label: '3. Performance & Benchmarks' },
-                { id: 'dividends', label: '4. Dividend Calendar' },
-                { id: 'risk', label: '5. Risk & Correlation' },
-                { id: 'watchlist', label: '6. Watchlist & Alerts' },
-                { id: 'planning', label: '7. Simulators & Rebalancing' },
-              ] as { id: StocksSuiteSection; label: string }[]
-            ).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => onChangeSection(tab.id)}
-                className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                  activeSection === tab.id
-                    ? 'bg-indigo-600 text-white shadow-2xs'
-                    : 'bg-gray-100 dark:bg-gray-800/80 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+      {!hideInternalNav && (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-2xs space-y-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(
+                [
+                  { id: 'overview', label: '1. Overview & Exposure' },
+                  { id: 'holdings', label: '2. Holdings & Sectors' },
+                  { id: 'performance', label: '3. Performance & Benchmarks' },
+                  { id: 'dividends', label: '4. Dividend Calendar' },
+                  { id: 'risk', label: '5. Risk & Correlation' },
+                  { id: 'watchlist', label: '6. Watchlist & Alerts' },
+                  { id: 'planning', label: '7. Simulators & Rebalancing' },
+                  { id: 'all', label: 'All Sections' },
+                ] as { id: StocksSuiteSection; label: string }[]
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => onChangeSection(tab.id)}
+                  className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition cursor-pointer whitespace-nowrap shrink-0 ${
+                    activeSection === tab.id
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'bg-gray-100 dark:bg-gray-800/80 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
-            <span className="flex items-center gap-1.5">
-              <Database className="h-3.5 w-3.5 text-indigo-500" />
-              <span>
-                Market Cache:{' '}
-                <strong className="text-gray-800 dark:text-gray-200 uppercase">
-                  {marketDataStatus?.status || 'cache_only'}
-                </strong>
+            <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+              <span className="flex items-center gap-1.5">
+                <Database className="h-3.5 w-3.5 text-indigo-500" />
+                <span>
+                  Market Cache:{' '}
+                  <strong className="text-gray-800 dark:text-gray-200 uppercase">
+                    {marketDataStatus?.status || 'cache_only'}
+                  </strong>
+                </span>
               </span>
-            </span>
-            <span>·</span>
-            <span>
-              Daily Credits:{' '}
-              <strong className="text-gray-800 dark:text-gray-200">
-                {marketDataStatus?.creditsUsedToday ?? 0} / {marketDataStatus?.dailyHardLimit ?? 250}
-              </strong>{' '}
-              (Target ≤{marketDataStatus?.dailyTargetLimit ?? 150})
-            </span>
-            <button
-              type="button"
-              onClick={handleRefreshMarketData}
-              disabled={refreshingBars}
-              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`h-3 w-3 ${refreshingBars ? 'animate-spin text-indigo-500' : ''}`} />
-              <span>Sync Daily Bars</span>
-            </button>
+              <span>·</span>
+              <span>
+                Daily Credits:{' '}
+                <strong className="text-gray-800 dark:text-gray-200">
+                  {marketDataStatus?.creditsUsedToday ?? 0} / {marketDataStatus?.dailyHardLimit ?? 250}
+                </strong>{' '}
+                (Target ≤{marketDataStatus?.dailyTargetLimit ?? 150})
+              </span>
+              <button
+                type="button"
+                onClick={handleRefreshMarketData}
+                disabled={refreshingBars}
+                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-2.5 py-1 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3 w-3 ${refreshingBars ? 'animate-spin text-indigo-500' : ''}`} />
+                <span>Sync Daily Bars</span>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* =====================================================================
           OVERVIEW EXTENSIONS: SECONDARY KPIs, EXPOSURES & CONTRIBUTIONS (§2.2 - §2.6)
