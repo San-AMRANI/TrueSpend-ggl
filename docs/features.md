@@ -1,61 +1,98 @@
 # TrueSpend Features Guide
 
-TrueSpend is a comprehensive personal finance tracking and budgeting application tailored around unique pay periods and AI-assisted financial management.
+TrueSpend is a full-stack personal finance, multi-wallet wealth management, subscription intelligence, and stock/crypto portfolio platform tailored around custom pay cycles and AI-assisted financial decision-making.
 
-## Core Features
+---
 
-### Dashboard & Analytics
-- **Overview**: Displays a real-time snapshot of the current financial month, including Income vs. Expense KPI cards, daily allowance calculations (remaining vs. recommended burn rate), and recent transactions.
-- **Transactions Management**: Add, edit, and delete transactions. Supports categories, multiple transaction types (Income, Expense, Transfer, Debt Repayment), wallets (Bank, Cash), and rich list views with time-based grouping.
-- **Analytics & Digest**: Visual breakdowns of spending via pie charts (category vs. category) and bar graphs. The **Digest Tab** generates summaries and comparisons to previous financial months.
-- **Financial Calendar**: A visual view plotting payday boundaries and large expenses/due dates over a traditional calendar view.
-- **What If? Simulator**: A speculative purchase simulator allowing users to input hypothetical purchases to see precisely how it impacts their remaining daily allowance and overall budget health before actually spending the money.
+## 1. Stocks, Funding Equities & Spot Crypto Portfolio (`Investments`)
 
-### Advanced Budgeting Strategies
-Budgets are tracked on a rolling basis tied to the user's custom payday. The application offers three visual budget models:
-1. **Category View**: Micro-manage every single category manually.
-2. **Envelope View**: Classic cash-envelope style tracking emphasizing remaining balance over percentages.
-3. **50/30/20 Rule View**: A dynamic macro-budgeting view. Categorizes spending into Needs, Wants, and Savings & Debt. Users can fully customize the split percentage (e.g., 60/20/20) and use the **"Calculate from Budgets"** engine to automatically tally their micro-budgets into exact real-time percentages.
+TrueSpend features a dual-engine investment suite that strictly separates **US & Global Stocks (Funding Wallet & Local Equities)** from **Spot Cryptocurrencies**. For a complete deep-dive into the categorization pipeline, formulas, and APIs, see **[TrueSpend Stocks, Funding Equities & Investments Architecture](stocks-and-investments.md)**.
 
-**Budget Utilities**:
-- **Batch Editing**: Edit all categories simultaneously and save them in one API call.
-- **Copy Previous Month**: Carry over the exact category allocation from the last financial month.
-- **Clear Month**: Wipe the slate clean for the current month.
+### 1.1. US & Global Stocks Dashboard (`FundingStocksDashboard.tsx`)
+- **Strict Asset Isolation**: Tracks US equities, global stocks, Casablanca Stock Exchange (`BVC`) holdings, and ETFs separately from 24/7 cryptocurrency volatility. Automatically filters out `< $0.05` delisted crypto dust (such as `NEBL` and `WTC`).
+- **8-Sector Auto-Categorization Engine (`src/lib/stockCategories.ts`)**:
+  - Automatically classifies 650+ stock tickers—including Binance `EQ*` tokenized equities (`EQORCL` $\rightarrow$ `ORCL`, `EQNVDA` $\rightarrow$ `NVDA`, `EQJPM` $\rightarrow$ `JPM`, `EQUSAR` $\rightarrow$ `USAR`)—into 8 canonical sectors:
+    1. **AI & Semiconductors** (`NVDA`, `AMD`, `AVGO`, `TSM`, `ASML`, `PLTR`, `ARM`, `MU`)
+    2. **Technology & Cloud** (`ORCL`, `MSFT`, `AAPL`, `GOOGL`, `META`, `CRM`, `NOW`, `CRWD`)
+    3. **Mechanics, Automotive & Industrials** (`USAR`, `TSLA`, `CAT`, `DE`, `GE`, `HON`, `LMT`, `MP`)
+    4. **Banking & Financials** (`JPM`, `V`, `MA`, `BAC`, `GS`, `MS`, `BRK.B`, `ATW`, `BCP`)
+    5. **Consumer & Retail** (`AMZN`, `WMT`, `COST`, `HD`, `KO`, `PEP`, `MCD`, `NKE`)
+    6. **Healthcare & Biotech** (`LLY`, `UNH`, `JNJ`, `ABBV`, `NVO`, `ISRG`, `MRK`, `TMO`)
+    7. **Energy, Utilities & Real Estate** (`XOM`, `CVX`, `NEE`, `CEG`, `O`, `PLD`, `AMT`, `TQM`)
+    8. **Index & Dividend ETFs** (`VOO`, `SPY`, `QQQ`, `VTI`, `SCHD`, `JEPI`, `JEPQ`, `SMH`)
+  - **Live Yahoo Finance Sector Fallback**: Any ticker not in the built-in 650+ dictionary is automatically queried against Yahoo Finance's `/v1/finance/search` API to retrieve its live sector, industry, and company name.
+- **Category Dominance & Smart Insights**:
+  - Live stacked allocation bar and 8 interactive category cards showing which stock sector represents the highest percentage of the portfolio.
+  - Automated plain-English insights for sector concentration, Funding vs. Spot separation, top stock performer after fees, and dividend compounding.
+- **Breakeven Share Price & Fee Drag Forensics**:
+  - Computes exact entry + exit brokerage fee drag (`0.10%` per leg) and displays the exact **Breakeven Share Price** on every stock card so users never sell at a hidden net loss.
+- **Dividend Yield & 5-Year DRIP Trajectory**:
+  - Tracks annual and monthly passive dividend income in USD and MAD, portfolio-weighted yield %, and a 5-year dividend reinvestment (DRIP) projection.
+- **Interactive Stock Profit & Fee Simulator**:
+  - Simulates hypothetical investments (`$25`–`$1,000+`), target price moves (`-20%` to `+100%`), holding periods (`1`–`60` months), round-trip fees, and dividend payouts.
 
-### Debt Tracking (Receivables & Payables)
-- Keep track of money lent (Receivables) and money owed (Payables).
-- Settle debts completely or log partial payments which automatically register as 'Debt Repayment' transactions.
-- Track due dates and view cleared vs. pending obligations.
+### 1.2. Spot Cryptocurrency & Binance Read-Only Terminal (`InvestmentsTab.tsx`)
+- **Ed25519 Signed Read-Only Sync**: Connects to Binance Spot, Funding, and Simple Earn APIs using server-side Ed25519 cryptographic signatures without withdrawal or trading permissions.
+- **Personal Trade Forensics**: Fetches historical fills (`/api/investments/binance/trades`), computing weighted average buy/sell prices, realized vs. unrealized P&L, and commission fee drag.
+- **Brokerage Capital Flows**: One-click wallet synchronization (`/api/investments/binance/sync-wallet`), capital transfer logging (`deposit` / `withdrawal`), and payday batch stock allocation (`/api/investments/payday-allocate`).
 
-### Settings & User Preferences
-- **Custom Payday Tracking**: Financial months reset on a custom date (e.g., the 25th of the month) rather than the 1st of the calendar month. This drives all KPI and budget calculations.
-- **Salary & Emergency Buffer**: Set fixed incomes and emergency thresholds to drive the What-If and KPI engines.
-- **Daily Insights & Web Push Notifications**: Users can opt-in to daily notifications summarizing their budget pacing, overspent categories, or remaining daily allowance via Web Push (VAPID) and background service workers.
-- **Google Drive Automated Cloud Backups**:
-  - **Direct Drive Integration**: Authenticate with Google to backup your entire PostgreSQL database directly to your personal Google Drive account.
-  - **Configurable Backup Intervals**: Schedule automated backups at custom cadences: **Daily** (every 24h), **Every 3 Days** (every 72h), or **Weekly** (every 7 days).
-  - **Server-Side & Hybrid Cron Execution**: Automated recurring background jobs run every 15 minutes checking backup eligibility and uploading SQL dumps securely, backed by proactive client-side sync checks.
-  - **Instant On-Demand Backups**: Trigger immediate cloud backups anytime via the "Backup to Drive Now" button.
-- **Full Data Sovereignty**: Users can export their entire database profile to raw SQL via the **Export to SQL** button, and similarly import raw `.sql` backups to instantly restore their profile across instances. For complete database schema, tables, and restore mechanics, refer to **[TrueSpend Database Schema & Architecture](database.md)**.
+---
 
-### Financial Goals & Milestone Tracking
-- Create custom financial targets with deadlines, priority tags, and target amounts (e.g., emergency fund, car down payment, vacation).
-- Track real-time progress percentages, remaining balances, required monthly contributions, and required weekly contributions.
-- Make direct progress contributions with automatic transaction logging and KPI synchronization.
+## 2. Subscriptions & Recurring Bills Hub (`SubscriptionsTab.tsx`)
 
-### Personal Intelligence & Deep Insights
-- **Financial Health Score**: Unified 0–100 score dynamically calculated across emergency buffer health, debt-to-income ratio, daily burn pacing, and goal progression.
-- **Financial Runway & Forecasting**: Real-time runway analysis (e.g., "18 days of financial runway") paired with best-case, expected, and worst-case end-of-period balance predictions.
-- **Merchant & Category Intelligence**: Breakdown of top merchants, frequency of visits, average spend per transaction, and month-over-month trend changes.
-- **Spending Anomaly Detection**: Automated flagging of irregular spikes, off-pattern purchases, or unusually high ticket items with severity indicators.
+Enhanced specifically for multi-month commitments (such as **Every 3 Months** gym memberships, car/health insurance, and bi-monthly utilities) alongside standard monthly and yearly subscriptions:
 
-### Account Reconciliation & Reports
-- **Reconciliation Module**: Verify bank and cash balances against statement totals, highlight unaccounted discrepancies, and log balance adjustments.
-- **Structured Financial Reports**: Generate monthly financial statements, budget adherence reports, and category expense breakdowns ready for export.
+- **First-Class Multi-Month Billing Cycles**:
+  - **Every 3 Months (`every_3_months` / `quarterly`)**: Dedicated 3-month cycle tracking with normalized monthly burn (`amount / 3`), daily cost, and 90-day renewal countdowns.
+  - **Every 2 Months (`every_2_months`)** & **Every 6 Months (`every_6_months`)**: Bi-monthly and semi-annual support.
+  - **Weekly, Bi-Weekly, Monthly & Yearly**: Full cycle normalization into MAD (`USD` and `EUR` auto-converted).
+- **Quick-Add Templates**: Built-in presets for **Gym & Fitness (3 Months)**, **Car / Health Insurance (3 Months)**, Cloud/AI subscriptions, Streaming, and Telecom.
+- **Smart Auto-Detection (`/api/subscriptions/detect`)**: Scans historical transactions to detect recurring merchant charges and suggests billing cycles automatically.
+- **Planned vs. Active Commitments**: Simulate upcoming subscriptions (e.g., a planned 3-month gym membership) with a toggle to preview their impact on Safe-to-Spend before activating.
+- **One-Click Payment Logging (`/api/subscriptions/:id/pay`)**: Logs the expense transaction, deducts from the linked wallet, and advances `nextBillingDate` by the exact cycle interval (`+3 months`, `+1 month`, etc.).
 
-## The AI Assistant (TrueSpend Copilot / Spex)
-An integrated AI chat interface. The assistant possesses "Agentic" capabilities, utilizing server-side function calling (the `AiActionGateway`). For an exhaustive technical breakdown of the AI architecture, prompt engineering, context serialization, and model failover, see **[TrueSpend AI Feature Architecture](ai.md)**.
-- **Conversational Queries**: "How much did I spend on dining out this month?"
-- **Data Insertion**: "I just bought a coffee for 40 MAD from Starbucks in Cash." The AI parses the request, prepares the transaction payload, and requests the user's approval before committing it to the database.
-- **Budget Advice**: "Based on my current spending pace, do I need to cut back on wants this week?"
-- **Context Injection**: The application automatically injects the user's recent transactions and current budget health into the AI prompt to provide perfectly contextual answers without needing raw database reads.
+---
+
+## 3. Core Financial & Cash Flow Features
+
+### 3.1. Dashboard, Custom Pay Cycles & Historical Financial Periods
+- **Custom Payday Financial Months**: Financial cycles reset on the user's actual payday (or calendar-scheduled `payrolls` dates) rather than the 1st of the calendar month.
+- **Historical Financial Periods Ledger (`cashFlowEngine.ts`)**: Reconciles opening liquidity, salary income, other income, gross outflow, net living expenses, reimbursable splits, debt repayments, investment deployments, and closing liquidity across every historical pay cycle.
+- **Multi-Wallet Architecture (`wallets`)**: Manage multiple `Bank`, `Cash`, `Savings`, and `Investment` wallets with individual balances and inter-wallet transfers.
+- **Financial Contexts / Projects (`ContextsTab.tsx`)**: Group transactions under specific trips, work missions, projects, or life events with dedicated context budgets.
+- **Cycle Retrospectives (`ReportsTab.tsx`)**: AI-assisted and deterministic end-of-cycle financial retrospectives comparing cycle-over-cycle savings rates and category drift.
+
+### 3.2. Advanced Budgeting Strategies (`BudgetsTab.tsx`)
+1. **Category View**: Granular monthly limits across the 15 canonical expense categories.
+2. **Envelope View**: Cash-envelope tracking emphasizing remaining spendable balance.
+3. **50/30/20 Rule View**: Customizable macro allocation across Needs, Wants, and Savings/Investments.
+- **Batch Utilities**: Batch upsert (`/api/category-budgets/batch`), copy previous financial month (`/api/category-budgets/copy-previous`), and clear month.
+
+### 3.3. Debts, Partial Payments & Shared Expense Splits (`DebtsTab.tsx`)
+- Track **Receivables** (money owed to the user) and **Payables** (money the user owes).
+- **Shared Transaction Splits (`splits`)**: Deducts reimbursable portions from gross bills so personal burn rate only reflects the user's true share.
+- **Partial Bill Telemetry**: Log partial payments on expenses while automatically tracking the unpaid remainder.
+
+### 3.4. Savings Goals & Auto-Sync Wallets (`GoalsTab.tsx`)
+- Create milestone targets with deadlines, priority tags, and optional **Wallet Auto-Sync** (`autoSyncBalance`) that mirrors a linked Savings/Investment wallet balance in real time.
+
+---
+
+## 4. SPEX AI Copilot & Interactive Mascot Companion
+
+### 4.1. Agentic AI Financial Copilot (`ai.md`)
+- Powered by live financial context injection (`src/lib/aiContext.ts`) covering KPIs, historical payroll cycles, active subscriptions, debt positions, and live stock/crypto holdings.
+- **Human-in-the-Loop Action Gateway (`AiActionGateway.ts`)**: Proposes structured actions (`create_transaction`, `create_debt`, `upsert_budget`, `create_goal`, `contribute_goal`, `settle_debt`, `update_settings`) requiring explicit user approval.
+- **Multimodal Input**: Client-side receipt OCR (`Tesseract.js`), deterministic receipt parser (`/api/receipts/parse`), and voice dictation.
+
+### 4.2. Interactive SPEX Sprite Animator (`SpexSpriteAnimator.tsx` & `SpexCompanionWidget.tsx`)
+- High-resolution WebP/PNG spritesheet animation engine (`SPEX-spritesheet-v2.webp`) supporting 9 choreographed animation rows (`idle`, `running-right`, `running-left`, `waving`, `jumping`, `failed`, `waiting`, `running`, `review`) plus **16-angle 360° cursor gaze tracking** (`look 000-157.5` and `look 180-337.5`).
+- Transparent theme-adaptive 3D avatars (`SpexAvatar.tsx`) that harmonize with all 12 light and dark themes.
+
+---
+
+## 5. Multi-User RBAC, Cloud Backups & Native Android APK
+
+- **Role-Based Access Control (`UserManagementTab.tsx`)**: Supports `owner`, `admin`, `manager`, `member`, and `viewer` roles, `shared` vs. `isolated` workspace modes, granular permissions, user impersonation (`/api/users/:id/impersonate`), and audit logging (`user_audit_logs`).
+- **Data Sovereignty & Google Drive Backups**: Full PostgreSQL `.sql` dump export/import (`/api/settings/export-sql`, `/api/settings/import-sql`) and scheduled Google Drive backups (`daily`, `3days`, `weekly`).
+- **Capacitor 8 Native Android App (`ANDROID_CAPACITOR.md`)**: Native Android WebView bridge (`capacitorBridge.ts`) with direct APK download endpoint (`/api/download-apk`).
