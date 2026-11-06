@@ -110,6 +110,14 @@ Captures every `BUY`, `SELL`, and `DIVIDEND` event tied to a stock position.
 | `notes` | `text` | Yes | `NULL` | Execution notes |
 | `executed_at` | `timestamp` | **No** | `NOW()` | Execution timestamp |
 
+### 4.2.1. Market Data Cache & Investment Intelligence Tables
+- **`market_data_symbols`**: Canonical instrument metadata (`symbol` PK, `raw_held_symbol`, `underlying_symbol`, `display_name`, `instrument_type`, `exchange`, `country`, `sector`, `currency`, `provider`).
+- **`market_data_daily_bars`**: Persistent daily OHLCV time-series cache (`symbol`, `bar_date`, `open`, `high`, `low`, `close`, `volume`, `currency`, `provider`, `is_adjusted`, unique index on `(symbol, bar_date)`).
+- **`market_data_usage`**: Atomic Twelve Data credit governance ledger (`utc_date`, `utc_minute`, `provider`, `endpoint`, `credit_weight`, `symbols_count`, `credits_reserved`, `credits_used_header`, `credits_left_header`, `status`).
+- **`portfolio_daily_snapshots`**: Daily end-of-day portfolio valuation snapshots (`user_id`, `snapshot_date`, `total_market_value_mad`, `investment_cash_mad`, `net_contributions_mad`, `cost_basis_mad`, `unrealized_pnl_mad`, `realized_pnl_mad`, `dividends_received_mad`, `positions_json`, unique index on `(user_id, snapshot_date)`).
+- **`investment_dividend_events`**: Dividend calendar and cash-flow ledger (`id`, `user_id`, `position_id`, `ticker`, `declaration_date`, `ex_dividend_date`, `record_date`, `payment_date`, `dividend_per_share`, `eligible_shares`, `gross_amount`, `withholding_tax`, `fee_amount`, `net_amount`, `net_amount_mad`, `status`, `source`).
+- **`investment_settings`**: Per-user investment analytics configuration (`user_id` unique, `reporting_currency`, `selected_benchmarks`, `risk_free_rate_percent`, `manual_usd_mad_rate`, `twelve_data_display_approved`, `target_allocations_json`, `goals_json`).
+
 ### 4.3. `wallets` (Multi-Wallet Liquidity & Investment Accounts)
 | Column | Type | Nullable | Default | Description |
 | :--- | :--- | :---: | :--- | :--- |

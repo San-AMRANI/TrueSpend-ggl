@@ -186,3 +186,35 @@ TrueSpend integrates with Binance using **cryptographically signed read-only req
 | `DELETE` | `/api/investments/orders/:id` | Deletes a logged stock order |
 | `POST` | `/api/investments/payday-allocate` | Executes a payday batch purchase across multiple target-weighted stocks |
 | `POST` | `/api/investments/fund-wallet` | Transfers capital from a Bank/Savings wallet into an Investment wallet |
+| `GET` | `/api/investments/instrument/:symbol` | Full Instrument Detail payload: daily OHLCV bars, local technical indicators (`SMA`, `EMA`, `Bollinger`, `RSI 14`, `MACD`), identity metadata, and fundamentals |
+| `POST` | `/api/investments/dividends` | Records a manual or verified dividend event with gross, withholding tax, fee, and net MAD/USD amounts |
+| `DELETE` | `/api/investments/dividends/:id` | Deletes a dividend event from the user's dividend ledger |
+| `PUT` | `/api/investments/settings` | Updates user investment settings (`reportingCurrency`, `selectedBenchmarks`, `riskFreeRatePercent`, `twelveDataDisplayApproved`, `targetAllocations`, `goals`) |
+| `POST` | `/api/investments/market-data/refresh` | Triggers a budget-guarded refresh of daily OHLCV bars and returns live Twelve Data / Hybrid Cache status |
+
+---
+
+## 7. Complete Stocks & Portfolio Intelligence Suite (Workstreams 1–9)
+
+### 7.1. Instrument Identity & Ownership Disclosure (`src/lib/investmentIntelligence.ts`)
+- Distinguishes between **Held Instrument** (`rawHeldTicker`, e.g., `EQNVDA`, `EQORCL`, `EQJPM`, `EQUSAR`) and **Underlying Reference Symbol** (`underlyingTicker`, e.g., `NVDA`, `ORCL`, `JPM`, `USAR`).
+- Classifies every position into `EQUITY`, `ETF`, `TOKENIZED_EQUITY`, `ADR`, `INDEX`, or `CRYPTO` with explicit ownership and custody disclosures.
+
+### 7.2. Market Data Service & Twelve Data Credit Governance (`server/services/MarketDataService.ts`)
+- **Strict Endpoint Allowlist**: Only `/time_series` (`1 credit/symbol`) is enabled on the Free plan. High-cost endpoints (`/dividends`, `/earnings`, `/statistics`, `/market_movers`) are disabled on the Free tier.
+- **Credit Budget & Rate Limiter**: Enforces a hard cap of `250 credits/day` (with a `150/day` target and `200/day` warning threshold) and `8 credits/minute`, tracked in PostgreSQL (`market_data_usage`).
+- **Display-License Gate**: Honors `TWELVE_DATA_DISPLAY_LICENSE_CONFIRMED` and falls back to persistent Yahoo Finance EOD daily bars (`market_data_daily_bars`) when display licensing is unconfirmed or offline.
+
+### 7.3. Individual Instrument Detail Modal (`src/components/dashboard/InstrumentDetailModal.tsx`)
+- Interactive **Area / OHLCV Range** price chart + synchronized volume subplot with cached timeframe selectors (`1W`, `1M`, `3M`, `6M`, `YTD`, `1Y`, `ALL`) that slice locally cached bars (`0` extra API credits on period switch).
+- **Local Technical Indicators**: Computes `SMA 20`, `SMA 50`, `SMA 200`, `EMA 12`, `EMA 26`, `Bollinger Bands (20, 2)`, `RSI (14)`, and `MACD (12, 26, 9)` directly from cached daily bars.
+- Plots horizontal reference lines for **Average Buy Cost** and **Fee-Adjusted Breakeven Price**.
+
+### 7.4. Portfolio Performance, Benchmarks, Risk, Dividends & Planning (`src/components/dashboard/StocksIntelligenceSuite.tsx`)
+- **Return Metrics**: Formula-documented `Total Return`, `Capital Return`, `Dividend Return`, `CAGR`, `XIRR (Money-Weighted Return)` via Newton-Raphson solver, and `Time-Weighted Return (TWR)`.
+- **Normalized Benchmark Comparison (`Base = 100`)**: Compares portfolio trajectory against `SPY`, `QQQ`, and `MASI` with `Excess Return (Alpha)`, `Beta`, `Tracking Error`, and `Information Ratio`.
+- **Risk & Concentration Analytics**: Portfolio Drawdown from Peak, Rolling Volatility (`30D`/`90D`), `Sharpe`, `Sortino`, `Calmar`, `95% Historical Daily VaR`, `Herfindahl-Hirschman Index (HHI)`, and an $N \times N$ Pairwise Return Correlation Matrix heatmap.
+- **Dividend Calendar & Ledger**: Tracks `declarationDate`, `exDividendDate`, `recordDate`, `paymentDate`, `grossAmount`, `withholdingTax` (15% treaty estimate), and `netAmountMad` in `investment_dividend_events`.
+- **Traceable AI Portfolio Insights**: Every insight card exposes its exact inputs, calculation explanation, interpretation context, and data freshness timestamp.
+- **Planning & Simulation Tools**: Compound Growth Calculator, Historical DCA vs. Lump-Sum Simulator using cached daily OHLCV bars, Rebalancing Target Assistant, and Investment Goals Tracker.
+

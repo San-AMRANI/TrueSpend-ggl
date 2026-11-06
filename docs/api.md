@@ -136,6 +136,18 @@ All `/api/investments*` endpoints enforce `requireAuth`, RBAC (`canAccessInvestm
 ### `POST /api/investments/fund-wallet`
 - **Description**: Transfers capital from a source wallet (e.g., `Main Bank`) to an `Investment` wallet and records a `Transfer` transaction.
 
+### `GET /api/investments/instrument/:symbol`
+- **Description**: Returns the complete `InstrumentDetailPayload` for a stock/ETF/benchmark symbol, including cached daily OHLCV bars, locally computed technical indicators (`SMA 20/50/200`, `EMA 12/26`, `Bollinger Bands`, `RSI 14`, `MACD`), ownership identity metadata (`rawHeldSymbol`, `underlyingSymbol`, `instrumentType`), and fundamentals.
+
+### `POST /api/investments/dividends` & `DELETE /api/investments/dividends/:id`
+- **Description**: Creates or deletes a verified/manual dividend event in `investment_dividend_events` with gross payout, withholding tax, brokerage fee, and net MAD/USD conversion.
+
+### `PUT /api/investments/settings`
+- **Description**: Persists user-level investment intelligence settings (`reportingCurrency`, `selectedBenchmarks`, `riskFreeRatePercent`, `twelveDataDisplayApproved`, `targetAllocations`, `goals`).
+
+### `POST /api/investments/market-data/refresh`
+- **Description**: Triggers an on-demand, credit-budget-guarded refresh of daily OHLCV bars for held symbols and benchmarks and returns updated `TwelveDataBudgetStatus` telemetry.
+
 ---
 
 ## 4. Subscriptions & Recurring Commitments (`subscriptionRoutes.ts`)
