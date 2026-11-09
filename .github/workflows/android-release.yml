@@ -40,8 +40,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           release_tag="android-v1.0.${GITHUB_RUN_NUMBER}"
+          cp android/app/build/outputs/apk/debug/app-debug.apk TrueSpend.apk
           gh release create "$release_tag" \
-            android/app/build/outputs/apk/debug/app-debug.apk#TrueSpend.apk \
+            TrueSpend.apk \
             --target "$GITHUB_SHA" \
             --title "TrueSpend Android $release_tag" \
             --generate-notes
