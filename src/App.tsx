@@ -13,7 +13,7 @@ import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 import { DesktopHeaderNav } from './components/dashboard/DesktopHeaderNav';
 import type { DashboardTab } from './types';
-import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins, Sparkles, Search, Map, Eye, EyeOff, Palette, Check } from 'lucide-react';
+import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins, Sparkles, Search, Map, Eye, EyeOff, Palette, Check, Bell } from 'lucide-react';
 
 import { SpexAvatar } from './components/common/SpexAvatar';
 
@@ -38,6 +38,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const themeMenuRef = useRef<HTMLDivElement>(null);
 
   const handleSelectTab = (tab: DashboardTab) => {
@@ -48,16 +49,21 @@ function AppContent() {
   useEffect(() => {
     const cleanup = initGoogleAuth();
     const handleOpen = () => setIsSidebarOpen(true);
+    const handleUnreadCount = (e: any) => {
+      if (typeof e.detail === 'number') setUnreadNotifCount(e.detail);
+    };
     const handleClickOutside = (e: MouseEvent) => {
       if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
         setIsThemeMenuOpen(false);
       }
     };
     window.addEventListener('truespend:openSidebar', handleOpen);
+    window.addEventListener('truespend:unreadNotificationsCount', handleUnreadCount);
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       cleanup && cleanup();
       window.removeEventListener('truespend:openSidebar', handleOpen);
+      window.removeEventListener('truespend:unreadNotificationsCount', handleUnreadCount);
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
@@ -315,6 +321,20 @@ function AppContent() {
                   <Eye className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
                   <span className="hidden lg:inline">Privacy</span>
                 </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('truespend:openNotifications'))}
+              title="Smart Notifications & Financial Insights (Stocks, Subscriptions, Calendar & More)"
+              className="relative inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-medium transition-colors shrink-0 cursor-pointer"
+            >
+              <Bell className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span className="hidden xl:inline">Alerts</span>
+              {unreadNotifCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono tabular-nums font-bold bg-indigo-600 text-white">
+                  {unreadNotifCount}
+                </span>
               )}
             </button>
             <button

@@ -1,11 +1,17 @@
-import { payrollRepository } from "../repositories/PayrollRepository.js";
 import cron from 'node-cron';
 import { db } from '../../src/db/index.js';
-import { notificationPreferences, users } from '../../src/db/schema.js';
+import {
+  debts,
+  goals,
+  notificationPreferences,
+  subscriptions,
+  users,
+} from '../../src/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { PushService } from './PushService.js';
 import { KpiService } from './KpiService.js';
 import { settingsService } from './SettingsService.js';
+import { investmentService } from './InvestmentService.js';
 
 const pushService = new PushService();
 const kpiService = new KpiService();
@@ -42,12 +48,16 @@ export class NotificationScheduler {
       for (const user of backupUsers) {
         if (!user.googleDriveToken) continue;
 
-        // Check if token has expired
-        if (user.googleDriveTokenExpiry && new Date(user.googleDriveTokenExpiry).getTime() < Date.now()) {
+        if (
+          user.googleDriveTokenExpiry &&
+          new Date(user.googleDriveTokenExpiry).getTime() < Date.now()
+        ) {
           continue;
         }
 
-        const lastBackup = user.lastDriveBackupDate ? new Date(user.lastDriveBackupDate).getTime() : 0;
+        const lastBackup = user.lastDriveBackupDate
+          ? new Date(user.lastDriveBackupDate).getTime()
+          : 0;
         const frequency = user.driveBackupFrequency || 'weekly';
         const intervalMs =
           frequency === 'daily'
@@ -57,7 +67,9 @@ export class NotificationScheduler {
             : 7 * 24 * 60 * 60 * 1000;
 
         if (Date.now() - lastBackup >= intervalMs) {
-          console.log(`[BackupScheduler] Triggering server backup for ${user.email} (frequency: ${frequency})`);
+          console.log(
+            `[BackupScheduler] Triggering server backup for ${user.email} (frequency: ${frequency})`
+          );
           try {
             const result = await settingsService.backupToGoogleDrive(user.googleDriveToken);
             await settingsService.updateSettings(user.id, {
@@ -75,7 +87,6 @@ export class NotificationScheduler {
   }
 
   async processNotifications() {
-    // 1. Fetch all users who have notifications enabled
     const allPrefs = await db
       .select({
         prefs: notificationPreferences,
@@ -86,71 +97,183 @@ export class NotificationScheduler {
       .where(eq(notificationPreferences.enabled, true));
 
     for (const { prefs, user } of allPrefs) {
-      // 2. Check if it's their delivery time
-      // For simplicity, we just compare the HH:mm string. 
-      // In a real app with different timezones, we'd use `date-fns-tz` to get the current time in `prefs.timezone`.
       const now = new Date();
-      // Let's format 'now' into the user's timezone HH:mm
       const userTime = new Intl.DateTimeFormat('en-US', {
         timeZone: prefs.timezone || 'Africa/Casablanca',
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
-      }).format(now); // e.g. "09:00"
+      }).format(now);
 
       if (userTime !== prefs.deliveryTime) {
         continue;
       }
 
-      // Check quiet hours
       if (this.isQuietHours(userTime, prefs.quietHoursStart, prefs.quietHoursEnd)) {
         continue;
       }
 
-      // 3. Generate insight via KPI engine
       const todayString = now.toISOString().split('T')[0];
 
-      // Try to send a forecast warning
+      // 1. SUBSCRIPTION RENEWAL & CALENDAR BILL CLUSTER CHECK
       if (prefs.forecastWarningEnabled) {
-        const kpis = await kpiService.getKpisForUser(user);
-        if (kpis.forecast && kpis.forecast.expected < 0) {
-          const sent = await pushService.sendNotification(user.id, 'FORECAST_WARNING', todayString, {
-            title: 'Forecast Warning',
-            body: `🔴 Your current spending pace projects a ${Math.abs(kpis.forecast.expected).toFixed(2)} MAD shortfall by the end of your financial period.`,
-            url: '/dashboard'
-          });
-          if (sent) continue; // Only one notification per day
+        const userSubs = await db
+          .select()
+          .from(subscriptions)
+          .where(eq(subscriptions.userId, user.id));
+        const activeSubs = userSubs.filter((s) => s.status === 'active');
+
+        const imminentSubs = activeSubs.filter((s) => {
+          const diffDays = Math.ceil(
+            (new Date(s.nextBillingDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+          );
+          return diffDays >= 0 && diffDays <= 3;
+        });
+
+        if (imminentSubs.length > 0) {
+          const nextSub = imminentSubs[0];
+          const totalImminent = imminentSubs.reduce(
+            (acc, s) => acc + parseFloat(s.amount as any),
+            0
+          );
+          const sent = await pushService.sendNotification(
+            user.id,
+            'SUBSCRIPTION_RENEWAL_ALERT',
+            todayString,
+            {
+              title:
+                imminentSubs.length === 1
+                  ? `🔔 ${nextSub.name} Renews Soon`
+                  : `📅 ${imminentSubs.length} Calendar Bills Due in 72h`,
+              body:
+                imminentSubs.length === 1
+                  ? `${nextSub.name} (${parseFloat(nextSub.amount as any).toFixed(0)} MAD) is scheduled on ${nextSub.nextBillingDate}.`
+                  : `${imminentSubs.map((s) => s.name).join(', ')} totaling ${totalImminent.toFixed(0)} MAD renew within 72 hours.`,
+              url: '/dashboard',
+            }
+          );
+          if (sent) continue;
         }
       }
 
-      // Try budget warning (simplified since Insights is removed)
+      // 2. STOCKS & PORTFOLIO STATUS PULSE (Movers, Breakeven & Watchlist)
+      if (prefs.anomalyEnabled) {
+        try {
+          const invData = await investmentService.getInvestmentsData(user.id);
+          const stockPositions = (invData.positions || []).filter(
+            (p: any) => p.market !== 'CRYPTO'
+          );
+
+          if (stockPositions.length > 0) {
+            const topMover = [...stockPositions].sort(
+              (a: any, b: any) =>
+                Math.abs(b.change24hPercent || 0) - Math.abs(a.change24hPercent || 0)
+            )[0];
+
+            if (topMover && Math.abs(topMover.change24hPercent || 0) >= 1.5) {
+              const move = topMover.change24hPercent || 0;
+              const isUp = move >= 0;
+              const sent = await pushService.sendNotification(
+                user.id,
+                'STOCK_STATUS_PULSE',
+                todayString,
+                {
+                  title: `${isUp ? '📈' : '📉'} Stock Status: ${topMover.ticker} ${isUp ? '+' : ''}${move.toFixed(2)}% (24h)`,
+                  body: `${topMover.companyName} is at $${Number(topMover.currentPrice).toFixed(2)} (Breakeven floor: $${Number(topMover.breakevenPriceUsd ?? topMover.avgCostNum ?? topMover.avgCostPerShare).toFixed(2)}).`,
+                  url: '/dashboard',
+                }
+              );
+              if (sent) continue;
+            }
+          }
+        } catch (invErr) {
+          console.warn('[NotificationScheduler] Stock status check skipped:', invErr);
+        }
+      }
+
+      // 3. FORECAST & BUDGET CRITICAL WARNING
       if (prefs.budgetWarningEnabled) {
         const kpis = await kpiService.getKpisForUser(user);
+        if (kpis.forecast && kpis.forecast.expected < 0) {
+          const sent = await pushService.sendNotification(
+            user.id,
+            'FORECAST_WARNING',
+            todayString,
+            {
+              title: '🔴 Cash Flow Forecast Alert',
+              body: `Current spending pace projects a ${Math.abs(kpis.forecast.expected).toFixed(0)} MAD shortfall by payday. Adjusting daily spend re-balances your runway.`,
+              url: '/dashboard',
+            }
+          );
+          if (sent) continue;
+        }
+
         if (kpis.dailyStatus === 'critical') {
           const sent = await pushService.sendNotification(user.id, 'BUDGET_WARNING', todayString, {
-            title: 'Spending Warning',
-            body: `⚠️ Your daily budget is in a critical state.`,
-            url: '/dashboard'
+            title: '⚠️ Daily Budget Pace Alert',
+            body: `Today's spending has exceeded your daily Safe-to-Spend allowance.`,
+            url: '/dashboard',
           });
           if (sent) continue;
         }
       }
 
-      // Default daily insight
+      // 4. DEBT & GOAL MILESTONE CHECK
+      if (prefs.debtReminderEnabled || prefs.goalEnabled) {
+        const userDebts = await db.select().from(debts).where(eq(debts.userId, user.id));
+        const owedToMe = userDebts.filter(
+          (d) =>
+            d.type === 'Receivable' &&
+            d.status !== 'Cleared' &&
+            parseFloat((d.remainingBalance || d.originalAmount) as any) > 0
+        );
+        if (prefs.debtReminderEnabled && owedToMe.length > 0) {
+          const totalOwed = owedToMe.reduce(
+            (s, d) => s + parseFloat((d.remainingBalance || d.originalAmount) as any),
+            0
+          );
+          const sent = await pushService.sendNotification(user.id, 'DEBT_REMINDER', todayString, {
+            title: `🤝 ${totalOwed.toFixed(0)} MAD in Pending Reimbursements`,
+            body: `You have ${owedToMe.length} unsettled split${owedToMe.length === 1 ? '' : 's'} owed to you. Settling them boosts your liquid Safe-to-Spend.`,
+            url: '/dashboard',
+          });
+          if (sent) continue;
+        }
+
+        const userGoals = await db.select().from(goals).where(eq(goals.userId, user.id));
+        const nearGoal = userGoals.find((g) => {
+          const target = parseFloat(g.targetAmount as any);
+          const curr = parseFloat(g.currentAmount as any);
+          return target > 0 && curr / target >= 0.75 && curr < target;
+        });
+        if (prefs.goalEnabled && nearGoal) {
+          const pct = Math.round(
+            (parseFloat(nearGoal.currentAmount as any) /
+              parseFloat(nearGoal.targetAmount as any)) *
+              100
+          );
+          const sent = await pushService.sendNotification(user.id, 'GOAL_MILESTONE', todayString, {
+            title: `🏁 Goal "${nearGoal.name}" is ${pct}% Complete!`,
+            body: `You're in the final stretch for "${nearGoal.name}".`,
+            url: '/dashboard',
+          });
+          if (sent) continue;
+        }
+      }
+
+      // 5. DEFAULT DAILY CALENDAR & SAFE-TO-SPEND INSIGHT
       if (prefs.dailyInsightEnabled) {
         const kpis = await kpiService.getKpisForUser(user);
         await pushService.sendNotification(user.id, 'DAILY_INSIGHT', todayString, {
-          title: 'Daily Financial Insight',
-          body: `💰 You have ${kpis.safeToSpend.toFixed(2)} MAD safe to spend today.`,
-          url: '/dashboard'
+          title: `📆 Daily Cash Flow & Payday Pulse`,
+          body: `You have ${kpis.safeToSpend.toFixed(0)} MAD safe to spend (${kpis.daysUntilPayday} days until payday · ${kpis.dailyAllowance.toFixed(0)} MAD/day allowance).`,
+          url: '/dashboard',
         });
       }
     }
   }
 
   isQuietHours(currentTime: string, start: string, end: string) {
-    // Extremely basic quiet hours check (assuming HH:mm string comparison)
-    // E.g. start = "22:00", end = "07:00", currentTime = "23:00"
     if (start > end) {
       return currentTime >= start || currentTime < end;
     }

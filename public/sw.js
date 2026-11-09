@@ -25,8 +25,8 @@ self.addEventListener('push', function (event) {
     event.waitUntil(
       self.registration.showNotification(payload.title || 'TrueSpend', {
         body: payload.body || '',
-        icon: '/app-icon.png',
-        badge: '/app-icon.png',
+        icon: '/logo.png',
+        badge: '/logo.png',
         tag: payload.tag || 'truespend-notification',
         data: {
           url: payload.url || '/dashboard'
@@ -38,8 +38,8 @@ self.addEventListener('push', function (event) {
     event.waitUntil(
       self.registration.showNotification('TrueSpend', {
         body: event.data.text(),
-        icon: '/app-icon.png',
-        badge: '/app-icon.png',
+        icon: '/logo.png',
+        badge: '/logo.png',
         tag: 'truespend-notification',
       })
     );

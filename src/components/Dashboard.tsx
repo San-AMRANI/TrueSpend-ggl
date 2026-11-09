@@ -24,6 +24,7 @@ import TransactionForm from './TransactionForm';
 import { CommandPalette } from './CommandPalette';
 import { AIChat } from './AIChat';
 import { SpexCompanionPet } from './common/SpexCompanionPet';
+import { SmartNotificationCenter } from './dashboard/SmartNotificationCenter';
 import { X, CheckCircle2, AlertCircle, Info, Calculator } from 'lucide-react';
 import type { DashboardTab } from '../types';
 
@@ -108,6 +109,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
   } = useDashboardData(token);
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   const [quickTxModalType, setQuickTxModalType] = useState<'Expense' | 'Income' | 'Transfer' | null>(null);
   const [isSmartCalcModalOpen, setIsSmartCalcModalOpen] = useState(false);
   const [isWalletsModalOpen, setIsWalletsModalOpen] = useState(false);
@@ -126,11 +128,22 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
   }, [propActiveTab]);
 
   useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent('truespend:unreadNotificationsCount', {
+        detail: notifications.unreadCount,
+      })
+    );
+  }, [notifications.unreadCount]);
+
+  useEffect(() => {
     const handleSetTab = (e: any) => {
       setActiveTab(e.detail);
     };
     const handleOpenCommandPalette = () => {
       setIsCommandPaletteOpen(true);
+    };
+    const handleOpenNotifications = () => {
+      setIsNotificationCenterOpen((prev) => !prev);
     };
     const handleToast = (e: any) => {
       if (e.detail?.message) {
@@ -149,11 +162,13 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
 
     window.addEventListener('truespend:setTab', handleSetTab);
     window.addEventListener('truespend:openCommandPalette', handleOpenCommandPalette);
+    window.addEventListener('truespend:openNotifications', handleOpenNotifications);
     window.addEventListener('truespend:toast', handleToast);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('truespend:setTab', handleSetTab);
       window.removeEventListener('truespend:openCommandPalette', handleOpenCommandPalette);
+      window.removeEventListener('truespend:openNotifications', handleOpenNotifications);
       window.removeEventListener('truespend:toast', handleToast);
       window.removeEventListener('keydown', handleKeyDown);
     };
@@ -570,6 +585,17 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           onDeleteWallet={handleDeleteWallet}
         />
       )}
+
+      {/* Smart Multi-Domain Notification & Insights Center Drawer */}
+      <SmartNotificationCenter
+        isOpen={isNotificationCenterOpen}
+        onClose={() => setIsNotificationCenterOpen(false)}
+        notifications={notifications}
+        onNavigateTab={(tab) => {
+          setIsNotificationCenterOpen(false);
+          setActiveTab(tab);
+        }}
+      />
 
       {/* Interactive SPEX Companion Pet (16° Cursor Gaze, Patrol Flight & Live Reactions) */}
       <SpexCompanionPet

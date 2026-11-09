@@ -10,7 +10,13 @@ import { WalletsManager } from './WalletsManager';
 import { UsersAndRolesSection } from './UsersAndRolesSection';
 import { ThemeStudioCard } from './ThemeStudioCard';
 import { getCapacitorApiBaseUrl, setCapacitorApiBaseUrl, isNativePlatform, getPlatformName } from '../../lib/capacitorBridge';
-import type { NotifSettings, ServerNotifSettings } from '../../hooks/useNotifications';
+import type {
+  NotifChannelPrefs,
+  NotifSettings,
+  NotificationCategory,
+  ServerNotifSettings,
+  SmartNotificationItem,
+} from '../../hooks/useNotifications';
 import type { Wallet, Subscription, Debt, InvestmentsData, DashboardTab } from '../../types';
 
 interface NotificationsApi {
@@ -18,10 +24,17 @@ interface NotificationsApi {
   permission: NotificationPermission;
   settings: NotifSettings;
   serverSettings: ServerNotifSettings | null;
+  smartFeed?: SmartNotificationItem[];
+  unreadCount?: number;
   updateSettings: (patch: Partial<NotifSettings>) => void;
+  updateChannelPrefs?: (patch: Partial<NotifChannelPrefs>) => void;
   updateServerPreferences: (patch: Partial<ServerNotifSettings>) => void;
   requestPermission: () => Promise<boolean>;
-  sendNow: (data: any) => void;
+  sendNow: (
+    data?: any,
+    preferredCategory?: NotificationCategory,
+    customPayload?: { title: string; body: string }
+  ) => void;
 }
 
 interface SettingsTabProps {
@@ -196,7 +209,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       return;
     }
 
-    if (!notifications.serverSettings?.enabled) {
+    const isCurrentlyEnabled =
+      notifications.serverSettings?.enabled ?? notifications.settings.enabled;
+
+    if (!isCurrentlyEnabled) {
       // Turning ON
       if (notifications.permission !== 'granted') {
         const granted = await notifications.requestPermission();
@@ -205,34 +221,30 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           return;
         }
       }
+      notifications.updateSettings({ enabled: true });
       notifications.updateServerPreferences({ enabled: true });
-      showNotifToast('✅ Notifications enabled!');
+      showNotifToast('Notifications enabled across active channels!');
     } else {
       // Turning OFF
+      notifications.updateSettings({ enabled: false });
       notifications.updateServerPreferences({ enabled: false });
-      showNotifToast('🔕 Notifications disabled.');
+      showNotifToast('Notifications disabled.');
     }
   };
 
-  const handleSendTest = () => {
+  const handleSendTest = async (preferredCategory?: NotificationCategory) => {
     if (notifications.permission !== 'granted') {
-      showNotifToast('Please enable notifications first.');
-      return;
+      const granted = await notifications.requestPermission();
+      if (!granted) {
+        showNotifToast('Please allow browser notifications first.');
+        return;
+      }
     }
-    // Fire a test notification using empty data (will hit the tips fallback)
-    notifications.sendNow({
-      monthlyExpenses: 0,
-      monthlyIncome: 0,
-      totalBudget: 0,
-      totalSpent: 0,
-      daysUntilPayday: 0,
-      dailyAllowance: 0,
-      dailyRemaining: 0,
-      overspentCategories: [],
-      topCategory: null,
-      savings: 0,
-    });
-    showNotifToast('📬 Test notification sent! Check your notifications.');
+    await notifications.sendNow(undefined, preferredCategory);
+    const label = preferredCategory
+      ? preferredCategory.charAt(0).toUpperCase() + preferredCategory.slice(1)
+      : 'Smart';
+    showNotifToast(`${label} notification sent to your browser!`);
   };
 
   const permissionLabel: Record<NotificationPermission, string> = {
@@ -341,96 +353,280 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         />
       )}
 
-      {/* ── Notifications ── */}
+      {/* ── Smart Multi-Domain Notification Engine & Channels ── */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5 text-indigo-500" />
-            Daily Financial Insights
-          </CardTitle>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Bell className="h-5 w-5 text-indigo-500" />
+              <span>Smart Notification Engine &amp; Multi-Domain Insights</span>
+            </CardTitle>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Real-time and scheduled alerts across Stocks &amp; Equities, Subscription Renewals, Financial Calendar clusters, Budgets, and Creative Wealth Challenges.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.dispatchEvent(new CustomEvent('truespend:openNotifications'))}
+            className="flex items-center gap-1.5 text-xs font-semibold shrink-0"
+          >
+            <Bell className="h-3.5 w-3.5 text-indigo-500" />
+            <span>Open Live Alert Feed ({notifications.smartFeed?.length || 0})</span>
+          </Button>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Receive one personalised financial insight per day — budget alerts, payday countdowns, savings milestones, and smart spending tips — delivered as a browser notification at the time you choose.
-            </p>
-
+          <div className="space-y-5">
             {/* Browser support warning */}
             {!notifications.supported && (
               <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3 text-sm text-amber-700 dark:text-amber-300">
-                ⚠️ Your browser does not support Web Notifications. Try Chrome, Edge, or Firefox.
+                Your browser does not support Web Notifications. You can still view all insights in the top-bar Alerts drawer.
               </div>
             )}
 
-            {/* Permission status */}
-            {notifications.supported && (
-              <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-3 flex items-center justify-between gap-4 flex-wrap">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-0.5">Browser permission</p>
-                  <p className="text-sm font-medium">{permissionLabel[notifications.permission]}</p>
+            {/* Top Row: Browser Permission + Master Switch */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {notifications.supported && (
+                <div className="rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-3.5 flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-0.5">
+                      Browser Push Permission
+                    </p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {permissionLabel[notifications.permission]}
+                    </p>
+                  </div>
+                  {notifications.permission === 'default' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => notifications.requestPermission()}
+                      className="text-xs"
+                    >
+                      Allow Push
+                    </Button>
+                  )}
                 </div>
-                {notifications.permission === 'denied' && (
-                  <p className="text-xs text-red-500">Click the lock icon in your browser address bar to allow notifications.</p>
-                )}
-              </div>
-            )}
+              )}
 
-            {/* Enable/disable toggle */}
-            {notifications.supported && notifications.permission !== 'denied' && (
-              <div className="flex items-center justify-between gap-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Enable daily notifications</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Max 1 per day. Never annoying.</p>
-                </div>
-                <button
-                  onClick={handleToggleNotifications}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
-                    notifications.serverSettings?.enabled ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'
-                  }`}
-                  role="switch"
-                  aria-checked={notifications.serverSettings?.enabled || false}
-                  id="notif-toggle"
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
-                      notifications.serverSettings?.enabled ? 'translate-x-6' : 'translate-x-1'
+              {notifications.supported && notifications.permission !== 'denied' && (
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 dark:border-gray-700 p-3.5 bg-gray-50/50 dark:bg-gray-900/40">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      Master Push Delivery
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Deliver scheduled browser &amp; background push insights
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleToggleNotifications}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 cursor-pointer ${
+                      (notifications.serverSettings?.enabled ?? notifications.settings.enabled)
+                        ? 'bg-indigo-600'
+                        : 'bg-gray-300 dark:bg-gray-600'
                     }`}
-                  />
-                </button>
-              </div>
-            )}
-
-            {/* Time picker */}
-            {notifications.serverSettings?.enabled && notifications.permission === 'granted' && (
-              <div className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                <div className="flex-1">
-                  <label htmlFor="notif-time" className="text-sm font-medium text-gray-900 dark:text-gray-100 block mb-1">
-                    Delivery time
-                  </label>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">When should we send your daily insight?</p>
+                    role="switch"
+                    aria-checked={
+                      notifications.serverSettings?.enabled ?? notifications.settings.enabled
+                    }
+                    id="notif-toggle"
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                        (notifications.serverSettings?.enabled ?? notifications.settings.enabled)
+                          ? 'translate-x-6'
+                          : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
                 </div>
+              )}
+            </div>
+
+            {/* 5 Domain Intelligence Channels */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  Active Notification Intelligence Channels (5 Engines)
+                </h4>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {[
+                  {
+                    key: 'stocksEnabled' as const,
+                    serverKey: 'anomalyEnabled' as const,
+                    title: 'Stocks & Portfolio Statuses',
+                    desc: '24h movers, fee-adjusted breakeven crossovers, watchlist buy/sell triggers, sector concentration & dividend dates.',
+                  },
+                  {
+                    key: 'subscriptionsEnabled' as const,
+                    serverKey: 'forecastWarningEnabled' as const,
+                    title: 'Subscriptions & Renewals',
+                    desc: 'Imminent 24h–72h billing alerts, overdue renewals, and 5-year S&P 500 compounding opportunity cost.',
+                  },
+                  {
+                    key: 'calendarEnabled' as const,
+                    serverKey: 'dailyInsightEnabled' as const,
+                    title: 'Calendar & Cash Flow Radar',
+                    desc: '7-day upcoming bill clusters, payday countdowns, and daily Safe-to-Spend runway checks.',
+                  },
+                  {
+                    key: 'budgetsEnabled' as const,
+                    serverKey: 'budgetWarningEnabled' as const,
+                    title: 'Budgets, Debts & Goals',
+                    desc: 'Category limit warnings, uncollected "Owed to Me" split nudges, and 75%+ goal completion milestones.',
+                  },
+                  {
+                    key: 'creativeEnabled' as const,
+                    serverKey: 'goalEnabled' as const,
+                    title: 'Creative Behavioral Challenges',
+                    desc: 'Zero-Spend Day streaks, 7-day Micro-Leak impulse radar, and monthly savings velocity rewards.',
+                  },
+                ].map((ch) => {
+                  const isOn = notifications.settings.channels?.[ch.key] ?? true;
+                  return (
+                    <div
+                      key={ch.key}
+                      className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between gap-3 ${
+                        isOn
+                          ? 'border-indigo-200 dark:border-indigo-900/70 bg-indigo-50/20 dark:bg-indigo-950/20'
+                          : 'border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-900/40 opacity-75'
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-gray-900 dark:text-white">
+                            {ch.title}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              notifications.updateChannelPrefs?.({ [ch.key]: !isOn });
+                              notifications.updateServerPreferences({ [ch.serverKey]: !isOn });
+                            }}
+                            role="switch"
+                            aria-checked={isOn}
+                            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                              isOn ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-700'
+                            }`}
+                          >
+                            <span
+                              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                isOn ? 'translate-x-4.5' : 'translate-x-0.5'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                          {ch.desc}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Cadence, Delivery Time & Quiet Hours */}
+            <div className="grid gap-3 sm:grid-cols-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+              <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/40 space-y-1.5">
+                <label className="text-xs font-semibold text-gray-900 dark:text-white block">
+                  Delivery Cadence
+                </label>
+                <select
+                  value={notifications.settings.channels?.cadence || 'daily_digest'}
+                  onChange={(e) =>
+                    notifications.updateChannelPrefs?.({
+                      cadence: e.target.value as NotifChannelPrefs['cadence'],
+                    })
+                  }
+                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium"
+                >
+                  <option value="daily_digest">Smart Daily Digest (1/day)</option>
+                  <option value="twice_daily">Morning + Evening Pulse (2/day)</option>
+                  <option value="realtime_priority">High-Priority Alerts</option>
+                </select>
+              </div>
+
+              <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/40 space-y-1.5">
+                <label
+                  htmlFor="notif-time"
+                  className="text-xs font-semibold text-gray-900 dark:text-white block"
+                >
+                  Primary Delivery Time
+                </label>
                 <input
                   id="notif-time"
                   type="time"
-                  value={notifications.serverSettings?.deliveryTime || '09:00'}
-                  onChange={e => notifications.updateServerPreferences({ deliveryTime: e.target.value })}
-                  className="px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={
+                    notifications.serverSettings?.deliveryTime ||
+                    notifications.settings.time ||
+                    '09:00'
+                  }
+                  onChange={(e) => {
+                    notifications.updateSettings({ time: e.target.value });
+                    notifications.updateServerPreferences({ deliveryTime: e.target.value });
+                  }}
+                  className="w-full px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg font-mono"
                 />
               </div>
-            )}
 
-            {/* Test button */}
-            {notifications.serverSettings?.enabled && notifications.permission === 'granted' && (
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  onClick={handleSendTest}
-                  className="flex items-center gap-2 text-indigo-600 border-indigo-200 dark:border-indigo-900 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
-                >
-                  <Send className="h-4 w-4" />
-                  Send test notification now
-                </Button>
-                <p className="text-xs text-gray-400">Tap this to preview what a notification looks like.</p>
+              <div className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/40 space-y-1.5">
+                <label className="text-xs font-semibold text-gray-900 dark:text-white block">
+                  Quiet Hours (Do Not Disturb)
+                </label>
+                <div className="flex items-center gap-1.5 text-xs font-mono">
+                  <input
+                    type="time"
+                    value={notifications.serverSettings?.quietHoursStart || '22:00'}
+                    onChange={(e) =>
+                      notifications.updateServerPreferences({ quietHoursStart: e.target.value })
+                    }
+                    className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-[11px]"
+                  />
+                  <span className="text-gray-400">to</span>
+                  <input
+                    type="time"
+                    value={notifications.serverSettings?.quietHoursEnd || '07:00'}
+                    onChange={(e) =>
+                      notifications.updateServerPreferences({ quietHoursEnd: e.target.value })
+                    }
+                    className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg text-[11px]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Instant Preview & Category Test Bar */}
+            {notifications.supported && (
+              <div className="pt-3 border-t border-gray-100 dark:border-gray-800 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+                  Test Live Browser Notification by Domain:
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(
+                    [
+                      { id: undefined, label: 'Top Priority' },
+                      { id: 'stocks', label: 'Test Stocks Alert' },
+                      { id: 'subscriptions', label: 'Test Subscription Alert' },
+                      { id: 'calendar', label: 'Test Calendar Alert' },
+                      { id: 'creative', label: 'Test Creative Idea' },
+                    ] as Array<{ id?: NotificationCategory; label: string }>
+                  ).map((btn) => (
+                    <button
+                      key={btn.label}
+                      type="button"
+                      onClick={() => handleSendTest(btn.id)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 dark:border-indigo-900/70 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      <Send className="h-3 w-3" />
+                      <span>{btn.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>

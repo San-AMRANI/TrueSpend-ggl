@@ -109,6 +109,10 @@ export function useDashboardData(token: string | null) {
       monthlyBudgets.sort((a, b) => parseFloat(b.amount as any) - parseFloat(a.amount as any))[0]
         ?.category ?? null;
 
+    const totalLiquidBalance = ((kpis as any).accounts || [])
+      .filter((a: any) => a.type !== 'Investment')
+      .reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
+
     notifications.scheduleDaily({
       monthlyExpenses,
       monthlyIncome,
@@ -120,9 +124,17 @@ export function useDashboardData(token: string | null) {
       overspentCategories,
       topCategory,
       savings: Math.max(0, monthlyIncome - monthlyExpenses),
+      transactions,
+      subscriptions,
+      investmentsData,
+      debts,
+      goals,
+      payrolls,
+      emergencyBuffer: Number(userSettings?.emergencyBuffer || 0),
+      totalLiquidBalance,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kpis, budgets, transactions]);
+  }, [kpis, budgets, transactions, subscriptions, investmentsData, debts, goals, payrolls, userSettings]);
 
   useEffect(() => {
     fetchData();
