@@ -16,6 +16,7 @@ import type { DashboardTab } from './types';
 import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins, Sparkles, Search, Map, Eye, EyeOff, Palette, Check, Bell } from 'lucide-react';
 
 import { SpexAvatar } from './components/common/SpexAvatar';
+import { getApiUrl } from './lib/capacitorBridge';
 
 const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}logo-1.png?v=transparent`;
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png?v=transparent`;
@@ -97,7 +98,7 @@ function AppContent() {
     setIsSubmitting(true);
     
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch(getApiUrl('/api/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
