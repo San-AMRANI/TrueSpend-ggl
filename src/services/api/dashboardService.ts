@@ -94,6 +94,57 @@ export const dashboardService = {
     apiClient.delete<{ count: number }>(`/api/category-budgets/month/${year}/${month}`, token),
   deleteCategoryBudget: (id: string, token: string | null) =>
     apiClient.delete<CategoryBudget>(`/api/category-budgets/${id}`, token),
+  generateSpexBudgetPlan: (
+    payload: { year: number; month: number; userNotes?: string; targetIncomeMad?: number },
+    token: string | null
+  ) =>
+    apiClient.post<{
+      planName: string;
+      executiveSummary: string;
+      patternInsights: string[];
+      userNotesApplied: string;
+      targetYear: number;
+      targetMonth: number;
+      targetIncomeMad: number;
+      totalReimbursementsStrippedMad: number;
+      periodsAnalyzed: Array<{
+        periodIndex: number;
+        periodLabel: string;
+        monthName: string;
+        isCurrentPeriod: boolean;
+        netIncomeMad: number;
+        netLivingSpentMad: number;
+        reimbursedStrippedMad: number;
+        spentOnObligationsMad: number;
+        spentOnMyselfMad: number;
+        investedMad: number;
+        retainedInBankMad: number;
+      }>;
+      allocations: Array<{
+        category: string;
+        pillar: string;
+        amount: number;
+        pctOfIncome: number;
+        historicalAvgNetMad: number;
+        historicalMedianNetMad: number;
+        totalReimbursedDeductedMad: number;
+        activePeriods: string;
+        patternType: string;
+        trendDirection: string;
+        reasoning: string;
+      }>;
+      pillarBreakdown: {
+        obligationsMad: number;
+        obligationsPct: number;
+        myselfMad: number;
+        myselfPct: number;
+        investmentsMad: number;
+        investmentsPct: number;
+        bankRetentionSavingsMad: number;
+        bankRetentionSavingsPct: number;
+      };
+      modelUsed: string;
+    }>('/api/category-budgets/ai-plan', payload, token),
   getDebts: (token: string | null) => apiClient.get<Debt[]>('/api/debts', token),
   settleDebt: (debtId: string, amount: number, token: string | null, category?: string, walletId?: string) =>
     apiClient.post<{ message: string }>('/api/debts', { debt_id: debtId, amount, category, walletId }, token),

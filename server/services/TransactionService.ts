@@ -92,7 +92,11 @@ export class TransactionService {
 
       // Total reimbursable amount across all Receivable splits
       const totalReimbursable = receivableSplits.reduce(
-        (sum, s) => sum + (parseFloat(s.reimbursableAmount || '0') || 0),
+        (sum, s) =>
+          sum +
+          (parseFloat(s.reimbursableAmount || '0') ||
+            parseFloat(s.originalDebtAmount || '0') ||
+            0),
         0
       );
 

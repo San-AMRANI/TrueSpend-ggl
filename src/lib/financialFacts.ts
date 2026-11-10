@@ -1,7 +1,9 @@
 import { CategoryBudget, Debt, KPI, Transaction, InvestmentsData } from '../types/index.js';
-import { amountOf, getExpensesForMonth, isInMonth, transactionDate } from './finance.js';
+import { amountOf as rawAmountOf, netExpenseOf, isReimbursementIncome, getExpensesForMonth, isInMonth, transactionDate } from './finance.js';
 import { normalizeCategory } from './categories.js';
 import { getCurrentFinancialMonth, getPreviousFinancialMonth, type PayrollLike } from './financialMonth.js';
+
+const amountOf = (tx: Transaction) => (tx.type === 'Expense' ? netExpenseOf(tx) : rawAmountOf(tx));
 
 // ─── Fact Shape ─────────────────────────────────────────────────────────────
 
@@ -1139,7 +1141,7 @@ export function generateFacts(
   }
 
   // Adjusted True Spend relief
-  const totalRawExpenses = thisMonthExpenses.reduce((s, t) => s + amountOf(t), 0);
+  const totalRawExpenses = thisMonthExpenses.reduce((s, t) => s + rawAmountOf(t), 0);
   if (typeof kpis.adjustedTrueSpend === 'number' && totalRawExpenses - kpis.adjustedTrueSpend >= 30) {
     const relief = totalRawExpenses - kpis.adjustedTrueSpend;
     facts.push({
@@ -1155,7 +1157,9 @@ export function generateFacts(
 
   // ── INCOME FACTS ─────────────────────────────────────────────────────────
 
-  const incomeThisMonth = transactions.filter((t) => t.type === 'Income' && isInMonth(t, year, month, payrolls));
+  const incomeThisMonth = transactions.filter(
+    (t) => t.type === 'Income' && !isReimbursementIncome(t) && isInMonth(t, year, month, payrolls),
+  );
   if (incomeThisMonth.length > 0) {
     const totalIncome = incomeThisMonth.reduce((s, t) => s + amountOf(t), 0);
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Transaction, Wallet, CategoryBudget, Subscription, Goal, Debt, Payroll, DashboardTab, InvestmentsData, StockOrder } from '../../types';
 import { expenseCategories, incomeAndTransferCategories, normalizeCategory } from '../../lib/categories';
-import { filterTransactions, TransactionFilters, getCategorySpending, netExpenseOf, isInvestmentTransaction } from '../../lib/finance';
+import { filterTransactions, TransactionFilters, getCategorySpending, netExpenseOf, isReimbursementIncome, isInvestmentTransaction } from '../../lib/finance';
 import { getFinancialMonthRef } from '../../lib/financialMonth';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -527,10 +527,9 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
       }
       g.items.push(tx);
       const amt = parseFloat(tx.amount) || 0;
-      if (tx.type === 'Income') g.netDay += amt;
+      if (tx.type === 'Income' && !isReimbursementIncome(tx)) g.netDay += amt;
       else if (tx.type === 'Expense') {
-        const reimb = parseFloat(tx.reimbursableAmount || '0') || 0;
-        g.netDay -= Math.max(0, amt - reimb);
+        g.netDay -= netExpenseOf(tx);
       }
     }
 

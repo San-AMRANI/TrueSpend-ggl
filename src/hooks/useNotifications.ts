@@ -150,21 +150,68 @@ function saveStringSet(key: string, set: Set<string>) {
   }
 }
 
-function alreadySentToday(cadence: NotifChannelPrefs['cadence']): boolean {
-  const last = localStorage.getItem(KEY_LAST_SENT);
-  const today = toDay(new Date());
-  if (!last) return false;
-  if (cadence === 'twice_daily') {
-    const slot = new Date().getHours() < 15 ? 'AM' : 'PM';
-    return last === `${today}-${slot}`;
-  }
-  return last.startsWith(today);
+const KEY_SENT_LOG_TODAY = 'truespend_notif_sent_log_v3';
+
+interface DailySentLog {
+  date: string;
+  count: number;
+  lastSentTimestamp: number;
+  sentInsightIds: string[];
 }
 
-function markSentToday(cadence: NotifChannelPrefs['cadence']) {
+function getTodaySentLog(): DailySentLog {
+  const today = toDay(new Date());
+  try {
+    const raw = localStorage.getItem(KEY_SENT_LOG_TODAY);
+    if (!raw) return { date: today, count: 0, lastSentTimestamp: 0, sentInsightIds: [] };
+    const parsed = JSON.parse(raw) as DailySentLog;
+    if (parsed.date !== today) {
+      return { date: today, count: 0, lastSentTimestamp: 0, sentInsightIds: [] };
+    }
+    return parsed;
+  } catch {
+    return { date: today, count: 0, lastSentTimestamp: 0, sentInsightIds: [] };
+  }
+}
+
+function alreadySentToday(cadence: NotifChannelPrefs['cadence']): boolean {
+  const log = getTodaySentLog();
+  const today = toDay(new Date());
+  const last = localStorage.getItem(KEY_LAST_SENT);
+
+  if (cadence === 'daily_digest') {
+    return log.count >= 1 || (last !== null && last.startsWith(today));
+  }
+
+  if (cadence === 'twice_daily') {
+    const slot = new Date().getHours() < 15 ? 'AM' : 'PM';
+    return log.count >= 2 || last === `${today}-${slot}`;
+  }
+
+  // 'realtime_priority': Up to 4 distinct notifications per day, spaced at least 3 hours apart
+  const threeHoursMs = 3 * 60 * 60 * 1000;
+  if (log.count >= 4) return true;
+  if (log.lastSentTimestamp > 0 && Date.now() - log.lastSentTimestamp < threeHoursMs) {
+    return true;
+  }
+  return false;
+}
+
+function markSentToday(cadence: NotifChannelPrefs['cadence'], insightId?: string) {
   const today = toDay(new Date());
   const slot = cadence === 'twice_daily' ? (new Date().getHours() < 15 ? '-AM' : '-PM') : '';
   localStorage.setItem(KEY_LAST_SENT, `${today}${slot}`);
+
+  const log = getTodaySentLog();
+  const updated: DailySentLog = {
+    date: today,
+    count: log.count + 1,
+    lastSentTimestamp: Date.now(),
+    sentInsightIds: insightId
+      ? Array.from(new Set([...log.sentInsightIds, insightId]))
+      : log.sentInsightIds,
+  };
+  localStorage.setItem(KEY_SENT_LOG_TODAY, JSON.stringify(updated));
 }
 
 function isDeliveryTimePassed(timeStr: string): boolean {
@@ -669,22 +716,25 @@ export function generateSmartNotifications(
   return items.sort((a, b) => rank[a.severity] - rank[b.severity]);
 }
 
-/** Pick the single best notification to push via OS/Browser Notification API */
+/** Pick the best notification to push via OS/Browser Notification API */
 export function buildInsight(
   data: NotifData,
   channels: NotifChannelPrefs = DEFAULT_CHANNELS,
   preferredCategory?: NotificationCategory
-): { title: string; body: string; category: NotificationCategory; actionTab: DashboardTab } {
+): { id: string; title: string; body: string; category: NotificationCategory; actionTab: DashboardTab } {
   const all = generateSmartNotifications(data, channels);
+  const log = getTodaySentLog();
   const filtered = preferredCategory
     ? all.filter((n) => n.category === preferredCategory)
-    : all;
+    : all.filter((n) => !log.sentInsightIds.includes(n.id));
 
-  if (filtered.length > 0) {
-    // Rotate among top insights so repeated tests cycle through fresh insights
-    const idx = Math.floor(Date.now() / 1000) % filtered.length;
-    const chosen = filtered[preferredCategory ? idx : 0];
+  const candidates = filtered.length > 0 ? filtered : all;
+
+  if (candidates.length > 0) {
+    const idx = Math.floor(Date.now() / 1000) % candidates.length;
+    const chosen = candidates[preferredCategory ? idx : 0];
     return {
+      id: chosen.id,
       title: chosen.title,
       body: chosen.body,
       category: chosen.category,
@@ -694,24 +744,28 @@ export function buildInsight(
 
   // Fallback creative financial insight
   const fallbacks: Array<{
+    id: string;
     title: string;
     body: string;
     category: NotificationCategory;
     actionTab: DashboardTab;
   }> = [
     {
+      id: 'fallback-stocks-breakeven',
       title: '📈 Portfolio Breakeven Guard',
       body: 'Every stock in your Funding Wallet tracks live entry + exit fee drag so you never sell below breakeven.',
       category: 'stocks',
       actionTab: 'investments',
     },
     {
+      id: 'fallback-sub-compounding',
       title: '🔄 Subscription Compounding Rule',
       body: 'Pausing one unused 150 MAD/mo subscription and auto-investing in S&P 500 ETFs builds ~11,600 MAD in 5 years.',
       category: 'subscriptions',
       actionTab: 'subscriptions',
     },
     {
+      id: 'fallback-cal-payday',
       title: '📅 Payday First-Mover Habit',
       body: 'Allocate 15%–20% of your salary on Day 1 of payday before discretionary calendar bills begin.',
       category: 'calendar',
@@ -934,7 +988,9 @@ export function useNotifications() {
       if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
       const s = settingsRef.current;
-      const insight = customPayload ?? buildInsight(data, s.channels, preferredCategory);
+      const insight = customPayload
+        ? { id: `custom-${Date.now()}`, ...customPayload }
+        : buildInsight(data, s.channels, preferredCategory);
       const options: NotificationOptions & { tag: string } = {
         body: insight.body,
         icon: '/logo.png',
@@ -948,7 +1004,7 @@ export function useNotifications() {
           const reg = await navigator.serviceWorker.getRegistration();
           if (reg) {
             await reg.showNotification(insight.title, options);
-            markSentToday(s.channels.cadence);
+            markSentToday(s.channels.cadence, insight.id);
             return;
           }
         } catch (e) {
@@ -958,7 +1014,7 @@ export function useNotifications() {
 
       try {
         new Notification(insight.title, options);
-        markSentToday(s.channels.cadence);
+        markSentToday(s.channels.cadence, insight.id);
       } catch (e) {
         console.error('[TrueSpend] Notification constructor failed:', e);
       }

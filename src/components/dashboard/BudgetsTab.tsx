@@ -1,5 +1,8 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { CategoryBudget, Payroll, Transaction, Debt, Goal, DashboardTab, InvestmentsData } from '../../types';
+import { CategoryBudget, Payroll, Transaction, Debt, Goal, Subscription, DashboardTab, InvestmentsData } from '../../types';
+import { useAuth } from '../../context/AuthContext';
+import { dashboardService } from '../../services/api/dashboardService';
+import { SpexAvatar } from '../common/SpexAvatar';
 import { expenseCategories, normalizeCategory } from '../../lib/categories';
 import {
   budgetFor,
@@ -12,6 +15,7 @@ import {
   amountOf,
   isInMonth,
   computeFourPillarBreakdown,
+  buildChronologicalPeriodPatternSummary,
   getCategoryPillar,
   isSavingsRetentionCategory,
   isWealthAllocationCategory,
@@ -53,11 +57,15 @@ import {
   ExternalLink,
   Landmark,
   UserCheck,
+  MessageSquarePlus,
+  RefreshCw,
+  CalendarRange,
 } from 'lucide-react';
 
-type PlanKey = 'balanced' | 'savings_first' | 'essentials';
+type FixedPlanKey = 'balanced' | 'savings_first' | 'essentials';
+type PlanKey = 'spex_ai' | FixedPlanKey;
 
-const BUDGET_PLANS: Record<PlanKey, { name: string; description: string; rules: Record<string, number> }> = {
+const BUDGET_PLANS: Record<FixedPlanKey, { name: string; description: string; rules: Record<string, number> }> = {
   balanced: {
     name: '50/30/20 — Balanced',
     description: '50% Needs • 30% Wants • 20% Savings & Investments. Classic, widely recommended rule.',
@@ -132,6 +140,7 @@ interface BudgetsTabProps {
   payrolls: Payroll[];
   debts?: Debt[];
   goals?: Goal[];
+  subscriptions?: Subscription[];
   wallets?: Array<{ id: string; name: string; type?: string; balance?: number }>;
   investmentsData?: InvestmentsData | null;
   onSaveBudget: (category: string, year: number, month: number, amount: number) => Promise<void>;
@@ -858,6 +867,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   payrolls,
   debts = [],
   goals = [],
+  subscriptions = [],
   wallets = [],
   investmentsData = null,
   onSaveBudget,
@@ -869,6 +879,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   onFundInvestmentWallet,
   setActiveTab,
 }) => {
+  const { token } = useAuth();
   const [monthRef, setMonthRef] = useState(() => getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [budgetModel, setBudgetModel] = useState<BudgetModel>('category');
   const [pillarFilter, setPillarFilter] = useState<PillarFilter>('all');
@@ -881,7 +892,12 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   const [autoBudgetOpen, setAutoBudgetOpen] = useState(false);
   const [autoBudgetLoading, setAutoBudgetLoading] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<PlanKey>('balanced');
+  const [selectedPlan, setSelectedPlan] = useState<PlanKey>('spex_ai');
+  const [spexUserNotes, setSpexUserNotes] = useState('');
+  const [spexGenerating, setSpexGenerating] = useState(false);
+  const [spexPlanResult, setSpexPlanResult] = useState<Awaited<ReturnType<typeof dashboardService.generateSpexBudgetPlan>> | null>(null);
+  const [spexCustomOverrides, setSpexCustomOverrides] = useState<Record<string, number>>({});
+  const [showPeriodHistory, setShowPeriodHistory] = useState(false);
 
   const currentFM = getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
   const isCurrentMonth = monthRef.year === currentFM.year && monthRef.month === currentFM.month;
@@ -1196,19 +1212,195 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
     (c) => !isWealthAllocationCategory(c.label) && c.amount !== undefined && c.spent > c.amount
   ).length;
 
+  // ─── Chronological Financial Periods Pattern Summary (Oldest -> Current, Net of Reimbursements) ───
+  const localPatternSummary = useMemo(
+    () =>
+      buildChronologicalPeriodPatternSummary({
+        transactions,
+        payrolls,
+        targetYear: monthRef.year,
+        targetMonth: monthRef.month,
+        targetIncomeMad: totalIncome > 0 ? totalIncome : undefined,
+        subscriptions,
+        debts,
+        wallets,
+      }),
+    [transactions, payrolls, monthRef.year, monthRef.month, totalIncome, subscriptions, debts, wallets]
+  );
+
+  const effectiveTargetIncome = useMemo(
+    () => (totalIncome > 0 ? totalIncome : localPatternSummary.targetIncomeBaselineMad),
+    [totalIncome, localPatternSummary.targetIncomeBaselineMad]
+  );
+
+  const oldestPeriodLabel = useMemo(
+    () =>
+      localPatternSummary.periodsOldestToCurrent.length > 0
+        ? localPatternSummary.periodsOldestToCurrent[0].monthName
+        : monthLabel(monthRef.year, monthRef.month),
+    [localPatternSummary.periodsOldestToCurrent, monthRef.year, monthRef.month]
+  );
+
+  const latestPeriodLabel = useMemo(
+    () =>
+      localPatternSummary.periodsOldestToCurrent.length > 0
+        ? localPatternSummary.periodsOldestToCurrent[localPatternSummary.periodsOldestToCurrent.length - 1].monthName
+        : monthLabel(monthRef.year, monthRef.month),
+    [localPatternSummary.periodsOldestToCurrent, monthRef.year, monthRef.month]
+  );
+
+  const activeSubscriptionsMonthlyMad = useMemo(
+    () =>
+      (subscriptions || [])
+        .filter((s) => !s.status || s.status === 'active' || s.status === 'planned')
+        .reduce((acc, sub) => {
+          const amt = Number(sub.amount) || 0;
+          const cycle = (sub.billingCycle || 'monthly').toLowerCase();
+          if (cycle === 'yearly' || cycle === 'annual') return acc + amt / 12;
+          if (cycle === 'quarterly' || cycle === 'every_3_months') return acc + amt / 3;
+          if (cycle === 'every_6_months') return acc + amt / 6;
+          if (cycle === 'every_2_months') return acc + amt / 2;
+          if (cycle === 'weekly') return acc + amt * 4.33;
+          if (cycle === 'biweekly') return acc + amt * 2.165;
+          return acc + amt;
+        }, 0),
+    [subscriptions]
+  );
+
+  // Build effective Spex allocations (merges AI plan if generated, otherwise local chronological pattern engine, plus any inline overrides)
+  const effectiveSpexAllocations = useMemo(() => {
+    const baseList =
+      spexPlanResult && spexPlanResult.allocations.length > 0
+        ? spexPlanResult.allocations.map((a) => ({
+            category: a.category,
+            amount: a.amount,
+            pctOfIncome: a.pctOfIncome,
+            pillar: a.pillar,
+            reasoning: a.reasoning,
+            historicalNetAvgMad: a.historicalAvgNetMad,
+          }))
+        : localPatternSummary.categoryProfiles
+            .filter((cp) => cp.suggestedPatternBudgetMad > 0 || cp.category === '🛟 Emergency & goals Fund')
+            .map((cp) => ({
+              category: cp.category,
+              amount: cp.suggestedPatternBudgetMad,
+              pctOfIncome:
+                effectiveTargetIncome > 0
+                  ? Number(((cp.suggestedPatternBudgetMad / effectiveTargetIncome) * 100).toFixed(1))
+                  : 0,
+              pillar: cp.pillar,
+              reasoning: cp.patternReasoning,
+              historicalNetAvgMad: cp.recencyWeightedAvgNetMad,
+            }));
+
+    return baseList.map((item) => {
+      const override = spexCustomOverrides[item.category];
+      const finalAmount = override !== undefined ? override : item.amount;
+      return {
+        ...item,
+        amount: finalAmount,
+        pctOfIncome:
+          effectiveTargetIncome > 0
+            ? Number(((finalAmount / effectiveTargetIncome) * 100).toFixed(1))
+            : 0,
+      };
+    });
+  }, [spexPlanResult, localPatternSummary.categoryProfiles, spexCustomOverrides, effectiveTargetIncome]);
+
+  const effectiveSpexPillarSummary = useMemo(() => {
+    const inc = Math.max(1, effectiveTargetIncome);
+    let obligationsMad = 0;
+    let myselfMad = 0;
+    let investmentsMad = 0;
+    let savingsTargetMad = 0;
+    for (const a of effectiveSpexAllocations) {
+      if (a.pillar === 'obligations') obligationsMad += a.amount;
+      else if (a.pillar === 'myself') myselfMad += a.amount;
+      else if (a.pillar === 'investments') investmentsMad += a.amount;
+      else if (a.pillar === 'savings') savingsTargetMad += a.amount;
+    }
+    const unallocatedRetained = Math.max(
+      0,
+      effectiveTargetIncome - (obligationsMad + myselfMad + investmentsMad + savingsTargetMad)
+    );
+    const retainedInBankMad = savingsTargetMad + unallocatedRetained;
+    return {
+      obligationsMad,
+      obligationsPct: Number(((obligationsMad / inc) * 100).toFixed(1)),
+      myselfMad,
+      myselfPct: Number(((myselfMad / inc) * 100).toFixed(1)),
+      investmentsMad,
+      investmentsPct: Number(((investmentsMad / inc) * 100).toFixed(1)),
+      retainedInBankMad,
+      retainedInBankPct: Number(((retainedInBankMad / inc) * 100).toFixed(1)),
+    };
+  }, [effectiveSpexAllocations, effectiveTargetIncome]);
+
+  const handleGenerateSpexPlan = useCallback(
+    async (customNotes?: string) => {
+      setSpexGenerating(true);
+      try {
+        const res = await dashboardService.generateSpexBudgetPlan(
+          {
+            year: monthRef.year,
+            month: monthRef.month,
+            userNotes: (customNotes !== undefined ? customNotes : spexUserNotes).trim() || undefined,
+            targetIncomeMad: effectiveTargetIncome > 0 ? effectiveTargetIncome : undefined,
+          },
+          token
+        );
+        setSpexPlanResult(res);
+        setSpexCustomOverrides({});
+        showToast(
+          res.modelUsed && res.modelUsed !== 'pattern-fallback'
+            ? `✨ Spex AI synthesized ${res.periodsAnalyzed.length} financial periods into your personal plan!`
+            : `✨ Spex Pattern Engine calculated your plan across ${res.periodsAnalyzed.length} financial periods!`
+        );
+      } catch (err: any) {
+        showToast(err.message || 'Spex used your local chronological pattern engine.', 'error');
+      } finally {
+        setSpexGenerating(false);
+      }
+    },
+    [monthRef.year, monthRef.month, spexUserNotes, effectiveTargetIncome, token, showToast]
+  );
+
+  // Reset cached AI plan when target month changes
+  useEffect(() => {
+    setSpexPlanResult(null);
+    setSpexCustomOverrides({});
+  }, [monthRef.year, monthRef.month]);
+
   const handleApplyAutoBudget = async () => {
     setAutoBudgetLoading(true);
     try {
-      const rules = BUDGET_PLANS[selectedPlan].rules;
-      const newBudgets = Object.entries(rules).map(([cat, pct]) => ({
-        category: cat,
-        year: monthRef.year,
-        month: monthRef.month,
-        amount: Math.round((totalIncome * pct) / 100),
-      }));
-      await onSaveBudgetsBatch(newBudgets);
-      setAutoBudgetOpen(false);
-      showToast(`Auto-budget applied using the ${BUDGET_PLANS[selectedPlan].name} plan!`);
+      if (selectedPlan === 'spex_ai') {
+        const newBudgets = effectiveSpexAllocations
+          .filter((a) => a.amount >= 0)
+          .map((a) => ({
+            category: a.category,
+            year: monthRef.year,
+            month: monthRef.month,
+            amount: Math.round(a.amount),
+          }));
+        await onSaveBudgetsBatch(newBudgets);
+        setAutoBudgetOpen(false);
+        showToast(
+          `Applied Spex Personalized Pattern Plan (${localPatternSummary.periodsOldestToCurrent.length} financial periods analyzed)!`
+        );
+      } else {
+        const rules = BUDGET_PLANS[selectedPlan].rules;
+        const baseIncome = effectiveTargetIncome;
+        const newBudgets = Object.entries(rules).map(([cat, pct]) => ({
+          category: cat,
+          year: monthRef.year,
+          month: monthRef.month,
+          amount: Math.round((baseIncome * pct) / 100),
+        }));
+        await onSaveBudgetsBatch(newBudgets);
+        setAutoBudgetOpen(false);
+        showToast(`Auto-budget applied using the ${BUDGET_PLANS[selectedPlan].name} plan!`);
+      }
     } catch (err: any) {
       showToast(err.message || 'Failed to apply auto-budget.', 'error');
     } finally {
@@ -2043,76 +2235,414 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         />
       )}
 
-      {/* ── Auto-Budget Modal ── */}
+      {/* ── Auto-Budget Modal (Spex AI Personalized Pattern + 3 Fixed Plans) ── */}
       {autoBudgetOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/50 backdrop-blur-sm" onClick={() => !autoBudgetLoading && setAutoBudgetOpen(false)}>
-          <Card className="w-full sm:max-w-lg shadow-2xl rounded-t-2xl sm:rounded-2xl max-h-[92dvh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <CardHeader className="flex-shrink-0 pb-2">
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => !autoBudgetLoading && !spexGenerating && setAutoBudgetOpen(false)}
+        >
+          <Card
+            className="w-full sm:max-w-2xl shadow-2xl rounded-t-2xl sm:rounded-2xl max-h-[94dvh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CardHeader className="flex-shrink-0 pb-2 border-b border-gray-100 dark:border-gray-800">
               {/* drag handle on mobile */}
               <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 mx-auto mb-3 sm:hidden" />
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-indigo-500 shrink-0" />
-                <span className="truncate">Auto-Budget — {monthLabel(monthRef.year, monthRef.month)}</span>
-              </CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-indigo-500 shrink-0" />
+                  <span className="truncate">Auto-Budget — {monthLabel(monthRef.year, monthRef.month)}</span>
+                </CardTitle>
+                <button
+                  type="button"
+                  onClick={() => !autoBudgetLoading && !spexGenerating && setAutoBudgetOpen(false)}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-4 overflow-y-auto flex-1 pb-6">
 
-              {/* Income sources */}
-              <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-4 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Income this month</p>
+            <CardContent className="space-y-4 overflow-y-auto flex-1 pt-4 pb-6">
+              {/* Income sources (Strict Net Income — Reimbursements Excluded) */}
+              <div className="rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                    Net Period Income Baseline (Reimbursements Excluded)
+                  </p>
+                  {(fourPillar.reimbursedIncomeExcluded > 0 || localPatternSummary.totalReimbursementsStrippedMad > 0) && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                      ✓ Reimbursements Stripped
+                    </span>
+                  )}
+                </div>
                 {incomeBreakdown.items.length === 0 ? (
-                  <p className="text-sm text-gray-400 italic">No income found for this month and no salary configured in Settings.</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Using historical financial period median net income:{' '}
+                    <strong className="text-emerald-600 dark:text-emerald-400 font-mono">
+                      {effectiveTargetIncome.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
+                    </strong>
+                  </p>
                 ) : (
                   incomeBreakdown.items.map((item, i) => (
-                    <div key={i} className="flex justify-between text-sm">
+                    <div key={i} className="flex justify-between text-xs sm:text-sm">
                       <span className="text-gray-600 dark:text-gray-300 truncate flex-1 pr-4">{item.label}</span>
-                      <span className="font-medium text-emerald-600 shrink-0">+{item.amount.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD</span>
+                      <span className="font-medium font-mono text-emerald-600 shrink-0">
+                        +{item.amount.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
+                      </span>
                     </div>
                   ))
                 )}
-                <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-between font-bold text-base">
-                  <span>Total Available Income</span>
-                  <span className="text-indigo-600 dark:text-indigo-400">{totalIncome.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD</span>
+                {fourPillar.reimbursedIncomeExcluded > 0 && (
+                  <div className="flex justify-between text-[11px] text-amber-700 dark:text-amber-400 pt-1 border-t border-dashed border-gray-200 dark:border-gray-700">
+                    <span>🔙 Reimbursements excluded from income this period:</span>
+                    <span className="font-mono font-semibold">
+                      -{fourPillar.reimbursedIncomeExcluded.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD (Not Income)
+                    </span>
+                  </div>
+                )}
+                <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex justify-between font-bold text-sm sm:text-base">
+                  <span>Available Net Income for {monthLabel(monthRef.year, monthRef.month)}</span>
+                  <span className="text-indigo-600 dark:text-indigo-400 font-mono">
+                    {effectiveTargetIncome.toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
+                  </span>
                 </div>
               </div>
 
-              {/* Plan selector */}
+              {/* Plan selector: Spex AI Pattern Plan + 3 Fixed Plans */}
               <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Budget plan</p>
-                <div className="grid grid-cols-1 gap-2">
-                  {Object.entries(BUDGET_PLANS).map(([key, plan]) => (
-                    <label key={key} className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
-                      selectedPlan === key
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Choose Budget Plan</p>
+                <div className="grid grid-cols-1 gap-2.5">
+                  {/* Plan 1: Spex AI Personalized Pattern Plan */}
+                  <label
+                    className={`flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition-all ${
+                      selectedPlan === 'spex_ai'
+                        ? 'border-indigo-500 bg-gradient-to-r from-indigo-50/90 via-purple-50/50 to-emerald-50/50 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-emerald-950/20 shadow-xs ring-1 ring-indigo-500/30'
                         : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300'
-                    }`}>
-                      <input type="radio" name="plan" value={key} checked={selectedPlan === key} onChange={() => setSelectedPlan(key as any)} className="mt-1 accent-indigo-600" />
-                      <div className="flex-1">
-                        <p className="font-semibold text-sm">{plan.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{plan.description}</p>
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="plan"
+                      value="spex_ai"
+                      checked={selectedPlan === 'spex_ai'}
+                      onChange={() => setSelectedPlan('spex_ai')}
+                      className="mt-1.5 accent-indigo-600"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <SpexAvatar size={28} animated={spexGenerating} state={spexGenerating ? 'review' : 'idle'} />
+                          <span className="font-bold text-sm text-gray-900 dark:text-gray-100">
+                            Spex AI — Personalized Pattern Plan
+                          </span>
+                          <span className="rounded-full bg-indigo-600 text-white px-2 py-0.5 text-[10px] font-bold">
+                            AI Pattern Engine
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-mono font-semibold text-indigo-600 dark:text-indigo-400">
+                          {localPatternSummary.periodsOldestToCurrent.length} Financial Period{localPatternSummary.periodsOldestToCurrent.length !== 1 ? 's' : ''} (Oldest → Current)
+                        </span>
                       </div>
-                    </label>
-                  ))}
+                      <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                        Follows <strong>your TrueSpend Personal Pattern Rule</strong> instead of rigid 50/30/20 rules: groups all historical transactions by financial periods from oldest ({oldestPeriodLabel}) to current ({latestPeriodLabel}), strips out all reimbursements, locks active subscriptions ({activeSubscriptionsMonthlyMad.toFixed(0)} MAD/mo) &amp; payable debts ({recommendedDebtAllocation.toFixed(0)} MAD/mo), and retains surplus in your bank.
+                      </p>
+                    </div>
+                  </label>
+
+                  {/* 3 Fixed Plans */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {(Object.entries(BUDGET_PLANS) as [FixedPlanKey, (typeof BUDGET_PLANS)[FixedPlanKey]][]).map(([key, plan]) => (
+                      <label
+                        key={key}
+                        className={`flex items-start gap-2.5 rounded-xl border p-3 cursor-pointer transition-colors ${
+                          selectedPlan === key
+                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="plan"
+                          value={key}
+                          checked={selectedPlan === key}
+                          onChange={() => setSelectedPlan(key)}
+                          className="mt-1 accent-indigo-600"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-xs sm:text-sm leading-snug">{plan.name}</p>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{plan.description}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              {/* Preview */}
-              {totalIncome > 0 && (
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Category breakdown preview</p>
-                  <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 text-sm">
-                    {Object.entries(BUDGET_PLANS[selectedPlan].rules).map(([cat, pct]) => (
-                      <div key={cat} className="flex justify-between py-1.5 px-3">
-                        <span className="truncate flex-1 pr-4 text-gray-700 dark:text-gray-300">{cat}</span>
-                        <span className="text-gray-400 shrink-0 mr-4 w-10 text-right">{pct}%</span>
-                        <span className="font-semibold shrink-0 w-28 text-right text-gray-900 dark:text-gray-100">{((totalIncome * pct) / 100).toLocaleString('fr-MA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} MAD</span>
+              {/* ── Spex AI Pattern Plan Interactive Workspace ── */}
+              {selectedPlan === 'spex_ai' && (
+                <div className="space-y-3.5 rounded-xl border border-indigo-200/80 dark:border-indigo-900/60 bg-indigo-50/30 dark:bg-indigo-950/15 p-3.5">
+                  {/* Chronological Financial Periods Progression Header */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-200">
+                      <CalendarRange className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                      <span>
+                        Chronological Financial Periods Analyzed: {oldestPeriodLabel} → {latestPeriodLabel}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPeriodHistory((v) => !v)}
+                      className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      {showPeriodHistory
+                        ? 'Hide Period-by-Period Progression'
+                        : `Inspect ${localPatternSummary.periodsOldestToCurrent.length} Financial Periods`}
+                    </button>
+                  </div>
+
+                  {/* Collapsible Oldest -> Current Financial Periods Table */}
+                  {showPeriodHistory && localPatternSummary.periodsOldestToCurrent.length > 0 && (
+                    <div className="rounded-lg border border-indigo-100 dark:border-indigo-900/50 bg-white dark:bg-gray-900 overflow-x-auto max-h-44">
+                      <table className="w-full text-[11px] font-mono">
+                        <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 sticky top-0">
+                          <tr>
+                            <th className="text-left px-2.5 py-1.5 font-sans">Period (Oldest → Current)</th>
+                            <th className="text-right px-2 py-1.5 font-sans">Net Income</th>
+                            <th className="text-right px-2 py-1.5 font-sans">Obligations</th>
+                            <th className="text-right px-2 py-1.5 font-sans">Myself</th>
+                            <th className="text-right px-2 py-1.5 font-sans">Retained/Saved</th>
+                            <th className="text-right px-2.5 py-1.5 font-sans">Reimb. Stripped</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {localPatternSummary.periodsOldestToCurrent.map((p, idx) => (
+                            <tr key={`${p.year}-${p.month}-${idx}`} className="hover:bg-gray-50/70 dark:hover:bg-gray-800/40">
+                              <td className="px-2.5 py-1.5 font-sans font-medium text-gray-800 dark:text-gray-200">
+                                #{idx + 1} {p.monthName}
+                              </td>
+                              <td className="px-2 py-1.5 text-right text-emerald-600">
+                                {p.netIncomeMad.toFixed(0)}
+                              </td>
+                              <td className="px-2 py-1.5 text-right text-indigo-600 dark:text-indigo-400">
+                                {p.spentOnObligationsMad.toFixed(0)}
+                              </td>
+                              <td className="px-2 py-1.5 text-right text-amber-600 dark:text-amber-400">
+                                {p.spentOnMyselfMad.toFixed(0)}
+                              </td>
+                              <td className="px-2 py-1.5 text-right font-semibold text-emerald-700 dark:text-emerald-300">
+                                {p.retainedInBankMad.toFixed(0)}
+                              </td>
+                              <td className="px-2.5 py-1.5 text-right text-gray-400">
+                                {(p.reimbursedInflowExcludedMad + p.reimbursedExpensesDeductedMad) > 0
+                                  ? `-${(p.reimbursedInflowExcludedMad + p.reimbursedExpensesDeductedMad).toFixed(0)}`
+                                  : '0'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Optional Next-Month Comments / Unusual Plans Input */}
+                  <div className="space-y-2 rounded-lg bg-white dark:bg-gray-900 border border-indigo-100 dark:border-indigo-900/60 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-bold text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                        <MessageSquarePlus className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                        Optional Comments / Unusual Plans for {monthLabel(monthRef.year, monthRef.month)}
+                      </label>
+                      <span className="text-[10px] font-medium text-gray-400">
+                        Optional — leave empty for pure historical pattern
+                      </span>
+                    </div>
+                    <textarea
+                      rows={2}
+                      value={spexUserNotes}
+                      onChange={(e) => setSpexUserNotes(e.target.value)}
+                      placeholder="E.g., 'Next month I have car insurance (2,500 MAD) and a family trip, so trim dining & coffee to compensate' — or leave blank to rely purely on your historical financial periods, subscriptions & obligations."
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/70 px-3 py-2 text-xs text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none"
+                    />
+                    {/* Quick prompt chips */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {[
+                        'Trim dining & coffee by 25% to boost bank retention',
+                        'Add 1,500 MAD for unexpected / car maintenance next month',
+                        'Traveling / family event next month (+1,000 MAD social/household)',
+                        'Prioritize aggressive debt payoff & stock investment',
+                      ].map((chip) => (
+                        <button
+                          key={chip}
+                          type="button"
+                          onClick={() => setSpexUserNotes((prev) => (prev ? `${prev}. ${chip}` : chip))}
+                          className="text-[10px] px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors"
+                        >
+                          + {chip}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                        {spexPlanResult
+                          ? `✓ Calculated by ${spexPlanResult.modelUsed && spexPlanResult.modelUsed !== 'pattern-fallback' ? 'Spex AI (Gemini)' : 'Spex Pattern Engine'} across ${spexPlanResult.periodsAnalyzed.length} financial periods.`
+                          : `Showing baseline TrueSpend Pattern across ${localPatternSummary.periodsOldestToCurrent.length} periods. Click to run Spex AI synthesis:`}
+                      </p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={spexGenerating}
+                        onClick={() => handleGenerateSpexPlan()}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-8 shrink-0 flex items-center gap-1.5"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${spexGenerating ? 'animate-spin' : ''}`} />
+                        <span>
+                          {spexGenerating
+                            ? 'Spex Analyzing Periods…'
+                            : spexPlanResult
+                            ? 'Recalculate with Spex AI'
+                            : 'Calculate Plan with Spex AI'}
+                        </span>
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Spex Executive Summary & Pattern Insight Banner */}
+                  <div className="rounded-lg bg-white/90 dark:bg-gray-900/90 border border-indigo-100 dark:border-indigo-900/50 p-3 space-y-1.5">
+                    <div className="flex items-start gap-2.5">
+                      <SpexAvatar size={24} state={spexGenerating ? 'review' : 'waving'} />
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <p className="text-xs font-bold text-gray-900 dark:text-gray-100">
+                          {spexPlanResult?.planName || 'Spex Personalized Pattern Plan (Chronological Net-Habit Model)'}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                          {spexPlanResult?.executiveSummary ||
+                            `Built directly from your ${localPatternSummary.periodsOldestToCurrent.length} chronological financial periods (${oldestPeriodLabel} → ${latestPeriodLabel}). All friend splits and reimbursements (${localPatternSummary.totalReimbursementsStrippedMad.toFixed(0)} MAD total) were stripped so every category reflects your true net spending.`}
+                        </p>
+                        {spexPlanResult?.patternInsights && spexPlanResult.patternInsights.length > 0 && (
+                          <p className="text-[11px] text-indigo-700 dark:text-indigo-300 font-medium">
+                            💡 {spexPlanResult.patternInsights[0]}
+                          </p>
+                        )}
                       </div>
-                    ))}
+                    </div>
+
+                    {/* 4-Pillar Pattern Summary Pills */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-[11px] font-mono">
+                      <div className="rounded bg-indigo-50/70 dark:bg-indigo-950/40 px-2 py-1">
+                        <span className="text-gray-500 dark:text-gray-400 block font-sans text-[10px]">🏛️ Obligations</span>
+                        <span className="font-bold text-indigo-700 dark:text-indigo-300">
+                          {effectiveSpexPillarSummary.obligationsMad.toFixed(0)} MAD ({effectiveSpexPillarSummary.obligationsPct}%)
+                        </span>
+                      </div>
+                      <div className="rounded bg-amber-50/70 dark:bg-amber-950/40 px-2 py-1">
+                        <span className="text-gray-500 dark:text-gray-400 block font-sans text-[10px]">✨ Spent on Myself</span>
+                        <span className="font-bold text-amber-700 dark:text-amber-300">
+                          {effectiveSpexPillarSummary.myselfMad.toFixed(0)} MAD ({effectiveSpexPillarSummary.myselfPct}%)
+                        </span>
+                      </div>
+                      <div className="rounded bg-blue-50/70 dark:bg-blue-950/40 px-2 py-1">
+                        <span className="text-gray-500 dark:text-gray-400 block font-sans text-[10px]">📈 Investments</span>
+                        <span className="font-bold text-blue-700 dark:text-blue-300">
+                          {effectiveSpexPillarSummary.investmentsMad.toFixed(0)} MAD ({effectiveSpexPillarSummary.investmentsPct}%)
+                        </span>
+                      </div>
+                      <div className="rounded bg-emerald-50/70 dark:bg-emerald-950/40 px-2 py-1">
+                        <span className="text-gray-500 dark:text-gray-400 block font-sans text-[10px]">🏦 Kept in Bank</span>
+                        <span className="font-bold text-emerald-700 dark:text-emerald-300">
+                          {effectiveSpexPillarSummary.retainedInBankMad.toFixed(0)} MAD ({effectiveSpexPillarSummary.retainedInBankPct}%)
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {totalIncome === 0 && (
+              {/* Category Breakdown Preview (Supports both Spex AI Pattern Plan with inline edit & Fixed Plans) */}
+              {effectiveTargetIncome > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-gray-400">
+                      {selectedPlan === 'spex_ai'
+                        ? 'Spex Pattern Category Allocations (Editable before applying)'
+                        : 'Category Breakdown Preview'}
+                    </p>
+                    {selectedPlan === 'spex_ai' && Object.keys(spexCustomOverrides).length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSpexCustomOverrides({})}
+                        className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+                      >
+                        Reset manual edits
+                      </button>
+                    )}
+                  </div>
+
+                  {selectedPlan === 'spex_ai' ? (
+                    <div className="max-h-60 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 text-xs sm:text-sm">
+                      {effectiveSpexAllocations.map((item) => (
+                        <div key={item.category} className="p-2.5 sm:px-3.5 hover:bg-gray-50/60 dark:hover:bg-gray-800/40 space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <span className="font-semibold text-gray-900 dark:text-gray-100 truncate">
+                                {item.category}
+                              </span>
+                              <span className="text-[10px] font-mono text-gray-400 shrink-0">
+                                Hist. Net Avg: {item.historicalNetAvgMad.toFixed(0)} MAD
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-xs font-mono text-gray-400 w-12 text-right">
+                                {item.pctOfIncome.toFixed(1)}%
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="50"
+                                  value={item.amount}
+                                  onChange={(e) => {
+                                    const val = Math.max(0, Number(e.target.value) || 0);
+                                    setSpexCustomOverrides((prev) => ({
+                                      ...prev,
+                                      [item.category]: val,
+                                    }));
+                                  }}
+                                  className="w-20 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-2 py-0.5 text-right font-mono text-xs font-bold text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none"
+                                />
+                                <span className="text-[11px] font-mono text-gray-500">MAD</span>
+                              </div>
+                            </div>
+                          </div>
+                          {item.reasoning && (
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug">
+                              {item.reasoning}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+                      {Object.entries(BUDGET_PLANS[selectedPlan].rules).map(([cat, pct]) => (
+                        <div key={cat} className="flex justify-between py-1.5 px-3">
+                          <span className="truncate flex-1 pr-4 text-gray-700 dark:text-gray-300">{cat}</span>
+                          <span className="text-gray-400 shrink-0 mr-4 w-10 text-right">{pct}%</span>
+                          <span className="font-semibold shrink-0 w-28 text-right text-gray-900 dark:text-gray-100 font-mono">
+                            {((effectiveTargetIncome * pct) / 100).toLocaleString('fr-MA', {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            })}{' '}
+                            MAD
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {effectiveTargetIncome === 0 && (
                 <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 p-3 text-sm text-amber-700 dark:text-amber-300">
                   ⚠️ No income detected. Please configure your salary in <strong>Settings</strong> or add income transactions first.
                 </div>
@@ -2123,16 +2653,25 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
               </p>
 
               <div className="flex justify-end gap-3 pt-1">
-                <Button type="button" variant="outline" onClick={() => setAutoBudgetOpen(false)} disabled={autoBudgetLoading}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setAutoBudgetOpen(false)}
+                  disabled={autoBudgetLoading || spexGenerating}
+                >
                   Cancel
                 </Button>
                 <Button
                   type="button"
                   onClick={handleApplyAutoBudget}
-                  disabled={autoBudgetLoading || totalIncome === 0}
+                  disabled={autoBudgetLoading || spexGenerating || effectiveTargetIncome === 0}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50"
                 >
-                  {autoBudgetLoading ? 'Applying…' : 'Apply Auto-Budget'}
+                  {autoBudgetLoading
+                    ? 'Applying…'
+                    : selectedPlan === 'spex_ai'
+                    ? 'Apply Spex Pattern Plan'
+                    : 'Apply Auto-Budget'}
                 </Button>
               </div>
             </CardContent>

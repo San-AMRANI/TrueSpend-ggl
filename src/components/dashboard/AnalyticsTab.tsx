@@ -24,6 +24,8 @@ import {
   monthLabel,
   transactionMonth,
   netExpenseOf,
+  reimbursedAmountOf,
+  isReimbursementIncome,
   isInvestmentTransaction,
   computeFourPillarBreakdown,
   getCategoryPillar,
@@ -199,9 +201,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       .sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
 
-  // Income by Category
+  // Income by Category (strictly excluding reimbursements & pass-through friend repayments)
   const incomeCategoryData = useMemo(() => {
-    const incomes = filteredTransactions.filter((t) => t.type === 'Income');
+    const incomes = filteredTransactions.filter((t) => t.type === 'Income' && !isReimbursementIncome(t));
     const grouped = incomes.reduce((acc, curr) => {
       const category = normalizeCategory(curr.category) || 'Uncategorized';
       acc[category] = (acc[category] || 0) + parseFloat(curr.amount);
@@ -339,7 +341,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const incomeVsExpenseData = useMemo(() => {
     const income = filteredTransactions
-      .filter((t) => t.type === 'Income')
+      .filter((t) => t.type === 'Income' && !isReimbursementIncome(t))
       .reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const expense = filteredTransactions
       .filter((t) => t.type === 'Expense')
@@ -388,7 +390,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         allMonths.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
       }
 
-      if (t.type === 'Income') histIncome += parseFloat(t.amount);
+      if (t.type === 'Income' && !isReimbursementIncome(t)) histIncome += parseFloat(t.amount);
       if (t.type === 'Expense') histExpense += netExpenseOf(t);
     });
 
@@ -452,14 +454,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         debtRepayments += amount;
       }
 
-      const isPayableTx = (tx as any).linkedDebtType === 'Payable' || tx.category === 'Debt Repayment';
-      if (
-        tx.type === 'Expense' &&
-        !isPayableTx &&
-        tx.reimbursableAmount &&
-        parseFloat(tx.reimbursableAmount) > 0
-      ) {
-        reimbursements += parseFloat(tx.reimbursableAmount);
+      const reimbAmt = reimbursedAmountOf(tx);
+      if (reimbAmt > 0) {
+        reimbursements += reimbAmt;
 
         if (tx.linkedContactId) {
           const linkedDebt = debts.find((d) => d.id === tx.linkedContactId);
@@ -467,7 +464,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             pendingReimbursable += parseFloat(linkedDebt.remainingBalance);
           }
         } else {
-          pendingReimbursable += parseFloat(tx.reimbursableAmount);
+          pendingReimbursable += reimbAmt;
         }
       }
     });
@@ -544,7 +541,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     const income = ledgerEntry
       ? ledgerEntry.totalIncome
       : periodTxs
-          .filter((t) => t.type === 'Income')
+          .filter((t) => t.type === 'Income' && !isReimbursementIncome(t))
           .reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const salaryIncome = ledgerEntry ? ledgerEntry.salaryIncome : income;
     const otherIncome = ledgerEntry ? ledgerEntry.otherIncome : 0;
