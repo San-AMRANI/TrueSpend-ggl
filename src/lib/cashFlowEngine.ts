@@ -6,7 +6,7 @@ import {
   financialMonthLabel,
   type PayrollLike,
 } from './financialMonth';
-import { netExpenseOf, isInvestmentTransaction } from './finance';
+import { netExpenseOf, isInvestmentTransaction, getCategoryPillar, isSavingsRetentionCategory } from './finance';
 
 export interface HistoricalCashFlowDay {
   date: string;
@@ -43,6 +43,10 @@ export interface FinancialPeriodLedgerEntry {
   grossOutflow: number;
   /** Net living expenses (after deducting reimbursable splits & excluding investment transfers) */
   netLivingExpense: number;
+  /** Pillar 1: Personal & Lifestyle spend on yourself (Dining, Coffee, Clothing, Entertainment, Social) */
+  spentOnMyself: number;
+  /** Pillar 2: Essential Needs, Household/Family, Bills & Debt obligations */
+  spentOnObligations: number;
   /** Reimbursable split portion fronted for others during this period */
   reimbursableAmount: number;
   /** Debt repayments made in this period */
@@ -180,6 +184,8 @@ export function generateFinancialPeriodsLedger(
     let totalIncome = 0;
     let grossOutflow = 0;
     let netLivingExpense = 0;
+    let spentOnMyself = 0;
+    let spentOnObligations = 0;
     let reimbursableAmount = 0;
     let debtRepayments = 0;
     let investmentDeployed = 0;
@@ -213,12 +219,21 @@ export function generateFinancialPeriodsLedger(
           if (!isFromInvWallet) {
             investmentDeployed += netAmt;
           }
+        } else if (isSavingsRetentionCategory(tx.category)) {
+          // Explicit savings transaction — not a living consumption expense
         } else if (
           ['💳 Debt & Obligations', 'Debt Repayment', 'Loan'].includes(tx.category || '')
         ) {
           debtRepayments += amt;
+          spentOnObligations += amt;
         } else {
           netLivingExpense += netAmt;
+          const pillar = getCategoryPillar(tx.category);
+          if (pillar === 'myself') {
+            spentOnMyself += netAmt;
+          } else {
+            spentOnObligations += netAmt;
+          }
         }
 
         const isPayableTx =
@@ -229,6 +244,7 @@ export function generateFinancialPeriodsLedger(
       } else if (tx.type === 'Debt Repayment') {
         grossOutflow += amt;
         debtRepayments += amt;
+        spentOnObligations += amt;
       } else if (tx.type === 'Transfer' && isInvest && !isFromInvWallet) {
         investmentDeployed += amt;
       }
@@ -278,6 +294,8 @@ export function generateFinancialPeriodsLedger(
       totalIncome: Math.round(totalIncome * 100) / 100,
       grossOutflow: Math.round(grossOutflow * 100) / 100,
       netLivingExpense: Math.round(netLivingExpense * 100) / 100,
+      spentOnMyself: Math.round(spentOnMyself * 100) / 100,
+      spentOnObligations: Math.round(spentOnObligations * 100) / 100,
       reimbursableAmount: Math.round(reimbursableAmount * 100) / 100,
       debtRepayments: Math.round(debtRepayments * 100) / 100,
       investmentDeployed: Math.round(investmentDeployed * 100) / 100,
