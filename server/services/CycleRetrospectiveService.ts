@@ -13,7 +13,7 @@ import { debtRepository } from '../repositories/DebtRepository.js';
 import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
 import { walletService } from './WalletService.js';
 import { getFinancialPeriods, getCurrentFinancialMonth, isInFinancialMonth, FinancialPeriod } from '../../src/lib/financialMonth.js';
-import { netExpenseOf, isInvestmentCategory } from '../../src/lib/finance.js';
+import { netExpenseOf, isInvestmentCategory, isReimbursementIncome } from '../../src/lib/finance.js';
 import { normalizeCategory } from '../../src/lib/categories.js';
 import type {
   CycleRetrospectiveData,
@@ -181,8 +181,8 @@ export class CycleRetrospectiveService {
       const isToInvestmentWallet = String(destWallet?.type || '').toLowerCase() === 'investment';
 
       if (tx.type === 'Income') {
-        // Only count if not duplicate of already counted payroll
-        if (!tx.payrollId || (!cyclePayroll && configuredSalary === 0)) {
+        // Only count real non-reimbursement income if not duplicate of already counted payroll
+        if (!isReimbursementIncome(tx) && (!tx.payrollId || (!cyclePayroll && configuredSalary === 0))) {
           totalInflow += amount;
         }
       } else if (tx.type === 'Transfer') {
@@ -485,7 +485,7 @@ export class CycleRetrospectiveService {
       for (const t of prevTx) {
         if (t.type === 'Expense' && !isInvestmentCategory(t.category)) {
           prevOutflow += netExpenseOf(t);
-        } else if (t.type === 'Income') {
+        } else if (t.type === 'Income' && !isReimbursementIncome(t)) {
           prevInflow += Number(t.amount) || 0;
         }
       }

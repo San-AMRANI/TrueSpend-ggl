@@ -5,6 +5,7 @@ import { categoryBudgetController } from '../controllers/CategoryBudgetControlle
 const router = Router();
 
 router.get('/category-budgets', requireAuth, (req, res) => categoryBudgetController.getBudgets(req as any, res));
+router.post('/category-budgets/ai-plan', requireAuth, (req, res) => categoryBudgetController.generateAiPlan(req as any, res));
 router.put('/category-budgets/batch', requireAuth, (req, res) => categoryBudgetController.batchUpsert(req as any, res));
 router.put('/category-budgets', requireAuth, (req, res) => categoryBudgetController.upsertBudget(req as any, res));
 router.post('/category-budgets/copy-previous', requireAuth, (req, res) => categoryBudgetController.copyPreviousMonth(req as any, res));

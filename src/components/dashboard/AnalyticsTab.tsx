@@ -24,7 +24,16 @@ import {
   monthLabel,
   transactionMonth,
   netExpenseOf,
+  reimbursedAmountOf,
+  isReimbursementIncome,
   isInvestmentTransaction,
+  computeFourPillarBreakdown,
+  getCategoryPillar,
+  isSavingsRetentionCategory,
+  isWealthAllocationCategory,
+  isInvestmentCategory,
+  getCategorySpending,
+  type FinancialPillar,
 } from '../../lib/finance';
 import {
   financialPeriodLabel,
@@ -59,6 +68,8 @@ import {
   Calendar,
   Filter,
   ShieldAlert,
+  UserCheck,
+  PiggyBank,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -77,7 +88,7 @@ const COLORS = [
   '#a855f7',
 ];
 
-type AnalyticsSubView = 'overview' | 'categories' | 'recurring' | 'merchants' | 'debts_goals';
+type AnalyticsSubView = 'overview' | 'pillars' | 'categories' | 'recurring' | 'merchants' | 'debts_goals';
 
 interface AnalyticsTabProps {
   kpis?: KPI | null;
@@ -170,11 +181,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     });
   }, [transactions, analyticsMonth, availableMonthRefs]);
 
-  // Expenses by Category
+  // Expenses by Category (living expenses + investments, excluding internal savings transfers)
   const categoryData = useMemo(() => {
-    const expenses = filteredTransactions.filter((t) => t.type === 'Expense');
+    const expenses = filteredTransactions.filter(
+      (t) => t.type === 'Expense' || t.type === 'Debt Repayment'
+    );
     const grouped = expenses.reduce((acc, curr) => {
-      const category = normalizeCategory(curr.category) || 'Uncategorized';
+      const category =
+        curr.type === 'Debt Repayment'
+          ? '💳 Debt & Obligations'
+          : normalizeCategory(curr.category) || 'Uncategorized';
       acc[category] = (acc[category] || 0) + netExpenseOf(curr);
       return acc;
     }, {} as Record<string, number>);
@@ -185,9 +201,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       .sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
 
-  // Income by Category
+  // Income by Category (strictly excluding reimbursements & pass-through friend repayments)
   const incomeCategoryData = useMemo(() => {
-    const incomes = filteredTransactions.filter((t) => t.type === 'Income');
+    const incomes = filteredTransactions.filter((t) => t.type === 'Income' && !isReimbursementIncome(t));
     const grouped = incomes.reduce((acc, curr) => {
       const category = normalizeCategory(curr.category) || 'Uncategorized';
       acc[category] = (acc[category] || 0) + parseFloat(curr.amount);
@@ -199,11 +215,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       .sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
 
-  const activeCategory = [...categoryData, ...incomeCategoryData].some(
-    (category) => category.name === selectedCategory
-  )
-    ? selectedCategory
-    : null;
+  const activeCategory = selectedCategory;
   const isIncomeCategory = incomeCategoryData.some((c) => c.name === activeCategory);
 
   // Wallets spending breakdown
@@ -235,6 +247,46 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     return ref || getCurrentFinancialMonth(payrolls);
   }, [analyticsMonth, availableMonthRefs, payrolls]);
 
+  const currentFmGlobal = useMemo(() => getCurrentFinancialMonth(payrolls), [payrolls]);
+  const isComparisonCurrentMonth = Boolean(
+    comparisonMonth &&
+      currentFmGlobal &&
+      comparisonMonth.year === currentFmGlobal.year &&
+      comparisonMonth.month === currentFmGlobal.month &&
+      analyticsMonth !== 'All Time'
+  );
+
+  // ─── Unified 4-Pillar Breakdown (Spent on Myself, Spent on Obligations, Invested, Saved in Bank) ───
+  const fourPillar = useMemo(() => {
+    const fallbackYear = comparisonMonth?.year ?? new Date().getFullYear();
+    const fallbackMonth = comparisonMonth?.month ?? new Date().getMonth() + 1;
+    return computeFourPillarBreakdown({
+      transactions,
+      budgets,
+      year: fallbackYear,
+      month: fallbackMonth,
+      payrolls,
+      wallets,
+      isCurrentMonth: isComparisonCurrentMonth,
+      overrideTransactions: analyticsMonth === 'All Time' ? filteredTransactions : undefined,
+    });
+  }, [transactions, budgets, comparisonMonth, payrolls, wallets, isComparisonCurrentMonth, analyticsMonth, filteredTransactions]);
+
+  const prevFourPillar = useMemo(() => {
+    if (!comparisonMonth) return null;
+    const prevRef = getPreviousFinancialMonth(payrolls, comparisonMonth);
+    if (!prevRef) return null;
+    return computeFourPillarBreakdown({
+      transactions,
+      budgets,
+      year: prevRef.year,
+      month: prevRef.month,
+      payrolls,
+      wallets,
+      isCurrentMonth: false,
+    });
+  }, [comparisonMonth, payrolls, transactions, budgets, wallets]);
+
   const spendingChange = useMemo(
     () =>
       comparisonMonth
@@ -262,6 +314,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     return Array.from(categories)
       .map((category) => ({
         category,
+        pillar: getCategoryPillar(category),
         ...(comparisonMonth
           ? getSpendingChange(transactions, comparisonMonth.year, comparisonMonth.month, category, payrolls)
           : { current: 0, previous: 0, difference: 0, percentage: null }),
@@ -273,10 +326,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     if (!activeCategory) return [];
 
     return filteredTransactions
-      .filter(
-        (transaction) =>
-          (normalizeCategory(transaction.category) || 'Uncategorized') === activeCategory
-      )
+      .filter((transaction) => {
+        if (transaction.type === 'Debt Repayment' && activeCategory === '💳 Debt & Obligations') return true;
+        return (normalizeCategory(transaction.category) || 'Uncategorized') === activeCategory;
+      })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [activeCategory, filteredTransactions]);
 
@@ -288,7 +341,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const incomeVsExpenseData = useMemo(() => {
     const income = filteredTransactions
-      .filter((t) => t.type === 'Income')
+      .filter((t) => t.type === 'Income' && !isReimbursementIncome(t))
       .reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const expense = filteredTransactions
       .filter((t) => t.type === 'Expense')
@@ -303,8 +356,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     ];
   }, [filteredTransactions]);
 
-  const totalIncome = incomeVsExpenseData[0].amount;
-  const totalExpense = incomeVsExpenseData[1].amount;
+  const totalIncome = incomeVsExpenseData[0].amount || fourPillar.periodIncome;
+  const totalExpense = fourPillar.totalLivingSpent;
   const totalGrossOutflow = incomeVsExpenseData[2].amount;
   // True cashflow saved (Inflow - Gross Outflow) matches actual wallet liquidity change
   const netCashflowSaved = selectedPeriodEntry
@@ -337,7 +390,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         allMonths.add(date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
       }
 
-      if (t.type === 'Income') histIncome += parseFloat(t.amount);
+      if (t.type === 'Income' && !isReimbursementIncome(t)) histIncome += parseFloat(t.amount);
       if (t.type === 'Expense') histExpense += netExpenseOf(t);
     });
 
@@ -355,10 +408,13 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     let reimbursements = 0;
     let pendingReimbursable = 0;
     let investmentCapital = 0;
+    let spentOnMyself = 0;
+    let spentOnObligations = 0;
 
     filteredTransactions.forEach((tx) => {
       const amount = parseFloat(tx.amount);
       const isInvest = isInvestmentTransaction(tx, wallets);
+      const isSavingsTx = isSavingsRetentionCategory(tx.category);
       const sourceWallet = wallets.find((w) => w.id === tx.walletId);
       const isFromInvestmentWallet = sourceWallet?.type === 'Investment';
 
@@ -368,13 +424,23 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           if (!isFromInvestmentWallet) {
             investmentCapital += netExpenseOf(tx);
           }
+        } else if (isSavingsTx) {
+          // Explicit savings transfer — not a living consumption expense
         } else {
-          totalExpenses += netExpenseOf(tx);
+          const netAmt = netExpenseOf(tx);
+          totalExpenses += netAmt;
+          const pillar = getCategoryPillar(tx.category);
+          if (pillar === 'myself') {
+            spentOnMyself += netAmt;
+          } else {
+            spentOnObligations += netAmt;
+          }
         }
       } else if (tx.type === 'Debt Repayment') {
         totalGrossExpenses += amount;
         totalExpenses += amount;
         debtRepayments += amount;
+        spentOnObligations += amount;
       } else if (tx.type === 'Transfer' && isInvest && !isFromInvestmentWallet) {
         investmentCapital += amount;
       }
@@ -388,14 +454,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         debtRepayments += amount;
       }
 
-      const isPayableTx = (tx as any).linkedDebtType === 'Payable' || tx.category === 'Debt Repayment';
-      if (
-        tx.type === 'Expense' &&
-        !isPayableTx &&
-        tx.reimbursableAmount &&
-        parseFloat(tx.reimbursableAmount) > 0
-      ) {
-        reimbursements += parseFloat(tx.reimbursableAmount);
+      const reimbAmt = reimbursedAmountOf(tx);
+      if (reimbAmt > 0) {
+        reimbursements += reimbAmt;
 
         if (tx.linkedContactId) {
           const linkedDebt = debts.find((d) => d.id === tx.linkedContactId);
@@ -403,7 +464,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             pendingReimbursable += parseFloat(linkedDebt.remainingBalance);
           }
         } else {
-          pendingReimbursable += parseFloat(tx.reimbursableAmount);
+          pendingReimbursable += reimbAmt;
         }
       }
     });
@@ -415,7 +476,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       reimbursements,
       pendingReimbursable,
       investmentCapital,
-      adjustedTrueSpend: Math.max(0, totalExpenses - debtRepayments),
+      spentOnMyself,
+      spentOnObligations,
+      adjustedTrueSpend: spentOnMyself + spentOnObligations,
     };
   }, [filteredTransactions, debts, wallets]);
 
@@ -478,7 +541,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     const income = ledgerEntry
       ? ledgerEntry.totalIncome
       : periodTxs
-          .filter((t) => t.type === 'Income')
+          .filter((t) => t.type === 'Income' && !isReimbursementIncome(t))
           .reduce((sum, t) => sum + parseFloat(t.amount), 0);
     const salaryIncome = ledgerEntry ? ledgerEntry.salaryIncome : income;
     const otherIncome = ledgerEntry ? ledgerEntry.otherIncome : 0;
@@ -492,6 +555,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       : periodTxs
           .filter((t) => t.type === 'Expense')
           .reduce((sum, t) => sum + netExpenseOf(t), 0);
+    const spentOnMyself = ledgerEntry ? ledgerEntry.spentOnMyself : fourPillar.spentOnMyself;
+    const spentOnObligations = ledgerEntry ? ledgerEntry.spentOnObligations : fourPillar.spentOnObligations;
+    const invested = ledgerEntry ? ledgerEntry.investmentDeployed : fourPillar.investedAmount;
     const openingLiquidity = ledgerEntry ? ledgerEntry.openingLiquidity : 0;
     const closingLiquidity = ledgerEntry
       ? ledgerEntry.closingLiquidity
@@ -531,6 +597,9 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       income,
       grossOutflow,
       expense,
+      spentOnMyself,
+      spentOnObligations,
+      invested,
       moneySaved,
       economicSaved,
       savingsRate: periodSavingsRate,
@@ -540,21 +609,35 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         newDebts,
       },
     };
-  }, [transactions, debts, payrolls, analyticsMonth, availableMonthRefs, periodsLedger]);
+  }, [transactions, debts, payrolls, analyticsMonth, availableMonthRefs, periodsLedger, fourPillar]);
 
-  // Interconnected: Budget vs Actual Variance Analysis
+  // Interconnected: Retention-Aware Budget vs Actual Variance Analysis
   const budgetVarianceData = useMemo(() => {
     if (!comparisonMonth) return [];
     const periodBudgets = budgets.filter(
       (b) => b.year === comparisonMonth.year && b.month === comparisonMonth.month
     );
-    const periodExpenses = filteredTransactions.filter((t) => t.type === 'Expense');
 
     const actuals: Record<string, number> = {};
-    periodExpenses.forEach((t) => {
-      const cat = normalizeCategory(t.category) || 'Uncategorized';
+    filteredTransactions.forEach((t) => {
+      let cat = normalizeCategory(t.category) || 'Uncategorized';
+      if (t.type === 'Debt Repayment') cat = '💳 Debt & Obligations';
+      if (t.type === 'Transfer' && wallets && t.destinationWalletId) {
+        const dest = wallets.find((w) => w.id === t.destinationWalletId);
+        const destType = dest?.type?.toLowerCase();
+        if (destType === 'investment') cat = '📈 Investments';
+        else if (destType === 'savings') cat = '🛟 Emergency & goals Fund';
+        else return;
+      } else if (t.type !== 'Expense' && t.type !== 'Debt Repayment') {
+        return;
+      }
       actuals[cat] = (actuals[cat] || 0) + netExpenseOf(t);
     });
+
+    // Credit automatic Bank-Retained Savings toward '🛟 Emergency & goals Fund'
+    if (fourPillar.effectiveSavedForBudget > 0) {
+      actuals['🛟 Emergency & goals Fund'] = fourPillar.effectiveSavedForBudget;
+    }
 
     const allCategories = Array.from(
       new Set([
@@ -568,25 +651,35 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         const budgetObj = periodBudgets.find((b) => normalizeCategory(b.category) === cat);
         const budgeted = budgetObj ? parseFloat(budgetObj.amount || '0') : 0;
         const spent = actuals[cat] || 0;
-        const diff = budgeted - spent; // positive = under budget, negative = over budget
+        const isWealth = isWealthAllocationCategory(cat);
+        const isSavings = isSavingsRetentionCategory(cat);
+        const pillar = getCategoryPillar(cat);
+        const diff = budgeted - spent; // For living: positive = remaining; for wealth: negative/zero = target met!
         const percentUsed = budgeted > 0 ? (spent / budgeted) * 100 : spent > 0 ? 100 : 0;
         return {
           category: cat,
+          pillar,
+          isWealth,
+          isSavings,
           budgeted,
           spent,
           remaining: diff,
-          isOver: diff < 0 && budgeted > 0,
+          isOver: !isWealth && diff < 0 && budgeted > 0,
+          isTargetMet: isWealth && budgeted > 0 && spent >= budgeted,
           percentUsed,
         };
       })
       .sort((a, b) => b.spent - a.spent);
-  }, [comparisonMonth, budgets, filteredTransactions]);
+  }, [comparisonMonth, budgets, filteredTransactions, wallets, fourPillar.effectiveSavedForBudget]);
 
   const budgetSummary = useMemo(() => {
-    const totalBudgeted = budgetVarianceData.reduce((s, b) => s + b.budgeted, 0);
-    const totalSpentInBudgets = budgetVarianceData.reduce((s, b) => s + b.spent, 0);
-    const overBudgetCount = budgetVarianceData.filter((b) => b.isOver).length;
-    const onTrackCount = budgetVarianceData.filter((b) => b.budgeted > 0 && !b.isOver).length;
+    const livingItems = budgetVarianceData.filter((b) => !b.isWealth);
+    const totalBudgeted = livingItems.reduce((s, b) => s + b.budgeted, 0);
+    const totalSpentInBudgets = livingItems.reduce((s, b) => s + b.spent, 0);
+    const overBudgetCount = livingItems.filter((b) => b.isOver).length;
+    const onTrackCount = budgetVarianceData.filter(
+      (b) => b.budgeted > 0 && (b.isWealth ? b.spent >= b.budgeted * 0.75 : !b.isOver)
+    ).length;
     const netVariance = totalBudgeted - totalSpentInBudgets;
 
     return {
@@ -827,27 +920,46 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             setSubView('overview');
             setSelectedCategory(null);
           }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
             subView === 'overview'
               ? 'bg-indigo-600 text-white shadow-sm'
               : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <Sparkles className="w-4 h-4" />
-          <span>Overview & Cash Flow</span>
+          <span>Overview &amp; Cash Flow</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setSubView('pillars');
+            setSelectedCategory(null);
+          }}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
+            subView === 'pillars'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+          }`}
+        >
+          <UserCheck className="w-4 h-4" />
+          <span>Myself vs. Obligations &amp; Wealth</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 font-bold border border-emerald-500/20">
+            4 Pillars
+          </span>
         </button>
 
         <button
           type="button"
           onClick={() => setSubView('categories')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
             subView === 'categories'
               ? 'bg-indigo-600 text-white shadow-sm'
               : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <PieChartIcon className="w-4 h-4" />
-          <span>Categories & Budget Variance</span>
+          <span>Categories &amp; Budget Variance</span>
           {budgetSummary.overBudgetCount > 0 && (
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500 text-white font-bold">
               {budgetSummary.overBudgetCount}
@@ -861,7 +973,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             setSubView('recurring');
             setSelectedCategory(null);
           }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
             subView === 'recurring'
               ? 'bg-indigo-600 text-white shadow-sm'
               : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -880,14 +992,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             setSubView('merchants');
             setSelectedCategory(null);
           }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
             subView === 'merchants'
               ? 'bg-indigo-600 text-white shadow-sm'
               : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <Store className="w-4 h-4" />
-          <span>Payees & Spikes</span>
+          <span>Payees &amp; Spikes</span>
           {spendingSpikes.length > 0 && (
             <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-bold">
               {spendingSpikes.length}
@@ -901,14 +1013,14 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             setSubView('debts_goals');
             setSelectedCategory(null);
           }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
             subView === 'debts_goals'
               ? 'bg-indigo-600 text-white shadow-sm'
               : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
           }`}
         >
           <Target className="w-4 h-4" />
-          <span>Debt & Goals Velocity</span>
+          <span>Debt &amp; Goals Velocity</span>
         </button>
       </div>
 
@@ -976,11 +1088,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </div>
         </div>
 
-        {/* Adjusted True Spend */}
+        {/* Spent on Myself vs Obligations Split */}
         <div className="bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-              Adjusted True Spend
+              True Living Spend Split
             </span>
             <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400">
               <Sparkles className="w-4 h-4" />
@@ -988,14 +1100,16 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           </div>
           <div className="mt-2">
             <p className="text-2xl font-black text-gray-900 dark:text-white font-mono tabular-nums">
-              {adjustedTrueSpendData.adjustedTrueSpend.toFixed(2)} MAD
+              {fourPillar.totalLivingSpent.toFixed(2)} MAD
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">
-              Gross outflow: {totalGrossOutflow.toFixed(2)} MAD
-              {adjustedTrueSpendData.reimbursements > 0
-                ? ` (−${adjustedTrueSpendData.reimbursements.toFixed(2)} reimb.)`
-                : ''}
-            </p>
+            <div className="flex items-center justify-between text-xs mt-1 font-mono">
+              <span className="text-indigo-600 dark:text-indigo-400 font-semibold">
+                🏛️ Oblig: {fourPillar.spentOnObligations.toFixed(0)}
+              </span>
+              <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                ✨ Myself: {fourPillar.spentOnMyself.toFixed(0)}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -1055,6 +1169,234 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         </div>
       </div>
 
+      {/* ── 4-Pillar Executive Vision Panel: Myself vs. Obligations vs. Invested vs. Kept in Bank ── */}
+      <Card className="border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-br from-indigo-50/40 via-white to-emerald-50/30 dark:from-gray-900 dark:via-gray-900 dark:to-emerald-950/20 shadow-xs overflow-hidden">
+        <CardHeader className="pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <UserCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                Where Every Dirham Went: Myself vs. Obligations vs. Invested vs. Kept in Bank
+              </CardTitle>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                Bank-Retention Aware
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Clear separation between personal lifestyle spend on yourself, fixed/family obligations, capital invested, and salary automatically retained in your bank account.
+            </p>
+          </div>
+          {subView !== 'pillars' && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSubView('pillars')}
+              className="text-xs whitespace-nowrap shrink-0 self-start sm:self-auto"
+            >
+              <span>Deep-Dive 4 Pillars</span>
+              <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4 pt-0">
+          {/* Stacked Proportional Bar */}
+          {fourPillar.periodIncome > 0 && (
+            <div className="space-y-1.5">
+              <div className="h-3.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex">
+                <div
+                  className="h-full bg-indigo-600 transition-all duration-500"
+                  style={{ width: `${Math.min(100, (fourPillar.spentOnObligations / fourPillar.periodIncome) * 100)}%` }}
+                  title={`Obligations: ${fourPillar.spentOnObligations.toFixed(2)} MAD`}
+                />
+                <div
+                  className="h-full bg-amber-500 transition-all duration-500"
+                  style={{ width: `${Math.min(100, (fourPillar.spentOnMyself / fourPillar.periodIncome) * 100)}%` }}
+                  title={`Spent on Myself: ${fourPillar.spentOnMyself.toFixed(2)} MAD`}
+                />
+                <div
+                  className="h-full bg-blue-500 transition-all duration-500"
+                  style={{ width: `${Math.min(100, (fourPillar.investedAmount / fourPillar.periodIncome) * 100)}%` }}
+                  title={`Invested: ${fourPillar.investedAmount.toFixed(2)} MAD`}
+                />
+                <div
+                  className="h-full bg-emerald-500 transition-all duration-500"
+                  style={{ width: `${Math.min(100, (fourPillar.totalActualRetainedAndSaved / fourPillar.periodIncome) * 100)}%` }}
+                  title={`Retained in Bank & Saved: ${fourPillar.totalActualRetainedAndSaved.toFixed(2)} MAD`}
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-gray-500 dark:text-gray-400">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-indigo-600" />
+                  🏛️ Obligations: {fourPillar.obligationsPctOfIncome.toFixed(1)}% ({fourPillar.obligationsPctOfLivingSpend.toFixed(0)}% of spend)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                  ✨ Spent on Myself: {fourPillar.myselfPctOfIncome.toFixed(1)}% ({fourPillar.myselfPctOfLivingSpend.toFixed(0)}% of spend)
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
+                  📈 Invested: {fourPillar.investedPctOfIncome.toFixed(1)}%
+                </span>
+                <span className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  🏦 Kept in Bank / Saved: {fourPillar.savedPctOfIncome.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* 4 Pillar Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {/* 1. Spent on Myself */}
+            <div className="rounded-xl border border-amber-200/80 dark:border-amber-900/50 bg-white dark:bg-gray-900 p-4 space-y-2 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                  ✨ Spent on Myself
+                </span>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+                  {fourPillar.myselfPctOfIncome.toFixed(1)}% of income
+                </span>
+              </div>
+              <p className="text-2xl font-black font-mono tabular-nums text-gray-900 dark:text-white">
+                {fourPillar.spentOnMyself.toFixed(2)} MAD
+              </p>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 space-y-0.5 font-mono">
+                <p>
+                  {fourPillar.myselfPctOfLivingSpend.toFixed(1)}% of total living spend
+                  {fourPillar.plannedMyselfBudget > 0 ? ` • Budget: ${fourPillar.plannedMyselfBudget.toFixed(0)}` : ''}
+                </p>
+                {prevFourPillar && (
+                  <p className={fourPillar.spentOnMyself <= prevFourPillar.spentOnMyself ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                    {fourPillar.spentOnMyself >= prevFourPillar.spentOnMyself ? '+' : ''}
+                    {(fourPillar.spentOnMyself - prevFourPillar.spentOnMyself).toFixed(0)} MAD vs prev period
+                  </p>
+                )}
+              </div>
+              <div className="pt-1 border-t border-gray-100 dark:border-gray-800 space-y-1">
+                {fourPillar.myselfCategories.slice(0, 3).map((c) => (
+                  <div key={c.category} className="flex items-center justify-between text-[11px]">
+                    <span className="truncate text-gray-600 dark:text-gray-400 pr-2">{c.category}</span>
+                    <span className="font-mono font-semibold text-gray-900 dark:text-gray-200 shrink-0">{c.spent.toFixed(0)} MAD</span>
+                  </div>
+                ))}
+                {fourPillar.myselfCategories.length === 0 && (
+                  <p className="text-[11px] text-gray-400 italic">No personal wants logged yet</p>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Spent on Obligations */}
+            <div className="rounded-xl border border-indigo-200/80 dark:border-indigo-900/50 bg-white dark:bg-gray-900 p-4 space-y-2 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                  🏛️ Spent on Obligations
+                </span>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                  {fourPillar.obligationsPctOfIncome.toFixed(1)}% of income
+                </span>
+              </div>
+              <p className="text-2xl font-black font-mono tabular-nums text-gray-900 dark:text-white">
+                {fourPillar.spentOnObligations.toFixed(2)} MAD
+              </p>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 space-y-0.5 font-mono">
+                <p>
+                  {fourPillar.obligationsPctOfLivingSpend.toFixed(1)}% of total living spend
+                  {fourPillar.plannedObligationsBudget > 0 ? ` • Budget: ${fourPillar.plannedObligationsBudget.toFixed(0)}` : ''}
+                </p>
+                {prevFourPillar && (
+                  <p className={fourPillar.spentOnObligations <= prevFourPillar.spentOnObligations ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                    {fourPillar.spentOnObligations >= prevFourPillar.spentOnObligations ? '+' : ''}
+                    {(fourPillar.spentOnObligations - prevFourPillar.spentOnObligations).toFixed(0)} MAD vs prev period
+                  </p>
+                )}
+              </div>
+              <div className="pt-1 border-t border-gray-100 dark:border-gray-800 space-y-1 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Fixed &amp; Essential Needs:</span>
+                  <span className="font-mono font-semibold text-gray-900 dark:text-gray-200">{fourPillar.essentialNeedsSpent.toFixed(0)} MAD</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Household &amp; Family:</span>
+                  <span className="font-mono font-semibold text-gray-900 dark:text-gray-200">{fourPillar.familyHouseholdSpent.toFixed(0)} MAD</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Debt &amp; Obligations:</span>
+                  <span className="font-mono font-semibold text-gray-900 dark:text-gray-200">{fourPillar.debtObligationsSpent.toFixed(0)} MAD</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Invested (Wealth Building) */}
+            <div className="rounded-xl border border-blue-200/80 dark:border-blue-900/50 bg-white dark:bg-gray-900 p-4 space-y-2 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
+                  📈 Invested (Equities/Crypto)
+                </span>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                  {fourPillar.investedPctOfIncome.toFixed(1)}% of income
+                </span>
+              </div>
+              <p className="text-2xl font-black font-mono tabular-nums text-blue-600 dark:text-blue-400">
+                {fourPillar.investedAmount.toFixed(2)} MAD
+              </p>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 space-y-0.5 font-mono">
+                <p>
+                  {fourPillar.plannedInvestmentBudget > 0
+                    ? `Target: ${fourPillar.plannedInvestmentBudget.toFixed(0)} MAD (${((fourPillar.investedAmount / fourPillar.plannedInvestmentBudget) * 100).toFixed(0)}%)`
+                    : 'Protected capital conversion'}
+                </p>
+                {investmentsData && investmentsData.positions.length > 0 && (
+                  <p className="text-indigo-600 dark:text-indigo-400 font-semibold">
+                    Portfolio Value: {investmentsData.totalPortfolioValueMad.toFixed(0)} MAD
+                  </p>
+                )}
+              </div>
+              <div className="pt-1 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-500 dark:text-gray-400">
+                Excluded from living expenses — builds your long-term net worth.
+              </div>
+            </div>
+
+            {/* 4. Kept in Bank & Saved */}
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 p-4 space-y-2 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                  🏦 Kept in Bank &amp; Saved
+                </span>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">
+                  {fourPillar.savedPctOfIncome.toFixed(1)}% retained
+                </span>
+              </div>
+              <p className="text-2xl font-black font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
+                {fourPillar.totalActualRetainedAndSaved.toFixed(2)} MAD
+              </p>
+              <div className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 space-y-0.5 font-mono">
+                <p>
+                  Total Wealth Rate (Saved + Inv): <strong>{fourPillar.totalWealthPctOfIncome.toFixed(1)}%</strong>
+                </p>
+              </div>
+              <div className="pt-1 border-t border-emerald-200/60 dark:border-emerald-800/60 space-y-1 text-[11px]">
+                <div className="flex items-center justify-between">
+                  <span className="text-emerald-900 dark:text-emerald-200">Kept in Bank (No Tx):</span>
+                  <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">{fourPillar.liveRetainedInBank.toFixed(0)} MAD</span>
+                </div>
+                {isComparisonCurrentMonth && fourPillar.plannedLivingBudget > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Protected After Budgets:</span>
+                    <span className="font-mono font-semibold text-gray-800 dark:text-gray-200">{fourPillar.protectedBankRetention.toFixed(0)} MAD</span>
+                  </div>
+                )}
+                {fourPillar.explicitSavingsTx > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Explicit Savings Tx:</span>
+                    <span className="font-mono font-semibold text-gray-800 dark:text-gray-200">+{fourPillar.explicitSavingsTx.toFixed(0)} MAD</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* ======================= SUB-VIEW 1: OVERVIEW & CASH FLOW ======================= */}
       {subView === 'overview' && (
         <div className="space-y-6">
@@ -1065,7 +1407,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                 <div>
                   <CardTitle className="text-base flex items-center gap-2">
                     <Landmark className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                    Financial Periods Ending Liquidity &amp; Cash Flow Ledger
+                    Financial Periods Ending Liquidity &amp; 4-Pillar Cash Flow Ledger
                   </CardTitle>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                     100% reconciled with Historical Cash Flow &amp; Financial Calendar payroll boundaries. Click any period to inspect it.
@@ -1089,11 +1431,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       <tr className="bg-gray-50 dark:bg-gray-800/80 text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-800 text-[11px] uppercase tracking-wider">
                         <th className="py-2.5 px-3 font-semibold">Financial Period</th>
                         <th className="py-2.5 px-3 font-semibold text-right">Opening Liq.</th>
-                        <th className="py-2.5 px-3 font-semibold text-right">Base Salary</th>
                         <th className="py-2.5 px-3 font-semibold text-right">Total Inflow</th>
-                        <th className="py-2.5 px-3 font-semibold text-right">Gross Outflow</th>
-                        <th className="py-2.5 px-3 font-semibold text-right">Net Living Spend</th>
-                        <th className="py-2.5 px-3 font-semibold text-right">Net Cash Saved</th>
+                        <th className="py-2.5 px-3 font-semibold text-right text-indigo-600 dark:text-indigo-400">🏛️ Obligations</th>
+                        <th className="py-2.5 px-3 font-semibold text-right text-amber-600 dark:text-amber-400">✨ Myself</th>
+                        <th className="py-2.5 px-3 font-semibold text-right text-blue-600 dark:text-blue-400">📈 Invested</th>
+                        <th className="py-2.5 px-3 font-semibold text-right">🏦 Kept / Saved</th>
                         <th className="py-2.5 px-3 font-semibold text-right">Ending Liquidity</th>
                       </tr>
                     </thead>
@@ -1128,22 +1470,17 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                             <td className="py-2.5 px-3 text-right text-gray-600 dark:text-gray-300">
                               {p.openingLiquidity.toFixed(2)} MAD
                             </td>
-                            <td className="py-2.5 px-3 text-right text-gray-600 dark:text-gray-300">
-                              {p.salaryIncome.toFixed(2)} MAD
-                            </td>
                             <td className="py-2.5 px-3 text-right text-emerald-600 dark:text-emerald-400 font-medium">
                               +{p.totalIncome.toFixed(2)} MAD
                             </td>
-                            <td className="py-2.5 px-3 text-right text-rose-600 dark:text-rose-400">
-                              -{p.grossOutflow.toFixed(2)} MAD
+                            <td className="py-2.5 px-3 text-right text-indigo-600 dark:text-indigo-400">
+                              {p.spentOnObligations.toFixed(2)} MAD
                             </td>
-                            <td className="py-2.5 px-3 text-right text-gray-700 dark:text-gray-300">
-                              {p.netLivingExpense.toFixed(2)} MAD
-                              {p.reimbursableAmount > 0 && (
-                                <span className="block text-[10px] text-gray-400">
-                                  ({p.reimbursableAmount.toFixed(0)} reimb.)
-                                </span>
-                              )}
+                            <td className="py-2.5 px-3 text-right text-amber-600 dark:text-amber-400">
+                              {p.spentOnMyself.toFixed(2)} MAD
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-blue-600 dark:text-blue-400">
+                              {p.investmentDeployed.toFixed(2)} MAD
                             </td>
                             <td
                               className={`py-2.5 px-3 text-right font-semibold ${
@@ -1201,7 +1538,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
                   <div className="p-3.5 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-800 shadow-xs">
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Net Period Cash Saved
+                      Net Period Cash Saved (Kept in Bank)
                     </p>
                     <p
                       className={`text-xl font-black mt-1 font-mono tabular-nums ${
@@ -1230,26 +1567,25 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
                   <div className="p-3.5 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-800 shadow-xs">
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Period Inflow &amp; Salary
+                      Obligations vs. Myself
                     </p>
-                    <p className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1 font-mono tabular-nums">
-                      +{digestData.income.toFixed(2)} MAD
+                    <p className="text-xl font-black text-gray-900 dark:text-white mt-1 font-mono tabular-nums">
+                      {digestData.spentOnObligations.toFixed(0)} / {digestData.spentOnMyself.toFixed(0)}
                     </p>
                     <p className="text-[11px] text-gray-400 mt-0.5 font-mono">
-                      Salary: {digestData.salaryIncome.toFixed(2)}
-                      {digestData.otherIncome > 0 ? ` + ${digestData.otherIncome.toFixed(2)} other` : ''}
+                      🏛️ Oblig: {digestData.spentOnObligations.toFixed(0)} • ✨ Myself: {digestData.spentOnMyself.toFixed(0)} MAD
                     </p>
                   </div>
 
                   <div className="p-3.5 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-800 shadow-xs">
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Debts Created / Cleared
+                      Invested &amp; Debts Cleared
                     </p>
-                    <p className="text-xl font-black text-amber-600 dark:text-amber-400 mt-1 font-mono">
-                      {digestData.debtStats.newDebts} / {digestData.debtStats.settledDebts}
+                    <p className="text-xl font-black text-blue-600 dark:text-blue-400 mt-1 font-mono">
+                      {digestData.invested.toFixed(0)} MAD
                     </p>
                     <p className="text-[11px] text-gray-400 mt-0.5">
-                      {digestData.debtStats.newDebts} logged • {digestData.debtStats.settledDebts} settled
+                      {digestData.debtStats.newDebts} debts logged • {digestData.debtStats.settledDebts} settled
                     </p>
                   </div>
                 </div>
@@ -1355,7 +1691,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card className="lg:col-span-2">
               <CardHeader>
-                <CardTitle>Cash Flow Inflow & Outflow Allocation</CardTitle>
+                <CardTitle>Cash Flow Inflow &amp; Outflow Allocation</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="h-[280px] w-full">
@@ -1414,47 +1750,47 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           {/* Adjusted True Spend Details */}
           <Card>
             <CardHeader>
-              <CardTitle>Adjusted True Spend Breakdown</CardTitle>
+              <CardTitle>Adjusted True Spend Breakdown (Obligations vs. Spent on Myself)</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Net Expenses</p>
-                  <p className="mt-1 text-xl font-bold text-gray-900 dark:text-gray-100">
-                    {adjustedTrueSpendData.totalExpenses.toFixed(2)} MAD
+                <div className="rounded-lg bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 p-4">
+                  <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">🏛️ Spent on Obligations</p>
+                  <p className="mt-1 text-xl font-bold font-mono tabular-nums text-indigo-900 dark:text-indigo-100">
+                    {adjustedTrueSpendData.spentOnObligations.toFixed(2)} MAD
                   </p>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {adjustedTrueSpendData.reimbursements > 0
-                      ? `Gross outflow: ${adjustedTrueSpendData.totalGrossExpenses.toFixed(2)} MAD`
-                      : 'All outbound transactions'}
+                  <p className="mt-1 text-xs text-indigo-600/80 dark:text-indigo-400/80">
+                    Housing, groceries, transport, family, bills &amp; debt ({fourPillar.obligationsPctOfLivingSpend.toFixed(0)}% of living)
                   </p>
                 </div>
 
-                <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Debt Repayments</p>
-                  <p className="mt-1 text-xl font-bold text-gray-900 dark:text-gray-100">
-                    -{adjustedTrueSpendData.debtRepayments.toFixed(2)} MAD
+                <div className="rounded-lg bg-amber-50/70 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/50 p-4">
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">✨ Spent on Myself</p>
+                  <p className="mt-1 text-xl font-bold font-mono tabular-nums text-amber-900 dark:text-amber-100">
+                    {adjustedTrueSpendData.spentOnMyself.toFixed(2)} MAD
                   </p>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Money moved, not spent</p>
+                  <p className="mt-1 text-xs text-amber-600/80 dark:text-amber-400/80">
+                    Dining, coffee, clothing, entertainment &amp; social ({fourPillar.myselfPctOfLivingSpend.toFixed(0)}% of living)
+                  </p>
                 </div>
 
                 <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-4">
                   <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
                     Reimbursements Deducted
                   </p>
-                  <p className="mt-1 text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                  <p className="mt-1 text-xl font-bold font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
                     -{adjustedTrueSpendData.reimbursements.toFixed(2)} MAD
                   </p>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Settled or split for others</p>
                 </div>
 
                 <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 p-4">
-                  <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Adjusted True Spend</p>
-                  <p className="mt-1 text-2xl font-bold text-blue-700 dark:text-blue-300">
+                  <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Total True Living Spend</p>
+                  <p className="mt-1 text-2xl font-bold font-mono tabular-nums text-blue-700 dark:text-blue-300">
                     {adjustedTrueSpendData.adjustedTrueSpend.toFixed(2)} MAD
                   </p>
                   <p className="mt-1 text-xs text-blue-600/80 dark:text-blue-400/80">
-                    True living cost on yourself
+                    Obligations + Myself (Excludes Investments &amp; Savings)
                   </p>
                 </div>
               </div>
@@ -1578,6 +1914,181 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         </div>
       )}
 
+      {/* ======================= SUB-VIEW 1B: MYSELF VS. OBLIGATIONS & WEALTH DEEP-DIVE ======================= */}
+      {subView === 'pillars' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Column: ✨ Spent on Myself (Personal & Wants) */}
+            <Card className="border-amber-200/80 dark:border-amber-900/50">
+              <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                      <UserCheck className="w-5 h-5" />
+                      ✨ Spent on Myself (Personal &amp; Lifestyle)
+                    </CardTitle>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Discretionary self-spending: dining out, coffee, clothing, entertainment &amp; social life.
+                    </p>
+                  </div>
+                  <div className="text-right font-mono">
+                    <p className="text-xl font-black text-amber-600 dark:text-amber-400 tabular-nums">
+                      {fourPillar.spentOnMyself.toFixed(2)} MAD
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      {fourPillar.myselfPctOfIncome.toFixed(1)}% of income
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-3">
+                {fourPillar.myselfCategories.length > 0 ? (
+                  fourPillar.myselfCategories.map((c) => {
+                    const shareOfMyself = fourPillar.spentOnMyself > 0 ? (c.spent / fourPillar.spentOnMyself) * 100 : 0;
+                    const budgetPct = c.budgeted > 0 ? Math.min(100, (c.spent / c.budgeted) * 100) : shareOfMyself;
+                    const isOver = c.budgeted > 0 && c.spent > c.budgeted;
+                    return (
+                      <div
+                        key={c.category}
+                        onClick={() => setSelectedCategory(c.category)}
+                        className="p-3.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-amber-300 dark:hover:border-amber-700 transition-all cursor-pointer space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">
+                              {c.category}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 font-mono shrink-0">
+                              {c.txCount} {c.txCount === 1 ? 'tx' : 'txs'}
+                            </span>
+                          </div>
+                          <div className="text-right font-mono shrink-0">
+                            <span className="text-sm font-bold text-gray-900 dark:text-white">
+                              {c.spent.toFixed(2)} MAD
+                            </span>
+                            {c.budgeted > 0 && (
+                              <span className="text-xs text-gray-400 ml-1">
+                                / {c.budgeted.toFixed(0)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${isOver ? 'bg-rose-500' : 'bg-amber-500'}`}
+                            style={{ width: `${Math.min(100, budgetPct)}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-mono">
+                          <span>{shareOfMyself.toFixed(1)}% of personal spend</span>
+                          {c.budgeted > 0 ? (
+                            <span className={isOver ? 'text-rose-600 font-semibold' : 'text-emerald-600'}>
+                              {isOver
+                                ? `${(c.spent - c.budgeted).toFixed(0)} MAD over budget`
+                                : `${(c.budgeted - c.spent).toFixed(0)} MAD budget left`}
+                            </span>
+                          ) : (
+                            <span>Click to inspect transactions</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    No personal lifestyle expenses logged in this period.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Right Column: 🏛️ Spent on Obligations (Essential Needs, Family & Debt) */}
+            <Card className="border-indigo-200/80 dark:border-indigo-900/50">
+              <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-base flex items-center gap-2 text-indigo-700 dark:text-indigo-300">
+                      <Landmark className="w-5 h-5" />
+                      🏛️ Spent on Obligations (Needs, Family &amp; Debt)
+                    </CardTitle>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Non-negotiable living essentials, household/family support, utilities &amp; debt servicing.
+                    </p>
+                  </div>
+                  <div className="text-right font-mono">
+                    <p className="text-xl font-black text-indigo-600 dark:text-indigo-400 tabular-nums">
+                      {fourPillar.spentOnObligations.toFixed(2)} MAD
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      {fourPillar.obligationsPctOfIncome.toFixed(1)}% of income
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-3">
+                {fourPillar.obligationsCategories.length > 0 ? (
+                  fourPillar.obligationsCategories.map((c) => {
+                    const shareOfOblig = fourPillar.spentOnObligations > 0 ? (c.spent / fourPillar.spentOnObligations) * 100 : 0;
+                    const budgetPct = c.budgeted > 0 ? Math.min(100, (c.spent / c.budgeted) * 100) : shareOfOblig;
+                    const isOver = c.budgeted > 0 && c.spent > c.budgeted;
+                    return (
+                      <div
+                        key={c.category}
+                        onClick={() => setSelectedCategory(c.category)}
+                        className="p-3.5 rounded-xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all cursor-pointer space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">
+                              {c.category}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 font-mono shrink-0">
+                              {c.txCount} {c.txCount === 1 ? 'tx' : 'txs'}
+                            </span>
+                          </div>
+                          <div className="text-right font-mono shrink-0">
+                            <span className="text-sm font-bold text-gray-900 dark:text-white">
+                              {c.spent.toFixed(2)} MAD
+                            </span>
+                            {c.budgeted > 0 && (
+                              <span className="text-xs text-gray-400 ml-1">
+                                / {c.budgeted.toFixed(0)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${isOver ? 'bg-rose-500' : 'bg-indigo-600'}`}
+                            style={{ width: `${Math.min(100, budgetPct)}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-mono">
+                          <span>{shareOfOblig.toFixed(1)}% of obligations</span>
+                          {c.budgeted > 0 ? (
+                            <span className={isOver ? 'text-rose-600 font-semibold' : 'text-emerald-600'}>
+                              {isOver
+                                ? `${(c.spent - c.budgeted).toFixed(0)} MAD over budget`
+                                : `${(c.budgeted - c.spent).toFixed(0)} MAD budget left`}
+                            </span>
+                          ) : (
+                            <span>Click to inspect transactions</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    No obligation expenses logged in this period.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
       {/* ======================= SUB-VIEW 2: CATEGORIES & BUDGET VARIANCE ======================= */}
       {subView === 'categories' && (
         <div className="space-y-6">
@@ -1587,10 +2098,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
                   <PieChartIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                  Budget vs. Actual Variance Analysis
+                  Retention-Aware Budget vs. Actual Variance Analysis
                 </CardTitle>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  Interconnected with your monthly category envelopes in Budgets.
+                  Spendable living budgets (Obligations &amp; Myself) are tracked against spending limits, while Savings &amp; Investments track wealth retention &amp; capital targets.
                 </p>
               </div>
               {setActiveTab && (
@@ -1608,23 +2119,23 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             <CardContent>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                 <div className="p-3 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-800">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Total Budget</p>
-                  <p className="text-lg font-black text-gray-900 dark:text-white mt-0.5">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Spendable Living Budget</p>
+                  <p className="text-lg font-black text-gray-900 dark:text-white mt-0.5 font-mono">
                     {budgetSummary.totalBudgeted.toFixed(0)} MAD
                   </p>
                 </div>
 
                 <div className="p-3 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-800">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Actual Spent</p>
-                  <p className="text-lg font-black text-gray-900 dark:text-white mt-0.5">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Actual Living Spent</p>
+                  <p className="text-lg font-black text-gray-900 dark:text-white mt-0.5 font-mono">
                     {budgetSummary.totalSpentInBudgets.toFixed(0)} MAD
                   </p>
                 </div>
 
                 <div className="p-3 bg-white dark:bg-gray-800/80 rounded-xl border border-gray-100 dark:border-gray-800">
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Net Variance</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Living Net Variance</p>
                   <p
-                    className={`text-lg font-black mt-0.5 ${
+                    className={`text-lg font-black mt-0.5 font-mono ${
                       budgetSummary.netVariance >= 0
                         ? 'text-emerald-600 dark:text-emerald-400'
                         : 'text-rose-600 dark:text-rose-400'
@@ -1656,8 +2167,18 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {budgetVarianceData.map((item) => {
               const isOver = item.isOver;
+              const isWealth = item.isWealth;
+              const isSavings = item.isSavings;
               const hasBudget = item.budgeted > 0;
               const percent = Math.min(item.percentUsed, 100);
+              const pillarBadge =
+                item.pillar === 'myself'
+                  ? { text: '✨ Myself', cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800' }
+                  : item.pillar === 'obligations'
+                  ? { text: '🏛️ Obligation', cls: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800' }
+                  : item.pillar === 'investments'
+                  ? { text: '📈 Investment Target', cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800' }
+                  : { text: '🏦 Auto-Retained in Bank', cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' };
 
               return (
                 <div
@@ -1666,6 +2187,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                   className={`p-4 rounded-xl border transition-all cursor-pointer ${
                     activeCategory === item.category
                       ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/10 dark:bg-indigo-950/20'
+                      : isWealth
+                      ? 'border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/20 dark:bg-emerald-950/10 hover:border-emerald-300'
                       : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700 bg-white dark:bg-gray-900'
                   }`}
                 >
@@ -1674,13 +2197,21 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       <span className="font-bold text-sm text-gray-900 dark:text-gray-100 truncate">
                         {item.category}
                       </span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border shrink-0 ${pillarBadge.cls}`}>
+                        {pillarBadge.text}
+                      </span>
                       {isOver && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 shrink-0">
                           Over Budget
                         </span>
                       )}
+                      {isWealth && item.isTargetMet && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 shrink-0">
+                          ✓ Target Met
+                        </span>
+                      )}
                     </div>
-                    <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 shrink-0">
+                    <span className="text-xs font-semibold font-mono text-gray-500 dark:text-gray-400 shrink-0">
                       {hasBudget
                         ? `${item.spent.toFixed(0)} / ${item.budgeted.toFixed(0)} MAD`
                         : `${item.spent.toFixed(0)} MAD (No target)`}
@@ -1693,7 +2224,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                       <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all duration-300 ${
-                            isOver
+                            isWealth
+                              ? item.percentUsed >= 75
+                                ? 'bg-emerald-500'
+                                : 'bg-amber-500'
+                              : isOver
                               ? 'bg-rose-500'
                               : item.percentUsed > 80
                               ? 'bg-amber-500'
@@ -1702,18 +2237,30 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                           style={{ width: `${percent}%` }}
                         />
                       </div>
-                      <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
-                        <span>{item.percentUsed.toFixed(0)}% consumed</span>
-                        <span className={item.remaining >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
-                          {item.remaining >= 0
-                            ? `${item.remaining.toFixed(0)} MAD remaining`
-                            : `${Math.abs(item.remaining).toFixed(0)} MAD over`}
+                      <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400 font-mono">
+                        <span>
+                          {item.percentUsed.toFixed(0)}% {isSavings ? 'retained in bank' : isWealth ? 'funded' : 'consumed'}
                         </span>
+                        {isWealth ? (
+                          <span className={item.remaining <= 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-amber-600 dark:text-amber-400'}>
+                            {item.remaining <= 0
+                              ? `+${Math.abs(item.remaining).toFixed(0)} MAD above target`
+                              : `${item.remaining.toFixed(0)} MAD to target`}
+                          </span>
+                        ) : (
+                          <span className={item.remaining >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                            {item.remaining >= 0
+                              ? `${item.remaining.toFixed(0)} MAD remaining`
+                              : `${Math.abs(item.remaining).toFixed(0)} MAD over`}
+                          </span>
+                        )}
                       </div>
                     </div>
                   ) : (
                     <p className="mt-2 text-xs text-gray-400 italic">
-                      Click to inspect transactions or set budget in Budgets tab.
+                      {isSavings
+                        ? 'Backed automatically by unspent salary retained in your bank account.'
+                        : 'Click to inspect transactions or set budget in Budgets tab.'}
                     </p>
                   )}
                 </div>

@@ -6,7 +6,14 @@ import {
   financialMonthLabel,
   type PayrollLike,
 } from './financialMonth';
-import { netExpenseOf, isInvestmentTransaction } from './finance';
+import {
+  netExpenseOf,
+  reimbursedAmountOf,
+  isReimbursementIncome,
+  isInvestmentTransaction,
+  getCategoryPillar,
+  isSavingsRetentionCategory,
+} from './finance';
 
 export interface HistoricalCashFlowDay {
   date: string;
@@ -43,6 +50,10 @@ export interface FinancialPeriodLedgerEntry {
   grossOutflow: number;
   /** Net living expenses (after deducting reimbursable splits & excluding investment transfers) */
   netLivingExpense: number;
+  /** Pillar 1: Personal & Lifestyle spend on yourself (Dining, Coffee, Clothing, Entertainment, Social) */
+  spentOnMyself: number;
+  /** Pillar 2: Essential Needs, Household/Family, Bills & Debt obligations */
+  spentOnObligations: number;
   /** Reimbursable split portion fronted for others during this period */
   reimbursableAmount: number;
   /** Debt repayments made in this period */
@@ -177,9 +188,12 @@ export function generateFinancialPeriodsLedger(
 
     let salaryIncome = 0;
     let otherIncome = 0;
+    let reimbursementInflow = 0;
     let totalIncome = 0;
     let grossOutflow = 0;
     let netLivingExpense = 0;
+    let spentOnMyself = 0;
+    let spentOnObligations = 0;
     let reimbursableAmount = 0;
     let debtRepayments = 0;
     let investmentDeployed = 0;
@@ -191,20 +205,24 @@ export function generateFinancialPeriodsLedger(
       const isFromInvWallet = srcWallet?.type === 'Investment';
 
       if (tx.type === 'Income') {
-        totalIncome += amt;
-        const catLower = (tx.category || '').toLowerCase();
-        const notesLower = (tx.notes || '').toLowerCase();
-        if (
-          tx.payrollId ||
-          catLower.includes('salary') ||
-          catLower.includes('payroll') ||
-          notesLower.includes('salary') ||
-          notesLower.includes('payroll') ||
-          Math.abs(amt - (parseFloat(String(p.startPayroll?.amount || 0)) || 0)) < 1
-        ) {
-          salaryIncome += amt;
+        if (isReimbursementIncome(tx)) {
+          reimbursementInflow += amt;
         } else {
-          otherIncome += amt;
+          totalIncome += amt;
+          const catLower = (tx.category || '').toLowerCase();
+          const notesLower = (tx.notes || '').toLowerCase();
+          if (
+            tx.payrollId ||
+            catLower.includes('salary') ||
+            catLower.includes('payroll') ||
+            notesLower.includes('salary') ||
+            notesLower.includes('payroll') ||
+            Math.abs(amt - (parseFloat(String(p.startPayroll?.amount || 0)) || 0)) < 1
+          ) {
+            salaryIncome += amt;
+          } else {
+            otherIncome += amt;
+          }
         }
       } else if (tx.type === 'Expense') {
         grossOutflow += amt;
@@ -213,22 +231,31 @@ export function generateFinancialPeriodsLedger(
           if (!isFromInvWallet) {
             investmentDeployed += netAmt;
           }
+        } else if (isSavingsRetentionCategory(tx.category)) {
+          // Explicit savings transaction — not a living consumption expense
         } else if (
           ['💳 Debt & Obligations', 'Debt Repayment', 'Loan'].includes(tx.category || '')
         ) {
           debtRepayments += amt;
+          spentOnObligations += amt;
         } else {
           netLivingExpense += netAmt;
+          const pillar = getCategoryPillar(tx.category);
+          if (pillar === 'myself') {
+            spentOnMyself += netAmt;
+          } else {
+            spentOnObligations += netAmt;
+          }
         }
 
-        const isPayableTx =
-          (tx as any).linkedDebtType === 'Payable' || tx.category === 'Debt Repayment';
-        if (!isPayableTx && tx.reimbursableAmount && parseFloat(tx.reimbursableAmount) > 0) {
-          reimbursableAmount += parseFloat(tx.reimbursableAmount);
+        const reimbAmt = reimbursedAmountOf(tx);
+        if (reimbAmt > 0) {
+          reimbursableAmount += reimbAmt;
         }
       } else if (tx.type === 'Debt Repayment') {
         grossOutflow += amt;
         debtRepayments += amt;
+        spentOnObligations += amt;
       } else if (tx.type === 'Transfer' && isInvest && !isFromInvWallet) {
         investmentDeployed += amt;
       }
@@ -252,7 +279,9 @@ export function generateFinancialPeriodsLedger(
       ? Math.round(currentTotalLiquidity * 100) / 100
       : Math.round(getBalanceAtEndOfDate(effectiveEndStr) * 100) / 100;
 
-    const netCashflowSaved = Math.round((totalIncome - grossOutflow) * 100) / 100;
+    // Physical wallet cashflow change includes physical reimbursement inflows vs gross outflow
+    const netCashflowSaved = Math.round((totalIncome + reimbursementInflow - grossOutflow) * 100) / 100;
+    // Economic net savings is pure Net Income minus Net Living Expenses and Debt Repayments
     const netEconomicSaved =
       Math.round((totalIncome - (netLivingExpense + debtRepayments)) * 100) / 100;
     const cashSavingsRate = totalIncome > 0 ? (netCashflowSaved / totalIncome) * 100 : 0;
@@ -278,6 +307,8 @@ export function generateFinancialPeriodsLedger(
       totalIncome: Math.round(totalIncome * 100) / 100,
       grossOutflow: Math.round(grossOutflow * 100) / 100,
       netLivingExpense: Math.round(netLivingExpense * 100) / 100,
+      spentOnMyself: Math.round(spentOnMyself * 100) / 100,
+      spentOnObligations: Math.round(spentOnObligations * 100) / 100,
       reimbursableAmount: Math.round(reimbursableAmount * 100) / 100,
       debtRepayments: Math.round(debtRepayments * 100) / 100,
       investmentDeployed: Math.round(investmentDeployed * 100) / 100,

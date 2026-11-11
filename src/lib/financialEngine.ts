@@ -1,6 +1,7 @@
 import { Transaction, Payroll, Debt, CategoryBudget } from '../types/index.js';
-import { getCurrentFinancialMonth, getNextPayroll, isInFinancialMonth,  FinancialMonthBounds } from './financialMonth.js';
+import { getCurrentFinancialMonth, getNextPayroll, isInFinancialMonth, FinancialMonthBounds } from './financialMonth.js';
 import { normalizeCategory } from './categories.js';
+import { isReimbursementIncome, reimbursedAmountOf } from './finance.js';
 
 export interface FinancialEngineWalletInput {
   id: string;
@@ -166,8 +167,9 @@ export function computeFinancialState(input: FinancialEngineInput) {
     // Only exclude explicit Investment or Savings category allocations from daily/monthly living spend.
     // Real living expenses (e.g. Dining, Groceries, Transport) paid from any wallet—even one tagged as 'Savings'—must count as true expenses.
     const isCapitalReserveOutflow = isInvestmentCategory || isInvestmentWalletTx || (isSavingsCategory && tx.type === 'Expense');
-    const reimbursableAmt = (!isPayableTx && tx.reimbursableAmount) ? Math.max(0, parseFloat(tx.reimbursableAmount as string) || 0) : 0;
+    const reimbursableAmt = tx.type === 'Expense' && !isPayableTx ? reimbursedAmountOf(tx) : 0;
     const netExpense = Math.max(0, txAmount - reimbursableAmt);
+    const isReimbInflow = tx.type === 'Income' && isReimbursementIncome(tx);
 
     if (transactionDay < today) {
       applyTransaction(tx, openingWalletBalances);
@@ -217,13 +219,15 @@ export function computeFinancialState(input: FinancialEngineInput) {
         }
       }
       if (tx.type === 'Income') {
-        monthlyIncome += txAmount;
-        if (isInvestmentCategory || isInvestmentWalletTx || (tx.category || '').toLowerCase().includes('dividend')) {
-          monthlyDividendIncomeMad += txAmount;
+        if (!isReimbInflow) {
+          monthlyIncome += txAmount;
+          if (isInvestmentCategory || isInvestmentWalletTx || (tx.category || '').toLowerCase().includes('dividend')) {
+            monthlyDividendIncomeMad += txAmount;
+          }
         }
       }
       if (tx.type === 'Expense' && ['💳 Debt & Obligations', 'Debt Repayment', 'Loan', '🔄 Transfer', 'Transfer'].includes(tx.category || '')) debtRepayments += netExpense;
-      if (tx.type === 'Expense' && !isPayableTx && tx.reimbursableAmount) reimbursements += reimbursableAmt;
+      if (tx.type === 'Expense' && !isPayableTx && reimbursableAmt > 0) reimbursements += reimbursableAmt;
     }
     if (transactionDay.getTime() === today.getTime()) {
       if (tx.type === 'Expense') {
@@ -235,7 +239,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
           dailySpent += txAmount;
         }
       }
-      if (tx.type === 'Income') todaysIncome += txAmount;
+      if (tx.type === 'Income' && !isReimbInflow) todaysIncome += txAmount;
     }
   }
 

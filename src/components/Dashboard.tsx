@@ -326,6 +326,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               payrolls={payrolls}
               debts={debts}
               goals={goals}
+              subscriptions={subscriptions}
               wallets={kpis?.accounts || []}
               investmentsData={investmentsData}
               onSaveBudget={handleSaveCategoryBudget}

@@ -65,6 +65,17 @@ export class CategoryBudgetController {
       res.status(400).json({ error: error.message || 'Unable to clear budgets' });
     }
   }
+
+  async generateAiPlan(req: AuthRequest, res: Response) {
+    try {
+      const plan = await categoryBudgetService.generateSpexPatternBudgetPlan(req.dbUser.id, req.body || {});
+      res.status(200).json(plan);
+    } catch (error: any) {
+      console.error('[CategoryBudgetController.generateAiPlan]', error);
+      res.status(500).json({ error: error.message || 'Unable to generate Spex AI budget plan' });
+    }
+  }
 }
 
 export const categoryBudgetController = new CategoryBudgetController();
+

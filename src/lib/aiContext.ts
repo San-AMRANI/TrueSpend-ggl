@@ -16,6 +16,7 @@ import {
 } from './financialMonth.js';
 import { computeHolisticForecast } from './predictiveEngine.js';
 import { generateFinancialPeriodsLedger } from './cashFlowEngine.js';
+import { netExpenseOf, isReimbursementIncome, reimbursedAmountOf } from './finance.js';
 
 export type AiDataFocusScope =
   | 'all'
@@ -80,14 +81,18 @@ export function buildAiContextSnapshot({
     inPeriod(transaction, previous)
   );
   const income = periodTransactions
-    .filter((transaction) => transaction.type === 'Income')
+    .filter((transaction) => transaction.type === 'Income' && !isReimbursementIncome(transaction))
     .reduce((sum, transaction) => sum + amountOf(transaction.amount), 0);
   const expenses = periodTransactions
     .filter(
       (transaction) =>
         transaction.type === 'Expense' || transaction.type === 'Debt Repayment'
     )
-    .reduce((sum, transaction) => sum + amountOf(transaction.amount), 0);
+    .reduce(
+      (sum, transaction) =>
+        sum + (transaction.type === 'Expense' ? netExpenseOf(transaction) : amountOf(transaction.amount)),
+      0
+    );
 
   const forecast = computeHolisticForecast({
     kpis,
@@ -101,7 +106,7 @@ export function buildAiContextSnapshot({
     contexts,
   });
 
-  // Aggregate category-by-category spending across active period and all-time
+  // Aggregate category-by-category NET spending (after deducting linked reimbursements) across active period and all-time
   const periodCategoryTotals: Record<string, { spentMad: number; count: number }> = {};
   for (const tx of periodTransactions) {
     if (tx.type === 'Expense') {
@@ -110,7 +115,7 @@ export function buildAiContextSnapshot({
         periodCategoryTotals[cat] = { spentMad: 0, count: 0 };
       }
       periodCategoryTotals[cat].spentMad = amountOf(
-        periodCategoryTotals[cat].spentMad + amountOf(tx.amount)
+        periodCategoryTotals[cat].spentMad + netExpenseOf(tx)
       );
       periodCategoryTotals[cat].count += 1;
     }
@@ -124,7 +129,7 @@ export function buildAiContextSnapshot({
         allTimeCategoryTotals[cat] = { spentMad: 0, count: 0 };
       }
       allTimeCategoryTotals[cat].spentMad = amountOf(
-        allTimeCategoryTotals[cat].spentMad + amountOf(tx.amount)
+        allTimeCategoryTotals[cat].spentMad + netExpenseOf(tx)
       );
       allTimeCategoryTotals[cat].count += 1;
     }
@@ -504,7 +509,7 @@ export function buildAiContextSnapshot({
       netPosition: amountOf(income - expenses),
       previousPeriodExpenses: previousTransactions
         .filter((transaction) => transaction.type === 'Expense')
-        .reduce((sum, transaction) => sum + amountOf(transaction.amount), 0),
+        .reduce((sum, transaction) => sum + netExpenseOf(transaction), 0),
       totalTransactionsCount: transactions.length,
       currentPeriodTransactionsCount: periodTransactions.length,
       periodCategoryBreakdown: periodCategoryTotals,
