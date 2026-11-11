@@ -35,6 +35,7 @@ interface NotificationsApi {
     preferredCategory?: NotificationCategory,
     customPayload?: { title: string; body: string }
   ) => void;
+  sendRandomBurst?: (count?: number) => void;
 }
 
 interface SettingsTabProps {
@@ -537,7 +538,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   Delivery Cadence
                 </label>
                 <select
-                  value={notifications.settings.channels?.cadence || 'daily_digest'}
+                  value={notifications.settings.channels?.cadence || 'realtime_priority'}
                   onChange={(e) =>
                     notifications.updateChannelPrefs?.({
                       cadence: e.target.value as NotifChannelPrefs['cadence'],
@@ -545,9 +546,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   }
                   className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white font-medium"
                 >
-                  <option value="daily_digest">Smart Daily Digest (1/day)</option>
-                  <option value="twice_daily">Morning + Evening Pulse (2/day)</option>
-                  <option value="realtime_priority">High-Priority Alerts</option>
+                  <option value="realtime_priority">Active Random Stream (Up to 10/day)</option>
+                  <option value="twice_daily">Multi-Pulse Stream (Up to 5/day)</option>
+                  <option value="daily_digest">Daily Rotation (Up to 3/day)</option>
                 </select>
               </div>
 
@@ -607,13 +608,22 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   Test Live Browser Notification by Domain:
                 </span>
                 <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => notifications.sendRandomBurst?.(3)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Send className="h-3 w-3" />
+                    <span>Burst 3 Random Alerts</span>
+                  </button>
                   {(
                     [
-                      { id: undefined, label: 'Top Priority' },
-                      { id: 'stocks', label: 'Test Stocks Alert' },
-                      { id: 'subscriptions', label: 'Test Subscription Alert' },
-                      { id: 'calendar', label: 'Test Calendar Alert' },
-                      { id: 'creative', label: 'Test Creative Idea' },
+                      { id: undefined, label: 'Random Any Domain' },
+                      { id: 'calendar', label: 'Random Calendar Event' },
+                      { id: 'subscriptions', label: 'Random Subscription' },
+                      { id: 'stocks', label: 'Random Stock Alert' },
+                      { id: 'budgets', label: 'Random Budget/Goal' },
+                      { id: 'creative', label: 'Random Creative Idea' },
                     ] as Array<{ id?: NotificationCategory; label: string }>
                   ).map((btn) => (
                     <button

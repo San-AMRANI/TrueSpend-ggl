@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Bell,
   CalendarDays,
-  CheckCheck,
   Repeat,
   Send,
   Settings,
@@ -10,8 +9,9 @@ import {
   TrendingUp,
   WalletCards,
   X,
-  RotateCcw,
+  Shuffle,
   ArrowUpRight,
+  Zap,
 } from 'lucide-react';
 import type { DashboardTab } from '../../types';
 import type {
@@ -26,17 +26,15 @@ interface SmartNotificationCenterProps {
     supported: boolean;
     permission: NotificationPermission;
     smartFeed: SmartNotificationItem[];
-    unreadCount: number;
-    markAsRead: (id: string) => void;
-    markAllAsRead: () => void;
-    dismissNotification: (id: string) => void;
-    resetDismissed: () => void;
+    unreadCount?: number;
+    shuffleFeed?: () => void;
     requestPermission: () => Promise<boolean>;
     sendNow: (
       data?: any,
       preferredCategory?: NotificationCategory,
       customPayload?: { title: string; body: string }
     ) => Promise<void> | void;
+    sendRandomBurst?: (count?: number) => Promise<void> | void;
   };
   onNavigateTab: (tab: DashboardTab) => void;
 }
@@ -45,10 +43,10 @@ const CATEGORY_TABS: Array<{
   id: 'all' | NotificationCategory;
   label: string;
 }> = [
-  { id: 'all', label: 'All Insights' },
-  { id: 'stocks', label: 'Stocks' },
+  { id: 'all', label: 'All Stream' },
+  { id: 'calendar', label: 'Calendar Events' },
   { id: 'subscriptions', label: 'Subscriptions' },
-  { id: 'calendar', label: 'Calendar' },
+  { id: 'stocks', label: 'Stocks' },
   { id: 'budgets', label: 'Budgets & Debts' },
   { id: 'creative', label: 'Creative' },
 ];
@@ -61,6 +59,7 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<'all' | NotificationCategory>('all');
   const [pushedId, setPushedId] = useState<string | null>(null);
+  const [bursting, setBursting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -81,6 +80,21 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
         return <WalletCards className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />;
       case 'creative':
         return <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />;
+    }
+  };
+
+  const getCategoryLabel = (cat: NotificationCategory) => {
+    switch (cat) {
+      case 'calendar':
+        return 'Calendar';
+      case 'subscriptions':
+        return 'Subscription';
+      case 'stocks':
+        return 'Stocks';
+      case 'budgets':
+        return 'Budgets & Debts';
+      case 'creative':
+        return 'Creative';
     }
   };
 
@@ -107,7 +121,28 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
       body: item.body,
     });
     setPushedId(item.id);
-    setTimeout(() => setPushedId(null), 2200);
+    setTimeout(() => setPushedId(null), 2000);
+  };
+
+  const handlePushRandomNow = async () => {
+    if (notifications.permission !== 'granted') {
+      const granted = await notifications.requestPermission();
+      if (!granted) return;
+    }
+    const targetCat = selectedCategory === 'all' ? undefined : selectedCategory;
+    await notifications.sendNow(undefined, targetCat);
+    setPushedId('random-single');
+    setTimeout(() => setPushedId(null), 1800);
+  };
+
+  const handleBurstThreeRandom = async () => {
+    if (!notifications.sendRandomBurst) return;
+    setBursting(true);
+    try {
+      await notifications.sendRandomBurst(3);
+    } finally {
+      setTimeout(() => setBursting(false), 1200);
+    }
   };
 
   return (
@@ -120,59 +155,89 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/70 dark:border-indigo-800/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-              <Bell className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
-                  Smart Notifications &amp; Insights
-                </h3>
-                {notifications.unreadCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-indigo-600 text-white">
-                    {notifications.unreadCount} new
-                  </span>
-                )}
+        <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-gray-800 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="h-9 w-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/70 dark:border-indigo-800/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                <Bell className="h-4 w-4" />
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Live alerts from Stocks, Subscriptions, Calendar, Budgets &amp; Creative Radar
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
+                    Live Multi-Domain Notification Stream
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-indigo-600 text-white">
+                    {notifications.smartFeed.length} active
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Approaching Calendar events, Subscriptions, Stocks, Budgets &amp; Creative Radar
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onNavigateTab('settings');
+                }}
+                title="Notification Settings & Channels"
+                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close notifications"
+                className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {notifications.unreadCount > 0 && (
+          {/* Quick Random Action Bar */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handlePushRandomNow}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer shadow-2xs"
+            >
+              <Send className="h-3.5 w-3.5" />
+              <span>
+                {pushedId === 'random-single'
+                  ? 'Random Alert Sent!'
+                  : selectedCategory === 'all'
+                  ? 'Send Random Notification'
+                  : `Send Random ${getCategoryLabel(selectedCategory)} Alert`}
+              </span>
+            </button>
+
+            {notifications.sendRandomBurst && (
               <button
                 type="button"
-                onClick={notifications.markAllAsRead}
-                title="Mark all as read"
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                onClick={handleBurstThreeRandom}
+                disabled={bursting}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors cursor-pointer shadow-2xs"
               >
-                <CheckCheck className="h-3.5 w-3.5 text-indigo-500" />
-                <span className="hidden sm:inline">Mark Read</span>
+                <Zap className="h-3.5 w-3.5" />
+                <span>{bursting ? 'Sending 3 Alerts…' : 'Burst 3 Diverse Alerts'}</span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onNavigateTab('settings');
-              }}
-              title="Notification Settings & Channels"
-              className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close notifications"
-              className="p-1.5 rounded-lg text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
-            >
-              <X className="h-4 w-4" />
-            </button>
+
+            {notifications.shuffleFeed && (
+              <button
+                type="button"
+                onClick={notifications.shuffleFeed}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer ml-auto"
+              >
+                <Shuffle className="h-3.5 w-3.5" />
+                <span>Shuffle</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -210,40 +275,25 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
           })}
         </div>
 
-        {/* Feed Content */}
+        {/* Feed Content — Clean Stream Without Read/Ignore Clutter */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {filteredItems.length === 0 ? (
-            <div className="p-8 rounded-xl border border-dashed border-gray-200 dark:border-gray-800 text-center space-y-3 my-6">
+            <div className="p-8 rounded-xl border border-dashed border-gray-200 dark:border-gray-800 text-center space-y-2 my-6">
               <div className="mx-auto h-10 w-10 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500">
                 <Bell className="h-5 w-5" />
               </div>
-              <div className="space-y-1">
-                <h4 className="text-sm font-bold text-gray-900 dark:text-white">
-                  All Caught Up in This Channel
-                </h4>
-                <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xs mx-auto">
-                  No active alerts match this filter right now, or you have dismissed previous cards.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={notifications.resetDismissed}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 transition-colors cursor-pointer"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Restore Dismissed Insights
-              </button>
+              <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                No Insights in This Section Yet
+              </h4>
+              <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xs mx-auto">
+                Enable this channel in Settings or add data to generate live insights.
+              </p>
             </div>
           ) : (
             filteredItems.map((item) => (
               <div
                 key={item.id}
-                onClick={() => notifications.markAsRead(item.id)}
-                className={`p-4 rounded-xl border transition-all space-y-2.5 ${
-                  item.read
-                    ? 'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'
-                    : 'bg-indigo-50/25 dark:bg-indigo-950/20 border-indigo-300/80 dark:border-indigo-800/80'
-                }`}
+                className="p-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-800 transition-all space-y-2.5"
               >
                 <div className="flex items-start justify-between gap-2.5">
                   <div className="flex items-start gap-2.5 min-w-0">
@@ -251,14 +301,12 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
                       {getCategoryIcon(item.category)}
                     </div>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {!item.read && (
-                          <span className="h-2 w-2 rounded-full bg-indigo-600 dark:bg-indigo-400 shrink-0" />
-                        )}
-                        <span className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white leading-snug">
-                          {item.title}
-                        </span>
-                      </div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">
+                        {getCategoryLabel(item.category)}
+                      </span>
+                      <span className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white leading-snug block">
+                        {item.title}
+                      </span>
                     </div>
                   </div>
 
@@ -276,44 +324,26 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
                 </p>
 
                 <div className="pt-2 border-t border-gray-100 dark:border-gray-800/80 flex items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        notifications.markAsRead(item.id);
-                        onClose();
-                        onNavigateTab(item.actionTab);
-                      }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-                    >
-                      <span>{item.actionLabel}</span>
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePushItemToBrowser(item);
-                      }}
-                      title="Send this alert as a browser notification now"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                    >
-                      <Send className="h-3 w-3" />
-                      <span>{pushedId === item.id ? 'Sent!' : 'Push Alert'}</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onNavigateTab(item.actionTab);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+                  >
+                    <span>{item.actionLabel}</span>
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                  </button>
 
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      notifications.dismissNotification(item.id);
-                    }}
-                    className="text-[11px] text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium cursor-pointer"
+                    onClick={() => handlePushItemToBrowser(item)}
+                    title="Send this alert as a browser notification now"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                   >
-                    Dismiss
+                    <Send className="h-3 w-3" />
+                    <span>{pushedId === item.id ? 'Sent!' : 'Push Alert'}</span>
                   </button>
                 </div>
               </div>
@@ -327,32 +357,22 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
             Browser Push:{' '}
             <strong className="text-gray-900 dark:text-white">
               {notifications.permission === 'granted'
-                ? 'Active'
+                ? 'Active (Random Multi-Section)'
                 : notifications.permission === 'denied'
                 ? 'Blocked'
                 : 'Not enabled'}
             </strong>
           </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={notifications.resetDismissed}
-              className="text-gray-500 hover:text-gray-900 dark:hover:text-white font-medium cursor-pointer"
-            >
-              Reset Dismissed
-            </button>
-            <span className="text-gray-300 dark:text-gray-700">·</span>
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onNavigateTab('settings');
-              }}
-              className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer"
-            >
-              Configure Channels →
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              onNavigateTab('settings');
+            }}
+            className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer"
+          >
+            Configure Channels →
+          </button>
         </div>
       </div>
     </div>
