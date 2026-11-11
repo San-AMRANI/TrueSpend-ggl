@@ -17,6 +17,7 @@ import {
   StockOrderAction,
 } from '../types';
 import { useNotifications } from './useNotifications';
+import { netExpenseOf } from '../lib/finance';
 
 export function useDashboardData(token: string | null) {
   const [kpis, setKpis] = useState<KPI | null>(null);
@@ -74,7 +75,7 @@ export function useDashboardData(token: string | null) {
     }
   }, [token]);
 
-  // When fresh data arrives, schedule (or re-schedule) the daily notification
+  // When fresh data arrives, schedule (or re-schedule) the smart notification stream
   useEffect(() => {
     if (!kpis) return;
     const now = new Date();
@@ -88,7 +89,7 @@ export function useDashboardData(token: string | null) {
         const d = new Date(tx.createdAt);
         return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() + 1 === now.getUTCMonth() + 1;
       })
-      .reduce((s, tx) => s + parseFloat(tx.amount as any), 0);
+      .reduce((s, tx) => s + netExpenseOf(tx), 0);
     const monthlyIncome = parseFloat((kpis as any).monthlyIncome ?? 0);
     const monthlyExpenses = parseFloat((kpis as any).monthlyExpenses ?? 0);
 
@@ -100,13 +101,13 @@ export function useDashboardData(token: string | null) {
             return tx.type === 'Expense' && tx.category === b.category &&
               d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() + 1 === now.getUTCMonth() + 1;
           })
-          .reduce((s, tx) => s + parseFloat(tx.amount as any), 0);
+          .reduce((s, tx) => s + netExpenseOf(tx), 0);
         return spent > parseFloat(b.amount as any);
       })
       .map(b => b.category);
 
     const topCategory =
-      monthlyBudgets.sort((a, b) => parseFloat(b.amount as any) - parseFloat(a.amount as any))[0]
+      [...monthlyBudgets].sort((a, b) => parseFloat(b.amount as any) - parseFloat(a.amount as any))[0]
         ?.category ?? null;
 
     const totalLiquidBalance = ((kpis as any).accounts || [])
@@ -130,6 +131,7 @@ export function useDashboardData(token: string | null) {
       debts,
       goals,
       payrolls,
+      budgets,
       emergencyBuffer: Number(userSettings?.emergencyBuffer || 0),
       totalLiquidBalance,
     });

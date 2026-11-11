@@ -4,7 +4,9 @@ import {
   debts,
   goals,
   notificationPreferences,
+  payrolls,
   subscriptions,
+  transactions,
   users,
 } from '../../src/db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -16,11 +18,61 @@ import { investmentService } from './InvestmentService.js';
 const pushService = new PushService();
 const kpiService = new KpiService();
 
+function projectNextBillingDate(
+  rawNextBillingDate: string | Date,
+  billingCycle: string,
+  now: Date
+): { nextDateStr: string; diffDays: number } {
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const parsed = new Date(rawNextBillingDate);
+  if (Number.isNaN(parsed.getTime())) {
+    return { nextDateStr: String(rawNextBillingDate), diffDays: 999 };
+  }
+
+  const candidate = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  let guard = 0;
+  while (candidate < todayMidnight && guard < 240) {
+    guard++;
+    switch (billingCycle) {
+      case 'weekly':
+        candidate.setDate(candidate.getDate() + 7);
+        break;
+      case 'biweekly':
+        candidate.setDate(candidate.getDate() + 14);
+        break;
+      case 'every_2_months':
+        candidate.setMonth(candidate.getMonth() + 2);
+        break;
+      case 'quarterly':
+        candidate.setMonth(candidate.getMonth() + 3);
+        break;
+      case 'every_6_months':
+        candidate.setMonth(candidate.getMonth() + 6);
+        break;
+      case 'yearly':
+        candidate.setFullYear(candidate.getFullYear() + 1);
+        break;
+      case 'monthly':
+      default:
+        candidate.setMonth(candidate.getMonth() + 1);
+        break;
+    }
+  }
+
+  const diffDays = Math.round(
+    (candidate.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  const nextDateStr = `${candidate.getFullYear()}-${String(candidate.getMonth() + 1).padStart(
+    2,
+    '0'
+  )}-${String(candidate.getDate()).padStart(2, '0')}`;
+  return { nextDateStr, diffDays };
+}
+
 export class NotificationScheduler {
   start() {
     // Notification delivery run every minute
     cron.schedule('* * * * *', async () => {
-      console.log(`[NotificationScheduler] Running at ${new Date().toISOString()}`);
       try {
         await this.processNotifications();
       } catch (error) {
@@ -105,7 +157,17 @@ export class NotificationScheduler {
         hour12: false,
       }).format(now);
 
-      if (userTime !== prefs.deliveryTime) {
+      // Multi-window schedule so users receive diverse notifications throughout the day
+      const activeWindows = new Set([
+        prefs.deliveryTime || '09:00',
+        '09:00',
+        '12:30',
+        '16:00',
+        '19:30',
+        '21:00',
+      ]);
+
+      if (!activeWindows.has(userTime)) {
         continue;
       }
 
@@ -114,161 +176,270 @@ export class NotificationScheduler {
       }
 
       const todayString = now.toISOString().split('T')[0];
+      const candidates: Array<{
+        type: string;
+        payload: { title: string; body: string; url: string };
+      }> = [];
 
-      // 1. SUBSCRIPTION RENEWAL & CALENDAR BILL CLUSTER CHECK
+      const [userSubs, userTx, userDebts, userGoals, userPayrolls, kpis] = await Promise.all([
+        db.select().from(subscriptions).where(eq(subscriptions.userId, user.id)),
+        db.select().from(transactions).where(eq(transactions.userId, user.id)),
+        db.select().from(debts).where(eq(debts.userId, user.id)),
+        db.select().from(goals).where(eq(goals.userId, user.id)),
+        db.select().from(payrolls).where(eq(payrolls.userId, user.id)),
+        kpiService.getKpisForUser(user),
+      ]);
+
+      // 1. FUTURE CALENDAR EVENTS & SUBSCRIPTION RENEWALS (with cycle projection)
       if (prefs.forecastWarningEnabled) {
-        const userSubs = await db
-          .select()
-          .from(subscriptions)
-          .where(eq(subscriptions.userId, user.id));
-        const activeSubs = userSubs.filter((s) => s.status === 'active');
+        const activeSubs = userSubs
+          .filter((s) => s.status === 'active')
+          .map((s) => {
+            const { nextDateStr, diffDays } = projectNextBillingDate(
+              s.nextBillingDate,
+              s.billingCycle || 'monthly',
+              now
+            );
+            const nameLower = s.name.toLowerCase();
+            const paidRecently = userTx.some((tx) => {
+              if (tx.type !== 'Expense') return false;
+              const daysAgo =
+                (now.getTime() - new Date(tx.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+              if (daysAgo < 0 || daysAgo > 6) return false;
+              const desc = `${tx.notes || ''} ${tx.category || ''}`.toLowerCase();
+              return desc.includes(nameLower);
+            });
+            return {
+              ...s,
+              projectedDate: nextDateStr,
+              diffDays: paidRecently && diffDays <= 2 ? diffDays + 30 : diffDays,
+              paidRecently,
+            };
+          })
+          .sort((a, b) => a.diffDays - b.diffDays);
 
-        const imminentSubs = activeSubs.filter((s) => {
-          const diffDays = Math.ceil(
-            (new Date(s.nextBillingDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-          );
-          return diffDays >= 0 && diffDays <= 3;
-        });
+        // Individual approaching calendar bill events (0 to 14 days out)
+        for (const sub of activeSubs) {
+          if (sub.diffDays >= 0 && sub.diffDays <= 14 && !sub.paidRecently) {
+            const amt = parseFloat(sub.amount as any) || 0;
+            const whenLabel =
+              sub.diffDays === 0
+                ? 'Today'
+                : sub.diffDays === 1
+                ? 'Tomorrow'
+                : `in ${sub.diffDays} days`;
+            candidates.push({
+              type: `CALENDAR_BILL_${sub.id}_${sub.projectedDate}`,
+              payload: {
+                title: `📅 Calendar Event ${whenLabel}: ${sub.name} (${amt.toFixed(0)} MAD)`,
+                body: `${sub.name} is scheduled on your financial calendar for ${sub.projectedDate} (${whenLabel}).`,
+                url: '/dashboard',
+              },
+            });
+          }
+        }
 
-        if (imminentSubs.length > 0) {
-          const nextSub = imminentSubs[0];
-          const totalImminent = imminentSubs.reduce(
-            (acc, s) => acc + parseFloat(s.amount as any),
-            0
-          );
-          const sent = await pushService.sendNotification(
-            user.id,
-            'SUBSCRIPTION_RENEWAL_ALERT',
-            todayString,
-            {
-              title:
-                imminentSubs.length === 1
-                  ? `🔔 ${nextSub.name} Renews Soon`
-                  : `📅 ${imminentSubs.length} Calendar Bills Due in 72h`,
-              body:
-                imminentSubs.length === 1
-                  ? `${nextSub.name} (${parseFloat(nextSub.amount as any).toFixed(0)} MAD) is scheduled on ${nextSub.nextBillingDate}.`
-                  : `${imminentSubs.map((s) => s.name).join(', ')} totaling ${totalImminent.toFixed(0)} MAD renew within 72 hours.`,
+        // Rotating spotlight for any active subscription
+        if (activeSubs.length > 0) {
+          const randomSub = activeSubs[Math.floor(Math.random() * activeSubs.length)];
+          const amt = parseFloat(randomSub.amount as any) || 0;
+          candidates.push({
+            type: `SUB_SPOTLIGHT_${randomSub.id}`,
+            payload: {
+              title: `🔍 Subscription Check: ${randomSub.name} (${amt.toFixed(0)} MAD/cycle)`,
+              body: `Next calendar renewal on ${randomSub.projectedDate} (in ${randomSub.diffDays} days). Keep only if it delivers high weekly utility.`,
               url: '/dashboard',
-            }
+            },
+          });
+        }
+
+        // Future Scheduled Payrolls on Calendar
+        for (const pr of userPayrolls) {
+          const diffDays = Math.ceil(
+            (new Date(pr.scheduledFor).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
           );
-          if (sent) continue;
+          if (diffDays >= 0 && diffDays <= 14) {
+            const amt = parseFloat(pr.amount as any) || 0;
+            candidates.push({
+              type: `CALENDAR_PAYROLL_${pr.id}`,
+              payload: {
+                title: `💰 Calendar Payday Event in ${diffDays}d: +${amt.toFixed(0)} MAD`,
+                body: `Scheduled salary deposit of ${amt.toFixed(0)} MAD arrives on ${pr.scheduledFor}.`,
+                url: '/dashboard',
+              },
+            });
+          }
+        }
+
+        // Approaching Payday & Post-Payday Stock Splitter
+        if (kpis.daysUntilPayday >= 0 && kpis.daysUntilPayday <= 10) {
+          candidates.push({
+            type: `CALENDAR_PAYDAY_${kpis.daysUntilPayday}`,
+            payload: {
+              title: `🗓️ Calendar Payday Countdown: ${kpis.daysUntilPayday} Days Left`,
+              body: `Your next salary cycle refreshes in ${kpis.daysUntilPayday} days. Post-Payday Stock Splitter is queued for Payday + 1d.`,
+              url: '/dashboard',
+            },
+          });
         }
       }
 
-      // 2. STOCKS & PORTFOLIO STATUS PULSE (Movers, Breakeven & Watchlist)
+      // 2. STOCKS & PORTFOLIO STATUS PULSE (Movers, Breakeven & Cash Reserve)
       if (prefs.anomalyEnabled) {
         try {
-          const invData = await investmentService.getInvestmentsData(user.id);
+          const invData: any = await investmentService.getInvestmentsData(user.id);
           const stockPositions = (invData.positions || []).filter(
-            (p: any) => p.market !== 'CRYPTO'
+            (p: any) => p.market !== 'CRYPTO' && !p.isWatchlistOnly
           );
 
-          if (stockPositions.length > 0) {
-            const topMover = [...stockPositions].sort(
-              (a: any, b: any) =>
-                Math.abs(b.change24hPercent || 0) - Math.abs(a.change24hPercent || 0)
-            )[0];
-
-            if (topMover && Math.abs(topMover.change24hPercent || 0) >= 1.5) {
-              const move = topMover.change24hPercent || 0;
+          for (const pos of stockPositions) {
+            const move = Number(pos.change24hPercent || 0);
+            if (Math.abs(move) >= 0.8) {
               const isUp = move >= 0;
-              const sent = await pushService.sendNotification(
-                user.id,
-                'STOCK_STATUS_PULSE',
-                todayString,
-                {
-                  title: `${isUp ? '📈' : '📉'} Stock Status: ${topMover.ticker} ${isUp ? '+' : ''}${move.toFixed(2)}% (24h)`,
-                  body: `${topMover.companyName} is at $${Number(topMover.currentPrice).toFixed(2)} (Breakeven floor: $${Number(topMover.breakevenPriceUsd ?? topMover.avgCostNum ?? topMover.avgCostPerShare).toFixed(2)}).`,
+              candidates.push({
+                type: `STOCK_STATUS_${pos.ticker}`,
+                payload: {
+                  title: `${isUp ? '📈' : '📉'} Stock Alert: ${pos.ticker} ${isUp ? '+' : ''}${move.toFixed(2)}% (24h)`,
+                  body: `${pos.companyName} is trading at $${Number(pos.currentPrice).toFixed(2)} (Breakeven floor: $${Number(pos.breakevenPriceUsd ?? pos.avgCostNum ?? pos.avgCostPerShare).toFixed(2)}).`,
                   url: '/dashboard',
-                }
-              );
-              if (sent) continue;
+                },
+              });
             }
+
+            if (pos.aboveBreakeven) {
+              candidates.push({
+                type: `STOCK_BREAKEVEN_${pos.ticker}`,
+                payload: {
+                  title: `🟢 ${pos.ticker} Clearing Fee-Adjusted Breakeven`,
+                  body: `${pos.ticker} is +${Number(pos.unrealizedPnlPercent || 0).toFixed(1)}% above its breakeven floor (+${Number(pos.unrealizedPnlMad || 0).toFixed(0)} MAD net gain).`,
+                  url: '/dashboard',
+                },
+              });
+            }
+          }
+
+          const totalMad = Number(
+            invData.summary?.stockHoldingsValueMad ?? invData.totalPortfolioValueMad ?? 0
+          );
+          const pnlMad = Number(
+            invData.summary?.stockUnrealizedPnlMad ?? invData.totalUnrealizedPnlMad ?? 0
+          );
+          if (totalMad > 0) {
+            candidates.push({
+              type: 'STOCK_PORTFOLIO_SUMMARY',
+              payload: {
+                title: `💼 Equity Portfolio Pulse: ${totalMad.toFixed(0)} MAD (${pnlMad >= 0 ? '+' : ''}${pnlMad.toFixed(0)} MAD)`,
+                body: `Tracking ${stockPositions.length} active stock positions across US & Moroccan markets.`,
+                url: '/dashboard',
+              },
+            });
           }
         } catch (invErr) {
           console.warn('[NotificationScheduler] Stock status check skipped:', invErr);
         }
       }
 
-      // 3. FORECAST & BUDGET CRITICAL WARNING
+      // 3. FORECAST & BUDGET WARNINGS
       if (prefs.budgetWarningEnabled) {
-        const kpis = await kpiService.getKpisForUser(user);
         if (kpis.forecast && kpis.forecast.expected < 0) {
-          const sent = await pushService.sendNotification(
-            user.id,
-            'FORECAST_WARNING',
-            todayString,
-            {
+          candidates.push({
+            type: 'FORECAST_WARNING',
+            payload: {
               title: '🔴 Cash Flow Forecast Alert',
               body: `Current spending pace projects a ${Math.abs(kpis.forecast.expected).toFixed(0)} MAD shortfall by payday. Adjusting daily spend re-balances your runway.`,
               url: '/dashboard',
-            }
-          );
-          if (sent) continue;
+            },
+          });
         }
 
         if (kpis.dailyStatus === 'critical') {
-          const sent = await pushService.sendNotification(user.id, 'BUDGET_WARNING', todayString, {
-            title: '⚠️ Daily Budget Pace Alert',
-            body: `Today's spending has exceeded your daily Safe-to-Spend allowance.`,
-            url: '/dashboard',
+          candidates.push({
+            type: 'BUDGET_WARNING',
+            payload: {
+              title: '⚠️ Daily Budget Pace Alert',
+              body: `Today's spending has exceeded your daily Safe-to-Spend allowance.`,
+              url: '/dashboard',
+            },
           });
-          if (sent) continue;
         }
       }
 
-      // 4. DEBT & GOAL MILESTONE CHECK
-      if (prefs.debtReminderEnabled || prefs.goalEnabled) {
-        const userDebts = await db.select().from(debts).where(eq(debts.userId, user.id));
+      // 4. DEBT & GOAL MILESTONES (Including Calendar Deadlines)
+      if (prefs.debtReminderEnabled) {
         const owedToMe = userDebts.filter(
           (d) =>
             d.type === 'Receivable' &&
             d.status !== 'Cleared' &&
             parseFloat((d.remainingBalance || d.originalAmount) as any) > 0
         );
-        if (prefs.debtReminderEnabled && owedToMe.length > 0) {
-          const totalOwed = owedToMe.reduce(
-            (s, d) => s + parseFloat((d.remainingBalance || d.originalAmount) as any),
-            0
-          );
-          const sent = await pushService.sendNotification(user.id, 'DEBT_REMINDER', todayString, {
-            title: `🤝 ${totalOwed.toFixed(0)} MAD in Pending Reimbursements`,
-            body: `You have ${owedToMe.length} unsettled split${owedToMe.length === 1 ? '' : 's'} owed to you. Settling them boosts your liquid Safe-to-Spend.`,
-            url: '/dashboard',
+        for (const debt of owedToMe.slice(0, 3)) {
+          const rem = parseFloat((debt.remainingBalance || debt.originalAmount) as any) || 0;
+          candidates.push({
+            type: `DEBT_REMINDER_${debt.id}`,
+            payload: {
+              title: `🤝 Pending Reimbursement: ${debt.contactName} (${rem.toFixed(0)} MAD)`,
+              body: `${debt.contactName} owes you ${rem.toFixed(0)} MAD. Remember reimbursements are excluded from income and netted against category spend.`,
+              url: '/dashboard',
+            },
           });
-          if (sent) continue;
-        }
-
-        const userGoals = await db.select().from(goals).where(eq(goals.userId, user.id));
-        const nearGoal = userGoals.find((g) => {
-          const target = parseFloat(g.targetAmount as any);
-          const curr = parseFloat(g.currentAmount as any);
-          return target > 0 && curr / target >= 0.75 && curr < target;
-        });
-        if (prefs.goalEnabled && nearGoal) {
-          const pct = Math.round(
-            (parseFloat(nearGoal.currentAmount as any) /
-              parseFloat(nearGoal.targetAmount as any)) *
-              100
-          );
-          const sent = await pushService.sendNotification(user.id, 'GOAL_MILESTONE', todayString, {
-            title: `🏁 Goal "${nearGoal.name}" is ${pct}% Complete!`,
-            body: `You're in the final stretch for "${nearGoal.name}".`,
-            url: '/dashboard',
-          });
-          if (sent) continue;
         }
       }
 
-      // 5. DEFAULT DAILY CALENDAR & SAFE-TO-SPEND INSIGHT
+      if (prefs.goalEnabled) {
+        for (const g of userGoals) {
+          const target = parseFloat(g.targetAmount as any) || 0;
+          const curr = parseFloat(g.currentAmount as any) || 0;
+          if (target > 0 && curr < target) {
+            const pct = Math.round((curr / target) * 100);
+            candidates.push({
+              type: `GOAL_MILESTONE_${g.id}`,
+              payload: {
+                title: `🏁 Goal "${g.name}": ${pct}% Funded (${curr.toFixed(0)} / ${target.toFixed(0)} MAD)`,
+                body: `${(target - curr).toFixed(0)} MAD remaining to reach "${g.name}".`,
+                url: '/dashboard',
+              },
+            });
+          }
+        }
+      }
+
+      // 5. DAILY SAFE-TO-SPEND & CREATIVE CHALLENGES
       if (prefs.dailyInsightEnabled) {
-        const kpis = await kpiService.getKpisForUser(user);
-        await pushService.sendNotification(user.id, 'DAILY_INSIGHT', todayString, {
-          title: `📆 Daily Cash Flow & Payday Pulse`,
-          body: `You have ${kpis.safeToSpend.toFixed(0)} MAD safe to spend (${kpis.daysUntilPayday} days until payday · ${kpis.dailyAllowance.toFixed(0)} MAD/day allowance).`,
-          url: '/dashboard',
+        candidates.push({
+          type: `DAILY_INSIGHT_${userTime}`,
+          payload: {
+            title: `📆 Daily Cash Flow & Payday Pulse`,
+            body: `You have ${kpis.safeToSpend.toFixed(0)} MAD safe to spend (${kpis.daysUntilPayday} days until payday · ${kpis.dailyAllowance.toFixed(0)} MAD/day allowance).`,
+            url: '/dashboard',
+          },
         });
+
+        candidates.push({
+          type: `CREATIVE_MICRO_SAVE_${todayString}`,
+          payload: {
+            title: `💡 Creative Challenge: Keep 20 MAD Untouched Today`,
+            body: `Leaving 20 MAD/day unspent in your main bank account compounds to +7,300 MAD/year in automatic savings.`,
+            url: '/dashboard',
+          },
+        });
+      }
+
+      // Shuffle candidates randomly so every time slot picks a diverse, non-repeating notification
+      for (let i = candidates.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+      }
+
+      for (const candidate of candidates) {
+        const sent = await pushService.sendNotification(
+          user.id,
+          candidate.type,
+          todayString,
+          candidate.payload
+        );
+        if (sent) {
+          break; // Sent 1 fresh random notification for this time window
+        }
       }
     }
   }
@@ -280,3 +451,4 @@ export class NotificationScheduler {
     return currentTime >= start && currentTime < end;
   }
 }
+
