@@ -1,3 +1,5 @@
+import { getApiUrl } from './capacitorBridge';
+
 const GITHUB_REPOSITORY = 'San-AMRANI/TrueSpend-ggl';
 const LATEST_RELEASE_API_URL = `https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest`;
 const STABLE_APK_URL = `https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/TrueSpend.apk`;
@@ -11,7 +13,7 @@ export interface AndroidRelease {
 }
 
 export function getLatestAndroidApkUrl(): string {
-  return import.meta.env.VITE_ANDROID_APK_URL || STABLE_APK_URL;
+  return import.meta.env.VITE_ANDROID_APK_URL || getApiUrl('/api/download-apk');
 }
 
 export async function fetchLatestAndroidRelease(): Promise<AndroidRelease | null> {
@@ -32,7 +34,7 @@ export async function fetchLatestAndroidRelease(): Promise<AndroidRelease | null
       name: release.name || release.tag_name || 'Latest Android release',
       publishedAt: release.published_at || release.created_at || '',
       releaseUrl: release.html_url || `https://github.com/${GITHUB_REPOSITORY}/releases`,
-      apkUrl: apkAsset?.browser_download_url || getLatestAndroidApkUrl(),
+      apkUrl: getLatestAndroidApkUrl() || apkAsset?.browser_download_url || STABLE_APK_URL,
     };
   } catch {
     return null;
