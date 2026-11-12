@@ -29,6 +29,15 @@ export class PayrollController {
       res.status(error?.message === 'Payroll not found' ? 404 : 400).json({ error: error?.message || 'Unable to delete payroll' });
     }
   }
+
+  async confirmPayroll(req: AuthRequest, res: Response) {
+    try {
+      const result = await payrollService.confirmPayrollReceipt(req.dbUser.id, req.params.id, req.body);
+      res.json(result);
+    } catch (error: any) {
+      res.status(error?.message === 'Payroll not found' ? 404 : 400).json({ error: error?.message || 'Unable to confirm payroll receipt' });
+    }
+  }
 }
 
 export const payrollController = new PayrollController();

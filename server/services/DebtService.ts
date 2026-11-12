@@ -1,13 +1,24 @@
+import { eq } from 'drizzle-orm';
+import { db } from '../../src/db/index.js';
+import { debts } from '../../src/db/schema.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
 import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { walletService } from './WalletService.js';
+import { coreAuditService } from './CoreAuditService.js';
 
 export interface SettleDebtDTO {
   amount: number;
   contact?: string;
+  counterpartyType?: 'Person' | 'Institution' | 'Merchant';
   type?: 'Receivable' | 'Payable';
   debt_id?: string;
   due_date?: string;
+  interestRateApr?: number;
+  rateType?: 'none' | 'fixed' | 'variable';
+  installmentAmount?: number;
+  installmentFrequency?: 'one_time' | 'monthly' | 'biweekly' | 'weekly';
+  feesAmount?: number;
+  currency?: string;
   /** Wallet that sends or receives the settlement money. */
   walletId?: string;
   category?: string;
@@ -28,6 +39,12 @@ export interface UpdateDebtDTO {
   contact: string;
   type: 'Receivable' | 'Payable';
   due_date?: string;
+  counterpartyType?: 'Person' | 'Institution' | 'Merchant';
+  interestRateApr?: number;
+  rateType?: 'none' | 'fixed' | 'variable';
+  installmentAmount?: number;
+  installmentFrequency?: 'one_time' | 'monthly' | 'biweekly' | 'weekly';
+  feesAmount?: number;
 }
 
 export class DebtService {
@@ -145,6 +162,16 @@ export class DebtService {
           .catch(() => {});
       }
 
+      const apr = parseFloat((debt as any).interestRateApr || '0') || 0;
+      const instAmt = parseFloat((debt as any).installmentAmount || '0') || 0;
+      const feesAmt = parseFloat((debt as any).feesAmount || '0') || 0;
+      const monthsRemaining =
+        instAmt > 0 && remainingNum > 0 ? Math.ceil(remainingNum / instAmt) : 0;
+      const projectedRemainingInterest =
+        apr > 0 && remainingNum > 0
+          ? Number(((remainingNum * (apr / 100) * Math.max(1, monthsRemaining)) / 12).toFixed(2))
+          : 0;
+
       return {
         ...debt,
         remainingBalance: remainingNum <= 0.001 ? '0' : debt.remainingBalance,
@@ -153,6 +180,9 @@ export class DebtService {
         forgivenAmount: totalForgivenNum > 0.001 ? totalForgivenNum.toFixed(2) : undefined,
         originTransactionId,
         originDescription,
+        earlySettlementSavingsMad: projectedRemainingInterest,
+        estimatedMonthsRemaining: monthsRemaining,
+        totalPayoffWithFeesMad: Number((remainingNum + feesAmt + projectedRemainingInterest).toFixed(2)),
       };
     });
   }
@@ -285,6 +315,13 @@ export class DebtService {
         linkedContactId: dto.debt_id,
       });
 
+      await coreAuditService
+        .postJournalEntryForTransaction(userId, newTx, {
+          idempotencyKey: `debt-settle-${newTx.id}`,
+          memo: `Debt settlement for ${debt.contactName}`,
+        })
+        .catch(() => undefined);
+
       return { message: 'Debt settled' };
     } else {
       const newDebt = await debtRepository.create({
@@ -296,6 +333,21 @@ export class DebtService {
         status: 'Pending',
         dueDate: this.parseDueDate(dto.due_date),
       });
+
+      await db
+        .update(debts)
+        .set({
+          counterpartyType: dto.counterpartyType || 'Person',
+          principalBalance: String(dto.amount),
+          interestRateApr: String(dto.interestRateApr ?? 0),
+          rateType: dto.rateType || 'none',
+          installmentAmount: dto.installmentAmount ? String(dto.installmentAmount) : null,
+          installmentFrequency: dto.installmentFrequency || 'one_time',
+          feesAmount: String(dto.feesAmount ?? 0),
+          currency: (dto.currency || 'MAD').toUpperCase(),
+        })
+        .where(eq(debts.id, newDebt.id));
+
       return { message: 'Debt created', id: newDebt.id };
     }
   }

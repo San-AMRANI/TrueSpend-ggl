@@ -35,6 +35,7 @@ import {
   Goal,
   DashboardTab,
   UserSettings,
+  SavedWhatIfScenario,
 } from '../../types';
 import { computeFinancialState } from '../../lib/financialEngine';
 import {
@@ -46,6 +47,8 @@ import {
   AffordabilityInput,
 } from '../../lib/calculatorsEngine';
 import { TactileSmartCalculator } from './TactileSmartCalculator';
+import { dashboardService } from '../../services/api/dashboardService';
+import { useAuth } from '../../context/AuthContext';
 
 interface CalculatorsHubTabProps {
   kpis: KPI | null;
@@ -154,9 +157,19 @@ export const CalculatorsHubTab: React.FC<CalculatorsHubTabProps> = ({
   };
 
   // ==========================================
-  // 4. LIVE WHAT-IF SIMULATION STATE
+  // 4. LIVE WHAT-IF SIMULATION STATE & SAVED SCENARIOS (Item J)
   // ==========================================
+  const { token } = useAuth();
   const [whatIfScenario, setWhatIfScenario] = useState<'purchase' | 'save' | 'salary'>('purchase');
+  const [savedScenarios, setSavedScenarios] = useState<SavedWhatIfScenario[]>([]);
+  const [scenarioNameInput, setScenarioNameInput] = useState('');
+  const [scenarioApproved, setScenarioApproved] = useState(false);
+
+  React.useEffect(() => {
+    if (activeCalculator === 'what-if' && token) {
+      dashboardService.getSavedScenarios(token).then(setSavedScenarios).catch(() => {});
+    }
+  }, [activeCalculator, token]);
 
   const simResult = useMemo(() => {
     if (!kpis) return null;
@@ -1045,6 +1058,93 @@ export const CalculatorsHubTab: React.FC<CalculatorsHubTabProps> = ({
                       <span>Warning: This simulated action pushes your daily allowance into critical alert status.</span>
                     </div>
                   )}
+
+                  {/* Save Scenario Controls (Item J) */}
+                  <div className="pt-3 border-t border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2">
+                    <Input
+                      type="text"
+                      placeholder="Scenario name (e.g. Laptop Purchase + Salary Boost)"
+                      value={scenarioNameInput}
+                      onChange={(e) => setScenarioNameInput(e.target.value)}
+                      className="text-xs flex-1 min-w-[200px]"
+                    />
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={scenarioApproved}
+                        onChange={(e) => setScenarioApproved(e.target.checked)}
+                      />
+                      Approved Plan
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={async () => {
+                        const created = await dashboardService.saveScenario(
+                          {
+                            name: scenarioNameInput.trim() || `${whatIfScenario.toUpperCase()} (${whatIfAmount} MAD)`,
+                            description: `Simulated ${whatIfScenario} of ${whatIfAmount} MAD`,
+                            isApprovedPlan: scenarioApproved,
+                            parameters: { scenario: whatIfScenario, amount: whatIfAmount },
+                            events: [{ type: whatIfScenario, amountMad: whatIfAmount, date: new Date().toISOString().slice(0, 10) }],
+                            baselineNetWorth12m: kpis.totalLiquidity,
+                            simulatedNetWorth12m: simResult.totalLiquidity,
+                            lowest30dBalance: simResult.safeToSpend,
+                            survivalRunwayDays: simResult.runwayDays,
+                          },
+                          token
+                        );
+                        setSavedScenarios((prev) => [created, ...prev]);
+                        setScenarioNameInput('');
+                        showToast('What-If Scenario saved for side-by-side comparison!');
+                      }}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs"
+                    >
+                      Save Scenario
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Saved Scenarios Side-by-Side Comparison */}
+              {savedScenarios.length > 0 && (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                    Saved &amp; Comparable What-If Scenarios ({savedScenarios.length})
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {savedScenarios.map((sc) => (
+                      <div
+                        key={sc.id}
+                        className="rounded-lg border border-gray-100 dark:border-gray-800 p-3 text-xs flex items-center justify-between gap-2"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-900 dark:text-white">{sc.name}</span>
+                            {sc.isApprovedPlan && (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 text-[10px] font-bold">
+                                Approved Plan
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            Sim Balance: <strong>{Number(sc.simulatedNetWorth12m).toFixed(0)} MAD</strong> · Safe Floor:{' '}
+                            <strong>{Number(sc.lowest30dBalance).toFixed(0)} MAD</strong> · Runway: <strong>{sc.survivalRunwayDays}d</strong>
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await dashboardService.deleteScenario(sc.id, token);
+                            setSavedScenarios((prev) => prev.filter((item) => item.id !== sc.id));
+                          }}
+                          className="text-gray-400 hover:text-rose-600 text-xs px-2 py-1"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </CardContent>

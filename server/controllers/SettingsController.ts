@@ -72,6 +72,15 @@ export class SettingsController {
       res.status(isValidationError ? 400 : 500).json({ error: isValidationError ? message : 'Failed to import the SQL backup' });
     }
   }
+
+  async validateBackup(req: AuthRequest, res: Response) {
+    try {
+      const preview = settingsService.validateBackupPreview(req.body?.sql);
+      res.json(preview);
+    } catch (e: any) {
+      res.status(400).json({ error: e?.message || 'Failed to validate backup file' });
+    }
+  }
 }
 
 export const settingsController = new SettingsController();

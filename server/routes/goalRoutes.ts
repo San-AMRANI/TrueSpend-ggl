@@ -9,6 +9,7 @@ router.post('/goals', requireAuth, (req, res) => goalController.createGoal(req a
 router.put('/goals/:id', requireAuth, (req, res) => goalController.updateGoal(req as any, res));
 router.post('/goals/:id/contribute', requireAuth, (req, res) => goalController.contributeToGoal(req as any, res));
 router.post('/goals/:id/withdraw', requireAuth, (req, res) => goalController.withdrawFromGoal(req as any, res));
+router.post('/goals/:id/reconcile', requireAuth, (req, res) => goalController.reconcileGoal(req as any, res));
 router.delete('/goals/:id', requireAuth, (req, res) => goalController.deleteGoal(req as any, res));
 
 export default router;

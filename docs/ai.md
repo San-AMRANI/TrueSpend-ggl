@@ -45,7 +45,13 @@ Every message sent to `POST /api/chat` includes a live deterministic snapshot ge
 
 ---
 
-## 4. The AI Action Gateway (`server/services/AiActionGateway.ts`)
+## 4. The AI Action Gateway & Pre-Execution Impact Simulator (`server/services/AiActionGateway.ts`)
+
+Before approving a proposed action card in `AIChat.tsx`, users can click **Simulate Impact** (`POST /api/chat/simulate-actions`) to preview the exact deterministic **Before $\rightarrow$ After** delta on:
+- **Total Liquid Balance (`totalLiquidityMad`)**
+- **Safe-to-Spend (`safeToSpendMad`)**
+- **Daily Allowance (`dailyAllowanceMad`)**
+- **Runway Days (`runwayDays`)**
 
 | Action Type | Key Parameters | Target Service |
 | :--- | :--- | :--- |
@@ -56,6 +62,9 @@ Every message sent to `POST /api/chat` includes a live deterministic snapshot ge
 | `create_goal` | `name`, `targetAmount`, `currentAmount`, `deadline`, `category` | `GoalService.createGoal` |
 | `contribute_goal` | `goalId`, `amount` | `GoalService.contributeToGoal` |
 | `update_settings` | `payday`, `emergencyBuffer`, `salary` | `SettingsService.updateSettings` |
+| `buy_stock` | `ticker`, `shares`, `pricePerShare`, `currency`, `syncWithWallet` | `InvestmentService.executeStockOrder` |
+| `record_dividend` | `ticker`, `dividendPerShare`, `shares`, `grossAmount`, `withholdingTax`, `paymentDate` | `InvestmentService.recordDividendEvent` |
+| `confirm_payroll` | `payrollId`, `actualAmount`, `receivedAt`, `targetWalletId`, `notes` | `PayrollService.confirmPayrollReceipt` |
 
 ---
 

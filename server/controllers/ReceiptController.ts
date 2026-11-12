@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../src/middleware/auth.js';
 import { parseReceiptWithGemini, receiptProposalAction } from '../services/ReceiptExtractionService.js';
+import { coreAuditService } from '../services/CoreAuditService.js';
 
 export const parseReceipt = async (req: AuthRequest, res: Response) => {
   try {
@@ -13,9 +14,30 @@ export const parseReceipt = async (req: AuthRequest, res: Response) => {
     }
 
     const proposal = await parseReceiptWithGemini({ text, image, walletId });
+    let reviewItem = null;
+    if (req.dbUser?.id) {
+      try {
+        reviewItem = await coreAuditService.createReviewItem(req.dbUser.id, {
+          sourceType: 'receipt_ocr',
+          confidenceScore: (proposal.confidence ?? 65) / 100,
+          parsedAmount: proposal.amount ?? 0,
+          parsedCurrency: 'MAD',
+          parsedDate: proposal.transactionDate || new Date().toISOString().slice(0, 10),
+          parsedDescription: proposal.merchant || proposal.notes || 'Receipt Capture',
+          parsedCategory: proposal.category || '🛒 Groceries',
+          parsedType: 'Expense',
+          walletId: proposal.walletId || walletId || null,
+          rawPayloadJson: JSON.stringify(proposal),
+        });
+      } catch (inboxErr) {
+        console.warn('Could not persist receipt to review inbox:', inboxErr);
+      }
+    }
+
     res.json({
       proposal,
       action: proposal.amount === null ? null : receiptProposalAction(proposal),
+      reviewItem,
       requiresReview: true,
     });
   } catch (error: any) {

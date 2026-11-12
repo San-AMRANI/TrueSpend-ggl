@@ -57,24 +57,33 @@ Enhanced specifically for multi-month commitments (such as **Every 3 Months** gy
 
 ### 3.1. Dashboard, Custom Pay Cycles & Historical Financial Periods
 - **Custom Payday Financial Months**: Financial cycles reset on the user's actual payday (or calendar-scheduled `payrolls` dates) rather than the 1st of the calendar month.
+- **Expected vs. Confirmed Payroll Verification (`FinancialCalendarTab.tsx`)**: Scheduled payrolls remain `expected` until explicitly confirmed by the user (`POST /api/payrolls/:id/confirm`) with actual amount and receipt date—never fabricating cash prematurely.
 - **Historical Financial Periods Ledger (`cashFlowEngine.ts`)**: Reconciles opening liquidity, salary income, other income, gross outflow, net living expenses, reimbursable splits, debt repayments, investment deployments, and closing liquidity across every historical pay cycle.
-- **Multi-Wallet Architecture (`wallets`)**: Manage multiple `Bank`, `Cash`, `Savings`, and `Investment` wallets with individual balances and inter-wallet transfers.
+- **Multi-Wallet & Credit Card Liability Separation (`WalletsManager.tsx`)**: Manage `Checking`, `Cash`, `Savings`, `Investment`, `CreditCard`, and `Overdraft` accounts with institution metadata, native currency (`MAD`, `USD`, `EUR`), credit limits, statement closing days, and payment due days. Credit card balances and limits are strictly isolated as liabilities so credit headroom is never mistaken for liquid cash.
+- **Double-Entry Journal, Statement CSV Import & Review Inbox (`WalletsManager.tsx`)**:
+  - **Double-Entry Accounting Ledger**: Every transaction posts balanced debit/credit lines (`journal_entries` & `journal_lines`), and edits/deletes post immutable reversal entries.
+  - **Bank/Card Statement CSV Import**: Upload CSV/TSV statements with SHA-256 deduplication, confidence-scored transaction matching, and one-click reconciliation.
+  - **Persistent Review Inbox**: Captures OCR receipt scans, voice dictations, statement rows, and anomaly alerts in `financial_review_items` until reviewed.
+  - **External Wealth & Historical FX Rates**: Track non-bank assets/liabilities (`RealEstate`, `Vehicle`, `Retirement`, `PrivateEquity`, etc.) and lock historical exchange rates per transaction.
+- **Unified Commitment Occurrences Ledger (`FinancialCalendarTab.tsx`)**: Synchronizes subscriptions, debt installments, and payrolls into dated `commitment_occurrences` with `expected`, `paid`, `skipped`, `overdue`, and `rescheduled` lifecycle tracking.
+- **Forecast Calibration & Saved What-If Scenarios (`PredictiveForecastTab.tsx` & `CalculatorsHubTab.tsx`)**: Displays model confidence, historical cycles analyzed, backtest MAPE %, and data freshness timestamps, plus persistent side-by-side comparison of saved What-If scenarios (`saved_scenarios`).
 - **Financial Contexts / Projects (`ContextsTab.tsx`)**: Group transactions under specific trips, work missions, projects, or life events with dedicated context budgets.
 - **Cycle Retrospectives (`ReportsTab.tsx`)**: AI-assisted and deterministic end-of-cycle financial retrospectives comparing cycle-over-cycle savings rates and category drift.
 
 ### 3.2. Advanced Budgeting Strategies (`BudgetsTab.tsx`)
-1. **Category View**: Granular monthly limits across the 15 canonical expense categories.
+1. **Category View**: Granular monthly limits across the 15 canonical expense categories with rollover support (`rolloverEnabled`, `carryoverAmount`).
 2. **Envelope View**: Cash-envelope tracking emphasizing remaining spendable balance.
 3. **50/30/20 Rule View**: Customizable macro allocation across Needs, Wants, and Savings/Investments.
+4. **SPEX AI Pattern-Driven Auto-Budget**: Analyzes all historical financial periods (net of linked reimbursements) and optional user notes for next month to generate a personalized budget plan.
 - **Batch Utilities**: Batch upsert (`/api/category-budgets/batch`), copy previous financial month (`/api/category-budgets/copy-previous`), and clear month.
 
-### 3.3. Debts, Partial Payments & Shared Expense Splits (`DebtsTab.tsx`)
-- Track **Receivables** (money owed to the user) and **Payables** (money the user owes).
-- **Shared Transaction Splits (`splits`)**: Deducts reimbursable portions from gross bills so personal burn rate only reflects the user's true share.
+### 3.3. Debts, Installment Plans & Shared Expense Splits (`DebtsTab.tsx`)
+- Track **Receivables** (money owed to the user) and **Payables** (money the user owes) with APR/interest rate, installment frequency, fees, and early-settlement interest savings calculation.
+- **Shared Transaction Splits (`splits`) & Net Reimbursement Accounting**: Deducts reimbursable portions and linked debt reimbursements from gross bills so personal burn rate and income metrics only reflect net expenses and true income.
 - **Partial Bill Telemetry**: Log partial payments on expenses while automatically tracking the unpaid remainder.
 
-### 3.4. Savings Goals & Auto-Sync Wallets (`GoalsTab.tsx`)
-- Create milestone targets with deadlines, priority tags, and optional **Wallet Auto-Sync** (`autoSyncBalance`) that mirrors a linked Savings/Investment wallet balance in real time.
+### 3.4. Savings Goals, Allocation Modes & Event History (`GoalsTab.tsx`)
+- Create milestone targets with deadlines, priority tags, explicit `fundingMode` (`manual`, `mirrored_wallet`, or `allocated_slice` to prevent multiple goals from double-counting the same Savings wallet), and an immutable `goal_contribution_events` audit log.
 
 ---
 
@@ -82,8 +91,8 @@ Enhanced specifically for multi-month commitments (such as **Every 3 Months** gy
 
 ### 4.1. Agentic AI Financial Copilot (`ai.md`)
 - Powered by live financial context injection (`src/lib/aiContext.ts`) covering KPIs, historical payroll cycles, active subscriptions, debt positions, and live stock/crypto holdings.
-- **Human-in-the-Loop Action Gateway (`AiActionGateway.ts`)**: Proposes structured actions (`create_transaction`, `create_debt`, `upsert_budget`, `create_goal`, `contribute_goal`, `settle_debt`, `update_settings`) requiring explicit user approval.
-- **Multimodal Input**: Client-side receipt OCR (`Tesseract.js`), deterministic receipt parser (`/api/receipts/parse`), and voice dictation.
+- **Human-in-the-Loop Action Gateway & Pre-Execution Simulation (`AiActionGateway.ts`)**: Proposes structured actions (`create_transaction`, `create_debt`, `upsert_budget`, `create_goal`, `contribute_goal`, `settle_debt`, `update_settings`, `buy_stock`, `record_dividend`, `confirm_payroll`) with a **Simulate Impact** preview showing exact Before $\rightarrow$ After deltas on Liquidity, Safe-to-Spend, Daily Allowance, and Runway Days before execution.
+- **Multimodal Input**: Client-side receipt OCR (`Tesseract.js`), deterministic receipt parser (`/api/receipts/parse`) persisted automatically to the Financial Review Inbox, and voice dictation.
 
 ### 4.2. Interactive SPEX Sprite Animator (`SpexSpriteAnimator.tsx` & `SpexCompanionWidget.tsx`)
 - High-resolution WebP/PNG spritesheet animation engine (`SPEX-spritesheet-v2.webp`) supporting 9 choreographed animation rows (`idle`, `running-right`, `running-left`, `waving`, `jumping`, `failed`, `waiting`, `running`, `review`) plus **16-angle 360° cursor gaze tracking** (`look 000-157.5` and `look 180-337.5`).
@@ -91,8 +100,9 @@ Enhanced specifically for multi-month commitments (such as **Every 3 Months** gy
 
 ---
 
-## 5. Multi-User RBAC, Cloud Backups & Native Android APK
+## 5. Multi-User RBAC, Automation Rules, Cloud Backups & Offline Outbox
 
 - **Role-Based Access Control (`UserManagementTab.tsx`)**: Supports `owner`, `admin`, `manager`, `member`, and `viewer` roles, `shared` vs. `isolated` workspace modes, granular permissions, user impersonation (`/api/users/:id/impersonate`), and audit logging (`user_audit_logs`).
-- **Data Sovereignty & Google Drive Backups**: Full PostgreSQL `.sql` dump export/import (`/api/settings/export-sql`, `/api/settings/import-sql`) and scheduled Google Drive backups (`daily`, `3days`, `weekly`).
-- **Capacitor 8 Native Android App (`ANDROID_CAPACITOR.md`)**: Native Android WebView bridge (`capacitorBridge.ts`) with direct APK download endpoint (`/api/download-apk`).
+- **Automated Financial Rules Engine (`SettingsTab.tsx`)**: Create deterministic IF/THEN rules triggered by `transaction_created`, `salary_confirmed`, or `subscription_due` to auto-categorize, link contexts, or allocate funds to goals.
+- **Full-Schema v2.0 SQL Backups & Validation Preview**: Full 24-table PostgreSQL `.sql` dump export/import (`/api/settings/export-sql`, `/api/settings/import-sql`), non-destructive backup preview (`/api/settings/validate-backup`), and scheduled Google Drive backups (`daily`, `3days`, `weekly`).
+- **Offline Outbox & Capacitor 8 Native Android App (`offlineOutbox.ts` & `ANDROID_CAPACITOR.md`)**: Queues draft transactions offline with `idempotencyKey` deduplication and auto-flushes on network reconnect, paired with the native Android WebView bridge (`capacitorBridge.ts`).

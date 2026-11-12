@@ -293,6 +293,244 @@ export const createPool = () => {
         WHERE "email" IN ('amranihassan2003@gmail.com', 'SanSpend@local.host')
           AND "role" = 'member'
           AND "password_hash" IS NULL;
+
+        -- Core Audit Schema Migrations (Items A through P)
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "base_currency" text NOT NULL DEFAULT 'MAD';
+
+        ALTER TABLE "wallets" ADD COLUMN IF NOT EXISTS "account_subtype" text NOT NULL DEFAULT 'Checking';
+        ALTER TABLE "wallets" ADD COLUMN IF NOT EXISTS "institution_name" text;
+        ALTER TABLE "wallets" ADD COLUMN IF NOT EXISTS "account_reference" text;
+        ALTER TABLE "wallets" ADD COLUMN IF NOT EXISTS "currency" text NOT NULL DEFAULT 'MAD';
+        ALTER TABLE "wallets" ADD COLUMN IF NOT EXISTS "credit_limit" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "wallets" ADD COLUMN IF NOT EXISTS "liability_balance" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "wallets" ADD COLUMN IF NOT EXISTS "statement_closing_day" integer;
+        ALTER TABLE "wallets" ADD COLUMN IF NOT EXISTS "payment_due_day" integer;
+        ALTER TABLE "wallets" ADD COLUMN IF NOT EXISTS "minimum_payment" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "wallets" ADD COLUMN IF NOT EXISTS "valuation_status" text NOT NULL DEFAULT 'verified';
+        ALTER TABLE "wallets" ADD COLUMN IF NOT EXISTS "last_reconciled_at" timestamp;
+
+        ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "counterparty_type" text NOT NULL DEFAULT 'Person';
+        ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "principal_balance" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "accrued_interest" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "fees_amount" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "interest_rate_apr" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "rate_type" text NOT NULL DEFAULT 'none';
+        ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "installment_amount" numeric;
+        ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "installment_frequency" text NOT NULL DEFAULT 'one_time';
+        ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "currency" text NOT NULL DEFAULT 'MAD';
+
+        ALTER TABLE "payrolls" ADD COLUMN IF NOT EXISTS "status" text NOT NULL DEFAULT 'expected';
+        ALTER TABLE "payrolls" ADD COLUMN IF NOT EXISTS "confirmed_amount" numeric;
+        ALTER TABLE "payrolls" ADD COLUMN IF NOT EXISTS "confirmed_at" timestamp;
+        ALTER TABLE "payrolls" ADD COLUMN IF NOT EXISTS "variance_amount" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "payrolls" ADD COLUMN IF NOT EXISTS "variance_notes" text;
+
+        ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "native_amount" numeric;
+        ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "currency" text NOT NULL DEFAULT 'MAD';
+        ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "exchange_rate_used" numeric NOT NULL DEFAULT 1;
+        ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "fx_source" text NOT NULL DEFAULT 'locked_at_posting';
+        ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "idempotency_key" text;
+
+        ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "funding_cadence" text NOT NULL DEFAULT 'monthly';
+        ALTER TABLE "goals" ADD COLUMN IF NOT EXISTS "planned_contribution_amount" numeric NOT NULL DEFAULT 0;
+
+        ALTER TABLE "category_budgets" ADD COLUMN IF NOT EXISTS "rollover_enabled" boolean NOT NULL DEFAULT false;
+        ALTER TABLE "category_budgets" ADD COLUMN IF NOT EXISTS "rollover_amount" numeric NOT NULL DEFAULT 0;
+
+        CREATE TABLE IF NOT EXISTS "journal_entries" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "transaction_id" uuid REFERENCES "transactions"("id") ON DELETE SET NULL,
+          "entry_type" text NOT NULL DEFAULT 'standard',
+          "status" text NOT NULL DEFAULT 'posted',
+          "reversal_of_entry_id" uuid,
+          "currency" text NOT NULL DEFAULT 'MAD',
+          "exchange_rate_used" numeric NOT NULL DEFAULT 1,
+          "is_estimated_backfill" boolean NOT NULL DEFAULT false,
+          "idempotency_key" text,
+          "memo" text,
+          "posted_at" timestamp NOT NULL DEFAULT now(),
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS "journal_entries_user_id_idx" ON "journal_entries"("user_id");
+        CREATE INDEX IF NOT EXISTS "journal_entries_tx_id_idx" ON "journal_entries"("transaction_id");
+
+        CREATE TABLE IF NOT EXISTS "journal_lines" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "journal_entry_id" uuid NOT NULL REFERENCES "journal_entries"("id") ON DELETE CASCADE,
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+          "account_code" text NOT NULL,
+          "account_name" text NOT NULL,
+          "account_class" text NOT NULL,
+          "debit_mad" numeric NOT NULL DEFAULT 0,
+          "credit_mad" numeric NOT NULL DEFAULT 0,
+          "native_amount" numeric NOT NULL DEFAULT 0,
+          "native_currency" text NOT NULL DEFAULT 'MAD',
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS "journal_lines_entry_id_idx" ON "journal_lines"("journal_entry_id");
+
+        CREATE TABLE IF NOT EXISTS "exchange_rates" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid REFERENCES "users"("id") ON DELETE CASCADE,
+          "base_currency" text NOT NULL,
+          "quote_currency" text NOT NULL DEFAULT 'MAD',
+          "rate" numeric NOT NULL,
+          "source" text NOT NULL DEFAULT 'reference_feed',
+          "effective_date" text NOT NULL,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "statement_import_batches" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "wallet_id" uuid NOT NULL REFERENCES "wallets"("id") ON DELETE CASCADE,
+          "file_name" text NOT NULL,
+          "file_format" text NOT NULL DEFAULT 'CSV',
+          "statement_opening_balance" numeric,
+          "statement_closing_balance" numeric,
+          "reconciled_variance" numeric NOT NULL DEFAULT 0,
+          "total_rows" integer NOT NULL DEFAULT 0,
+          "matched_count" integer NOT NULL DEFAULT 0,
+          "unmatched_count" integer NOT NULL DEFAULT 0,
+          "ambiguous_count" integer NOT NULL DEFAULT 0,
+          "duplicate_count" integer NOT NULL DEFAULT 0,
+          "status" text NOT NULL DEFAULT 'pending_review',
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "statement_import_rows" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "batch_id" uuid NOT NULL REFERENCES "statement_import_batches"("id") ON DELETE CASCADE,
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "wallet_id" uuid NOT NULL REFERENCES "wallets"("id") ON DELETE CASCADE,
+          "row_date" text NOT NULL,
+          "description" text NOT NULL,
+          "amount" numeric NOT NULL,
+          "currency" text NOT NULL DEFAULT 'MAD',
+          "external_reference" text,
+          "row_hash" text NOT NULL,
+          "match_status" text NOT NULL DEFAULT 'unmatched',
+          "match_confidence" numeric NOT NULL DEFAULT 0,
+          "suggested_transaction_id" uuid REFERENCES "transactions"("id") ON DELETE SET NULL,
+          "linked_transaction_id" uuid REFERENCES "transactions"("id") ON DELETE SET NULL,
+          "candidate_transaction_ids_json" text,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "financial_review_items" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "source_type" text NOT NULL,
+          "status" text NOT NULL DEFAULT 'Needs Review',
+          "confidence_score" numeric NOT NULL DEFAULT 0.8,
+          "parsed_amount" numeric NOT NULL,
+          "parsed_currency" text NOT NULL DEFAULT 'MAD',
+          "parsed_date" text NOT NULL,
+          "parsed_description" text NOT NULL,
+          "parsed_category" text,
+          "parsed_type" text NOT NULL DEFAULT 'Expense',
+          "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+          "linked_transaction_id" uuid REFERENCES "transactions"("id") ON DELETE SET NULL,
+          "raw_payload_json" text,
+          "decision_notes" text,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "commitment_occurrences" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "source_type" text NOT NULL,
+          "source_id" text NOT NULL,
+          "title" text NOT NULL,
+          "expected_date" text NOT NULL,
+          "expected_amount" numeric NOT NULL,
+          "currency" text NOT NULL DEFAULT 'MAD',
+          "status" text NOT NULL DEFAULT 'scheduled',
+          "actual_date" text,
+          "actual_amount" numeric,
+          "variance_amount" numeric NOT NULL DEFAULT 0,
+          "linked_transaction_id" uuid REFERENCES "transactions"("id") ON DELETE SET NULL,
+          "notes" text,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "goal_contribution_events" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "goal_id" uuid NOT NULL REFERENCES "goals"("id") ON DELETE CASCADE,
+          "transaction_id" uuid REFERENCES "transactions"("id") ON DELETE SET NULL,
+          "source_wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+          "destination_wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+          "event_type" text NOT NULL DEFAULT 'contribution',
+          "amount" numeric NOT NULL,
+          "event_date" text NOT NULL,
+          "notes" text,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "saved_scenarios" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "name" text NOT NULL,
+          "description" text,
+          "baseline_snapshot_json" text NOT NULL,
+          "events_json" text NOT NULL,
+          "assumptions_json" text NOT NULL,
+          "projected_summary_json" text NOT NULL,
+          "is_approved_plan" boolean NOT NULL DEFAULT false,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "financial_rules" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "name" text NOT NULL,
+          "enabled" boolean NOT NULL DEFAULT true,
+          "trigger_type" text NOT NULL,
+          "conditions_json" text NOT NULL,
+          "action_type" text NOT NULL,
+          "action_payload_json" text NOT NULL,
+          "approval_policy" text NOT NULL DEFAULT 'notify_only',
+          "version" integer NOT NULL DEFAULT 1,
+          "last_triggered_at" timestamp,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "financial_rule_logs" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "rule_id" uuid NOT NULL REFERENCES "financial_rules"("id") ON DELETE CASCADE,
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "rule_version" integer NOT NULL DEFAULT 1,
+          "trigger_event_summary" text NOT NULL,
+          "proposed_result_summary" text NOT NULL,
+          "outcome_status" text NOT NULL DEFAULT 'executed',
+          "idempotency_key" text NOT NULL,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "external_wealth_items" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "name" text NOT NULL,
+          "item_class" text NOT NULL,
+          "is_liability" boolean NOT NULL DEFAULT false,
+          "is_liquid" boolean NOT NULL DEFAULT false,
+          "estimated_value" numeric NOT NULL,
+          "currency" text NOT NULL DEFAULT 'MAD',
+          "valuation_date" text NOT NULL,
+          "valuation_source" text NOT NULL DEFAULT 'manual_estimate',
+          "confidence_level" text NOT NULL DEFAULT 'medium',
+          "is_externally_verified" boolean NOT NULL DEFAULT false,
+          "notes" text,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
       `)
       .catch((err) => {
         console.warn('[DB Init] Schema columns ensure notice:', err?.message || err);

@@ -232,6 +232,36 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
         </div>
       </div>
 
+      {/* ── Item O: Forecast Calibration, Assumption Transparency & Data Freshness ── */}
+      {forecast.calibrationAndFreshness && (
+        <div className="rounded-xl border border-indigo-200/70 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 px-4 py-3 text-xs space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 font-bold text-indigo-900 dark:text-indigo-200">
+                <ShieldCheck className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                Forecast Calibration &amp; Data Freshness:
+              </span>
+              <span className="px-2 py-0.5 rounded-full font-semibold bg-white dark:bg-gray-900 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300">
+                Reliability: {forecast.calibrationAndFreshness.reliabilityLabel} ({forecast.calibrationAndFreshness.reliabilityScorePercent}%)
+              </span>
+              <span className="px-2 py-0.5 rounded-full font-semibold bg-emerald-100/80 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
+                Inflows: {forecast.calibrationAndFreshness.confirmedInflowsCount} Confirmed / {forecast.calibrationAndFreshness.estimatedInflowsCount} Expected
+              </span>
+            </div>
+            <span className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
+              History: {forecast.calibrationAndFreshness.historyDaysAvailable}d · Variance: ±{forecast.calibrationAndFreshness.calibrationVariancePercent}% · {forecast.calibrationAndFreshness.freshnessStatus.toUpperCase()}
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+            {forecast.calibrationAndFreshness.keyAssumptions.map((assumption, idx) => (
+              <div key={idx} className="truncate bg-white/70 dark:bg-gray-900/60 rounded px-2 py-1 border border-gray-200/60 dark:border-gray-800">
+                • {assumption}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Row 1: Executive Multi-Horizon KPI Strip ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Current Net Worth */}

@@ -5,5 +5,6 @@ import { payrollController } from '../controllers/PayrollController.js';
 const router = Router();
 router.get('/payrolls', requireAuth, (req, res) => payrollController.getPayrolls(req as any, res));
 router.post('/payrolls', requireAuth, (req, res) => payrollController.createPayroll(req as any, res));
+router.post('/payrolls/:id/confirm', requireAuth, (req, res) => payrollController.confirmPayroll(req as any, res));
 router.delete('/payrolls/:id', requireAuth, (req, res) => payrollController.deletePayroll(req as any, res));
 export default router;

@@ -247,11 +247,13 @@ All `/api/investments*` endpoints enforce `requireAuth`, RBAC (`canAccessInvestm
 
 ### Payrolls (`payrollRoutes.ts`)
 - `GET /api/payrolls` | `POST /api/payrolls` | `DELETE /api/payrolls/:id`: Manages custom scheduled payroll dates that anchor financial cycles.
+- `POST /api/payrolls/:id/confirm`: Explicitly confirms receipt of a scheduled payroll (`{ actualAmount, receivedAt, targetWalletId, notes }`), creates the linked `Income` transaction and balanced journal entry, calculates variance vs. expected salary, and triggers `salary_confirmed` financial rules.
 
 ### Savings Goals (`goalRoutes.ts`)
-- `GET /api/goals` | `POST /api/goals` | `PUT /api/goals/:id` | `DELETE /api/goals/:id`: CRUD for savings milestones.
-- `POST /api/goals/:id/contribute`: Contributes funds to a goal (with optional wallet transfer).
-- `POST /api/goals/:id/withdraw`: Withdraws funds from a goal back to a wallet.
+- `GET /api/goals` | `POST /api/goals` | `PUT /api/goals/:id` | `DELETE /api/goals/:id`: CRUD for savings milestones (`fundingMode`: `'manual'` | `'mirrored_wallet'` | `'allocated_slice'`).
+- `POST /api/goals/:id/contribute`: Contributes funds to a goal (with optional wallet transfer) and records an immutable `goal_contribution_events` entry.
+- `POST /api/goals/:id/withdraw`: Withdraws funds from a goal back to a wallet and logs a withdrawal event.
+- `POST /api/goals/:id/reconcile`: Reconciles `currentAmount` directly from the sum of `goal_contribution_events`.
 
 ---
 
@@ -266,8 +268,8 @@ All `/api/investments*` endpoints enforce `requireAuth`, RBAC (`canAccessInvestm
 ### `GET /api/reports/cycle-retrospective` & `POST /api/reports/cycle-retrospective/generate`
 - **Description**: Retrieves or generates an executive cycle retrospective comparing income, net living expenses, savings rate, and category variances.
 
-### `POST /api/chat` & `POST /api/chat/actions`
-- **Description**: Conversational AI Copilot (`Spex`) with live financial context injection and human-in-the-loop database mutation execution via `AiActionGateway`.
+### `POST /api/chat`, `POST /api/chat/actions` & `POST /api/chat/simulate-actions`
+- **Description**: Conversational AI Copilot (`Spex`) with live financial context injection, human-in-the-loop database mutation execution (`create_transaction`, `create_debt`, `settle_debt`, `upsert_budget`, `create_goal`, `contribute_goal`, `update_settings`, `buy_stock`, `record_dividend`, `confirm_payroll`), and pre-execution impact simulation (`POST /api/chat/simulate-actions`) returning `before` vs `after` KPI deltas (`totalLiquidityMad`, `safeToSpendMad`, `dailyAllowanceMad`, `runwayDays`).
 
 ---
 
@@ -282,10 +284,40 @@ All `/api/investments*` endpoints enforce `requireAuth`, RBAC (`canAccessInvestm
 
 ### Settings & Backups (`settingsRoutes.ts`)
 - `GET /api/settings` | `POST /api/settings`: Reads or updates user payday, salary, emergency buffer, and Google Drive backup cadence.
-- `GET /api/settings/export-sql` | `POST /api/settings/import-sql`: Full PostgreSQL `.sql` export and atomic restore.
+- `GET /api/settings/export-sql` | `POST /api/settings/import-sql`: Full 24-table PostgreSQL `.sql` export (Schema v2.0 with SHA-256 checksum & manifest) and atomic restore.
+- `POST /api/settings/validate-backup`: Non-destructively validates a `.sql` backup file and returns schema version, SHA-256 verification status, total statements, and per-table row counts.
 - `POST /api/settings/backup-drive`: Triggers an immediate SQL backup upload to Google Drive.
 
 ### Push Notifications v2 (`NotificationController.ts`)
 - `GET /api/notifications/vapid-public-key`: Returns the server VAPID public key.
 - `POST /api/notifications/subscribe` | `POST /api/notifications/unsubscribe`: Registers or removes a Web Push endpoint.
 - `GET /api/notifications/preferences` | `PUT /api/notifications/preferences`: Reads or updates notification toggles, delivery time, timezone, and quiet hours.
+
+---
+
+## 10. Core Accounting, Reconciliation & Wealth Audit API (`coreAuditRoutes.ts`)
+
+### `GET /api/audit/overview`
+- **Description**: Returns a unified payload containing double-entry `journalEntries` (with nested `lines`), `exchangeRates`, `statementBatches`, `reviewItems`, `commitmentOccurrences`, `goalEvents`, `savedScenarios`, `financialRules`, `ruleLogs`, and `externalWealthItems`.
+
+### Double-Entry Journal & FX Ledger
+- `POST /api/audit/journal/backfill`: Idempotently generates balanced double-entry `journal_entries` and `journal_lines` for all existing transactions and verifies wallet balances against the journal ledger.
+- `GET /api/audit/fx` | `POST /api/audit/fx`: Lists or upserts historical exchange rates (`USD/MAD`, `EUR/MAD`, etc.) in `exchange_rates`.
+
+### Bank Statement CSV/TSV Import & Matching
+- `POST /api/audit/statements/import`: Parses raw CSV/TSV bank or card statements, computes SHA-256 file deduplication, scores candidate matches against existing transactions, and stages rows in `statement_import_rows`.
+- `GET /api/audit/statements/:batchId/rows`: Lists parsed rows for a statement import batch.
+- `POST /api/audit/statements/rows/:rowId/approve`: Approves a statement row (either reconciling an existing matched transaction or creating a new transaction + balanced journal entry).
+
+### Persistent Financial Review Inbox
+- `GET /api/audit/review-items` | `POST /api/audit/review-items`: Lists or creates review items from OCR receipts, voice dictation, statement imports, or anomaly alerts.
+- `POST /api/audit/review-items/:id/resolve`: Approves (and optionally creates the transaction) or dismisses a review item.
+
+### Unified Commitment Occurrences Ledger
+- `POST /api/audit/commitments/sync`: Generates and synchronizes dated `commitment_occurrences` across active subscriptions, debts, and scheduled payrolls.
+- `POST /api/audit/commitments/:id/status`: Marks an occurrence as `paid`, `skipped`, `overdue`, or `rescheduled` (automatically logging the corresponding transaction when `paid`).
+
+### Saved What-If Scenarios, Financial Rules Engine & External Wealth
+- `POST /api/audit/scenarios` | `DELETE /api/audit/scenarios/:id`: Saves or deletes multi-variable What-If simulation scenarios (`saved_scenarios`).
+- `POST /api/audit/rules` | `PUT /api/audit/rules/:id` | `DELETE /api/audit/rules/:id` | `POST /api/audit/rules/:id/execute`: CRUD and manual execution trigger for deterministic IF/THEN `financial_rules`.
+- `POST /api/audit/external-wealth` | `PUT /api/audit/external-wealth/:id` | `DELETE /api/audit/external-wealth/:id`: CRUD for non-bank net worth assets and liabilities (`external_wealth_items`).

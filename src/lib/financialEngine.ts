@@ -7,8 +7,11 @@ export interface FinancialEngineWalletInput {
   id: string;
   name: string;
   type: 'Bank' | 'Cash' | 'Savings' | string;
+  accountSubtype?: 'Checking' | 'Savings' | 'Cash' | 'Brokerage' | 'CreditCard' | 'Overdraft' | string;
   isMain?: boolean;
   initialBalance?: string | number;
+  creditLimit?: string | number | null;
+  liabilityBalance?: string | number | null;
 }
 
 export interface FinancialEngineInput {
@@ -243,7 +246,10 @@ export function computeFinancialState(input: FinancialEngineInput) {
     }
   }
 
-  const savingsWallets = userWallets.filter(w => w.type === 'Savings' && !w.isMain);
+  const isCreditLiabilityWallet = (w: FinancialEngineWalletInput) =>
+    w.accountSubtype === 'CreditCard' || w.accountSubtype === 'Overdraft';
+
+  const savingsWallets = userWallets.filter(w => w.type === 'Savings' && !w.isMain && !isCreditLiabilityWallet(w));
   const savingsBalance = userWallets.length > 0
     ? savingsWallets.reduce((sum, w) => sum + (walletBalances[w.id] || 0), 0)
     : walletBalances.Savings || 0;
@@ -259,18 +265,35 @@ export function computeFinancialState(input: FinancialEngineInput) {
     : configuredBuffer;
 
   const investmentReserve = userWallets.length > 0
-    ? userWallets.filter(w => w.type === 'Investment').reduce((sum, w) => sum + (walletBalances[w.id] || 0), 0)
+    ? userWallets.filter(w => w.type === 'Investment' && !isCreditLiabilityWallet(w)).reduce((sum, w) => sum + (walletBalances[w.id] || 0), 0)
     : walletBalances.Investment || 0;
 
   const openingInvestmentReserve = userWallets.length > 0
-    ? userWallets.filter(w => w.type === 'Investment').reduce((sum, w) => sum + (openingWalletBalances[w.id] || 0), 0)
+    ? userWallets.filter(w => w.type === 'Investment' && !isCreditLiabilityWallet(w)).reduce((sum, w) => sum + (openingWalletBalances[w.id] || 0), 0)
     : openingWalletBalances.Investment || 0;
 
+  // Credit Card & Overdraft Liability Tracking (Item B):
+  // Available credit limit is NEVER counted as liquid cash; negative balances on credit cards represent statement liability.
+  let creditCardLiabilityTotal = 0;
+  let totalCreditLimit = 0;
+  for (const w of userWallets) {
+    if (isCreditLiabilityWallet(w)) {
+      const rawBal = walletBalances[w.id] || 0;
+      const limit = parseFloat(String(w.creditLimit ?? '0')) || 0;
+      const explicitLiability = parseFloat(String(w.liabilityBalance ?? '0')) || 0;
+      const computedLiability = rawBal < 0 ? Math.abs(rawBal) : explicitLiability;
+      creditCardLiabilityTotal += computedLiability;
+      totalCreditLimit += limit;
+    }
+  }
+  const availableCreditTotal = Math.max(0, totalCreditLimit - creditCardLiabilityTotal);
+  const creditUtilizationPercent = totalCreditLimit > 0 ? Math.min(100, (creditCardLiabilityTotal / totalCreditLimit) * 100) : 0;
+
   const totalLiquidity = userWallets.length > 0
-    ? userWallets.reduce((sum, w) => sum + (walletBalances[w.id] || 0), 0)
+    ? userWallets.filter(w => !isCreditLiabilityWallet(w)).reduce((sum, w) => sum + (walletBalances[w.id] || 0), 0)
     : (walletBalances.Bank || 0) + (walletBalances.Cash || 0) + (walletBalances.Savings || 0) + (walletBalances.Investment || 0);
   const openingLiquidity = userWallets.length > 0
-    ? userWallets.reduce((sum, w) => sum + (openingWalletBalances[w.id] || 0), 0)
+    ? userWallets.filter(w => !isCreditLiabilityWallet(w)).reduce((sum, w) => sum + (openingWalletBalances[w.id] || 0), 0)
     : (openingWalletBalances.Bank || 0) + (openingWalletBalances.Cash || 0) + (openingWalletBalances.Savings || 0) + (openingWalletBalances.Investment || 0);
   const nextPayroll = getNextPayroll(input.payrolls, now);
   const nextPayday = nextPayroll ? new Date(nextPayroll.scheduledFor) : null;
@@ -279,7 +302,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
   // Phase 1 Intelligence - Core Definitions
   const pendingPayables = input.debts
     .filter(d => d.type === 'Payable' && d.status === 'Pending')
-    .reduce((sum, d) => sum + (parseFloat(d.remainingBalance as string) || 0), 0);
+    .reduce((sum, d) => sum + (parseFloat(d.remainingBalance as string) || 0), 0) + creditCardLiabilityTotal;
     
   const pendingReceivables = input.debts
     .filter(d => d.type === 'Receivable' && d.status === 'Pending')
@@ -385,6 +408,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
   let savingsBalanceSum = 0;
   if (userWallets.length > 0) {
     for (const w of userWallets) {
+      if (isCreditLiabilityWallet(w)) continue;
       const bal = walletBalances[w.id] || 0;
       if (w.type === 'Bank') bankBalance += bal;
       else if (w.type === 'Cash') cashOnHand += bal;
@@ -403,6 +427,9 @@ export function computeFinancialState(input: FinancialEngineInput) {
 
   return {
     totalLiquidity,
+    creditCardLiabilityTotal: Math.round(creditCardLiabilityTotal * 100) / 100,
+    availableCreditTotal: Math.round(availableCreditTotal * 100) / 100,
+    creditUtilizationPercent: Math.round(creditUtilizationPercent * 10) / 10,
     walletBalances,
     bankBalance,
     cashOnHand,

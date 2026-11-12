@@ -1,8 +1,12 @@
+import { and, eq } from 'drizzle-orm';
+import { db } from '../../src/db/index.js';
+import { transactions } from '../../src/db/schema.js';
 import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
 import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { walletService } from './WalletService.js';
 import { normalizeCategory } from '../../src/lib/categories.js';
+import { coreAuditService } from './CoreAuditService.js';
 
 export interface SplitInput {
   id?: string;
@@ -12,6 +16,10 @@ export interface SplitInput {
 
 export interface CreateTransactionDTO {
   amount: number;
+  nativeAmount?: number;
+  currency?: string;
+  exchangeRateUsed?: number;
+  idempotencyKey?: string;
   type: 'Income' | 'Expense' | 'Transfer' | 'Debt Repayment';
   walletId: string; // Wallet UUID
   destinationWalletId?: string;
@@ -193,6 +201,23 @@ export class TransactionService {
   async createTransaction(userId: string, dto: CreateTransactionDTO) {
     this.validateAmount(dto.amount);
 
+    // Idempotency check to prevent duplicate posting on offline sync / retries
+    if (dto.idempotencyKey && dto.idempotencyKey.trim()) {
+      const existingByKey = await db
+        .select()
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, userId),
+            eq(transactions.idempotencyKey, dto.idempotencyKey.trim())
+          )
+        )
+        .limit(1);
+      if (existingByKey.length > 0) {
+        return existingByKey[0];
+      }
+    }
+
     // Normalize Receivable splits from DTO:
     let splitList: SplitInput[] = [];
     if (Array.isArray(dto.splits) && dto.splits.length > 0) {
@@ -273,9 +298,31 @@ export class TransactionService {
       }
     }
 
+    // Resolve multi-currency & lock historical FX rate at posting
+    const requestedCurrency = (dto.currency || 'MAD').toUpperCase().trim();
+    const effectiveDateStr = createdAt
+      ? createdAt.toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    const { rate: fxRate, source: fxSource } = await coreAuditService.resolveHistoricalRateToMad(
+      userId,
+      requestedCurrency,
+      effectiveDateStr,
+      dto.exchangeRateUsed
+    );
+    const nativeAmountNum =
+      dto.nativeAmount !== undefined && Number.isFinite(Number(dto.nativeAmount))
+        ? Number(dto.nativeAmount)
+        : Number(dto.amount);
+    const amountMadNum =
+      requestedCurrency === 'MAD'
+        ? Number(dto.amount)
+        : dto.nativeAmount !== undefined
+        ? Number((nativeAmountNum * fxRate).toFixed(2))
+        : Number(dto.amount);
+
     const newTx = await transactionRepository.create({
       userId,
-      amount: String(dto.amount),
+      amount: String(amountMadNum),
       type: dto.type,
       walletId: resolvedWalletId,
       destinationWalletId: resolvedDestWalletId,
@@ -284,6 +331,19 @@ export class TransactionService {
       createdAt,
       contextId: dto.contextId || null,
     });
+
+    if (requestedCurrency !== 'MAD' || dto.idempotencyKey || dto.nativeAmount !== undefined) {
+      await db
+        .update(transactions)
+        .set({
+          nativeAmount: String(nativeAmountNum),
+          currency: requestedCurrency,
+          exchangeRateUsed: String(fxRate),
+          fxSource,
+          idempotencyKey: dto.idempotencyKey?.trim() || null,
+        })
+        .where(eq(transactions.id, newTx.id));
+    }
 
     // Create Receivable debts for fronting / splitting with others
     for (const split of splitList) {
@@ -341,6 +401,33 @@ export class TransactionService {
         linkedContactId: newDebt.id,
       });
     }
+
+    // Post balanced double-entry accounting journal lines & evaluate user rules
+    await coreAuditService
+      .postJournalEntryForTransaction(
+        userId,
+        {
+          ...newTx,
+          amount: String(amountMadNum),
+          nativeAmount: String(nativeAmountNum),
+          currency: requestedCurrency,
+          exchangeRateUsed: String(fxRate),
+        },
+        {
+          idempotencyKey: dto.idempotencyKey || `tx-post-${newTx.id}`,
+        }
+      )
+      .catch((err) => console.warn('[TransactionService] Journal post warning:', err));
+
+    await coreAuditService
+      .evaluateRulesForTrigger(userId, 'transaction_posted', {
+        amount: amountMadNum,
+        category: normalizeCategory(assignedCategory) || undefined,
+        walletId: resolvedWalletId,
+        description: dto.notes || assignedCategory,
+        eventId: newTx.id,
+      })
+      .catch(() => undefined);
 
     return newTx;
   }
@@ -641,6 +728,23 @@ export class TransactionService {
     }
 
     const updated = await transactionRepository.update(transactionId, userId, updatePayload);
+
+    // Reverse previous journal entry and post corrected balanced entry
+    if (updated) {
+      await coreAuditService
+        .reverseJournalEntriesForTransaction(
+          userId,
+          transactionId,
+          'Transaction edited — reversing prior posting before correction'
+        )
+        .catch(() => undefined);
+      await coreAuditService
+        .postJournalEntryForTransaction(userId, updated, {
+          memo: `[Corrected] ${updated.notes || updated.category || updated.type}`,
+        })
+        .catch(() => undefined);
+    }
+
     return updated;
   }
 
@@ -667,6 +771,15 @@ export class TransactionService {
   async deleteTransaction(userId: string, transactionId: string) {
     const transaction = await transactionRepository.findByIdAndUserId(transactionId, userId);
     if (!transaction) throw new Error('Transaction not found');
+
+    // Audit Item A: Record reversal journal entry before removing the business event
+    await coreAuditService
+      .reverseJournalEntriesForTransaction(
+        userId,
+        transactionId,
+        `Reversal for deleted ${transaction.type} (${transaction.amount} MAD)`
+      )
+      .catch(() => undefined);
 
     const relatedSplits = await transactionRepository.findSplitsByTransactionId(transactionId);
 

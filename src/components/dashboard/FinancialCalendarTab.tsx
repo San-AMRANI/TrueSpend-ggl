@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Landmark, Trash2, WalletCards, CalendarDays, TrendingUp, Repeat, Zap, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
-import { Debt, Payroll, Transaction, Goal, Subscription, KPI, Wallet, InvestmentsData } from '../../types';
+import { Debt, Payroll, Transaction, Subscription, KPI, Wallet, InvestmentsData, CommitmentOccurrence } from '../../types';
 import { Button } from '../ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { CashFlowTab } from './CashFlowTab';
+import { dashboardService } from '../../services/api/dashboardService';
+import { useAuth } from '../../context/AuthContext';
 
 type EventKind = 'income' | 'expense' | 'transfer' | 'debt' | 'payroll' | 'goal' | 'subscription' | 'dca' | 'investment';
 type CalendarEvent = {
@@ -53,6 +55,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   onDeletePayroll,
   onPaySubscription,
 }) => {
+  const { token } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'cashflow'>('calendar');
   const [payingSubId, setPayingSubId] = useState<string | null>(null);
   const today = dateKey(new Date());
@@ -60,8 +63,25 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   const [ref, setRef] = useState({ year: now.getUTCFullYear(), month: now.getUTCMonth() });
   const [selectedDate, setSelectedDate] = useState(today);
   const [amount, setAmount] = useState('');
+  const [confirmedPayrollInput, setConfirmedPayrollInput] = useState('');
+  const [occurrences, setOccurrences] = useState<CommitmentOccurrence[]>([]);
+  const [showOccurrences, setShowOccurrences] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  const loadOccurrences = useCallback(async () => {
+    if (!token) return;
+    try {
+      const list = await dashboardService.getCommitmentOccurrences(token);
+      setOccurrences(list);
+    } catch {}
+  }, [token]);
+
+  useEffect(() => {
+    if (showOccurrences) {
+      loadOccurrences();
+    }
+  }, [showOccurrences, loadOccurrences]);
 
   const events = useMemo<CalendarEvent[]>(() => {
     const transactionEvents = transactions.map((transaction) => {
@@ -373,24 +393,93 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Payroll setup</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Payroll Verification &amp; Setup</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <p className="font-medium text-gray-900 dark:text-gray-100">{formatDate(selectedDate)}</p>
                 {selectedPayroll ? (
                   <>
-                    <div className="rounded-lg bg-violet-50 p-3 dark:bg-violet-950/50">
-                      <p className="text-xs font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">Configured payroll</p>
-                      <p className="mt-1 text-lg font-bold text-violet-800 dark:text-violet-100">+{Number(selectedPayroll.amount).toFixed(2)} MAD</p>
-                      <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">{generatedTransaction ? 'Automatically posted to Bank.' : selectedDate <= today ? 'Will post on your next data refresh.' : 'Will post automatically on this date.'}</p>
+                    <div className="rounded-lg bg-violet-50 p-3 dark:bg-violet-950/50 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">
+                          {selectedPayroll.status === 'confirmed' || selectedPayroll.status === 'matched' || generatedTransaction
+                            ? 'Confirmed Salary Inflow'
+                            : 'Expected Scheduled Payroll'}
+                        </p>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                            selectedPayroll.status === 'confirmed' || selectedPayroll.status === 'matched' || generatedTransaction
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300'
+                          }`}
+                        >
+                          {selectedPayroll.status || (generatedTransaction ? 'confirmed' : 'expected')}
+                        </span>
+                      </div>
+                      <p className="text-lg font-bold text-violet-800 dark:text-violet-100">
+                        +{Number(selectedPayroll.confirmedAmount || selectedPayroll.amount).toFixed(2)} MAD
+                      </p>
+                      {selectedPayroll.varianceAmount && Math.abs(Number(selectedPayroll.varianceAmount)) > 0.01 && (
+                        <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                          Variance vs Expected ({Number(selectedPayroll.amount).toFixed(0)} MAD):{' '}
+                          {Number(selectedPayroll.varianceAmount) > 0 ? '+' : ''}
+                          {Number(selectedPayroll.varianceAmount).toFixed(2)} MAD
+                        </p>
+                      )}
+                      <p className="text-xs text-violet-700 dark:text-violet-300">
+                        {generatedTransaction || selectedPayroll.status === 'confirmed'
+                          ? 'Confirmed and posted to your primary wallet & double-entry ledger.'
+                          : 'Expected salary does not fabricate received cash until you confirm receipt.'}
+                      </p>
                     </div>
                     {generatedTransaction ? (
                       <Button className="w-full" variant="outline" onClick={() => openTransaction(generatedTransaction.id)}>
                         <Landmark className="mr-2 h-4 w-4" />Open payroll transaction
                       </Button>
                     ) : (
-                      <Button className="w-full text-red-600" variant="outline" disabled={saving} onClick={removePayroll}>
-                        <Trash2 className="mr-2 h-4 w-4" />Remove payroll
-                      </Button>
+                      <div className="space-y-2 pt-1">
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                          Confirm Actual Received Salary (MAD)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={confirmedPayrollInput}
+                          onChange={(e) => setConfirmedPayrollInput(e.target.value)}
+                          placeholder={String(selectedPayroll.amount)}
+                          className="w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                        />
+                        <Button
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                          disabled={saving}
+                          onClick={async () => {
+                            setSaving(true);
+                            try {
+                              const actual = confirmedPayrollInput
+                                ? parseFloat(confirmedPayrollInput)
+                                : parseFloat(selectedPayroll.amount);
+                              const res = await dashboardService.confirmPayroll(
+                                selectedPayroll.id,
+                                { confirmedAmount: actual, confirmedAt: selectedDate },
+                                token
+                              );
+                              setConfirmedPayrollInput('');
+                              showNotice(
+                                `Payroll confirmed (+${actual.toFixed(2)} MAD, ${res.varianceType}) and posted to Bank!`
+                              );
+                            } catch (err: any) {
+                              showNotice(err?.message || 'Failed to confirm payroll');
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          Confirm Salary Receipt
+                        </Button>
+                        <Button className="w-full text-red-600" variant="outline" disabled={saving} onClick={removePayroll}>
+                          <Trash2 className="mr-2 h-4 w-4" />Remove payroll
+                        </Button>
+                      </div>
                     )}
                   </>
                 ) : (
@@ -412,6 +501,47 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                     </Button>
                   </>
                 )}
+
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowOccurrences((prev) => !prev)}
+                    className="w-full text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center justify-between"
+                  >
+                    <span>Unified Commitment Occurrences Ledger</span>
+                    <span>{showOccurrences ? 'Hide' : 'Open'}</span>
+                  </button>
+                  {showOccurrences && (
+                    <div className="mt-2 space-y-1.5 max-h-44 overflow-y-auto text-xs">
+                      {occurrences.slice(0, 8).map((occ) => (
+                        <div
+                          key={occ.id}
+                          className="flex items-center justify-between gap-2 rounded border border-gray-100 dark:border-gray-800 p-1.5"
+                        >
+                          <div className="truncate">
+                            <p className="font-semibold text-gray-900 dark:text-white truncate">{occ.title}</p>
+                            <p className="text-[10px] text-gray-500">
+                              {occ.scheduledDate} · {occ.commitmentType} · {occ.status}
+                            </p>
+                          </div>
+                          {occ.status === 'scheduled' && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await dashboardService.settleCommitmentOccurrence(occ.id, { status: 'paid' }, token);
+                                await loadOccurrences();
+                                showNotice(`Marked ${occ.title} as paid.`);
+                              }}
+                              className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-semibold shrink-0"
+                            >
+                              Settle
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>

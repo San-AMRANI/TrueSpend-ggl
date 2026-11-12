@@ -1724,9 +1724,27 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     return () => window.removeEventListener('truespend:sendChatPrompt', handler);
   }, [handleSend]);
 
-  const handleAction = async (index: number, approve: boolean) => {
+  const handleAction = async (index: number, approve: boolean | 'simulate') => {
     const message = messages[index];
     if (!message.actions?.length) return;
+    if (approve === 'simulate') {
+      try {
+        const simRes = await fetch('/api/chat/simulate-actions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ actions: message.actions }),
+        });
+        if (simRes.ok) {
+          const data = await simRes.json();
+          setMessages((prev) =>
+            prev.map((item, i) => (i === index ? ({ ...item, impactSimulation: data.impact } as any) : item)),
+          );
+        }
+      } catch (e) {
+        console.error('Failed to simulate actions:', e);
+      }
+      return;
+    }
     if (!approve) {
       setMessages((prev) =>
         prev.map((item, i) => (i === index ? { ...item, actionStatus: 'rejected' } : item)),

@@ -9,9 +9,20 @@ export const wallets = pgTable('wallets', {
   userId: uuid('user_id').references(() => users.id).notNull(),
   name: text('name').notNull(), // e.g., 'Main Bank', 'Savings', 'Cash', 'Binance', 'IBKR'
   type: walletTypeEnum('type').notNull(),
+  accountSubtype: text('account_subtype').default('Checking').notNull(), // 'Checking' | 'Savings' | 'Cash' | 'Brokerage' | 'CreditCard' | 'Overdraft'
+  institutionName: text('institution_name'),
+  accountReference: text('account_reference'),
+  currency: text('currency').default('MAD').notNull(),
   isMain: boolean('is_main').default(false).notNull(),
   initialBalance: decimal('initial_balance').default('0').notNull(),
   currentBalance: decimal('current_balance').default('0').notNull(),
+  creditLimit: decimal('credit_limit').default('0').notNull(),
+  liabilityBalance: decimal('liability_balance').default('0').notNull(),
+  statementClosingDay: integer('statement_closing_day'),
+  paymentDueDay: integer('payment_due_day'),
+  minimumPayment: decimal('minimum_payment').default('0').notNull(),
+  valuationStatus: text('valuation_status').default('verified').notNull(), // 'verified' | 'manual' | 'synced' | 'stale'
+  lastReconciledAt: timestamp('last_reconciled_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [
@@ -211,6 +222,7 @@ export const users = pgTable('users', {
   payday: integer('payday').default(25),
   emergencyBuffer: decimal('emergency_buffer').default('0').notNull(),
   salary: decimal('salary').default('0').notNull(),
+  baseCurrency: text('base_currency').default('MAD').notNull(),
   automatedDriveBackups: integer('automated_drive_backups').default(0),
   lastDriveBackupDate: timestamp('last_drive_backup_date'),
   driveBackupFrequency: text('drive_backup_frequency').default('weekly'),
@@ -235,9 +247,18 @@ export const debts = pgTable('debts', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id).notNull(),
   contactName: text('contact_name').notNull(),
+  counterpartyType: text('counterparty_type').default('Person').notNull(), // 'Person' | 'Institution' | 'Merchant'
   type: debtTypeEnum('type').notNull(),
   originalAmount: decimal('original_amount').notNull(),
   remainingBalance: decimal('remaining_balance').notNull(),
+  principalBalance: decimal('principal_balance').default('0').notNull(),
+  accruedInterest: decimal('accrued_interest').default('0').notNull(),
+  feesAmount: decimal('fees_amount').default('0').notNull(),
+  interestRateApr: decimal('interest_rate_apr').default('0').notNull(),
+  rateType: text('rate_type').default('none').notNull(), // 'none' | 'fixed' | 'variable'
+  installmentAmount: decimal('installment_amount'),
+  installmentFrequency: text('installment_frequency').default('one_time').notNull(), // 'one_time' | 'monthly' | 'biweekly' | 'weekly'
+  currency: text('currency').default('MAD').notNull(),
   status: debtStatusEnum('status').notNull(),
   dueDate: timestamp('due_date'),
   createdAt: timestamp('created_at').defaultNow(),
@@ -249,6 +270,11 @@ export const payrolls = pgTable('payrolls', {
   userId: uuid('user_id').references(() => users.id).notNull(),
   scheduledFor: timestamp('scheduled_for').notNull(),
   amount: decimal('amount').notNull(),
+  status: text('status').default('expected').notNull(), // 'expected' | 'confirmed' | 'matched'
+  confirmedAmount: decimal('confirmed_amount'),
+  confirmedAt: timestamp('confirmed_at'),
+  varianceAmount: decimal('variance_amount').default('0').notNull(),
+  varianceNotes: text('variance_notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -274,6 +300,11 @@ export const transactions = pgTable('transactions', {
   sourceWallet: text('source_wallet'),
   createdAt: timestamp('created_at').defaultNow(),
   amount: decimal('amount').notNull(),
+  nativeAmount: decimal('native_amount'),
+  currency: text('currency').default('MAD').notNull(),
+  exchangeRateUsed: decimal('exchange_rate_used').default('1').notNull(),
+  fxSource: text('fx_source').default('locked_at_posting').notNull(), // 'locked_at_posting' | 'manual' | 'estimated_backfill'
+  idempotencyKey: text('idempotency_key'),
   type: transactionTypeEnum('type').notNull(),
   category: text('category'),
   notes: text('notes'),
@@ -356,6 +387,8 @@ export const goals = pgTable('goals', {
   targetAmount: decimal('target_amount').notNull(),
   currentAmount: decimal('current_amount').default('0').notNull(),
   autoSyncBalance: boolean('auto_sync_balance').default(false).notNull(),
+  fundingCadence: text('funding_cadence').default('monthly').notNull(), // 'monthly' | 'weekly' | 'biweekly' | 'adhoc'
+  plannedContributionAmount: decimal('planned_contribution_amount').default('0').notNull(),
   deadline: timestamp('deadline'),
   category: text('category').default('').notNull(),
   notes: text('notes').default('').notNull(),
@@ -390,6 +423,8 @@ export const categoryBudgets = pgTable(
     year: integer('year').notNull(),
     month: integer('month').notNull(),
     amount: decimal('amount').notNull(),
+    rolloverEnabled: boolean('rollover_enabled').default(false).notNull(),
+    rolloverAmount: decimal('rollover_amount').default('0').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -402,6 +437,212 @@ export const categoryBudgets = pgTable(
     ),
   ],
 );
+
+// ─── Core Audit Extensions (Items A through P) ───────────────────────────────
+
+/** A. Balanced Double-Entry Accounting Journal Entries */
+export const journalEntries = pgTable('journal_entries', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  transactionId: uuid('transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  entryType: text('entry_type').default('standard').notNull(), // 'standard' | 'transfer' | 'credit_purchase' | 'credit_settlement' | 'investment' | 'reversal' | 'correction' | 'opening_backfill'
+  status: text('status').default('posted').notNull(), // 'posted' | 'reversed'
+  reversalOfEntryId: uuid('reversal_of_entry_id'),
+  currency: text('currency').default('MAD').notNull(),
+  exchangeRateUsed: decimal('exchange_rate_used').default('1').notNull(),
+  isEstimatedBackfill: boolean('is_estimated_backfill').default(false).notNull(),
+  idempotencyKey: text('idempotency_key'),
+  memo: text('memo'),
+  postedAt: timestamp('posted_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/** A. Balanced Double-Entry Accounting Journal Lines */
+export const journalLines = pgTable('journal_lines', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  journalEntryId: uuid('journal_entry_id').references(() => journalEntries.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+  accountCode: text('account_code').notNull(), // e.g., '1010-BANK', '2010-CREDIT-CARD', '4010-INCOME', '5010-EXPENSE'
+  accountName: text('account_name').notNull(),
+  accountClass: text('account_class').notNull(), // 'Asset' | 'Liability' | 'Income' | 'Expense' | 'Equity' | 'Clearing'
+  debitMad: decimal('debit_mad').default('0').notNull(),
+  creditMad: decimal('credit_mad').default('0').notNull(),
+  nativeAmount: decimal('native_amount').default('0').notNull(),
+  nativeCurrency: text('native_currency').default('MAD').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/** C. Historical Exchange Rates */
+export const exchangeRates = pgTable('exchange_rates', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  baseCurrency: text('base_currency').notNull(), // e.g. 'USD', 'EUR'
+  quoteCurrency: text('quote_currency').default('MAD').notNull(),
+  rate: decimal('rate').notNull(),
+  source: text('source').default('reference_feed').notNull(), // 'reference_feed' | 'manual' | 'locked_posting'
+  effectiveDate: text('effective_date').notNull(), // YYYY-MM-DD
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/** D. Statement Import Batches */
+export const statementImportBatches = pgTable('statement_import_batches', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'cascade' }).notNull(),
+  fileName: text('file_name').notNull(),
+  fileFormat: text('file_format').default('CSV').notNull(), // 'CSV' | 'XLSX' | 'TSV'
+  statementOpeningBalance: decimal('statement_opening_balance'),
+  statementClosingBalance: decimal('statement_closing_balance'),
+  reconciledVariance: decimal('reconciled_variance').default('0').notNull(),
+  totalRows: integer('total_rows').default(0).notNull(),
+  matchedCount: integer('matched_count').default(0).notNull(),
+  unmatchedCount: integer('unmatched_count').default(0).notNull(),
+  ambiguousCount: integer('ambiguous_count').default(0).notNull(),
+  duplicateCount: integer('duplicate_count').default(0).notNull(),
+  status: text('status').default('pending_review').notNull(), // 'pending_review' | 'reconciled'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/** D. Statement Import Rows */
+export const statementImportRows = pgTable('statement_import_rows', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  batchId: uuid('batch_id').references(() => statementImportBatches.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'cascade' }).notNull(),
+  rowDate: text('row_date').notNull(),
+  description: text('description').notNull(),
+  amount: decimal('amount').notNull(),
+  currency: text('currency').default('MAD').notNull(),
+  externalReference: text('external_reference'),
+  rowHash: text('row_hash').notNull(),
+  matchStatus: text('match_status').default('unmatched').notNull(), // 'matched' | 'unmatched' | 'ambiguous' | 'duplicate' | 'confirmed_created' | 'confirmed_linked' | 'ignored'
+  matchConfidence: decimal('match_confidence').default('0').notNull(),
+  suggestedTransactionId: uuid('suggested_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  linkedTransactionId: uuid('linked_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  candidateTransactionIdsJson: text('candidate_transaction_ids_json'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/** E. Persistent Financial Review Inbox */
+export const financialReviewItems = pgTable('financial_review_items', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  sourceType: text('source_type').notNull(), // 'receipt_ocr' | 'statement_row' | 'voice_draft' | 'unmatched_investment' | 'suspected_duplicate' | 'recurring_suggestion'
+  status: text('status').default('Needs Review').notNull(), // 'Captured' | 'Needs Review' | 'Confirmed' | 'Linked' | 'Posted' | 'Rejected' | 'Duplicate'
+  confidenceScore: decimal('confidence_score').default('0.8').notNull(),
+  parsedAmount: decimal('parsed_amount').notNull(),
+  parsedCurrency: text('parsed_currency').default('MAD').notNull(),
+  parsedDate: text('parsed_date').notNull(),
+  parsedDescription: text('parsed_description').notNull(),
+  parsedCategory: text('parsed_category'),
+  parsedType: text('parsed_type').default('Expense').notNull(),
+  walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+  linkedTransactionId: uuid('linked_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  rawPayloadJson: text('raw_payload_json'),
+  decisionNotes: text('decision_notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/** F. Reusable Commitment Occurrences */
+export const commitmentOccurrences = pgTable('commitment_occurrences', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  sourceType: text('source_type').notNull(), // 'subscription' | 'debt_installment' | 'payroll' | 'planned_bill'
+  sourceId: text('source_id').notNull(),
+  title: text('title').notNull(),
+  expectedDate: text('expected_date').notNull(), // YYYY-MM-DD
+  expectedAmount: decimal('expected_amount').notNull(),
+  currency: text('currency').default('MAD').notNull(),
+  status: text('status').default('scheduled').notNull(), // 'scheduled' | 'completed' | 'overdue' | 'skipped' | 'partial'
+  actualDate: text('actual_date'),
+  actualAmount: decimal('actual_amount'),
+  varianceAmount: decimal('variance_amount').default('0').notNull(),
+  linkedTransactionId: uuid('linked_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/** I. Auditable Goal & Sinking-Fund Contribution Events */
+export const goalContributionEvents = pgTable('goal_contribution_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  goalId: uuid('goal_id').references(() => goals.id, { onDelete: 'cascade' }).notNull(),
+  transactionId: uuid('transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  sourceWalletId: uuid('source_wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+  destinationWalletId: uuid('destination_wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+  eventType: text('event_type').default('contribution').notNull(), // 'contribution' | 'withdrawal' | 'reconciliation'
+  amount: decimal('amount').notNull(),
+  eventDate: text('event_date').notNull(), // YYYY-MM-DD
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/** J. Saved & Comparable Multi-Event What-If Scenarios */
+export const savedScenarios = pgTable('saved_scenarios', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  description: text('description'),
+  baselineSnapshotJson: text('baseline_snapshot_json').notNull(),
+  eventsJson: text('events_json').notNull(), // Array of dated scenario events
+  assumptionsJson: text('assumptions_json').notNull(),
+  projectedSummaryJson: text('projected_summary_json').notNull(),
+  isApprovedPlan: boolean('is_approved_plan').default(false).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/** K. User-Configurable Financial Rules */
+export const financialRules = pgTable('financial_rules', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  triggerType: text('trigger_type').notNull(), // 'salary_confirmed' | 'transaction_posted' | 'balance_threshold_crossed' | 'commitment_approaching' | 'budget_pace_crossed'
+  conditionsJson: text('conditions_json').notNull(), // { walletId?, category?, minAmount?, maxAmount?, threshold? }
+  actionType: text('action_type').notNull(), // 'send_notification' | 'create_review_draft' | 'suggest_category' | 'prepare_allocation'
+  actionPayloadJson: text('action_payload_json').notNull(),
+  approvalPolicy: text('approval_policy').default('notify_only').notNull(), // 'notify_only' | 'create_draft' | 'request_approval'
+  version: integer('version').default(1).notNull(),
+  lastTriggeredAt: timestamp('last_triggered_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+/** K. Financial Rule Execution Audit Logs */
+export const financialRuleLogs = pgTable('financial_rule_logs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  ruleId: uuid('rule_id').references(() => financialRules.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  ruleVersion: integer('rule_version').default(1).notNull(),
+  triggerEventSummary: text('trigger_event_summary').notNull(),
+  proposedResultSummary: text('proposed_result_summary').notNull(),
+  outcomeStatus: text('outcome_status').default('executed').notNull(), // 'notified' | 'draft_created' | 'awaiting_approval' | 'approved' | 'rate_limited'
+  idempotencyKey: text('idempotency_key').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/** L. External Assets & Liabilities for Unified Net Worth */
+export const externalWealthItems = pgTable('external_wealth_items', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  name: text('name').notNull(),
+  itemClass: text('item_class').notNull(), // 'Property' | 'Vehicle' | 'PreciousMetals' | 'PrivateInvestment' | 'PersonalLoan' | 'CreditFacility' | 'OtherAsset' | 'OtherLiability'
+  isLiability: boolean('is_liability').default(false).notNull(),
+  isLiquid: boolean('is_liquid').default(false).notNull(),
+  estimatedValue: decimal('estimated_value').notNull(),
+  currency: text('currency').default('MAD').notNull(),
+  valuationDate: text('valuation_date').notNull(), // YYYY-MM-DD
+  valuationSource: text('valuation_source').default('manual_estimate').notNull(), // 'manual_estimate' | 'appraisal' | 'statement_verified'
+  confidenceLevel: text('confidence_level').default('medium').notNull(), // 'high' | 'medium' | 'low'
+  isExternallyVerified: boolean('is_externally_verified').default(false).notNull(),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
 
 // ─── Relations ────────────────────────────────────────────────────────────────
 

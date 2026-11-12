@@ -30,6 +30,18 @@ import {
   UserStatus,
   WorkspaceMode,
   UserPermissions,
+  JournalAuditSummary,
+  ExchangeRateRecord,
+  StatementBatchWithRows,
+  FinancialReviewItem,
+  CommitmentOccurrence,
+  GoalContributionEvent,
+  SavedWhatIfScenario,
+  FinancialRuleItem,
+  FinancialRuleLogItem,
+  ExternalWealthItem,
+  BackupValidationPreview,
+  AiActionImpactSimulation,
 } from '../../types';
 
 export const dashboardService = {
@@ -78,6 +90,16 @@ export const dashboardService = {
   getPayrolls: (token: string | null) => apiClient.get<Payroll[]>('/api/payrolls', token),
   createPayroll: (payload: { scheduledFor: string; amount: number }, token: string | null) =>
     apiClient.post<Payroll>('/api/payrolls', payload, token),
+  confirmPayroll: (
+    id: string,
+    payload: { confirmedAmount?: number; confirmedAt?: string; walletId?: string; varianceNotes?: string },
+    token: string | null
+  ) =>
+    apiClient.post<{ payroll: Payroll; transaction: Transaction; variance: number; varianceType: string }>(
+      `/api/payrolls/${id}/confirm`,
+      payload,
+      token
+    ),
   deletePayroll: (id: string, token: string | null) => apiClient.delete<{ success: boolean }>(`/api/payrolls/${id}`, token),
   deleteTransaction: (id: string, token: string | null) =>
     apiClient.delete<{ message: string }>(`/api/transactions/${id}`, token),
@@ -424,5 +446,87 @@ export const dashboardService = {
     apiClient.delete<{ deletedId: string }>(`/api/users/${id}`, token),
   impersonateManagedUser: (id: string, token: string | null) =>
     apiClient.post<{ token: string; user: User }>(`/api/users/${id}/impersonate`, {}, token),
+
+  // Core Audit Recommendations (Items A - P)
+  validateBackupSql: (sql: string, token: string | null) =>
+    apiClient.post<BackupValidationPreview>('/api/settings/validate-backup', { sql }, token),
+  getJournalAuditSummary: (token: string | null) =>
+    apiClient.get<JournalAuditSummary>('/api/audit/journal', token),
+  backfillJournalEntries: (token: string | null) =>
+    apiClient.post<{ backfilledCount: number; skippedCount: number; summary: JournalAuditSummary }>(
+      '/api/audit/journal/backfill',
+      {},
+      token
+    ),
+  getExchangeRates: (token: string | null) =>
+    apiClient.get<ExchangeRateRecord[]>('/api/audit/fx-rates', token),
+  upsertExchangeRate: (
+    payload: { baseCurrency: string; quoteCurrency?: string; rate: number; effectiveDate?: string; source?: string },
+    token: string | null
+  ) => apiClient.post<ExchangeRateRecord>('/api/audit/fx-rates', payload, token),
+  getStatementBatches: (token: string | null) =>
+    apiClient.get<StatementBatchWithRows[]>('/api/audit/statements', token),
+  importStatementBatch: (
+    payload: { fileName: string; walletId?: string | null; csvText: string; defaultCurrency?: string },
+    token: string | null
+  ) =>
+    apiClient.post<{
+      batch: StatementBatchWithRows;
+      rows: StatementBatchWithRows['rows'];
+      matchedCount: number;
+      unmatchedCount: number;
+      duplicateCount: number;
+    }>('/api/audit/statements/import', payload, token),
+  resolveStatementRow: (
+    rowId: string,
+    payload: { action: 'confirm_match' | 'create_transaction' | 'ignore'; matchedTransactionId?: string; category?: string; walletId?: string },
+    token: string | null
+  ) => apiClient.post<{ status: string; transactionId?: string }>(`/api/audit/statements/rows/${rowId}/resolve`, payload, token),
+  getReviewInbox: (token: string | null, status?: string) =>
+    apiClient.get<FinancialReviewItem[]>(`/api/audit/review-inbox${status ? `?status=${encodeURIComponent(status)}` : ''}`, token),
+  createReviewItem: (payload: Record<string, unknown>, token: string | null) =>
+    apiClient.post<FinancialReviewItem>('/api/audit/review-inbox', payload, token),
+  decideReviewItem: (
+    id: string,
+    payload: {
+      decision: 'confirm_create' | 'link_existing' | 'reject' | 'mark_duplicate';
+      linkedTransactionId?: string;
+      walletId?: string;
+      category?: string;
+      amount?: number;
+      merchant?: string;
+      date?: string;
+    },
+    token: string | null
+  ) => apiClient.post<{ status: string; transaction?: Transaction }>(`/api/audit/review-inbox/${id}/decide`, payload, token),
+  getCommitmentOccurrences: (token: string | null) =>
+    apiClient.get<CommitmentOccurrence[]>('/api/audit/occurrences', token),
+  settleCommitmentOccurrence: (
+    id: string,
+    payload: { status: 'paid' | 'skipped' | 'renegotiated'; confirmedAmount?: number; walletId?: string; varianceNotes?: string },
+    token: string | null
+  ) => apiClient.post<{ status: string; transactionId?: string | null }>(`/api/audit/occurrences/${id}/settle`, payload, token),
+  getGoalContributionEvents: (token: string | null, goalId?: string) =>
+    apiClient.get<GoalContributionEvent[]>(`/api/audit/goal-events${goalId ? `?goalId=${encodeURIComponent(goalId)}` : ''}`, token),
+  getSavedScenarios: (token: string | null) =>
+    apiClient.get<SavedWhatIfScenario[]>('/api/audit/scenarios', token),
+  saveScenario: (payload: Record<string, unknown>, token: string | null) =>
+    apiClient.post<SavedWhatIfScenario>('/api/audit/scenarios', payload, token),
+  deleteScenario: (id: string, token: string | null) =>
+    apiClient.delete<{ deletedId: string }>(`/api/audit/scenarios/${id}`, token),
+  getFinancialRules: (token: string | null) =>
+    apiClient.get<{ rules: FinancialRuleItem[]; logs: FinancialRuleLogItem[] }>('/api/audit/rules', token),
+  upsertFinancialRule: (payload: Record<string, unknown>, token: string | null) =>
+    apiClient.post<FinancialRuleItem>('/api/audit/rules', payload, token),
+  deleteFinancialRule: (id: string, token: string | null) =>
+    apiClient.delete<{ deletedId: string }>(`/api/audit/rules/${id}`, token),
+  getExternalWealthItems: (token: string | null) =>
+    apiClient.get<ExternalWealthItem[]>('/api/audit/external-wealth', token),
+  upsertExternalWealthItem: (payload: Record<string, unknown>, token: string | null) =>
+    apiClient.post<ExternalWealthItem>('/api/audit/external-wealth', payload, token),
+  deleteExternalWealthItem: (id: string, token: string | null) =>
+    apiClient.delete<{ deletedId: string }>(`/api/audit/external-wealth/${id}`, token),
+  simulateAiActions: (actions: unknown[], token: string | null) =>
+    apiClient.post<{ impact: AiActionImpactSimulation }>('/api/chat/simulate-actions', { actions }, token),
 };
 

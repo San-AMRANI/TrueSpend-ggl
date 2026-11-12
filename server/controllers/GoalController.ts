@@ -66,6 +66,17 @@ export class GoalController {
       res.status(status).json({ error: e.message || 'Unable to delete goal' });
     }
   }
+
+  async reconcileGoal(req: AuthRequest, res: Response) {
+    try {
+      const result = await goalService.reconcileGoalFromEvents(req.params.id, req.dbUser.id);
+      res.status(200).json(result);
+    } catch (e: any) {
+      console.error(e);
+      const status = e.message === 'Goal not found' ? 404 : 400;
+      res.status(status).json({ error: e.message || 'Unable to reconcile goal' });
+    }
+  }
 }
 
 export const goalController = new GoalController();

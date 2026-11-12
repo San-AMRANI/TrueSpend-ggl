@@ -123,8 +123,17 @@ function installNativeApiFetchInterceptor() {
   };
 }
 
+import { flushOfflineOutbox } from './offlineOutbox';
+
 export async function initCapacitorBridge(): Promise<void> {
   installNativeApiFetchInterceptor();
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+      const token = localStorage.getItem('truespend_auth_token');
+      flushOfflineOutbox(token).catch(() => {});
+    });
+  }
 
   if (!isNativePlatform()) return;
 

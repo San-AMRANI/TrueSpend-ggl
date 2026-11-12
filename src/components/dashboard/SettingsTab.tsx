@@ -10,6 +10,7 @@ import { WalletsManager } from './WalletsManager';
 import { UsersAndRolesSection } from './UsersAndRolesSection';
 import { ThemeStudioCard } from './ThemeStudioCard';
 import { getCapacitorApiBaseUrl, setCapacitorApiBaseUrl, isNativePlatform, getPlatformName } from '../../lib/capacitorBridge';
+import { getOfflineOutbox, flushOfflineOutbox, clearOfflineFinancialCachesOnLogout } from '../../lib/offlineOutbox';
 import type {
   NotifChannelPrefs,
   NotifSettings,
@@ -17,7 +18,16 @@ import type {
   ServerNotifSettings,
   SmartNotificationItem,
 } from '../../hooks/useNotifications';
-import type { Wallet, Subscription, Debt, InvestmentsData, DashboardTab } from '../../types';
+import type {
+  Wallet,
+  Subscription,
+  Debt,
+  InvestmentsData,
+  DashboardTab,
+  BackupValidationPreview,
+  FinancialRuleItem,
+  FinancialRuleLogItem,
+} from '../../types';
 
 interface NotificationsApi {
   supported: boolean;
@@ -76,11 +86,36 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   notifications,
 }) => {
   const importFileRef = useRef<HTMLInputElement>(null);
+  const validateFileRef = useRef<HTMLInputElement>(null);
   const [notifToast, setNotifToast] = useState<string | null>(null);
   const [isDriveConnecting, setIsDriveConnecting] = useState(false);
   const [isDriveBackingUp, setIsDriveBackingUp] = useState(false);
   const [apiBaseInput, setApiBaseInput] = useState<string>(() => getCapacitorApiBaseUrl());
+  const [backupPreview, setBackupPreview] = useState<BackupValidationPreview | null>(null);
+  const [rules, setRules] = useState<FinancialRuleItem[]>([]);
+  const [ruleLogs, setRuleLogs] = useState<FinancialRuleLogItem[]>([]);
+  const [ruleName, setRuleName] = useState('');
+  const [ruleTrigger, setRuleTrigger] = useState('transaction_created');
+  const [ruleCondField, setRuleCondField] = useState('merchant_contains');
+  const [ruleCondVal, setRuleCondVal] = useState('');
+  const [ruleActionType, setRuleActionType] = useState('flag_review');
+  const [outboxCount, setOutboxCount] = useState<number>(() => getOfflineOutbox().length);
   const { user, token, signOut } = useAuth();
+
+  React.useEffect(() => {
+    if (token) {
+      dashboardService
+        .getFinancialRules(token)
+        .then((res) => {
+          setRules(res.rules || []);
+          setRuleLogs(res.logs || []);
+        })
+        .catch(() => {});
+    }
+    const onOutboxUpdate = () => setOutboxCount(getOfflineOutbox().length);
+    window.addEventListener('truespend:outbox-updated', onOutboxUpdate);
+    return () => window.removeEventListener('truespend:outbox-updated', onOutboxUpdate);
+  }, [token]);
 
   
   const handleToggleAutoBackup = async () => {
@@ -773,7 +808,38 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 Choose a <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded text-gray-800 dark:text-gray-200">.sql</code> file exported by TrueSpend. The backup is validated before a single transaction replaces the current records, so a failed import leaves your data unchanged.
               </p>
               <input ref={importFileRef} type="file" accept=".sql,application/sql,text/plain" onChange={handleImportFile} className="hidden" />
-              <div className="pt-3">
+              <input
+                ref={validateFileRef}
+                type="file"
+                accept=".sql,application/sql,text/plain"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  const sql = await f.text();
+                  try {
+                    const preview = await dashboardService.validateBackupSql(sql, token);
+                    setBackupPreview(preview);
+                    showNotifToast(
+                      preview.valid
+                        ? `Backup verified (${preview.totalRecords} records across ${Object.keys(preview.tableCounts).length} tables)!`
+                        : 'Backup validation found issues.'
+                    );
+                  } catch (err: any) {
+                    showNotifToast(err?.message || 'Backup validation failed.');
+                  }
+                }}
+                className="hidden"
+              />
+              <div className="pt-3 flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => validateFileRef.current?.click()}
+                  className="flex items-center gap-2 border-indigo-300 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Validate Backup Preview (Non-Destructive)
+                </Button>
                 <Button
                   variant="outline"
                   disabled={isImporting}
@@ -784,7 +850,157 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   {isImporting ? 'Restoring Backup...' : 'Import & Restore SQL Backup'}
                 </Button>
               </div>
+
+              {backupPreview && (
+                <div className="mt-3 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-800 p-3 text-xs space-y-2">
+                  <div className="flex items-center justify-between font-bold">
+                    <span className={backupPreview.valid ? 'text-emerald-600' : 'text-rose-600'}>
+                      {backupPreview.valid ? '✓ Valid TrueSpend Full-Schema Backup' : '✕ Invalid Backup File'}
+                    </span>
+                    <span className="font-mono text-[11px] text-gray-500">
+                      Schema v{backupPreview.schemaVersion} · Checksum {backupPreview.checksumVerified ? 'Verified' : 'Unverified'}
+                    </span>
+                  </div>
+                  <p className="text-gray-600 dark:text-gray-300">
+                    Total Records: <strong>{backupPreview.totalRecords}</strong> across{' '}
+                    <strong>{Object.keys(backupPreview.tableCounts).length}</strong> tables ({backupPreview.totalStatements} SQL statements).
+                  </p>
+                  {backupPreview.warnings.length > 0 && (
+                    <p className="text-amber-600">{backupPreview.warnings.join(' · ')}</p>
+                  )}
+                  {backupPreview.errors.length > 0 && (
+                    <p className="text-rose-600">{backupPreview.errors.join(' · ')}</p>
+                  )}
+                </div>
+              )}
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Item K: User-Configurable Constrained Financial Rules Engine ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5 text-indigo-600" />
+            Automated Financial Rules Engine (Constrained &amp; Auditable)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-4 space-y-4">
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Define deterministic IF/THEN rules with cooldown protection. Rules can auto-categorize transactions, flag large outflows to your Review Inbox, or propose payday transfers—never silently moving money without confirmation.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+              <input
+                type="text"
+                placeholder="Rule name (e.g. Flag Large Spend)"
+                value={ruleName}
+                onChange={(e) => setRuleName(e.target.value)}
+                className="px-2.5 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+              />
+              <select
+                value={ruleTrigger}
+                onChange={(e) => setRuleTrigger(e.target.value)}
+                className="px-2.5 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+              >
+                <option value="transaction_created">On Transaction Created</option>
+                <option value="salary_confirmed">On Salary Confirmed</option>
+                <option value="statement_imported">On Statement Imported</option>
+              </select>
+              <select
+                value={ruleCondField}
+                onChange={(e) => setRuleCondField(e.target.value)}
+                className="px-2.5 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+              >
+                <option value="amount_gt">Amount &gt; (MAD)</option>
+                <option value="merchant_contains">Merchant Contains</option>
+                <option value="category_equals">Category Equals</option>
+              </select>
+              <input
+                type="text"
+                placeholder="Value (e.g. 1000 or Uber)"
+                value={ruleCondVal}
+                onChange={(e) => setRuleCondVal(e.target.value)}
+                className="px-2.5 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+              />
+              <div className="flex gap-1.5">
+                <select
+                  value={ruleActionType}
+                  onChange={(e) => setRuleActionType(e.target.value)}
+                  className="px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 flex-1"
+                >
+                  <option value="flag_review">Flag in Review Inbox</option>
+                  <option value="propose_transfer">Propose Savings Transfer</option>
+                  <option value="create_alert">Create Alert</option>
+                </select>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    if (!ruleName.trim() || !ruleCondVal.trim()) return;
+                    const created = await dashboardService.upsertFinancialRule(
+                      {
+                        name: ruleName.trim(),
+                        triggerType: ruleTrigger,
+                        conditionField: ruleCondField,
+                        conditionOperator: ruleCondField === 'amount_gt' ? 'gt' : 'contains',
+                        conditionValue: ruleCondVal.trim(),
+                        actionType: ruleActionType,
+                        actionPayload: { amount: 500 },
+                        cooldownHours: 24,
+                      },
+                      token
+                    );
+                    setRules((prev) => [created, ...prev]);
+                    setRuleName('');
+                    setRuleCondVal('');
+                    showNotifToast('Financial rule saved!');
+                  }}
+                >
+                  Add
+                </Button>
+              </div>
+            </div>
+
+            {rules.length > 0 && (
+              <div className="space-y-1.5">
+                {rules.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between text-xs bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700"
+                  >
+                    <div>
+                      <span className="font-bold text-gray-900 dark:text-white">{r.name}</span>
+                      <span className="text-gray-500 ml-2">
+                        WHEN {r.triggerType} ({r.conditionField} {r.conditionValue}) → {r.actionType}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await dashboardService.deleteFinancialRule(r.id, token);
+                        setRules((prev) => prev.filter((item) => item.id !== r.id));
+                      }}
+                      className="text-rose-600 hover:underline text-[11px]"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {ruleLogs.length > 0 && (
+              <div className="pt-2 border-t border-gray-200 dark:border-gray-800 text-[11px] text-gray-500 space-y-1">
+                <p className="font-semibold text-gray-700 dark:text-gray-300">Recent Rule Execution Audit Log:</p>
+                {ruleLogs.slice(0, 4).map((l) => (
+                  <div key={l.id} className="flex justify-between">
+                    <span>{l.ruleName}: {l.details}</span>
+                    <span className="font-mono">{new Date(l.executedAt).toLocaleDateString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -795,15 +1011,50 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <CardTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">
               <Smartphone className="h-5 w-5 text-emerald-600" />
-              Android / Capacitor Native Runtime
+              Android / Capacitor Native Runtime &amp; Offline Outbox
             </span>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              {isNativePlatform() ? `Native (${getPlatformName()})` : 'Web / Capacitor Ready'}
+              {isNativePlatform() ? `Native (${getPlatformName()})` : 'Web / Capacitor Ready'} · Outbox: {outboxCount} Pending
             </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-gray-200 dark:border-gray-800 text-xs">
+              <div>
+                <span className="font-semibold text-gray-900 dark:text-white">
+                  Offline Draft Transaction Outbox ({outboxCount} queued)
+                </span>
+                <p className="text-gray-500">
+                  Offline transactions are assigned client-side idempotency keys and automatically sync on reconnect without duplicates.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={outboxCount === 0}
+                  onClick={async () => {
+                    const res = await flushOfflineOutbox(token);
+                    setOutboxCount(res.remaining);
+                    showNotifToast(`Synced ${res.synced} offline transaction(s).`);
+                  }}
+                >
+                  Sync Outbox Now
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    clearOfflineFinancialCachesOnLogout();
+                    setOutboxCount(0);
+                    showNotifToast('Cleared local offline cache.');
+                  }}
+                >
+                  Clear Local Cache
+                </Button>
+              </div>
+            </div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-gray-200 dark:border-gray-800">
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">

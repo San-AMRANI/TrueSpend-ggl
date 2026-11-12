@@ -1,10 +1,44 @@
-import React, { useState } from 'react';
-import { Landmark, Banknote, Wallet as WalletIcon, Plus, Edit2, Trash2, Star, Check, AlertCircle, X, TrendingUp, Repeat, ShieldAlert, ChevronDown, ChevronUp, Zap, Scale, CheckCircle2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  Landmark,
+  Banknote,
+  Wallet as WalletIcon,
+  Plus,
+  Edit2,
+  Trash2,
+  Star,
+  AlertCircle,
+  X,
+  TrendingUp,
+  Repeat,
+  ShieldAlert,
+  ChevronDown,
+  ChevronUp,
+  Scale,
+  CheckCircle2,
+  FileSpreadsheet,
+  Inbox,
+  BookOpen,
+  Globe,
+  CreditCard,
+  RefreshCw,
+} from 'lucide-react';
+import { Card, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
-import { Wallet, Subscription, Debt, InvestmentsData } from '../../types';
+import {
+  Wallet,
+  WalletAccountSubtype,
+  Subscription,
+  Debt,
+  InvestmentsData,
+  JournalAuditSummary,
+  StatementBatchWithRows,
+  FinancialReviewItem,
+  ExternalWealthItem,
+  ExchangeRateRecord,
+} from '../../types';
 import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
 
@@ -15,8 +49,8 @@ interface WalletsManagerProps {
   investmentsData?: InvestmentsData | null;
   onOpenInvestments?: () => void;
   onPaySubscription?: (id: string, payload?: { walletId?: string; date?: string }) => Promise<any>;
-  onCreateWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
-  onUpdateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
+  onCreateWallet: (payload: any) => Promise<any>;
+  onUpdateWallet: (id: string, payload: any) => Promise<any>;
   onDeleteWallet: (id: string, reassignToWalletId?: string) => Promise<any>;
   onClose?: () => void;
   isModal?: boolean;
@@ -46,16 +80,86 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   const [expandedWalletBills, setExpandedWalletBills] = useState<Record<string, boolean>>({});
   const [payingSubId, setPayingSubId] = useState<string | null>(null);
 
-  // Form states for create/edit
+  // Core Audit Workbench Sub-panel state
+  const [activeWorkbench, setActiveWorkbench] = useState<
+    'none' | 'statement_import' | 'review_inbox' | 'journal_audit' | 'external_wealth_fx'
+  >('none');
+  const [journalSummary, setJournalSummary] = useState<JournalAuditSummary | null>(null);
+  const [statementBatches, setStatementBatches] = useState<StatementBatchWithRows[]>([]);
+  const [reviewItems, setReviewItems] = useState<FinancialReviewItem[]>([]);
+  const [externalWealth, setExternalWealth] = useState<ExternalWealthItem[]>([]);
+  const [fxRates, setFxRates] = useState<ExchangeRateRecord[]>([]);
+  const [workbenchLoading, setWorkbenchLoading] = useState(false);
+
+  // Statement import form state
+  const [stmtWalletId, setStmtWalletId] = useState<string>('');
+  const [stmtCsvText, setStmtCsvText] = useState<string>('');
+  const [stmtFileName, setStmtFileName] = useState<string>('bank_statement.csv');
+
+  // External wealth form state
+  const [wealthName, setWealthName] = useState('');
+  const [wealthType, setWealthType] = useState<'Asset' | 'Liability'>('Asset');
+  const [wealthCategory, setWealthCategory] = useState('Property');
+  const [wealthAmountMad, setWealthAmountMad] = useState('');
+  const [wealthIsLiquid, setWealthIsLiquid] = useState(false);
+
+  // FX Rate form state
+  const [fxBaseCurrency, setFxBaseCurrency] = useState('USD');
+  const [fxRateInput, setFxRateInput] = useState('10.00');
+
+  // Form states for create/edit wallet
   const [formData, setFormData] = useState({
     name: '',
     type: 'Bank' as 'Bank' | 'Cash' | 'Savings' | 'Investment',
+    accountSubtype: 'Checking' as WalletAccountSubtype,
+    institutionName: '',
+    currency: 'MAD',
     initialBalance: '',
+    creditLimit: '',
+    statementClosingDay: '',
+    paymentDueDay: '',
     isMain: false,
   });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadWorkbenchData = useCallback(
+    async (panel: typeof activeWorkbench) => {
+      if (panel === 'none' || !token) return;
+      setWorkbenchLoading(true);
+      try {
+        if (panel === 'journal_audit') {
+          const summary = await dashboardService.getJournalAuditSummary(token);
+          setJournalSummary(summary);
+        } else if (panel === 'statement_import') {
+          const batches = await dashboardService.getStatementBatches(token);
+          setStatementBatches(batches);
+        } else if (panel === 'review_inbox') {
+          const inbox = await dashboardService.getReviewInbox(token);
+          setReviewItems(inbox);
+        } else if (panel === 'external_wealth_fx') {
+          const [items, rates] = await Promise.all([
+            dashboardService.getExternalWealthItems(token),
+            dashboardService.getExchangeRates(token),
+          ]);
+          setExternalWealth(items);
+          setFxRates(rates);
+        }
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load audit panel data');
+      } finally {
+        setWorkbenchLoading(false);
+      }
+    },
+    [token]
+  );
+
+  useEffect(() => {
+    if (activeWorkbench !== 'none') {
+      loadWorkbenchData(activeWorkbench);
+    }
+  }, [activeWorkbench, loadWorkbenchData]);
 
   const openReconcileForm = (wallet: Wallet) => {
     setShowAddForm(false);
@@ -85,7 +189,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
       if (mode === 'adjust_baseline') {
         const currentInit = parseFloat(reconcilingWallet.initialBalance || '0') || 0;
         const nextInit = Number((currentInit + diff).toFixed(2));
-        await onUpdateWallet(reconcilingWallet.id, { initialBalance: nextInit });
+        await onUpdateWallet(reconcilingWallet.id, { initialBalance: nextInit, valuationStatus: 'exact' });
         setReconcileNotice(
           `Reconciled ${reconcilingWallet.name} to ${actual.toFixed(2)} MAD via baseline adjustment (${diff >= 0 ? '+' : ''}${diff.toFixed(2)} MAD).`
         );
@@ -101,8 +205,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
           },
           token
         );
-        // Trigger parent refresh by touching wallet update with existing name
-        await onUpdateWallet(reconcilingWallet.id, { name: reconcilingWallet.name });
+        await onUpdateWallet(reconcilingWallet.id, { name: reconcilingWallet.name, valuationStatus: 'exact' });
         setReconcileNotice(
           `Logged ${Math.abs(diff).toFixed(2)} MAD ${diff > 0 ? 'Income' : 'Expense'} reconciliation adjustment for ${reconcilingWallet.name}.`
         );
@@ -121,7 +224,13 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
     setFormData({
       name: '',
       type: 'Bank',
+      accountSubtype: 'Checking',
+      institutionName: '',
+      currency: 'MAD',
       initialBalance: '0',
+      creditLimit: '',
+      statementClosingDay: '',
+      paymentDueDay: '',
       isMain: wallets.length === 0,
     });
     setError(null);
@@ -134,7 +243,13 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
     setFormData({
       name: wallet.name,
       type: wallet.type,
+      accountSubtype: (wallet.accountSubtype as WalletAccountSubtype) || 'Checking',
+      institutionName: wallet.institutionName || '',
+      currency: wallet.currency || 'MAD',
       initialBalance: wallet.initialBalance || '0',
+      creditLimit: wallet.creditLimit ? String(wallet.creditLimit) : '',
+      statementClosingDay: wallet.statementClosingDay ? String(wallet.statementClosingDay) : '',
+      paymentDueDay: wallet.paymentDueDay ? String(wallet.paymentDueDay) : '',
       isMain: wallet.isMain,
     });
     setError(null);
@@ -157,20 +272,22 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
 
     setLoading(true);
     try {
+      const payload = {
+        name: trimmedName,
+        type: formData.type,
+        accountSubtype: formData.accountSubtype,
+        institutionName: formData.institutionName.trim() || null,
+        currency: formData.currency || 'MAD',
+        initialBalance: parseFloat(formData.initialBalance) || 0,
+        creditLimit: formData.creditLimit ? parseFloat(formData.creditLimit) : null,
+        statementClosingDay: formData.statementClosingDay ? parseInt(formData.statementClosingDay, 10) : null,
+        paymentDueDay: formData.paymentDueDay ? parseInt(formData.paymentDueDay, 10) : null,
+        isMain: formData.isMain,
+      };
       if (editingWallet) {
-        await onUpdateWallet(editingWallet.id, {
-          name: trimmedName,
-          type: formData.type,
-          initialBalance: parseFloat(formData.initialBalance) || 0,
-          isMain: formData.isMain,
-        });
+        await onUpdateWallet(editingWallet.id, payload);
       } else {
-        await onCreateWallet({
-          name: trimmedName,
-          type: formData.type,
-          initialBalance: parseFloat(formData.initialBalance) || 0,
-          isMain: formData.isMain,
-        });
+        await onCreateWallet(payload);
       }
       closeForm();
     } catch (err: any) {
@@ -311,8 +428,49 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
             </div>
 
             <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Account Subtype</label>
+              <Select
+                value={formData.accountSubtype}
+                onChange={(e) => setFormData({ ...formData, accountSubtype: e.target.value as WalletAccountSubtype })}
+                className="bg-white dark:bg-gray-800"
+              >
+                <option value="Checking">Checking / Current Account</option>
+                <option value="Savings">Savings / Emergency Vault</option>
+                <option value="Cash">Physical Cash</option>
+                <option value="Brokerage">Brokerage / Crypto Account</option>
+                <option value="CreditCard">Credit Card (Liability Account)</option>
+                <option value="Overdraft">Overdraft Line (Liability Account)</option>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Institution &amp; Currency</label>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="e.g. Attijariwafa, CIH, Wise"
+                  value={formData.institutionName}
+                  onChange={(e) => setFormData({ ...formData, institutionName: e.target.value })}
+                  className="bg-white dark:bg-gray-800 flex-1"
+                />
+                <Select
+                  value={formData.currency}
+                  onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                  className="bg-white dark:bg-gray-800 w-24"
+                >
+                  <option value="MAD">MAD</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="GBP">GBP</option>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
               <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                Starting / Initial Balance (MAD)
+                {formData.accountSubtype === 'CreditCard' || formData.accountSubtype === 'Overdraft'
+                  ? 'Initial Balance (Use negative for owed liability)'
+                  : `Starting / Initial Balance (${formData.currency})`}
               </label>
               <Input
                 type="number"
@@ -323,9 +481,53 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 className="bg-white dark:bg-gray-800"
               />
               <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                The baseline balance before recorded transactions.
+                {formData.accountSubtype === 'CreditCard' || formData.accountSubtype === 'Overdraft'
+                  ? 'Credit limits are never counted as liquid cash.'
+                  : 'The baseline balance before recorded transactions.'}
               </p>
             </div>
+
+            {(formData.accountSubtype === 'CreditCard' || formData.accountSubtype === 'Overdraft') && (
+              <>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Credit Limit (MAD)</label>
+                  <Input
+                    type="number"
+                    step="100"
+                    placeholder="e.g. 20000"
+                    value={formData.creditLimit}
+                    onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
+                    className="bg-white dark:bg-gray-800"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Closing Day (1-31)</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="31"
+                      placeholder="15"
+                      value={formData.statementClosingDay}
+                      onChange={(e) => setFormData({ ...formData, statementClosingDay: e.target.value })}
+                      className="bg-white dark:bg-gray-800"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Due Day (1-31)</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="31"
+                      placeholder="5"
+                      value={formData.paymentDueDay}
+                      onChange={(e) => setFormData({ ...formData, paymentDueDay: e.target.value })}
+                      className="bg-white dark:bg-gray-800"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="flex items-center sm:pt-6">
               <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
@@ -357,6 +559,504 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
           </div>
         </form>
       )}
+
+      {/* Core Audit & Reconciliation Workbench Bar */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/60 p-3 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
+            Accounting &amp; Reconciliation Workbench
+          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { id: 'statement_import', label: 'Statement CSV Import', icon: FileSpreadsheet },
+                { id: 'review_inbox', label: 'Review Inbox', icon: Inbox },
+                { id: 'journal_audit', label: 'Double-Entry Ledger', icon: BookOpen },
+                { id: 'external_wealth_fx', label: 'External Wealth & FX', icon: Globe },
+              ] as const
+            ).map((btn) => {
+              const Icon = btn.icon;
+              const isActive = activeWorkbench === btn.id;
+              return (
+                <button
+                  key={btn.id}
+                  type="button"
+                  onClick={() => setActiveWorkbench(isActive ? 'none' : btn.id)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    isActive
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-indigo-400'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{btn.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 1. Statement Import & Transaction Matching */}
+        {activeWorkbench === 'statement_import' && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                  Statement CSV / TSV Import &amp; Transaction Matching
+                </h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Paste or upload bank statement rows (`Date, Description, Amount, Currency`). Duplicate rows are hashed via SHA-256 and unmatched rows route to the Review Inbox.
+                </p>
+              </div>
+              <input
+                type="file"
+                accept=".csv,.tsv,.txt"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  setStmtFileName(f.name);
+                  const txt = await f.text();
+                  setStmtCsvText(txt);
+                }}
+                className="text-xs text-gray-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <Select
+                value={stmtWalletId}
+                onChange={(e) => setStmtWalletId(e.target.value)}
+                className="text-xs"
+              >
+                <option value="">Target Wallet (Primary Default)</option>
+                {wallets.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name} ({w.currency || 'MAD'})
+                  </option>
+                ))}
+              </Select>
+              <Input
+                type="text"
+                value={stmtFileName}
+                onChange={(e) => setStmtFileName(e.target.value)}
+                placeholder="Statement batch name"
+                className="text-xs"
+              />
+              <Button
+                type="button"
+                size="sm"
+                disabled={workbenchLoading || !stmtCsvText.trim()}
+                onClick={async () => {
+                  setWorkbenchLoading(true);
+                  try {
+                    const res = await dashboardService.importStatementBatch(
+                      {
+                        fileName: stmtFileName,
+                        walletId: stmtWalletId || wallets[0]?.id,
+                        csvText: stmtCsvText,
+                      },
+                      token
+                    );
+                    setStmtCsvText('');
+                    setReconcileNotice(
+                      `Statement imported: ${res.matchedCount} matched, ${res.unmatchedCount} unmatched (sent to Review Inbox), ${res.duplicateCount} duplicates skipped.`
+                    );
+                    await loadWorkbenchData('statement_import');
+                  } catch (err: any) {
+                    setError(err?.message || 'Failed to import statement');
+                  } finally {
+                    setWorkbenchLoading(false);
+                  }
+                }}
+                className="bg-indigo-600 text-white hover:bg-indigo-700 text-xs"
+              >
+                Match &amp; Import Statement
+              </Button>
+            </div>
+
+            <textarea
+              rows={3}
+              value={stmtCsvText}
+              onChange={(e) => setStmtCsvText(e.target.value)}
+              placeholder={'Date,Description,Amount,Currency\n2025-03-10,Marjane Market,-420.50,MAD\n2025-03-12,Employer Salary,12000.00,MAD'}
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-2 text-xs font-mono text-gray-900 dark:text-gray-100"
+            />
+
+            {statementBatches.length > 0 && (
+              <div className="space-y-2 max-h-56 overflow-y-auto pt-1">
+                {statementBatches.slice(0, 3).map((batch) => (
+                  <div key={batch.id} className="rounded-lg border border-gray-100 dark:border-gray-800 p-2.5 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between font-semibold">
+                      <span>{batch.fileName} ({batch.totalRows} rows)</span>
+                      <span className="text-gray-500">
+                        Matched: {batch.matchedCount} · Unmatched: {batch.unmatchedCount} · Dup: {batch.duplicateCount}
+                      </span>
+                    </div>
+                    {batch.rows.slice(0, 6).map((row) => (
+                      <div key={row.id} className="flex items-center justify-between gap-2 py-1 border-t border-gray-100 dark:border-gray-800/60">
+                        <div className="truncate">
+                          <span className="font-mono text-[11px] text-gray-500 mr-2">{row.rowDate}</span>
+                          <span className="font-medium text-gray-800 dark:text-gray-200">{row.description}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-mono font-bold">
+                            {row.direction === 'outflow' ? '-' : '+'}{Number(row.amount).toFixed(2)} {row.currency}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 dark:bg-gray-800 capitalize">
+                            {row.matchStatus}
+                          </span>
+                          {(row.matchStatus === 'unmatched' || row.matchStatus === 'ambiguous') && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await dashboardService.resolveStatementRow(
+                                  row.id,
+                                  { action: 'create_transaction', walletId: batch.walletId || wallets[0]?.id },
+                                  token
+                                );
+                                await loadWorkbenchData('statement_import');
+                              }}
+                              className="text-[11px] font-semibold text-indigo-600 hover:underline"
+                            >
+                              + Post Tx
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 2. Persistent Financial Review Inbox */}
+        {activeWorkbench === 'review_inbox' && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                  Financial Review Inbox ({reviewItems.length})
+                </h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Persistent queue for OCR receipts, unmatched statement rows, and rule-flagged transactions.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => loadWorkbenchData('review_inbox')}
+                className="text-xs"
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
+              </Button>
+            </div>
+
+            {reviewItems.length === 0 ? (
+              <p className="text-xs text-gray-500 py-2">No items waiting in your Review Inbox.</p>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {reviewItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-gray-100 dark:border-gray-800 p-2.5 text-xs"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-900 dark:text-white">{item.merchant}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold">
+                          {item.sourceType}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px] font-semibold">
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        {item.proposedDate} · {item.category} · Confidence {(Number(item.confidence) * 100).toFixed(0)}%
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-mono font-bold text-sm text-gray-900 dark:text-white">
+                        {Number(item.amount).toFixed(2)} {item.currency}
+                      </span>
+                      {(item.status === 'Captured' || item.status === 'Needs Review') && (
+                        <>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={async () => {
+                              await dashboardService.decideReviewItem(
+                                item.id,
+                                { decision: 'confirm_create', walletId: item.walletId || wallets[0]?.id },
+                                token
+                              );
+                              await loadWorkbenchData('review_inbox');
+                              if (wallets[0]) await onUpdateWallet(wallets[0].id, { name: wallets[0].name });
+                            }}
+                            className="h-7 px-2 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                          >
+                            Confirm &amp; Post
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              await dashboardService.decideReviewItem(item.id, { decision: 'reject' }, token);
+                              await loadWorkbenchData('review_inbox');
+                            }}
+                            className="h-7 px-2 text-[11px] text-rose-600"
+                          >
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 3. Double-Entry Accounting & Journal Audit */}
+        {activeWorkbench === 'journal_audit' && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                  Double-Entry Accounting Journal &amp; Balance Verification
+                </h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Every financial event posts balanced Debit = Credit journal lines. Edits/deletions generate reversing entries.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                disabled={workbenchLoading}
+                onClick={async () => {
+                  setWorkbenchLoading(true);
+                  try {
+                    const res = await dashboardService.backfillJournalEntries(token);
+                    setJournalSummary(res.summary);
+                    setReconcileNotice(
+                      `Backfilled ${res.backfilledCount} historical transactions into balanced double-entry journal lines.`
+                    );
+                  } finally {
+                    setWorkbenchLoading(false);
+                  }
+                }}
+                className="bg-indigo-600 text-white hover:bg-indigo-700 text-xs"
+              >
+                Backfill Historical Transactions
+              </Button>
+            </div>
+
+            {journalSummary && (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
+                    <span className="text-gray-500">Journal Entries</span>
+                    <p className="text-base font-bold font-mono text-gray-900 dark:text-white">
+                      {journalSummary.totalEntries} ({journalSummary.totalLines} lines)
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
+                    <span className="text-gray-500">Total Debits</span>
+                    <p className="text-base font-bold font-mono text-gray-900 dark:text-white">
+                      {journalSummary.totalDebitsMad.toFixed(2)} MAD
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
+                    <span className="text-gray-500">Total Credits</span>
+                    <p className="text-base font-bold font-mono text-gray-900 dark:text-white">
+                      {journalSummary.totalCreditsMad.toFixed(2)} MAD
+                    </p>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
+                    <span className="text-gray-500">Trial Balance Integrity</span>
+                    <p className={`text-base font-bold ${journalSummary.isSystemBalanced ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {journalSummary.isSystemBalanced ? '100% Balanced' : `${journalSummary.imbalancedEntriesCount} Imbalanced`}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {journalSummary.walletComparison.map((wc) => (
+                    <div key={wc.walletId} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-gray-50/70 dark:bg-gray-800/40">
+                      <span className="font-semibold text-gray-800 dark:text-gray-200">
+                        {wc.walletName} ({wc.accountSubtype})
+                      </span>
+                      <div className="flex items-center gap-3 font-mono">
+                        <span>Legacy: {wc.legacyBalanceMad.toFixed(2)} MAD</span>
+                        <span>Journal: {wc.journalComputedBalanceMad.toFixed(2)} MAD</span>
+                        <span className={Math.abs(wc.discrepancyMad) < 0.01 ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
+                          Δ {wc.discrepancyMad.toFixed(2)} MAD
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* 4. External Wealth Items (Unified Net Worth) & Multi-Currency FX Rates */}
+        {activeWorkbench === 'external_wealth_fx' && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* External Assets & Liabilities */}
+              <div className="space-y-2.5">
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                  External Assets &amp; Liabilities (Unified Net Worth)
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <Input
+                    type="text"
+                    placeholder="Item name (e.g. Apartment)"
+                    value={wealthName}
+                    onChange={(e) => setWealthName(e.target.value)}
+                    className="text-xs col-span-2"
+                  />
+                  <Select value={wealthType} onChange={(e) => setWealthType(e.target.value as any)} className="text-xs">
+                    <option value="Asset">Asset</option>
+                    <option value="Liability">Liability</option>
+                  </Select>
+                  <Select value={wealthCategory} onChange={(e) => setWealthCategory(e.target.value)} className="text-xs">
+                    <option value="Property">Property</option>
+                    <option value="Vehicle">Vehicle</option>
+                    <option value="PreciousMetals">Precious Metals</option>
+                    <option value="PrivateInvestment">Private Equity</option>
+                    <option value="Mortgage">Mortgage</option>
+                    <option value="ExternalLoan">External Loan</option>
+                  </Select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    placeholder="Valuation (MAD)"
+                    value={wealthAmountMad}
+                    onChange={(e) => setWealthAmountMad(e.target.value)}
+                    className="text-xs flex-1"
+                  />
+                  <label className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={wealthIsLiquid}
+                      onChange={(e) => setWealthIsLiquid(e.target.checked)}
+                    />
+                    Liquid
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={async () => {
+                      if (!wealthName.trim() || !wealthAmountMad) return;
+                      await dashboardService.upsertExternalWealthItem(
+                        {
+                          name: wealthName.trim(),
+                          itemType: wealthType,
+                          category: wealthCategory,
+                          amountMad: parseFloat(wealthAmountMad) || 0,
+                          isLiquid: wealthIsLiquid,
+                        },
+                        token
+                      );
+                      setWealthName('');
+                      setWealthAmountMad('');
+                      await loadWorkbenchData('external_wealth_fx');
+                    }}
+                    className="bg-indigo-600 text-white text-xs"
+                  >
+                    + Add
+                  </Button>
+                </div>
+                <div className="space-y-1 max-h-36 overflow-y-auto">
+                  {externalWealth.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-gray-50 dark:bg-gray-800">
+                      <span>
+                        <strong>{item.name}</strong> ({item.category} · {item.isLiquid ? 'Liquid' : 'Illiquid'})
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-mono font-bold ${item.itemType === 'Asset' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {item.itemType === 'Asset' ? '+' : '-'}{Number(item.amountMad).toLocaleString()} MAD
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await dashboardService.deleteExternalWealthItem(item.id, token);
+                            await loadWorkbenchData('external_wealth_fx');
+                          }}
+                          className="text-gray-400 hover:text-rose-600"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Historical Exchange Rates */}
+              <div className="space-y-2.5">
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                  Historical Multi-Currency FX Rates (to MAD)
+                </h4>
+                <div className="flex items-center gap-2">
+                  <Select value={fxBaseCurrency} onChange={(e) => setFxBaseCurrency(e.target.value)} className="text-xs w-28">
+                    <option value="USD">USD → MAD</option>
+                    <option value="EUR">EUR → MAD</option>
+                    <option value="GBP">GBP → MAD</option>
+                  </Select>
+                  <Input
+                    type="number"
+                    step="0.0001"
+                    value={fxRateInput}
+                    onChange={(e) => setFxRateInput(e.target.value)}
+                    placeholder="Rate in MAD"
+                    className="text-xs flex-1"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={async () => {
+                      await dashboardService.upsertExchangeRate(
+                        {
+                          baseCurrency: fxBaseCurrency,
+                          quoteCurrency: 'MAD',
+                          rate: parseFloat(fxRateInput) || 10,
+                          source: 'manual_verified',
+                        },
+                        token
+                      );
+                      await loadWorkbenchData('external_wealth_fx');
+                    }}
+                    className="bg-indigo-600 text-white text-xs"
+                  >
+                    Lock FX Rate
+                  </Button>
+                </div>
+                <div className="space-y-1 max-h-36 overflow-y-auto">
+                  {fxRates.map((r) => (
+                    <div key={r.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-gray-50 dark:bg-gray-800">
+                      <span className="font-mono font-semibold">
+                        1 {r.baseCurrency} = {Number(r.rate).toFixed(4)} {r.quoteCurrency}
+                      </span>
+                      <span className="text-[11px] text-gray-500">
+                        {r.effectiveDate} · {r.source}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {reconcileNotice && (
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/30 p-3.5 text-xs font-medium text-emerald-800 dark:text-emerald-200 flex items-center justify-between gap-2">
@@ -517,10 +1217,20 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
-                        {wallet.type} Account
+                        {wallet.accountSubtype || wallet.type} {wallet.institutionName ? `· ${wallet.institutionName}` : ''}
                       </p>
+                      {wallet.currency && wallet.currency !== 'MAD' && (
+                        <span className="rounded bg-blue-100 dark:bg-blue-950/60 px-1.5 py-0.5 text-[9px] font-bold text-blue-700 dark:text-blue-300">
+                          {wallet.currency}
+                        </span>
+                      )}
+                      {(wallet.accountSubtype === 'CreditCard' || wallet.accountSubtype === 'Overdraft') && (
+                        <span className="rounded bg-rose-100 dark:bg-rose-950/60 px-1.5 py-0.5 text-[9px] font-bold text-rose-700 dark:text-rose-300 flex items-center gap-0.5">
+                          <CreditCard className="h-2.5 w-2.5" /> Credit Liability
+                        </span>
+                      )}
                       {wallet.type === 'Savings' && (
                         <span className="rounded bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300">
                           Goal Vault
@@ -674,6 +1384,44 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                             Open Investments →
                           </button>
                         )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                const isCreditCard = wallet.accountSubtype === 'CreditCard' || wallet.accountSubtype === 'Overdraft';
+                if (isCreditCard) {
+                  const limit = parseFloat(String(wallet.creditLimit || '0')) || 0;
+                  const rawBal = wallet.balance ?? 0;
+                  const owedLiability = rawBal < 0 ? Math.abs(rawBal) : parseFloat(String(wallet.liabilityBalance || '0')) || 0;
+                  const availableCredit = Math.max(0, limit - owedLiability);
+                  const utilPct = limit > 0 ? Math.min(100, (owedLiability / limit) * 100) : 0;
+
+                  return (
+                    <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-800/80 space-y-2">
+                      <div className="flex items-baseline justify-between">
+                        <div>
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400">Statement Liability Owed</p>
+                          <div className="text-xl font-bold font-mono text-rose-600 dark:text-rose-400">
+                            {owedLiability.toFixed(2)} <span className="text-xs font-medium text-gray-500">{wallet.currency || 'MAD'}</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400">Available Credit</p>
+                          <div className="text-base font-bold font-mono text-gray-900 dark:text-gray-100">
+                            {availableCredit.toFixed(0)} / {limit.toFixed(0)} <span className="text-[10px] text-gray-400">MAD</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                        <div
+                          className={`h-full ${utilPct > 75 ? 'bg-rose-500' : utilPct > 30 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                          style={{ width: `${utilPct}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+                        <span>Utilization: {utilPct.toFixed(1)}% (Excluded from cash liquidity)</span>
+                        {wallet.paymentDueDay && <span>Due: Day {wallet.paymentDueDay}</span>}
                       </div>
                     </div>
                   );
