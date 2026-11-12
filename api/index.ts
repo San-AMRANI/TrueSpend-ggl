@@ -8,7 +8,7 @@ const GITHUB_APK_URL = "https://github.com/San-AMRANI/TrueSpend-ggl/releases/lat
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 
-app.get("/api/download-apk", async (_req, res) => {
+const downloadLatestApk = async (_req: express.Request, res: express.Response) => {
   try {
     const response = await fetch(GITHUB_APK_URL, { redirect: "follow" });
     if (!response.ok) {
@@ -25,7 +25,12 @@ app.get("/api/download-apk", async (_req, res) => {
     console.error("APK download proxy failed", error);
     res.status(502).json({ error: "Could not retrieve the latest Android APK." });
   }
-});
+};
+
+// Vercel rewrites /api/* requests to this function at /; support both the
+// rewritten path and the direct Express path used by local development.
+app.get("/download-apk", downloadLatestApk);
+app.get("/api/download-apk", downloadLatestApk);
 
 // Capacitor serves the bundled app from https://localhost, so allow the
 // native WebView to call this Vercel API with its bearer token.
