@@ -598,6 +598,12 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                   {inspectingTx.type === 'Expense' ? '-' : inspectingTx.type === 'Income' ? '+' : ''}
                   {Number.parseFloat(inspectingTx.amount).toFixed(2)} MAD
                 </div>
+                {inspectingTx.currency && inspectingTx.currency !== 'MAD' && (
+                  <p className="mt-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                    Native: {Number.parseFloat(inspectingTx.nativeAmount || inspectingTx.amount).toFixed(2)} {inspectingTx.currency}
+                    {inspectingTx.exchangeRateUsed ? ` · Locked FX ${Number.parseFloat(inspectingTx.exchangeRateUsed).toFixed(4)}` : ''}
+                  </p>
+                )}
                 <h3 className="mt-1.5 text-base font-semibold text-gray-900 dark:text-gray-100">
                   {inspectingTx.notes || inspectingTx.category || inspectingTx.type}
                 </h3>
@@ -610,7 +616,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
               {/* Wallet Information Card */}
               <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40 p-4 space-y-3">
                 <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Wallet & Routing
+                  Wallet &amp; Routing
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
@@ -644,6 +650,22 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                         <Tag className="w-3.5 h-3.5" />
                         {contexts.find((c) => c.id === inspectingTx.contextId)?.name}
                       </span>
+                    </div>
+                  )}
+                  {inspectingTx.currency && inspectingTx.currency !== 'MAD' && (
+                    <div className="col-span-2 pt-2 border-t border-gray-200/70 dark:border-gray-700/70 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="text-gray-500 dark:text-gray-400">
+                        Multi-Currency FX Lock:{' '}
+                        <strong className="text-gray-800 dark:text-gray-200">
+                          {Number.parseFloat(inspectingTx.nativeAmount || inspectingTx.amount).toFixed(2)} {inspectingTx.currency}
+                        </strong>
+                        {inspectingTx.exchangeRateUsed ? ` × ${Number.parseFloat(inspectingTx.exchangeRateUsed).toFixed(4)} MAD` : ''}
+                      </span>
+                      {inspectingTx.fxSource && (
+                        <span className="px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold">
+                          Source: {inspectingTx.fxSource}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1874,6 +1896,18 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                                     {contexts.find((c) => c.id === transaction.contextId)?.name}
                                   </span>
                                 )}
+
+                                {/* Foreign Currency / FX Lock Badge */}
+                                {transaction.currency && transaction.currency !== 'MAD' && (
+                                  <span
+                                    title={`Converted from ${transaction.nativeAmount || transaction.amount} ${transaction.currency}${transaction.exchangeRateUsed ? ` @ FX ${transaction.exchangeRateUsed}` : ''}${transaction.fxSource ? ` (${transaction.fxSource})` : ''}`}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300 border border-sky-200/70 dark:border-sky-800/70"
+                                  >
+                                    <Coins className="w-2.5 h-2.5" />
+                                    {Number.parseFloat(transaction.nativeAmount || transaction.amount).toFixed(2)} {transaction.currency}
+                                    {transaction.exchangeRateUsed ? ` · FX ${Number.parseFloat(transaction.exchangeRateUsed).toFixed(2)}` : ''}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1995,6 +2029,11 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
+                      {transaction.currency && transaction.currency !== 'MAD' && (
+                        <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
+                          {Number.parseFloat(transaction.nativeAmount || transaction.amount).toFixed(2)} {transaction.currency}
+                        </span>
+                      )}
                       <span
                         className={`font-semibold text-xs ${
                           transaction.type === 'Income'
@@ -2125,8 +2164,16 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                               : 'text-blue-600 dark:text-blue-400'
                           }`}
                         >
-                          {transaction.type === 'Expense' ? '-' : transaction.type === 'Income' ? '+' : ''}
-                          {Number.parseFloat(transaction.amount).toFixed(2)}
+                          <div>
+                            {transaction.type === 'Expense' ? '-' : transaction.type === 'Income' ? '+' : ''}
+                            {Number.parseFloat(transaction.amount).toFixed(2)}
+                          </div>
+                          {transaction.currency && transaction.currency !== 'MAD' && (
+                            <div className="text-[10px] font-medium text-sky-600 dark:text-sky-400">
+                              {Number.parseFloat(transaction.nativeAmount || transaction.amount).toFixed(2)} {transaction.currency}
+                              {transaction.exchangeRateUsed ? ` @ ${Number.parseFloat(transaction.exchangeRateUsed).toFixed(2)}` : ''}
+                            </div>
+                          )}
                         </td>
                         <td className="p-3 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1">

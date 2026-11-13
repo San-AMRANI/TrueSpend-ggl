@@ -1,64 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DashboardTab } from '../../types';
-import {
-  LayoutDashboard,
-  ArrowRightLeft,
-  Users,
-  BarChart2,
-  Settings,
-  WalletCards,
-  CalendarDays,
-  ChevronDown,
-  ChevronUp,
-  FileBarChart,
-  Map,
-  Target,
-  Repeat,
-  TrendingUp,
-  ShieldCheck,
-  Sparkles,
-  Calculator,
-  LayoutGrid,
-  X,
-} from 'lucide-react';
-import { SpexAvatar } from '../common/SpexAvatar';
+import { ChevronDown, ChevronUp, LayoutGrid, X } from 'lucide-react';
+import { NAV_GROUP_ORDER, NAV_ITEMS } from '../../config/navigation';
 
 interface DashboardNavProps {
   activeTab: DashboardTab;
   setActiveTab: (tab: DashboardTab) => void;
 }
 
-const SpexNavIcon: React.FC<{ className?: string }> = ({ className = 'h-5 w-5' }) => (
-  <span className={`inline-flex items-center justify-center shrink-0 pointer-events-none ${className}`}>
-    <SpexAvatar className="w-full h-full" clickable={false} />
-  </span>
-);
-
-const tabs: {
-  id: DashboardTab;
-  label: string;
-  shortLabel: string;
-  icon: React.FC<{ className?: string }>;
-}[] = [
-  { id: 'overview', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
-  { id: 'investments', label: 'Stocks & Equities', shortLabel: 'Stocks', icon: TrendingUp },
-  { id: 'forecast', label: 'Predictive Forecast', shortLabel: 'Forecast', icon: Sparkles },
-  { id: 'calculators', label: 'Calculators & Simulators', shortLabel: 'Simulators', icon: Calculator },
-  { id: 'calendar', label: 'Calendar & Cash Flow', shortLabel: 'Calendar', icon: CalendarDays },
-  { id: 'analytics', label: 'Analytics', shortLabel: 'Analytics', icon: BarChart2 },
-  { id: 'transactions', label: 'Transactions', shortLabel: 'Transactions', icon: ArrowRightLeft },
-  { id: 'budgets', label: 'Budgets', shortLabel: 'Budgets', icon: WalletCards },
-  { id: 'subscriptions', label: 'Subscriptions', shortLabel: 'Subs', icon: Repeat },
-  { id: 'contexts', label: 'Contexts', shortLabel: 'Contexts', icon: Map },
-  { id: 'goals', label: 'Goals', shortLabel: 'Goals', icon: Target },
-  { id: 'debts', label: 'Debts & Splits', shortLabel: 'Debts', icon: Users },
-  { id: 'reports', label: 'Reports & Retrospective', shortLabel: 'Reports', icon: FileBarChart },
-  { id: 'users', label: 'Users & Roles', shortLabel: 'Users', icon: ShieldCheck },
-  { id: 'chat', label: 'Spex AI Chat', shortLabel: 'Spex AI', icon: SpexNavIcon },
-  { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
-];
-
-const quickTabIds: DashboardTab[] = ['overview', 'investments', 'transactions', 'chat'];
+const quickTabs = NAV_ITEMS.filter((item) => item.quickMobile);
+const quickTabIds: DashboardTab[] = quickTabs.map((item) => item.id);
 
 export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActiveTab }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -88,7 +39,7 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
     if (movement < -28) close();
   };
 
-  const renderTab = (tab: (typeof tabs)[number], compact = false) => {
+  const renderTab = (tab: (typeof NAV_ITEMS)[number], compact = false) => {
     const Icon = tab.icon;
     const isActive = activeTab === tab.id;
     return (
@@ -110,12 +61,11 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
   };
 
   const activeNonQuickTab = !quickTabIds.includes(activeTab)
-    ? tabs.find((t) => t.id === activeTab)
+    ? NAV_ITEMS.find((t) => t.id === activeTab)
     : undefined;
 
   return (
     <>
-      {/* Backdrop when expanded on phone */}
       {isExpanded && activeTab !== 'chat' && (
         <div
           className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] md:hidden animate-in fade-in duration-150"
@@ -134,11 +84,10 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
         }`}
       >
         <div className="mx-auto max-w-lg">
-          {/* Drag / Tap Handle */}
           <button
             type="button"
             aria-expanded={isExpanded}
-            aria-label={isExpanded ? 'Collapse navigation menu' : 'Expand all 16 navigation pages'}
+            aria-label={isExpanded ? 'Collapse navigation menu' : `Expand all ${NAV_ITEMS.length} navigation pages`}
             onClick={() => (isExpanded ? close() : open())}
             className="flex h-5 w-full items-center justify-center gap-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
           >
@@ -147,10 +96,10 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
           </button>
 
           {isExpanded ? (
-            <div className="max-h-[72vh] overflow-y-auto overscroll-contain pb-2 pt-1 animate-in slide-in-from-bottom-2 duration-150">
-              <div className="flex items-center justify-between px-1.5 pb-2 mb-1.5 border-b border-gray-100 dark:border-gray-800">
+            <div className="max-h-[72vh] overflow-y-auto overscroll-contain pb-2 pt-1 space-y-3 animate-in slide-in-from-bottom-2 duration-150">
+              <div className="flex items-center justify-between px-1.5 pb-2 border-b border-gray-100 dark:border-gray-800">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                  All Pages ({tabs.length})
+                  All Pages ({NAV_ITEMS.length})
                 </span>
                 <button
                   type="button"
@@ -160,17 +109,25 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
                   <X className="h-3.5 w-3.5" /> Close
                 </button>
               </div>
-              <div className="grid grid-cols-4 gap-1.5">
-                {tabs.map((tab) => renderTab(tab, true))}
-              </div>
+              {NAV_GROUP_ORDER.map((group) => {
+                const groupTabs = NAV_ITEMS.filter((item) => item.group === group.id);
+                if (groupTabs.length === 0) return null;
+                return (
+                  <div key={group.id} className="space-y-1">
+                    <p className="px-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                      {group.label}
+                    </p>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {groupTabs.map((tab) => renderTab(tab, true))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="grid grid-cols-5 gap-1">
-              {tabs
-                .filter((tab) => quickTabIds.includes(tab.id))
-                .map((tab) => renderTab(tab, true))}
+              {quickTabs.map((tab) => renderTab(tab, true))}
 
-              {/* 5th Item: Active Non-Quick Tab or "More / All Pages" Toggle */}
               <button
                 type="button"
                 aria-expanded={isExpanded}

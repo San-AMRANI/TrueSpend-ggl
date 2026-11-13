@@ -1,32 +1,77 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { DashboardNav } from './dashboard/DashboardNav';
 import { OverviewTab } from './dashboard/OverviewTab';
-import { TransactionsTab } from './dashboard/TransactionsTab';
-
-import { DebtsTab } from './dashboard/DebtsTab';
-import { AnalyticsTab } from './dashboard/AnalyticsTab';
-import { SettingsTab } from './dashboard/SettingsTab';
-import { BudgetsTab } from './dashboard/BudgetsTab';
-import { GoalsTab } from './dashboard/GoalsTab';
-import { SubscriptionsTab } from './dashboard/SubscriptionsTab';
-import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
-import { ReportsTab } from './dashboard/ReportsTab';
-import { ContextsTab } from './dashboard/ContextsTab';
-import { UsersAndRolesSection } from './dashboard/UsersAndRolesSection';
-import { PredictiveForecastTab } from './dashboard/PredictiveForecastTab';
-import { InvestmentsTab } from './dashboard/InvestmentsTab';
-import { CalculatorsHubTab } from './dashboard/CalculatorsHubTab';
 import { TactileSmartCalculator } from './dashboard/TactileSmartCalculator';
-import { WalletsManager } from './dashboard/WalletsManager';
 import TransactionForm from './TransactionForm';
 import { CommandPalette } from './CommandPalette';
-import { AIChat } from './AIChat';
 import { SpexCompanionPet } from './common/SpexCompanionPet';
 import { SmartNotificationCenter } from './dashboard/SmartNotificationCenter';
 import { X, CheckCircle2, AlertCircle, Info, Calculator } from 'lucide-react';
-import type { DashboardTab } from '../types';
+import type { DashboardTab, WalletsWorkbenchSection } from '../types';
+
+const TransactionsTab = lazy(() =>
+  import('./dashboard/TransactionsTab').then((m) => ({ default: m.TransactionsTab }))
+);
+const DebtsTab = lazy(() =>
+  import('./dashboard/DebtsTab').then((m) => ({ default: m.DebtsTab }))
+);
+const AnalyticsTab = lazy(() =>
+  import('./dashboard/AnalyticsTab').then((m) => ({ default: m.AnalyticsTab }))
+);
+const SettingsTab = lazy(() =>
+  import('./dashboard/SettingsTab').then((m) => ({ default: m.SettingsTab }))
+);
+const BudgetsTab = lazy(() =>
+  import('./dashboard/BudgetsTab').then((m) => ({ default: m.BudgetsTab }))
+);
+const GoalsTab = lazy(() =>
+  import('./dashboard/GoalsTab').then((m) => ({ default: m.GoalsTab }))
+);
+const SubscriptionsTab = lazy(() =>
+  import('./dashboard/SubscriptionsTab').then((m) => ({ default: m.SubscriptionsTab }))
+);
+const FinancialCalendarTab = lazy(() =>
+  import('./dashboard/FinancialCalendarTab').then((m) => ({ default: m.FinancialCalendarTab }))
+);
+const ReportsTab = lazy(() =>
+  import('./dashboard/ReportsTab').then((m) => ({ default: m.ReportsTab }))
+);
+const ContextsTab = lazy(() =>
+  import('./dashboard/ContextsTab').then((m) => ({ default: m.ContextsTab }))
+);
+const UsersAndRolesSection = lazy(() =>
+  import('./dashboard/UsersAndRolesSection').then((m) => ({ default: m.UsersAndRolesSection }))
+);
+const PredictiveForecastTab = lazy(() =>
+  import('./dashboard/PredictiveForecastTab').then((m) => ({ default: m.PredictiveForecastTab }))
+);
+const InvestmentsTab = lazy(() =>
+  import('./dashboard/InvestmentsTab').then((m) => ({ default: m.InvestmentsTab }))
+);
+const CalculatorsHubTab = lazy(() =>
+  import('./dashboard/CalculatorsHubTab').then((m) => ({ default: m.CalculatorsHubTab }))
+);
+const WalletsManager = lazy(() =>
+  import('./dashboard/WalletsManager').then((m) => ({ default: m.WalletsManager }))
+);
+const AIChat = lazy(() =>
+  import('./AIChat').then((m) => ({ default: m.AIChat }))
+);
+
+function TabLoadingSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-28 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+        ))}
+      </div>
+      <div className="h-80 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+    </div>
+  );
+}
 
 interface DashboardProps {
   onTabChange?: (tab: DashboardTab) => void;
@@ -34,7 +79,6 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ onTabChange, activeTab: propActiveTab }: DashboardProps = {}) {
-
   const { token } = useAuth();
   const {
     kpis,
@@ -113,9 +157,9 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
   const [quickTxModalType, setQuickTxModalType] = useState<'Expense' | 'Income' | 'Transfer' | null>(null);
   const [isSmartCalcModalOpen, setIsSmartCalcModalOpen] = useState(false);
   const [isWalletsModalOpen, setIsWalletsModalOpen] = useState(false);
+  const [accountsSection, setAccountsSection] = useState<WalletsWorkbenchSection>('wallets');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Notify parent whenever tab changes (used to hide header on mobile chat)
   const setActiveTab = (tab: DashboardTab) => {
     setActiveTabRaw(tab);
     onTabChange?.(tab);
@@ -139,6 +183,12 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     const handleSetTab = (e: any) => {
       setActiveTab(e.detail);
     };
+    const handleOpenAccountsSection = (e: any) => {
+      const section: WalletsWorkbenchSection = e.detail || 'wallets';
+      setAccountsSection(section);
+      setIsWalletsModalOpen(false);
+      setActiveTab('accounts');
+    };
     const handleOpenCommandPalette = () => {
       setIsCommandPaletteOpen(true);
     };
@@ -156,17 +206,19 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsCommandPaletteOpen(prev => !prev);
+        setIsCommandPaletteOpen((prev) => !prev);
       }
     };
 
     window.addEventListener('truespend:setTab', handleSetTab);
+    window.addEventListener('truespend:openAccountsSection', handleOpenAccountsSection);
     window.addEventListener('truespend:openCommandPalette', handleOpenCommandPalette);
     window.addEventListener('truespend:openNotifications', handleOpenNotifications);
     window.addEventListener('truespend:toast', handleToast);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('truespend:setTab', handleSetTab);
+      window.removeEventListener('truespend:openAccountsSection', handleOpenAccountsSection);
       window.removeEventListener('truespend:openCommandPalette', handleOpenCommandPalette);
       window.removeEventListener('truespend:openNotifications', handleOpenNotifications);
       window.removeEventListener('truespend:toast', handleToast);
@@ -204,21 +256,21 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           </button>
         </div>
       )}
-      
+
       {loading && !kpis ? (
         <div className="space-y-6 animate-pulse">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-32 bg-gray-200 dark:bg-gray-800 rounded-xl"></div>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-32 bg-gray-200 dark:bg-gray-800 rounded-xl" />
             ))}
           </div>
           <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2 h-96 bg-gray-200 dark:bg-gray-800 rounded-xl"></div>
-            <div className="h-96 bg-gray-200 dark:bg-gray-800 rounded-xl"></div>
+            <div className="lg:col-span-2 h-96 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+            <div className="h-96 bg-gray-200 dark:bg-gray-800 rounded-xl" />
           </div>
         </div>
       ) : (
-        <>
+        <Suspense fallback={<TabLoadingSkeleton />}>
           {activeTab === 'overview' && (
             <OverviewTab
               kpis={kpis}
@@ -235,9 +287,28 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               handleCreateWallet={handleCreateWallet}
               handleUpdateWallet={handleUpdateWallet}
               handleDeleteWallet={handleDeleteWallet}
+              onDataChange={fetchData}
               onOpenQuickTransaction={(type) => setQuickTxModalType(type)}
               onOpenSmartCalculator={() => setIsSmartCalcModalOpen(true)}
               onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+            />
+          )}
+
+          {activeTab === 'accounts' && (
+            <WalletsManager
+              wallets={kpis?.accounts || []}
+              subscriptions={subscriptions}
+              debts={debts}
+              transactions={transactions}
+              investmentsData={investmentsData}
+              initialSection={accountsSection}
+              onSectionChange={setAccountsSection}
+              onOpenInvestments={() => setActiveTab('investments')}
+              onPaySubscription={handlePaySubscription}
+              onCreateWallet={handleCreateWallet}
+              onUpdateWallet={handleUpdateWallet}
+              onDeleteWallet={handleDeleteWallet}
+              onRefresh={fetchData}
             />
           )}
 
@@ -316,6 +387,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               onCreatePayroll={handleCreatePayroll}
               onDeletePayroll={handleDeletePayroll}
               onPaySubscription={handlePaySubscription}
+              onDataChange={fetchData}
             />
           )}
 
@@ -422,6 +494,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               handleUpdateWallet={handleUpdateWallet}
               handleDeleteWallet={handleDeleteWallet}
               notifications={notifications}
+              onDataChange={fetchData}
             />
           )}
 
@@ -444,8 +517,15 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           )}
 
           {activeTab === 'reports' && (
-            <ReportsTab transactions={transactions} kpis={kpis} budgets={budgets} onDataChange={fetchData} onNavigateTab={setActiveTab} />
+            <ReportsTab
+              transactions={transactions}
+              kpis={kpis}
+              budgets={budgets}
+              onDataChange={fetchData}
+              onNavigateTab={setActiveTab}
+            />
           )}
+
           {activeTab === 'contexts' && (
             <ContextsTab
               contexts={contexts}
@@ -456,8 +536,9 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               handleLinkTransactions={handleLinkTransactionsToContext}
             />
           )}
+
           {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}
-        </>
+        </Suspense>
       )}
 
       {/* Global Command Palette (Cmd+K / Ctrl+K) */}
@@ -468,7 +549,10 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
         openTransaction={openTransaction}
         onOpenQuickTransaction={(type) => setQuickTxModalType(type)}
         onOpenSmartCalculator={() => setIsSmartCalcModalOpen(true)}
-        onOpenWalletsModal={() => setIsWalletsModalOpen(true)}
+        onOpenWalletsModal={() => {
+          setAccountsSection('wallets');
+          setActiveTab('accounts');
+        }}
         kpis={kpis}
         transactions={transactions}
         debts={debts}
@@ -568,23 +652,27 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
         </div>
       )}
 
-      {/* Quick Wallets & Balance Reconciliation Modal */}
+      {/* Optional Quick Wallets Modal */}
       {isWalletsModalOpen && (
-        <WalletsManager
-          wallets={kpis?.accounts || []}
-          subscriptions={subscriptions}
-          debts={debts}
-          investmentsData={investmentsData}
-          onOpenInvestments={() => {
-            setIsWalletsModalOpen(false);
-            setActiveTab('investments');
-          }}
-          onClose={() => setIsWalletsModalOpen(false)}
-          isModal={true}
-          onCreateWallet={handleCreateWallet}
-          onUpdateWallet={handleUpdateWallet}
-          onDeleteWallet={handleDeleteWallet}
-        />
+        <Suspense fallback={null}>
+          <WalletsManager
+            wallets={kpis?.accounts || []}
+            subscriptions={subscriptions}
+            debts={debts}
+            transactions={transactions}
+            investmentsData={investmentsData}
+            onOpenInvestments={() => {
+              setIsWalletsModalOpen(false);
+              setActiveTab('investments');
+            }}
+            onClose={() => setIsWalletsModalOpen(false)}
+            isModal={true}
+            onCreateWallet={handleCreateWallet}
+            onUpdateWallet={handleUpdateWallet}
+            onDeleteWallet={handleDeleteWallet}
+            onRefresh={fetchData}
+          />
+        </Suspense>
       )}
 
       {/* Smart Multi-Domain Notification & Insights Center Drawer */}
@@ -598,7 +686,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
         }}
       />
 
-      {/* Interactive SPEX Companion Pet (16° Cursor Gaze, Patrol Flight & Live Reactions) */}
+      {/* Interactive SPEX Companion Pet */}
       <SpexCompanionPet
         activeTab={activeTab}
         kpis={kpis}
@@ -607,4 +695,3 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     </div>
   );
 }
-

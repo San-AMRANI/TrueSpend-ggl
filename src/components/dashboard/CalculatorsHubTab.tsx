@@ -35,7 +35,6 @@ import {
   Goal,
   DashboardTab,
   UserSettings,
-  SavedWhatIfScenario,
 } from '../../types';
 import { computeFinancialState } from '../../lib/financialEngine';
 import {
@@ -47,8 +46,8 @@ import {
   AffordabilityInput,
 } from '../../lib/calculatorsEngine';
 import { TactileSmartCalculator } from './TactileSmartCalculator';
-import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
+import { useSavedScenarios } from '../../hooks/useSavedScenarios';
 
 interface CalculatorsHubTabProps {
   kpis: KPI | null;
@@ -161,15 +160,23 @@ export const CalculatorsHubTab: React.FC<CalculatorsHubTabProps> = ({
   // ==========================================
   const { token } = useAuth();
   const [whatIfScenario, setWhatIfScenario] = useState<'purchase' | 'save' | 'salary'>('purchase');
-  const [savedScenarios, setSavedScenarios] = useState<SavedWhatIfScenario[]>([]);
   const [scenarioNameInput, setScenarioNameInput] = useState('');
   const [scenarioApproved, setScenarioApproved] = useState(false);
+  const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([]);
+  const {
+    parsedScenarios,
+    loading: loadingScenarios,
+    saving: savingScenario,
+    refresh: refreshScenarios,
+    saveScenario,
+    removeScenario,
+  } = useSavedScenarios(token);
 
   React.useEffect(() => {
     if (activeCalculator === 'what-if' && token) {
-      dashboardService.getSavedScenarios(token).then(setSavedScenarios).catch(() => {});
+      refreshScenarios();
     }
-  }, [activeCalculator, token]);
+  }, [activeCalculator, token, refreshScenarios]);
 
   const simResult = useMemo(() => {
     if (!kpis) return null;
@@ -1079,72 +1086,257 @@ export const CalculatorsHubTab: React.FC<CalculatorsHubTabProps> = ({
                     <Button
                       type="button"
                       size="sm"
+                      disabled={savingScenario}
                       onClick={async () => {
-                        const created = await dashboardService.saveScenario(
-                          {
+                        try {
+                          await saveScenario({
                             name: scenarioNameInput.trim() || `${whatIfScenario.toUpperCase()} (${whatIfAmount} MAD)`,
                             description: `Simulated ${whatIfScenario} of ${whatIfAmount} MAD`,
                             isApprovedPlan: scenarioApproved,
-                            parameters: { scenario: whatIfScenario, amount: whatIfAmount },
-                            events: [{ type: whatIfScenario, amountMad: whatIfAmount, date: new Date().toISOString().slice(0, 10) }],
-                            baselineNetWorth12m: kpis.totalLiquidity,
-                            simulatedNetWorth12m: simResult.totalLiquidity,
-                            lowest30dBalance: simResult.safeToSpend,
-                            survivalRunwayDays: simResult.runwayDays,
-                          },
-                          token
-                        );
-                        setSavedScenarios((prev) => [created, ...prev]);
-                        setScenarioNameInput('');
-                        showToast('What-If Scenario saved for side-by-side comparison!');
+                            baselineSnapshot: {
+                              startingCashMad: kpis.totalLiquidity,
+                              emergencyBufferMad: kpis.emergencyBuffer,
+                              safeToSpendMad: kpis.safeToSpend,
+                            },
+                            events: [
+                              {
+                                label: `${whatIfScenario} (${whatIfAmount} MAD)`,
+                                amountMad: whatIfAmount,
+                                monthOffset: 0,
+                                kind: whatIfScenario === 'purchase' ? 'shock' : 'one_time',
+                              },
+                            ],
+                            assumptions: {
+                              scenario: whatIfScenario,
+                              amount: whatIfAmount,
+                            },
+                            projectedSummary: {
+                              baselineNetWorth12m: kpis.totalLiquidity,
+                              simulatedNetWorth12m: simResult.totalLiquidity,
+                              lowest30dBalance: simResult.safeToSpend,
+                              survivalRunwayDays: simResult.runwayDays,
+                              deltaVsBaselineMad: simResult.totalLiquidity - kpis.totalLiquidity,
+                            },
+                          });
+                          setScenarioNameInput('');
+                          setScenarioApproved(false);
+                          showToast('What-If Scenario saved for side-by-side comparison!');
+                        } catch (err: any) {
+                          showToast(err?.message || 'Failed to save scenario.');
+                        }
                       }}
                       className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs"
                     >
-                      Save Scenario
+                      {savingScenario ? 'Saving...' : 'Save Scenario'}
                     </Button>
                   </div>
                 </div>
               )}
 
-              {/* Saved Scenarios Side-by-Side Comparison */}
-              {savedScenarios.length > 0 && (
-                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">
-                    Saved &amp; Comparable What-If Scenarios ({savedScenarios.length})
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {savedScenarios.map((sc) => (
-                      <div
-                        key={sc.id}
-                        className="rounded-lg border border-gray-100 dark:border-gray-800 p-3 text-xs flex items-center justify-between gap-2"
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-gray-900 dark:text-white">{sc.name}</span>
-                            {sc.isApprovedPlan && (
-                              <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 text-[10px] font-bold">
-                                Approved Plan
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-gray-500 mt-0.5">
-                            Sim Balance: <strong>{Number(sc.simulatedNetWorth12m).toFixed(0)} MAD</strong> · Safe Floor:{' '}
-                            <strong>{Number(sc.lowest30dBalance).toFixed(0)} MAD</strong> · Runway: <strong>{sc.survivalRunwayDays}d</strong>
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await dashboardService.deleteScenario(sc.id, token);
-                            setSavedScenarios((prev) => prev.filter((item) => item.id !== sc.id));
-                          }}
-                          className="text-gray-400 hover:text-rose-600 text-xs px-2 py-1"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ))}
+              {/* Saved Scenarios & Side-by-Side Comparison */}
+              {(loadingScenarios || parsedScenarios.length > 0) && (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                      Saved &amp; Comparable What-If Scenarios ({parsedScenarios.length})
+                    </h4>
+                    <span className="text-[11px] text-gray-400">
+                      Select 2+ scenarios or review top scenarios side-by-side below
+                    </span>
                   </div>
+
+                  {loadingScenarios && parsedScenarios.length === 0 ? (
+                    <p className="text-xs text-gray-400 py-2">Loading saved scenarios...</p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {parsedScenarios.map((sc) => {
+                          const isChecked = selectedCompareIds.includes(sc.id);
+                          return (
+                            <div
+                              key={sc.id}
+                              className={`rounded-lg border p-3 text-xs space-y-2 transition-colors ${
+                                sc.isApprovedPlan
+                                  ? 'border-emerald-300 dark:border-emerald-800/70 bg-emerald-50/30 dark:bg-emerald-950/15'
+                                  : 'border-gray-100 dark:border-gray-800'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={(e) => {
+                                        setSelectedCompareIds((prev) =>
+                                          e.target.checked
+                                            ? [...prev, sc.id]
+                                            : prev.filter((id) => id !== sc.id)
+                                        );
+                                      }}
+                                      aria-label={`Compare ${sc.name}`}
+                                    />
+                                    <span className="font-bold text-gray-900 dark:text-white truncate">{sc.name}</span>
+                                    {sc.isApprovedPlan && (
+                                      <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 text-[10px] font-bold">
+                                        Approved Plan
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-gray-500 mt-1 font-mono tabular-nums">
+                                    Sim Balance: <strong>{sc.projectedSummary.simulatedNetWorth12m.toFixed(0)} MAD</strong> · Delta:{' '}
+                                    <strong
+                                      className={
+                                        sc.projectedSummary.deltaVsBaselineMad >= 0
+                                          ? 'text-emerald-600 dark:text-emerald-400'
+                                          : 'text-rose-600 dark:text-rose-400'
+                                      }
+                                    >
+                                      {sc.projectedSummary.deltaVsBaselineMad >= 0 ? '+' : ''}
+                                      {sc.projectedSummary.deltaVsBaselineMad.toFixed(0)}
+                                    </strong>{' '}
+                                    · Safe Floor: <strong>{sc.projectedSummary.lowest30dBalance.toFixed(0)} MAD</strong> · Runway:{' '}
+                                    <strong>{sc.projectedSummary.survivalRunwayDays}d</strong>
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-100 dark:border-gray-800">
+                                <div className="flex flex-wrap gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const rawType = String(sc.assumptions.scenario || 'purchase');
+                                      const mappedType =
+                                        rawType === 'save' || rawType === 'salary' ? rawType : 'purchase';
+                                      const loadedAmount =
+                                        Number(sc.assumptions.amount ?? sc.events[0]?.amountMad ?? 0) || 0;
+                                      setWhatIfScenario(mappedType);
+                                      if (loadedAmount > 0) setWhatIfAmount(loadedAmount);
+                                      showToast(`Loaded "${sc.name}" into simulator!`);
+                                    }}
+                                    className="px-2 py-1 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-semibold hover:bg-indigo-100"
+                                  >
+                                    Load in Simulator
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await saveScenario({
+                                        id: sc.id,
+                                        name: sc.name,
+                                        description: sc.description,
+                                        baselineSnapshot: sc.baselineSnapshot,
+                                        events: sc.events,
+                                        assumptions: sc.assumptions,
+                                        projectedSummary: sc.projectedSummary,
+                                        isApprovedPlan: !sc.isApprovedPlan,
+                                      });
+                                      showToast(
+                                        !sc.isApprovedPlan
+                                          ? `Marked "${sc.name}" as Approved Plan`
+                                          : `Removed Approved Plan flag on "${sc.name}"`
+                                      );
+                                    }}
+                                    className="px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                                  >
+                                    {sc.isApprovedPlan ? 'Unmark Plan' : 'Approve Plan'}
+                                  </button>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeScenario(sc.id)}
+                                  className="text-gray-400 hover:text-rose-600 text-xs px-2 py-1"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {(() => {
+                        const compareList =
+                          selectedCompareIds.length >= 2
+                            ? parsedScenarios.filter((s) => selectedCompareIds.includes(s.id))
+                            : parsedScenarios.slice(0, 3);
+                        if (compareList.length < 2) return null;
+                        return (
+                          <div className="pt-2 overflow-x-auto">
+                            <h5 className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">
+                              Side-by-Side Scenario Comparison
+                            </h5>
+                            <table className="w-full text-xs border-collapse border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+                              <thead>
+                                <tr className="bg-gray-50 dark:bg-gray-800/70 text-gray-600 dark:text-gray-300">
+                                  <th className="p-2 text-left font-semibold border-b border-gray-200 dark:border-gray-800">Metric</th>
+                                  {compareList.map((sc) => (
+                                    <th
+                                      key={sc.id}
+                                      className="p-2 text-right font-semibold border-b border-gray-200 dark:border-gray-800"
+                                    >
+                                      {sc.name}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100 dark:divide-gray-800 font-mono tabular-nums">
+                                <tr>
+                                  <td className="p-2 font-sans text-gray-600 dark:text-gray-400">Baseline Net Worth</td>
+                                  {compareList.map((sc) => (
+                                    <td key={sc.id} className="p-2 text-right text-gray-900 dark:text-white">
+                                      {sc.projectedSummary.baselineNetWorth12m.toFixed(0)} MAD
+                                    </td>
+                                  ))}
+                                </tr>
+                                <tr>
+                                  <td className="p-2 font-sans text-gray-600 dark:text-gray-400">Simulated Outcome</td>
+                                  {compareList.map((sc) => (
+                                    <td key={sc.id} className="p-2 text-right font-bold text-indigo-600 dark:text-indigo-400">
+                                      {sc.projectedSummary.simulatedNetWorth12m.toFixed(0)} MAD
+                                    </td>
+                                  ))}
+                                </tr>
+                                <tr>
+                                  <td className="p-2 font-sans text-gray-600 dark:text-gray-400">Delta vs Baseline</td>
+                                  {compareList.map((sc) => (
+                                    <td
+                                      key={sc.id}
+                                      className={`p-2 text-right font-semibold ${
+                                        sc.projectedSummary.deltaVsBaselineMad >= 0
+                                          ? 'text-emerald-600 dark:text-emerald-400'
+                                          : 'text-rose-600 dark:text-rose-400'
+                                      }`}
+                                    >
+                                      {sc.projectedSummary.deltaVsBaselineMad >= 0 ? '+' : ''}
+                                      {sc.projectedSummary.deltaVsBaselineMad.toFixed(0)} MAD
+                                    </td>
+                                  ))}
+                                </tr>
+                                <tr>
+                                  <td className="p-2 font-sans text-gray-600 dark:text-gray-400">Safe Cash Floor</td>
+                                  {compareList.map((sc) => (
+                                    <td key={sc.id} className="p-2 text-right text-gray-900 dark:text-white">
+                                      {sc.projectedSummary.lowest30dBalance.toFixed(0)} MAD
+                                    </td>
+                                  ))}
+                                </tr>
+                                <tr>
+                                  <td className="p-2 font-sans text-gray-600 dark:text-gray-400">Runway Days</td>
+                                  {compareList.map((sc) => (
+                                    <td key={sc.id} className="p-2 text-right text-gray-900 dark:text-white">
+                                      {sc.projectedSummary.survivalRunwayDays}d
+                                    </td>
+                                  ))}
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
                 </div>
               )}
             </CardContent>

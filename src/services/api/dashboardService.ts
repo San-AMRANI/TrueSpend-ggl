@@ -82,10 +82,38 @@ export const dashboardService = {
     apiClient.post<{ success: boolean; count: number }>('/api/contexts/link-transactions', { transactionIds, contextId }, token),
   getKpis: (token: string | null) => apiClient.get<KPI>('/api/kpis', token),
   getWallets: (token: string | null) => apiClient.get<Wallet[]>('/api/wallets', token),
-  createWallet: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
-    apiClient.post<Wallet>('/api/wallets', payload, token),
-  updateWallet: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }, token: string | null) =>
-    apiClient.put<Wallet>(`/api/wallets/${id}`, payload, token),
+  createWallet: (
+    payload: {
+      name: string;
+      type: 'Bank' | 'Cash' | 'Savings' | 'Investment';
+      accountSubtype?: string;
+      institutionName?: string | null;
+      currency?: string;
+      creditLimit?: number | null;
+      statementClosingDay?: number | null;
+      paymentDueDay?: number | null;
+      isMain?: boolean;
+      initialBalance?: number;
+    },
+    token: string | null
+  ) => apiClient.post<Wallet>('/api/wallets', payload, token),
+  updateWallet: (
+    id: string,
+    payload: {
+      name?: string;
+      type?: 'Bank' | 'Cash' | 'Savings' | 'Investment';
+      accountSubtype?: string;
+      institutionName?: string | null;
+      currency?: string;
+      creditLimit?: number | null;
+      statementClosingDay?: number | null;
+      paymentDueDay?: number | null;
+      valuationStatus?: string;
+      isMain?: boolean;
+      initialBalance?: number;
+    },
+    token: string | null
+  ) => apiClient.put<Wallet>(`/api/wallets/${id}`, payload, token),
   deleteWallet: (id: string, reassignToWalletId: string | undefined, token: string | null) =>
     apiClient.delete<{ success: boolean; message: string }>(`/api/wallets/${id}${reassignToWalletId ? `?reassignTo=${reassignToWalletId}` : ''}`, token),
   getTransactions: (token: string | null) => apiClient.get<Transaction[]>('/api/transactions', token),
@@ -96,10 +124,10 @@ export const dashboardService = {
     apiClient.post<Payroll>('/api/payrolls', payload, token),
   confirmPayroll: (
     id: string,
-    payload: { confirmedAmount?: number; confirmedAt?: string; walletId?: string; varianceNotes?: string },
+    payload: { confirmedAmount?: number; confirmedDate?: string; walletId?: string; varianceNotes?: string },
     token: string | null
   ) =>
-    apiClient.post<{ payroll: Payroll; transaction: Transaction; variance: number; varianceType: string }>(
+    apiClient.post<{ payroll: Payroll; transaction: Transaction; variance: number; alreadyConfirmed?: boolean }>(
       `/api/payrolls/${id}/confirm`,
       payload,
       token
@@ -471,21 +499,26 @@ export const dashboardService = {
   getStatementBatches: (token: string | null) =>
     apiClient.get<StatementBatchWithRows[]>('/api/audit/statements', token),
   importStatementBatch: (
-    payload: { fileName: string; walletId?: string | null; csvText: string; defaultCurrency?: string },
+    payload: {
+      walletId: string;
+      fileName: string;
+      fileFormat?: string;
+      rawContent: string;
+      statementOpeningBalance?: number;
+      statementClosingBalance?: number;
+      columnMap?: { dateCol?: number; descCol?: number; amountCol?: number; currencyCol?: number; refCol?: number };
+    },
     token: string | null
   ) =>
     apiClient.post<{
       batch: StatementBatchWithRows;
       rows: StatementBatchWithRows['rows'];
-      matchedCount: number;
-      unmatchedCount: number;
-      duplicateCount: number;
     }>('/api/audit/statements/import', payload, token),
   resolveStatementRow: (
     rowId: string,
-    payload: { action: 'confirm_match' | 'create_transaction' | 'ignore'; matchedTransactionId?: string; category?: string; walletId?: string },
+    payload: { action: 'confirm_match' | 'create_transaction' | 'ignore'; linkedTransactionId?: string; category?: string },
     token: string | null
-  ) => apiClient.post<{ status: string; transactionId?: string }>(`/api/audit/statements/rows/${rowId}/resolve`, payload, token),
+  ) => apiClient.post<StatementBatchWithRows['rows'][number]>(`/api/audit/statements/rows/${rowId}/resolve`, payload, token),
   getReviewInbox: (token: string | null, status?: string) =>
     apiClient.get<FinancialReviewItem[]>(`/api/audit/review-inbox${status ? `?status=${encodeURIComponent(status)}` : ''}`, token),
   createReviewItem: (payload: Record<string, unknown>, token: string | null) =>
@@ -493,16 +526,16 @@ export const dashboardService = {
   decideReviewItem: (
     id: string,
     payload: {
-      decision: 'confirm_create' | 'link_existing' | 'reject' | 'mark_duplicate';
+      action: 'post_transaction' | 'link_existing' | 'reject' | 'mark_duplicate';
       linkedTransactionId?: string;
       walletId?: string;
       category?: string;
       amount?: number;
-      merchant?: string;
-      date?: string;
+      description?: string;
+      decisionNotes?: string;
     },
     token: string | null
-  ) => apiClient.post<{ status: string; transaction?: Transaction }>(`/api/audit/review-inbox/${id}/decide`, payload, token),
+  ) => apiClient.post<{ item: FinancialReviewItem; transaction: Transaction | null }>(`/api/audit/review-inbox/${id}/decide`, payload, token),
   getCommitmentOccurrences: (token: string | null) =>
     apiClient.get<CommitmentOccurrence[]>('/api/audit/occurrences', token),
   createRecurringIncomeCommitment: (
@@ -518,24 +551,37 @@ export const dashboardService = {
       newDate?: string;
       newAmount?: number;
       walletId?: string;
+      linkedTransactionId?: string;
       isNonCashEvent?: boolean;
       reason?: string;
+      varianceNotes?: string;
+      notes?: string;
     },
     token: string | null
   ) =>
     apiClient.post<{
       occurrence: CommitmentOccurrence;
-      transaction: Transaction | null;
-      status: string;
+      transactionId: string | null;
     }>(`/api/audit/occurrences/${id}/settle`, payload, token),
   getGoalContributionEvents: (token: string | null, goalId?: string) =>
     apiClient.get<GoalContributionEvent[]>(`/api/audit/goal-events${goalId ? `?goalId=${encodeURIComponent(goalId)}` : ''}`, token),
   getSavedScenarios: (token: string | null) =>
     apiClient.get<SavedWhatIfScenario[]>('/api/audit/scenarios', token),
-  saveScenario: (payload: Record<string, unknown>, token: string | null) =>
-    apiClient.post<SavedWhatIfScenario>('/api/audit/scenarios', payload, token),
+  saveScenario: (
+    payload: {
+      id?: string;
+      name: string;
+      description?: string;
+      baselineSnapshot: Record<string, unknown>;
+      events: unknown[];
+      assumptions: Record<string, unknown>;
+      projectedSummary: Record<string, unknown>;
+      isApprovedPlan?: boolean;
+    },
+    token: string | null
+  ) => apiClient.post<SavedWhatIfScenario>('/api/audit/scenarios', payload, token),
   deleteScenario: (id: string, token: string | null) =>
-    apiClient.delete<{ deletedId: string }>(`/api/audit/scenarios/${id}`, token),
+    apiClient.delete<{ success: boolean }>(`/api/audit/scenarios/${id}`, token),
   getFinancialRules: (token: string | null) =>
     apiClient.get<{ rules: FinancialRuleItem[]; logs: FinancialRuleLogItem[] }>('/api/audit/rules', token),
   upsertFinancialRule: (payload: Record<string, unknown>, token: string | null) =>

@@ -37,6 +37,7 @@ import {
   Edit2,
   Search,
   FolderOpen,
+  AlertTriangle,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -51,6 +52,7 @@ import {
   type AiResponseDepth,
 } from '../lib/aiContext';
 import { playAudioBlob, playBrowserSpeech } from '../lib/speechEngine';
+import type { AiActionImpactSimulation } from '../types';
 
 /**
  * Ensures Markdown tables have a blank line before the header row and valid GFM separator rows
@@ -444,6 +446,9 @@ interface Message {
   responseDepthUsed?: AiResponseDepth;
   actions?: AiAction[];
   actionStatus?: 'approved' | 'rejected';
+  impactSimulation?: AiActionImpactSimulation;
+  simulatingActions?: boolean;
+  simulationError?: string;
   suggestions?: string[];
   timestamp: number;
 }
@@ -665,7 +670,7 @@ function MessageBubble({
 }: {
   msg: Message;
   idx: number;
-  onAction: (index: number, approve: boolean) => void;
+  onAction: (index: number, approve: boolean | 'simulate') => void;
   onSpeak?: (text: string, index: number) => void;
   isPlayingAudio?: boolean;
   isAudioLoading?: boolean;
@@ -859,8 +864,120 @@ function MessageBubble({
             ))}
           </div>
 
+          {!msg.actionStatus && (msg.simulatingActions || msg.simulationError || msg.impactSimulation) && (
+            <div className="mt-2.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/60 bg-white/90 dark:bg-gray-900/80 p-2.5 text-[11px] space-y-2">
+              {msg.simulatingActions && (
+                <div className="flex items-center gap-1.5 text-indigo-600 dark:text-indigo-300 font-medium">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Simulating pre-execution cash &amp; buffer impact...</span>
+                </div>
+              )}
+
+              {msg.simulationError && (
+                <p className="text-rose-600 dark:text-rose-400 font-medium">
+                  Simulation error: {msg.simulationError}
+                </p>
+              )}
+
+              {msg.impactSimulation && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-gray-900 dark:text-white flex items-center gap-1">
+                      <Zap className="w-3.5 h-3.5 text-amber-500" />
+                      Simulated Ledger Impact (No Changes Applied Yet)
+                    </span>
+                    {msg.impactSimulation.breachesEmergencyBuffer && (
+                      <span className="px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 text-[10px] font-bold flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Buffer Breach
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono tabular-nums">
+                    <div className="rounded bg-gray-50 dark:bg-gray-800/70 p-2">
+                      <div className="text-[10px] font-sans text-gray-500">Safe to Spend</div>
+                      <div className="font-bold text-gray-900 dark:text-white">
+                        {msg.impactSimulation.before.safeToSpendMad.toFixed(0)} →{' '}
+                        <span
+                          className={
+                            msg.impactSimulation.deltaSafeToSpendMad >= 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }
+                        >
+                          {msg.impactSimulation.after.safeToSpendMad.toFixed(0)} MAD
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-gray-500">
+                        ({msg.impactSimulation.deltaSafeToSpendMad >= 0 ? '+' : ''}
+                        {msg.impactSimulation.deltaSafeToSpendMad.toFixed(2)} MAD)
+                      </div>
+                    </div>
+
+                    <div className="rounded bg-gray-50 dark:bg-gray-800/70 p-2">
+                      <div className="text-[10px] font-sans text-gray-500">Daily Allowance</div>
+                      <div className="font-bold text-gray-900 dark:text-white">
+                        {msg.impactSimulation.before.dailyAllowanceMad.toFixed(0)} →{' '}
+                        <span
+                          className={
+                            msg.impactSimulation.deltaDailyAllowanceMad >= 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }
+                        >
+                          {msg.impactSimulation.after.dailyAllowanceMad.toFixed(0)} MAD
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-gray-500">
+                        ({msg.impactSimulation.deltaDailyAllowanceMad >= 0 ? '+' : ''}
+                        {msg.impactSimulation.deltaDailyAllowanceMad.toFixed(2)} / day)
+                      </div>
+                    </div>
+
+                    <div className="rounded bg-gray-50 dark:bg-gray-800/70 p-2">
+                      <div className="text-[10px] font-sans text-gray-500">Total Liquidity</div>
+                      <div className="font-bold text-gray-900 dark:text-white">
+                        {msg.impactSimulation.before.totalLiquidityMad.toFixed(0)} →{' '}
+                        <span
+                          className={
+                            msg.impactSimulation.deltaLiquidityMad >= 0
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }
+                        >
+                          {msg.impactSimulation.after.totalLiquidityMad.toFixed(0)} MAD
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-gray-500">
+                        ({msg.impactSimulation.deltaLiquidityMad >= 0 ? '+' : ''}
+                        {msg.impactSimulation.deltaLiquidityMad.toFixed(2)} MAD)
+                      </div>
+                    </div>
+                  </div>
+
+                  {msg.impactSimulation.warnings?.length > 0 && (
+                    <ul className="space-y-0.5 text-[10px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 rounded p-2">
+                      {msg.impactSimulation.warnings.map((w, wi) => (
+                        <li key={wi}>• {w}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {!msg.actionStatus ? (
-            <div className="mt-2.5 flex items-center gap-2">
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={msg.simulatingActions}
+                onClick={() => onAction(idx, 'simulate')}
+                className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 px-3 py-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors flex items-center gap-1 disabled:opacity-50"
+              >
+                <Zap className="w-3 h-3" />
+                {msg.simulatingActions ? 'Simulating...' : msg.impactSimulation ? 'Re-simulate' : 'Simulate Impact'}
+              </button>
               <button
                 type="button"
                 onClick={() => onAction(idx, true)}
@@ -1728,20 +1845,41 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     const message = messages[index];
     if (!message.actions?.length) return;
     if (approve === 'simulate') {
+      setMessages((prev) =>
+        prev.map((item, i) =>
+          i === index ? { ...item, simulatingActions: true, simulationError: undefined } : item,
+        ),
+      );
       try {
         const simRes = await fetch('/api/chat/simulate-actions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ actions: message.actions }),
         });
-        if (simRes.ok) {
-          const data = await simRes.json();
-          setMessages((prev) =>
-            prev.map((item, i) => (i === index ? ({ ...item, impactSimulation: data.impact } as any) : item)),
-          );
+        if (!simRes.ok) {
+          const errData = await simRes.json().catch(() => ({}));
+          throw new Error(errData.error || 'Simulation failed');
         }
-      } catch (e) {
-        console.error('Failed to simulate actions:', e);
+        const data = await simRes.json();
+        setMessages((prev) =>
+          prev.map((item, i) =>
+            i === index
+              ? { ...item, simulatingActions: false, impactSimulation: data.impact }
+              : item,
+          ),
+        );
+      } catch (e: any) {
+        setMessages((prev) =>
+          prev.map((item, i) =>
+            i === index
+              ? {
+                  ...item,
+                  simulatingActions: false,
+                  simulationError: e?.message || 'Failed to simulate actions',
+                }
+              : item,
+          ),
+        );
       }
       return;
     }

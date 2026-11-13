@@ -59,7 +59,11 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
 
   const handleExportCSV = () => {
     if (!transactions.length) {
-      alert('No transactions to export.');
+      window.dispatchEvent(
+        new CustomEvent('truespend:toast', {
+          detail: { type: 'info', message: 'No transactions to export.' },
+        })
+      );
       return;
     }
     
@@ -517,6 +521,30 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
       {/* Export & Backup Sub-Tab */}
       {activeSubTab === 'export' && (
         <div className="space-y-6">
+          <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/20 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-indigo-900 dark:text-indigo-200 space-y-0.5">
+              <p className="font-semibold flex items-center gap-1.5">
+                <Database className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                Spreadsheet Exports vs Full SQL Database Backup
+              </p>
+              <p className="text-indigo-700/80 dark:text-indigo-300/80">
+                Use CSV/JSON below for spreadsheets &amp; reporting. For full relational database SQL dumps, validation &amp; restore, use Settings.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => onNavigateTab?.('settings')}
+                className="text-xs whitespace-nowrap"
+              >
+                <Database className="w-3.5 h-3.5 mr-1.5" />
+                Open SQL Backup &amp; Drive
+              </Button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* CSV Export Card */}
             <Card className="flex flex-col justify-between">
@@ -566,6 +594,29 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
       {/* Import CSV Sub-Tab */}
       {activeSubTab === 'import' && (
         <div className="space-y-6">
+          <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/20 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 max-w-2xl mx-auto">
+            <div className="text-xs text-amber-900 dark:text-amber-200 space-y-0.5">
+              <p className="font-semibold">Reconciling a Bank or Card Statement?</p>
+              <p className="text-amber-800/80 dark:text-amber-300/80">
+                This form bulk-adds spreadsheet rows directly. For bank CSV/TSV statements with row hashing, duplicate prevention &amp; variance checks, use Accounts Statement Import.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent('truespend:openAccountsSection', { detail: 'statement_import' })
+                )
+              }
+              className="text-xs whitespace-nowrap shrink-0 border-amber-300 dark:border-amber-800"
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+              Open Statement Reconciliation
+            </Button>
+          </div>
+
           {importStatus && (
             <div className={`p-4 rounded-xl flex items-start gap-3 border ${
               importStatus.type === 'success'
@@ -585,12 +636,12 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Upload className="w-5 h-5 text-emerald-500" />
-                <CardTitle>Import Transactions from CSV</CardTitle>
+                <CardTitle>Bulk Import Transactions from Spreadsheet CSV</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Upload transactions from a spreadsheet. The parser automatically detects headers: <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-gray-800 dark:text-gray-200">Date, Type, Wallet, Category, Amount, Notes</code>.
+                Upload transactions from a personal spreadsheet. The parser automatically detects headers: <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-gray-800 dark:text-gray-200">Date, Type, Wallet, Category, Amount, Notes</code>.
               </p>
               <input
                 ref={fileInputRef}
@@ -621,7 +672,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
                     className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
                   >
                     <Upload className="w-4 h-4" />
-                    Select & Import CSV File
+                    Select &amp; Import Spreadsheet CSV
                   </Button>
                 )}
               </div>

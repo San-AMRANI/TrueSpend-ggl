@@ -13,18 +13,11 @@ import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 import { DesktopHeaderNav } from './components/dashboard/DesktopHeaderNav';
 import type { DashboardTab } from './types';
-import { Menu, X, LayoutDashboard, ArrowRightLeft, Users, BarChart2, FileText, Settings, Calculator, WalletCards, CalendarDays, Bot, ClipboardCheck, FileBarChart, ShieldCheck, Repeat, Target, TrendingUp, Coins, Sparkles, Search, Map, Eye, EyeOff, Palette, Check, Bell } from 'lucide-react';
+import { NAV_GROUP_ORDER, NAV_ITEMS } from './config/navigation';
+import { getOfflineOutbox } from './lib/offlineOutbox';
+import { Menu, X, Search, Eye, EyeOff, Palette, Check, Bell, CloudOff } from 'lucide-react';
 
-import { SpexAvatar } from './components/common/SpexAvatar';
-
-const logoSrc = `${(import.meta as any).env?.BASE_URL || '/'}logo-1.png?v=transparent`;
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png?v=transparent`;
-
-const SpexNavIcon: React.FC<{ className?: string }> = ({ className = 'h-5 w-5' }) => (
-  <span className={`inline-flex items-center justify-center shrink-0 ${className}`}>
-    <SpexAvatar className="w-full h-full" />
-  </span>
-);
 
 
 function AppContent() {
@@ -39,6 +32,13 @@ function AppContent() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const [outboxCount, setOutboxCount] = useState(() => {
+    try {
+      return getOfflineOutbox().length;
+    } catch {
+      return 0;
+    }
+  });
   const themeMenuRef = useRef<HTMLDivElement>(null);
 
   const handleSelectTab = (tab: DashboardTab) => {
@@ -52,6 +52,13 @@ function AppContent() {
     const handleUnreadCount = (e: any) => {
       if (typeof e.detail === 'number') setUnreadNotifCount(e.detail);
     };
+    const handleOutboxUpdated = (e: any) => {
+      if (typeof e.detail?.count === 'number') {
+        setOutboxCount(e.detail.count);
+      } else {
+        setOutboxCount(getOfflineOutbox().length);
+      }
+    };
     const handleClickOutside = (e: MouseEvent) => {
       if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
         setIsThemeMenuOpen(false);
@@ -59,33 +66,16 @@ function AppContent() {
     };
     window.addEventListener('truespend:openSidebar', handleOpen);
     window.addEventListener('truespend:unreadNotificationsCount', handleUnreadCount);
+    window.addEventListener('truespend:outbox-updated', handleOutboxUpdated);
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       cleanup && cleanup();
       window.removeEventListener('truespend:openSidebar', handleOpen);
       window.removeEventListener('truespend:unreadNotificationsCount', handleUnreadCount);
+      window.removeEventListener('truespend:outbox-updated', handleOutboxUpdated);
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  const tabs: { id: DashboardTab; label: string; icon: any }[] = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'investments', label: 'Stocks & Equities', icon: TrendingUp },
-    { id: 'forecast', label: 'Predictive Forecast', icon: Sparkles },
-    { id: 'calculators', label: 'Calculators & Simulators', icon: Calculator },
-    { id: 'calendar', label: 'Calendar & Cash Flow', icon: CalendarDays },
-    { id: 'analytics', label: 'Analytics', icon: BarChart2 },
-    { id: 'transactions', label: 'Transactions', icon: ArrowRightLeft },
-    { id: 'budgets', label: 'Budgets', icon: WalletCards },
-    { id: 'contexts', label: 'Contexts', icon: Map },
-    { id: 'subscriptions', label: 'Subscriptions', icon: Repeat },
-    { id: 'goals', label: 'Goals', icon: Target },
-    { id: 'debts', label: 'Debts & Splits', icon: Users },
-    { id: 'reports', label: 'Reports & Retrospective', icon: FileBarChart },
-    { id: 'users', label: 'Users & Roles', icon: ShieldCheck },
-    { id: 'settings', label: 'Settings', icon: Settings },
-    { id: 'chat', label: 'Spex AI Chat', icon: SpexNavIcon },
-  ];
 
   // On mobile, hide the top header when the chat tab is active so the chat
   // can use the full viewport height as a fixed overlay.
@@ -323,6 +313,20 @@ function AppContent() {
                 </>
               )}
             </button>
+            {outboxCount > 0 && (
+              <button
+                type="button"
+                onClick={() => handleSelectTab('settings')}
+                title={`${outboxCount} offline transaction(s) queued for sync — open Settings to manage`}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200 text-xs font-medium transition-colors shrink-0 whitespace-nowrap"
+              >
+                <CloudOff className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden xl:inline">Outbox</span>
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono tabular-nums font-bold bg-amber-600 text-white">
+                  {outboxCount}
+                </span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('truespend:openNotifications'))}
@@ -367,20 +371,31 @@ function AppContent() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto py-2">
-              {tabs.map(tab => (
-                <button
-                  key={tab.id}
-                  className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors ${activeTab === tab.id ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border-r-2 border-indigo-600 dark:border-indigo-400' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
-                  onClick={() => {
-                    window.dispatchEvent(new CustomEvent('truespend:setTab', { detail: tab.id }));
-                    setIsSidebarOpen(false);
-                  }}
-                >
-                  <tab.icon className={`h-5 w-5 ${activeTab === tab.id ? 'stroke-[2.5]' : ''}`} />
-                  {tab.label}
-                </button>
-              ))}
+            <div className="flex-1 overflow-y-auto py-2 space-y-2">
+              {NAV_GROUP_ORDER.map((group) => {
+                const groupTabs = NAV_ITEMS.filter((item) => item.group === group.id);
+                if (groupTabs.length === 0) return null;
+                return (
+                  <div key={group.id}>
+                    <div className="px-4 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                      {group.label}
+                    </div>
+                    {groupTabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors ${activeTab === tab.id ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border-r-2 border-indigo-600 dark:border-indigo-400' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('truespend:setTab', { detail: tab.id }));
+                          setIsSidebarOpen(false);
+                        }}
+                      >
+                        <tab.icon className={`h-5 w-5 shrink-0 ${activeTab === tab.id ? 'stroke-[2.5]' : ''}`} />
+                        <span className="truncate">{tab.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
             <div className="p-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-950/50">
               <div className="flex items-center justify-between mb-2">

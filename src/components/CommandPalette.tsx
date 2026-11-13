@@ -1,31 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search,
-  LayoutDashboard,
-  TrendingUp,
-  Sparkles,
   Calculator,
-  CalendarDays,
-  ArrowRightLeft,
-  WalletCards,
-  BarChart2,
-  FileBarChart,
-  Map,
-  Repeat,
-  Target,
-  Users,
-  ShieldCheck,
-  Settings,
   Plus,
   ArrowDownRight,
   ArrowUpRight,
   RefreshCw,
-  Moon,
-  Sun,
   X,
   CornerDownLeft,
   Landmark,
   Banknote,
+  WalletCards,
   Bot,
   Palette,
   Inbox,
@@ -33,6 +18,9 @@ import {
   Scale,
   GitBranch,
   Copy,
+  TrendingUp,
+  Target,
+  Repeat,
 } from 'lucide-react';
 import {
   DashboardTab,
@@ -42,7 +30,9 @@ import {
   Goal,
   Subscription,
   InvestmentsData,
+  WalletsWorkbenchSection,
 } from '../types';
+import { NAV_ITEMS } from '../config/navigation';
 import { useTheme, THEME_PRESETS } from '../context/ThemeContext';
 import { format } from 'date-fns';
 
@@ -259,15 +249,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       {
         id: 'act-reconcile-wallets',
         group: 'Quick Actions',
-        title: 'Manage Wallets & Accounting Workbench',
+        title: 'Accounts, Wallets & Accounting Workbench',
         subtitle: `Total Liquidity: ${(kpis?.totalLiquidity ?? 0).toFixed(2)} MAD across ${kpis?.accounts?.length ?? 0} accounts`,
-        badge: 'Workbench',
+        badge: 'Accounts',
         badgeColor: 'text-indigo-600 dark:text-indigo-400',
         icon: WalletCards,
         keywords: 'reconcile balance bank cash wallet adjust journal review inbox csv import counterparty',
         onSelect: () => {
           onClose();
-          onOpenWalletsModal();
+          window.dispatchEvent(new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', { detail: 'wallets' }));
         },
       },
       {
@@ -281,7 +271,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         keywords: 'review inbox pending approval ocr receipt csv tsv statement import reconcile',
         onSelect: () => {
           onClose();
-          onOpenWalletsModal();
+          window.dispatchEvent(new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', { detail: 'review_inbox' }));
         },
       },
       {
@@ -295,7 +285,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         keywords: 'double entry journal ledger trial balance integrity audit backfill',
         onSelect: () => {
           onClose();
-          onOpenWalletsModal();
+          window.dispatchEvent(new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', { detail: 'journal_audit' }));
         },
       },
       {
@@ -362,187 +352,38 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         },
       })),
 
-      // 2. Navigation
-      {
-        id: 'nav-overview',
-        group: 'Navigation',
-        title: 'Overview Command Center',
-        subtitle: `Safe to Spend: ${(kpis?.safeToSpend ?? 0).toFixed(0)} MAD · Health: ${kpis?.healthScore ?? 0}/100`,
-        icon: LayoutDashboard,
-        keywords: 'home dashboard overview safe to spend',
-        onSelect: () => {
-          setActiveTab('overview');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-calculators',
-        group: 'Navigation',
-        title: 'Calculators & What-If Simulators Hub',
-        subtitle: 'Affordability, Loan Payoff, Moroccan Salary Tax (IGR/CNSS), Inflation & Bill Split',
-        icon: Calculator,
-        keywords: 'calculators what if simulator loan mortgage tax salary igr cnss inflation split',
-        onSelect: () => {
-          setActiveTab('calculators');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-forecast',
-        group: 'Navigation',
-        title: 'Predictive Forecast & Trajectory',
-        subtitle: '30-day cash runway, 24-month net worth projection & category exhaustion radar',
-        icon: Sparkles,
-        keywords: 'forecast predictive trajectory runway future',
-        onSelect: () => {
-          setActiveTab('forecast');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-investments',
-        group: 'Navigation',
-        title: 'Stocks & Equities Portfolio',
-        subtitle: `Portfolio Value: ${(investmentsData?.totalPortfolioValueMad ?? 0).toFixed(0)} MAD`,
-        icon: TrendingUp,
-        keywords: 'stocks equities investments portfolio dividends bvc us',
-        onSelect: () => {
-          setActiveTab('investments');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-transactions',
-        group: 'Navigation',
-        title: 'Transactions Ledger',
-        subtitle: `${transactions.length} recorded transactions`,
-        icon: ArrowRightLeft,
-        keywords: 'transactions ledger history expenses income',
-        onSelect: () => {
-          setActiveTab('transactions');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-budgets',
-        group: 'Navigation',
-        title: 'Budgets & 50/30/20 Planner',
-        subtitle: 'Category caps, Envelope view, and macro rule benchmarks',
-        icon: WalletCards,
-        keywords: 'budgets envelope 50 30 20 categories limit',
-        onSelect: () => {
-          setActiveTab('budgets');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-calendar',
-        group: 'Navigation',
-        title: 'Financial Calendar & Cash Flow',
-        subtitle: 'Payday schedule, recurring bills, and daily balance timeline',
-        icon: CalendarDays,
-        keywords: 'calendar cash flow payday schedule payroll',
-        onSelect: () => {
-          setActiveTab('calendar');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-subscriptions',
-        group: 'Navigation',
-        title: 'Subscriptions & Fixed Commitments Radar',
-        subtitle: `${subscriptions.filter((s) => s.status === 'active').length} active recurring bills`,
-        icon: Repeat,
-        keywords: 'subscriptions recurring bills netflix spotify pruner',
-        onSelect: () => {
-          setActiveTab('subscriptions');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-goals',
-        group: 'Navigation',
-        title: 'Savings Goals & Milestones',
-        subtitle: `${goals.length} active savings targets`,
-        icon: Target,
-        keywords: 'goals savings target emergency fund',
-        onSelect: () => {
-          setActiveTab('goals');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-debts',
-        group: 'Navigation',
-        title: 'Debts, Receivables & Splits',
-        subtitle: `${debts.filter((d) => d.status === 'Pending').length} pending debt records`,
-        icon: Users,
-        keywords: 'debts receivables payables owed iou splits',
-        onSelect: () => {
-          setActiveTab('debts');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-analytics',
-        group: 'Navigation',
-        title: 'Deep Spending Analytics & Merchants',
-        subtitle: 'Category breakdowns, merchant intelligence, and month-over-month trends',
-        icon: BarChart2,
-        keywords: 'analytics charts merchants categories trends',
-        onSelect: () => {
-          setActiveTab('analytics');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-reports',
-        group: 'Navigation',
-        title: 'Cycle Report Card & Data Sovereignty',
-        subtitle: 'AI cycle retrospective grade, CSV/JSON export & import',
-        icon: FileBarChart,
-        keywords: 'reports retrospective grade export import csv json',
-        onSelect: () => {
-          setActiveTab('reports');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-contexts',
-        group: 'Navigation',
-        title: 'Financial Contexts & Projects',
-        subtitle: 'Track Trips, Missions, Life Events, and dedicated project budgets',
-        icon: Map,
-        keywords: 'contexts trips projects events',
-        onSelect: () => {
-          setActiveTab('contexts');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-users',
-        group: 'Navigation',
-        title: 'Users, Roles & Access Control',
-        subtitle: 'Manage workspace members, permissions, and audit logs',
-        icon: ShieldCheck,
-        keywords: 'users roles permissions admin audit',
-        onSelect: () => {
-          setActiveTab('users');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-settings',
-        group: 'Navigation',
-        title: 'Settings, Cloud Backups & Notifications',
-        subtitle: 'Payday, salary, emergency buffer, Google Drive & SQL backup',
-        icon: Settings,
-        keywords: 'settings backup sql google drive notifications',
-        onSelect: () => {
-          setActiveTab('settings');
-          onClose();
-        },
-      }
+      // 2. Navigation (derived from unified NAV_ITEMS registry)
+      ...NAV_ITEMS.map((navItem) => {
+        let subtitle = navItem.description;
+        if (navItem.id === 'overview') {
+          subtitle = `Safe to Spend: ${(kpis?.safeToSpend ?? 0).toFixed(0)} MAD · Health: ${kpis?.healthScore ?? 0}/100`;
+        } else if (navItem.id === 'accounts') {
+          subtitle = `${kpis?.accounts?.length ?? 0} accounts · Total Liquidity ${(kpis?.totalLiquidity ?? 0).toFixed(0)} MAD`;
+        } else if (navItem.id === 'investments') {
+          subtitle = `Portfolio Value: ${(investmentsData?.totalPortfolioValueMad ?? 0).toFixed(0)} MAD`;
+        } else if (navItem.id === 'transactions') {
+          subtitle = `${transactions.length} recorded transactions`;
+        } else if (navItem.id === 'subscriptions') {
+          subtitle = `${subscriptions.filter((s) => s.status === 'active').length} active recurring bills`;
+        } else if (navItem.id === 'goals') {
+          subtitle = `${goals.length} active savings targets`;
+        } else if (navItem.id === 'debts') {
+          subtitle = `${debts.filter((d) => d.status === 'Pending').length} pending debt records`;
+        }
+        return {
+          id: `nav-${navItem.id}`,
+          group: 'Navigation' as const,
+          title: navItem.label,
+          subtitle,
+          badge: navItem.groupLabel,
+          icon: navItem.icon,
+          keywords: `${navItem.keywords} ${navItem.groupLabel.toLowerCase()}`,
+          onSelect: () => {
+            setActiveTab(navItem.id);
+            onClose();
+          },
+        };
+      })
     );
 
     // 3. Wallets
@@ -550,14 +391,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       items.push({
         id: `wallet-${w.id}`,
         group: 'Wallets',
-        title: `${w.name} (${w.type})`,
-        subtitle: `Current Balance: ${w.balance.toFixed(2)} MAD`,
-        badge: `${w.balance.toFixed(0)} MAD`,
+        title: `${w.name} (${w.accountSubtype || w.type})`,
+        subtitle: `Current Balance: ${w.balance.toFixed(2)} ${w.currency || 'MAD'}`,
+        badge: `${w.balance.toFixed(0)} ${w.currency || 'MAD'}`,
         icon: w.type === 'Bank' ? Landmark : w.type === 'Cash' ? Banknote : WalletCards,
-        keywords: `wallet ${w.name} ${w.type}`,
+        keywords: `wallet account ${w.name} ${w.type} ${w.accountSubtype || ''} ${w.institutionName || ''}`,
         onSelect: () => {
           onClose();
-          onOpenWalletsModal();
+          window.dispatchEvent(new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', { detail: 'wallets' }));
         },
       });
     });

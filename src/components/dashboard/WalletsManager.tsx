@@ -35,28 +35,30 @@ import {
   WalletAccountSubtype,
   Subscription,
   Debt,
+  Transaction,
   InvestmentsData,
-  JournalAuditSummary,
-  StatementBatchWithRows,
-  FinancialReviewItem,
-  ExternalWealthItem,
-  ExchangeRateRecord,
-  CounterpartyRecord,
-  FinancialIntegrityReport,
+  WalletsWorkbenchSection,
 } from '../../types';
 import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
+import { useReviewInbox } from '../../hooks/useReviewInbox';
+import { useAccountAuditWorkbench } from '../../hooks/useAccountAuditWorkbench';
+import { expenseCategories } from '../../lib/categories';
 
 interface WalletsManagerProps {
   wallets: Wallet[];
   subscriptions?: Subscription[];
   debts?: Debt[];
+  transactions?: Transaction[];
   investmentsData?: InvestmentsData | null;
+  initialSection?: WalletsWorkbenchSection;
+  onSectionChange?: (section: WalletsWorkbenchSection) => void;
   onOpenInvestments?: () => void;
   onPaySubscription?: (id: string, payload?: { walletId?: string; date?: string }) => Promise<any>;
   onCreateWallet: (payload: any) => Promise<any>;
   onUpdateWallet: (id: string, payload: any) => Promise<any>;
   onDeleteWallet: (id: string, reassignToWalletId?: string) => Promise<any>;
+  onRefresh?: () => Promise<void> | void;
   onClose?: () => void;
   isModal?: boolean;
 }
@@ -65,12 +67,16 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   wallets,
   subscriptions = [],
   debts = [],
+  transactions = [],
   investmentsData = null,
+  initialSection = 'wallets',
+  onSectionChange,
   onOpenInvestments,
   onPaySubscription,
   onCreateWallet,
   onUpdateWallet,
   onDeleteWallet,
+  onRefresh,
   onClose,
   isModal = false,
 }) => {
@@ -85,23 +91,35 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   const [expandedWalletBills, setExpandedWalletBills] = useState<Record<string, boolean>>({});
   const [payingSubId, setPayingSubId] = useState<string | null>(null);
 
-  // Core Audit Workbench Sub-panel state
-  const [activeWorkbench, setActiveWorkbench] = useState<
-    'none' | 'statement_import' | 'review_inbox' | 'journal_audit' | 'external_wealth_fx' | 'counterparties' | 'integrity_diagnostics'
-  >('none');
-  const [journalSummary, setJournalSummary] = useState<JournalAuditSummary | null>(null);
-  const [statementBatches, setStatementBatches] = useState<StatementBatchWithRows[]>([]);
-  const [reviewItems, setReviewItems] = useState<FinancialReviewItem[]>([]);
-  const [externalWealth, setExternalWealth] = useState<ExternalWealthItem[]>([]);
-  const [fxRates, setFxRates] = useState<ExchangeRateRecord[]>([]);
-  const [counterpartiesList, setCounterpartiesList] = useState<CounterpartyRecord[]>([]);
-  const [integrityReport, setIntegrityReport] = useState<FinancialIntegrityReport | null>(null);
-  const [workbenchLoading, setWorkbenchLoading] = useState(false);
+  const [activeSection, setActiveSection] = useState<WalletsWorkbenchSection>(initialSection);
+
+  useEffect(() => {
+    setActiveSection(initialSection);
+  }, [initialSection]);
+
+  const selectSection = (section: WalletsWorkbenchSection) => {
+    setActiveSection(section);
+    onSectionChange?.(section);
+  };
+
+  const reviewInbox = useReviewInbox(token, onRefresh);
+  const workbench = useAccountAuditWorkbench(token, onRefresh);
 
   // Statement import form state
   const [stmtWalletId, setStmtWalletId] = useState<string>('');
   const [stmtCsvText, setStmtCsvText] = useState<string>('');
   const [stmtFileName, setStmtFileName] = useState<string>('bank_statement.csv');
+  const [stmtOpeningBal, setStmtOpeningBal] = useState<string>('');
+  const [stmtClosingBal, setStmtClosingBal] = useState<string>('');
+  const [stmtRowFilter, setStmtRowFilter] = useState<'all' | 'actionable' | 'matched' | 'resolved'>('all');
+  const [stmtLinkSelection, setStmtLinkSelection] = useState<Record<string, string>>({});
+
+  // Review Inbox inline edit & provenance state
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<'pending' | 'all'>('pending');
+  const [reviewEdits, setReviewEdits] = useState<
+    Record<string, { description?: string; amount?: string; category?: string; walletId?: string; linkedTxId?: string }>
+  >({});
+  const [expandedProvenance, setExpandedProvenance] = useState<Record<string, boolean>>({});
 
   // External wealth form state
   const [wealthName, setWealthName] = useState('');
@@ -141,47 +159,30 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const loadWorkbenchData = useCallback(
-    async (panel: typeof activeWorkbench) => {
-      if (panel === 'none' || !token) return;
-      setWorkbenchLoading(true);
-      try {
-        if (panel === 'journal_audit') {
-          const summary = await dashboardService.getJournalAuditSummary(token);
-          setJournalSummary(summary);
-        } else if (panel === 'statement_import') {
-          const batches = await dashboardService.getStatementBatches(token);
-          setStatementBatches(batches);
-        } else if (panel === 'review_inbox') {
-          const inbox = await dashboardService.getReviewInbox(token);
-          setReviewItems(inbox);
-        } else if (panel === 'external_wealth_fx') {
-          const [wealthRes, rates] = await Promise.all([
-            dashboardService.getExternalWealthItems(token),
-            dashboardService.getExchangeRates(token),
-          ]);
-          setExternalWealth(Array.isArray(wealthRes) ? wealthRes : wealthRes.items || []);
-          setFxRates(rates);
-        } else if (panel === 'counterparties') {
-          const list = await dashboardService.getCounterparties(token);
-          setCounterpartiesList(list);
-        } else if (panel === 'integrity_diagnostics') {
-          const report = await dashboardService.getFinancialIntegrityReport(token);
-          setIntegrityReport(report);
-        }
-      } catch (e: any) {
-        setError(e?.message || 'Failed to load audit panel data');
-      } finally {
-        setWorkbenchLoading(false);
+    async (panel: WalletsWorkbenchSection) => {
+      if (panel === 'wallets') return;
+      if (panel === 'review_inbox') {
+        await reviewInbox.refresh();
+        return;
       }
+      await workbench.loadSection(panel);
     },
-    [token]
+    [reviewInbox.refresh, workbench.loadSection]
   );
 
   useEffect(() => {
-    if (activeWorkbench !== 'none') {
-      loadWorkbenchData(activeWorkbench);
+    if (activeSection !== 'wallets') {
+      loadWorkbenchData(activeSection);
     }
-  }, [activeWorkbench, loadWorkbenchData]);
+  }, [activeSection, loadWorkbenchData]);
+
+  useEffect(() => {
+    if (workbench.error) setError(workbench.error);
+  }, [workbench.error]);
+
+  useEffect(() => {
+    if (reviewInbox.error) setError(reviewInbox.error);
+  }, [reviewInbox.error]);
 
   const openReconcileForm = (wallet: Wallet) => {
     setShowAddForm(false);
@@ -582,15 +583,27 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
         </form>
       )}
 
-      {/* Core Audit & Reconciliation Workbench Bar */}
+      {/* Core Audit & Reconciliation Workbench Navigation */}
       <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/60 p-3 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
-            Accounting &amp; Reconciliation Workbench
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
+              Accounting &amp; Reconciliation Workbench
+            </span>
+            {activeSection !== 'wallets' && (
+              <button
+                type="button"
+                onClick={() => selectSection('wallets')}
+                className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
+              >
+                ← Back to Accounts
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {(
               [
+                { id: 'wallets', label: 'Accounts & Balances', icon: WalletIcon },
                 { id: 'statement_import', label: 'Statement CSV Import', icon: FileSpreadsheet },
                 { id: 'review_inbox', label: 'Review Inbox', icon: Inbox },
                 { id: 'journal_audit', label: 'Double-Entry Ledger', icon: BookOpen },
@@ -600,19 +613,19 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
               ] as const
             ).map((btn) => {
               const Icon = btn.icon;
-              const isActive = activeWorkbench === btn.id;
+              const isActive = activeSection === btn.id;
               return (
                 <button
                   key={btn.id}
                   type="button"
-                  onClick={() => setActiveWorkbench(isActive ? 'none' : btn.id)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  onClick={() => selectSection(btn.id)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
                     isActive
                       ? 'bg-indigo-600 text-white shadow-xs'
                       : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-indigo-400'
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5" />
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
                   <span>{btn.label}</span>
                 </button>
               );
@@ -621,15 +634,15 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
         </div>
 
         {/* 1. Statement Import & Transaction Matching */}
-        {activeWorkbench === 'statement_import' && (
+        {activeSection === 'statement_import' && (
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h4 className="text-sm font-bold text-gray-900 dark:text-white">
                   Statement CSV / TSV Import &amp; Transaction Matching
                 </h4>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Paste or upload bank statement rows (`Date, Description, Amount, Currency`). Duplicate rows are hashed via SHA-256 and unmatched rows route to the Review Inbox.
+                  Upload or paste statement rows (Date, Description, Amount, Currency). Duplicates are skipped via SHA-256 hash and unmatched rows route into the Review Inbox.
                 </p>
               </div>
               <input
@@ -646,7 +659,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
               <Select
                 value={stmtWalletId}
                 onChange={(e) => setStmtWalletId(e.target.value)}
@@ -663,38 +676,62 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 type="text"
                 value={stmtFileName}
                 onChange={(e) => setStmtFileName(e.target.value)}
-                placeholder="Statement batch name"
+                placeholder="Statement filename"
                 className="text-xs"
+              />
+              <Input
+                type="number"
+                step="0.01"
+                value={stmtOpeningBal}
+                onChange={(e) => setStmtOpeningBal(e.target.value)}
+                placeholder="Opening balance (opt)"
+                className="text-xs font-mono"
+              />
+              <Input
+                type="number"
+                step="0.01"
+                value={stmtClosingBal}
+                onChange={(e) => setStmtClosingBal(e.target.value)}
+                placeholder="Closing balance (opt)"
+                className="text-xs font-mono"
               />
               <Button
                 type="button"
                 size="sm"
-                disabled={workbenchLoading || !stmtCsvText.trim()}
+                disabled={workbench.loadingSection === 'statement_import' || !stmtCsvText.trim()}
                 onClick={async () => {
-                  setWorkbenchLoading(true);
-                  try {
-                    const res = await dashboardService.importStatementBatch(
-                      {
-                        fileName: stmtFileName,
-                        walletId: stmtWalletId || wallets[0]?.id,
-                        csvText: stmtCsvText,
-                      },
-                      token
-                    );
+                  const targetWalletId = stmtWalletId || wallets.find((w) => w.isMain)?.id || wallets[0]?.id;
+                  if (!targetWalletId) {
+                    setError('Please create a wallet before importing a statement.');
+                    return;
+                  }
+                  const ext = stmtFileName.toLowerCase().endsWith('.tsv') ? 'TSV' : 'CSV';
+                  const openNum = stmtOpeningBal.trim() !== '' ? Number(stmtOpeningBal) : undefined;
+                  const closeNum = stmtClosingBal.trim() !== '' ? Number(stmtClosingBal) : undefined;
+                  const res = await workbench.importStatement({
+                    walletId: targetWalletId,
+                    fileName: stmtFileName.trim() || 'statement.csv',
+                    fileFormat: ext,
+                    rawContent: stmtCsvText,
+                    ...(Number.isFinite(openNum) ? { statementOpeningBalance: openNum } : {}),
+                    ...(Number.isFinite(closeNum) ? { statementClosingBalance: closeNum } : {}),
+                  });
+                  if (res) {
                     setStmtCsvText('');
+                    setStmtOpeningBal('');
+                    setStmtClosingBal('');
+                    const varianceStr =
+                      res.batch.reconciledVariance && Math.abs(Number(res.batch.reconciledVariance)) >= 0.01
+                        ? ` Variance vs closing: ${Number(res.batch.reconciledVariance).toFixed(2)}.`
+                        : '';
                     setReconcileNotice(
-                      `Statement imported: ${res.matchedCount} matched, ${res.unmatchedCount} unmatched (sent to Review Inbox), ${res.duplicateCount} duplicates skipped.`
+                      `Statement imported: ${res.batch.matchedCount} matched, ${res.batch.unmatchedCount} unmatched, ${res.batch.ambiguousCount} ambiguous, ${res.batch.duplicateCount} duplicates.${varianceStr}`
                     );
-                    await loadWorkbenchData('statement_import');
-                  } catch (err: any) {
-                    setError(err?.message || 'Failed to import statement');
-                  } finally {
-                    setWorkbenchLoading(false);
                   }
                 }}
-                className="bg-indigo-600 text-white hover:bg-indigo-700 text-xs"
+                className="bg-indigo-600 text-white hover:bg-indigo-700 text-xs whitespace-nowrap"
               >
-                Match &amp; Import Statement
+                {workbench.loadingSection === 'statement_import' ? 'Importing...' : 'Match & Import'}
               </Button>
             </div>
 
@@ -706,147 +743,440 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
               className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-2 text-xs font-mono text-gray-900 dark:text-gray-100"
             />
 
-            {statementBatches.length > 0 && (
-              <div className="space-y-2 max-h-56 overflow-y-auto pt-1">
-                {statementBatches.slice(0, 3).map((batch) => (
-                  <div key={batch.id} className="rounded-lg border border-gray-100 dark:border-gray-800 p-2.5 text-xs space-y-1.5">
-                    <div className="flex items-center justify-between font-semibold">
-                      <span>{batch.fileName} ({batch.totalRows} rows)</span>
-                      <span className="text-gray-500">
-                        Matched: {batch.matchedCount} · Unmatched: {batch.unmatchedCount} · Dup: {batch.duplicateCount}
-                      </span>
-                    </div>
-                    {batch.rows.slice(0, 6).map((row) => (
-                      <div key={row.id} className="flex items-center justify-between gap-2 py-1 border-t border-gray-100 dark:border-gray-800/60">
-                        <div className="truncate">
-                          <span className="font-mono text-[11px] text-gray-500 mr-2">{row.rowDate}</span>
-                          <span className="font-medium text-gray-800 dark:text-gray-200">{row.description}</span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="font-mono font-bold">
-                            {row.direction === 'outflow' ? '-' : '+'}{Number(row.amount).toFixed(2)} {row.currency}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 dark:bg-gray-800 capitalize">
-                            {row.matchStatus}
-                          </span>
-                          {(row.matchStatus === 'unmatched' || row.matchStatus === 'ambiguous') && (
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                await dashboardService.resolveStatementRow(
-                                  row.id,
-                                  { action: 'create_transaction', walletId: batch.walletId || wallets[0]?.id },
-                                  token
-                                );
-                                await loadWorkbenchData('statement_import');
-                              }}
-                              className="text-[11px] font-semibold text-indigo-600 hover:underline"
-                            >
-                              + Post Tx
-                            </button>
-                          )}
-                        </div>
-                      </div>
+            {workbench.statementBatches.length > 0 && (
+              <div className="space-y-3 pt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Imported Statement Batches ({workbench.statementBatches.length})
+                  </span>
+                  <div className="flex items-center gap-1 text-[11px]">
+                    {(
+                      [
+                        { id: 'all', label: 'All Rows' },
+                        { id: 'actionable', label: 'Needs Action' },
+                        { id: 'matched', label: 'Auto-Matched' },
+                        { id: 'resolved', label: 'Resolved' },
+                      ] as const
+                    ).map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setStmtRowFilter(f.id)}
+                        className={`px-2 py-0.5 rounded font-medium ${
+                          stmtRowFilter === f.id
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                        }`}
+                      >
+                        {f.label}
+                      </button>
                     ))}
                   </div>
-                ))}
+                </div>
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {workbench.statementBatches.slice(0, 5).map((batch) => {
+                    const filteredRows = batch.rows.filter((r) => {
+                      if (stmtRowFilter === 'actionable') return r.matchStatus === 'unmatched' || r.matchStatus === 'ambiguous';
+                      if (stmtRowFilter === 'matched') return r.matchStatus === 'matched';
+                      if (stmtRowFilter === 'resolved')
+                        return r.matchStatus === 'confirmed_linked' || r.matchStatus === 'confirmed_created' || r.matchStatus === 'ignored';
+                      return true;
+                    });
+                    return (
+                      <div key={batch.id} className="rounded-lg border border-gray-100 dark:border-gray-800 p-2.5 text-xs space-y-1.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2 font-semibold">
+                          <span>
+                            {batch.fileName} ({batch.totalRows} rows)
+                          </span>
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-gray-500">
+                            <span>Matched: {batch.matchedCount}</span>
+                            <span>Unmatched: {batch.unmatchedCount}</span>
+                            <span>Ambiguous: {batch.ambiguousCount}</span>
+                            <span>Dup: {batch.duplicateCount}</span>
+                            {batch.reconciledVariance && Math.abs(Number(batch.reconciledVariance)) >= 0.01 && (
+                              <span className="text-amber-600 font-bold">
+                                Variance: {Number(batch.reconciledVariance).toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {filteredRows.length === 0 ? (
+                          <p className="text-[11px] text-gray-400 py-1">No rows matching filter.</p>
+                        ) : (
+                          filteredRows.slice(0, 15).map((row) => {
+                            const signedAmt = Number(row.amount || 0);
+                            const selectedLinkId = stmtLinkSelection[row.id] ?? row.suggestedTransactionId ?? '';
+                            const canResolve = row.matchStatus === 'unmatched' || row.matchStatus === 'ambiguous' || row.matchStatus === 'matched';
+                            return (
+                              <div key={row.id} className="flex flex-wrap items-center justify-between gap-2 py-1.5 border-t border-gray-100 dark:border-gray-800/60">
+                                <div className="min-w-0 flex-1">
+                                  <span className="font-mono text-[11px] text-gray-500 mr-2">{row.rowDate}</span>
+                                  <span className="font-medium text-gray-800 dark:text-gray-200">{row.description}</span>
+                                  {row.linkedTransactionId && (
+                                    <span className="ml-2 text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
+                                      Linked Tx: {row.linkedTransactionId.slice(0, 8)}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                                  <span
+                                    className={`font-mono font-bold tabular-nums ${
+                                      signedAmt < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                                    }`}
+                                  >
+                                    {signedAmt >= 0 ? '+' : ''}
+                                    {signedAmt.toFixed(2)} {row.currency}
+                                  </span>
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 dark:bg-gray-800 capitalize">
+                                    {row.matchStatus.replace(/_/g, ' ')}
+                                  </span>
+                                  {canResolve && (
+                                    <>
+                                      {transactions.length > 0 && (
+                                        <select
+                                          value={selectedLinkId}
+                                          onChange={(e) => setStmtLinkSelection((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                                          className="max-w-[140px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1.5 py-0.5 text-[10px]"
+                                        >
+                                          <option value="">Link existing tx...</option>
+                                          {transactions.slice(0, 30).map((t) => (
+                                            <option key={t.id} value={t.id}>
+                                              {t.createdAt.slice(0, 10)} · {(t.notes || t.category || t.type).slice(0, 18)} ({Number(t.amount).toFixed(0)})
+                                            </option>
+                                          ))}
+                                        </select>
+                                      )}
+                                      {selectedLinkId && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            workbench.resolveRow(row.id, {
+                                              action: 'confirm_match',
+                                              linkedTransactionId: selectedLinkId,
+                                            })
+                                          }
+                                          className="text-[11px] font-semibold text-emerald-600 hover:underline"
+                                        >
+                                          Link Match
+                                        </button>
+                                      )}
+                                      {(row.matchStatus === 'unmatched' || row.matchStatus === 'ambiguous') && (
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => workbench.resolveRow(row.id, { action: 'create_transaction' })}
+                                            className="text-[11px] font-semibold text-indigo-600 hover:underline"
+                                          >
+                                            + Post Tx
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => workbench.resolveRow(row.id, { action: 'ignore' })}
+                                            className="text-[11px] text-gray-500 hover:underline"
+                                          >
+                                            Ignore
+                                          </button>
+                                        </>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
         )}
 
         {/* 2. Persistent Financial Review Inbox */}
-        {activeWorkbench === 'review_inbox' && (
-          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-sm font-bold text-gray-900 dark:text-white">
-                  Financial Review Inbox ({reviewItems.length})
-                </h4>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Persistent queue for OCR receipts, unmatched statement rows, and rule-flagged transactions.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => loadWorkbenchData('review_inbox')}
-                className="text-xs"
-              >
-                <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
-              </Button>
-            </div>
-
-            {reviewItems.length === 0 ? (
-              <p className="text-xs text-gray-500 py-2">No items waiting in your Review Inbox.</p>
-            ) : (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {reviewItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-lg border border-gray-100 dark:border-gray-800 p-2.5 text-xs"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-gray-900 dark:text-white">{item.merchant}</span>
-                        <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold">
-                          {item.sourceType}
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px] font-semibold">
-                          {item.status}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        {item.proposedDate} · {item.category} · Confidence {(Number(item.confidence) * 100).toFixed(0)}%
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="font-mono font-bold text-sm text-gray-900 dark:text-white">
-                        {Number(item.amount).toFixed(2)} {item.currency}
-                      </span>
-                      {(item.status === 'Captured' || item.status === 'Needs Review') && (
-                        <>
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={async () => {
-                              await dashboardService.decideReviewItem(
-                                item.id,
-                                { decision: 'confirm_create', walletId: item.walletId || wallets[0]?.id },
-                                token
-                              );
-                              await loadWorkbenchData('review_inbox');
-                              if (wallets[0]) await onUpdateWallet(wallets[0].id, { name: wallets[0].name });
-                            }}
-                            className="h-7 px-2 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
-                          >
-                            Confirm &amp; Post
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              await dashboardService.decideReviewItem(item.id, { decision: 'reject' }, token);
-                              await loadWorkbenchData('review_inbox');
-                            }}
-                            className="h-7 px-2 text-[11px] text-rose-600"
-                          >
-                            Reject
-                          </Button>
-                        </>
-                      )}
-                    </div>
+        {activeSection === 'review_inbox' && (() => {
+          const displayedReviewItems = reviewInbox.items.filter((item) =>
+            reviewStatusFilter === 'pending'
+              ? item.status === 'Captured' || item.status === 'Needs Review'
+              : true
+          );
+          return (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                    Financial Review Inbox ({displayedReviewItems.length})
+                  </h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Review captured OCR receipts, unmatched statement rows, and rule drafts. Edit fields, link existing transactions, or post cleanly to the journal.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setReviewStatusFilter('pending')}
+                      className={`px-2.5 py-1 font-medium ${
+                        reviewStatusFilter === 'pending'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      Pending
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReviewStatusFilter('all')}
+                      className={`px-2.5 py-1 font-medium ${
+                        reviewStatusFilter === 'all'
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      All History ({reviewInbox.items.length})
+                    </button>
                   </div>
-                ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={reviewInbox.loading}
+                    onClick={() => reviewInbox.refresh()}
+                    className="text-xs"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1 ${reviewInbox.loading ? 'animate-spin' : ''}`} /> Refresh
+                  </Button>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+
+              {displayedReviewItems.length === 0 ? (
+                <p className="text-xs text-gray-500 py-2">
+                  {reviewStatusFilter === 'pending'
+                    ? 'Inbox Zero! No items awaiting review.'
+                    : 'No review inbox records found.'}
+                </p>
+              ) : (
+                <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                  {displayedReviewItems.map((item) => {
+                    const edit = reviewEdits[item.id] || {};
+                    const descVal = edit.description ?? item.parsedDescription;
+                    const amtVal = edit.amount ?? String(item.parsedAmount ?? '0');
+                    const catVal = edit.category ?? item.parsedCategory;
+                    const walletVal = edit.walletId ?? item.walletId ?? wallets.find((w) => w.isMain)?.id ?? wallets[0]?.id ?? '';
+                    const linkTxVal = edit.linkedTxId ?? item.linkedTransactionId ?? '';
+                    const isPending = item.status === 'Captured' || item.status === 'Needs Review';
+                    const isBusy = reviewInbox.busyId === item.id;
+                    const isProvOpen = Boolean(expandedProvenance[item.id]);
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 p-3 text-xs space-y-2.5"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-bold text-gray-900 dark:text-white text-sm">
+                              {item.parsedDescription}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold">
+                              {item.sourceType.replace(/_/g, ' ')}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px] font-semibold">
+                              {item.status}
+                            </span>
+                            <span className="text-[11px] text-gray-500 font-mono">
+                              {item.parsedDate} · {(Number(item.confidenceScore || 0) * 100).toFixed(0)}% conf
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold tabular-nums text-sm text-gray-900 dark:text-white">
+                              {Number(item.parsedAmount || 0).toFixed(2)} {item.parsedCurrency || 'MAD'}
+                            </span>
+                            {item.rawPayloadJson && (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedProvenance((prev) => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                              >
+                                {isProvOpen ? 'Hide Provenance' : 'Provenance'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {isProvOpen && item.rawPayloadJson && (
+                          <pre className="rounded bg-gray-900 text-gray-100 p-2 text-[10px] font-mono overflow-x-auto max-h-28">
+                            {item.rawPayloadJson}
+                          </pre>
+                        )}
+
+                        {isPending ? (
+                          <div className="space-y-2 pt-1 border-t border-gray-200/70 dark:border-gray-700/60">
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                              <Input
+                                type="text"
+                                value={descVal}
+                                onChange={(e) =>
+                                  setReviewEdits((prev) => ({
+                                    ...prev,
+                                    [item.id]: { ...prev[item.id], description: e.target.value },
+                                  }))
+                                }
+                                placeholder="Description"
+                                className="text-xs bg-white dark:bg-gray-900"
+                              />
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={amtVal}
+                                onChange={(e) =>
+                                  setReviewEdits((prev) => ({
+                                    ...prev,
+                                    [item.id]: { ...prev[item.id], amount: e.target.value },
+                                  }))
+                                }
+                                placeholder="Amount"
+                                className="text-xs font-mono bg-white dark:bg-gray-900"
+                              />
+                              <Select
+                                value={catVal}
+                                onChange={(e) =>
+                                  setReviewEdits((prev) => ({
+                                    ...prev,
+                                    [item.id]: { ...prev[item.id], category: e.target.value },
+                                  }))
+                                }
+                                className="text-xs bg-white dark:bg-gray-900"
+                              >
+                                {!expenseCategories.includes(catVal as any) && <option value={catVal}>{catVal}</option>}
+                                {expenseCategories.map((c) => (
+                                  <option key={c} value={c}>
+                                    {c}
+                                  </option>
+                                ))}
+                              </Select>
+                              <Select
+                                value={walletVal}
+                                onChange={(e) =>
+                                  setReviewEdits((prev) => ({
+                                    ...prev,
+                                    [item.id]: { ...prev[item.id], walletId: e.target.value },
+                                  }))
+                                }
+                                className="text-xs bg-white dark:bg-gray-900"
+                              >
+                                {wallets.map((w) => (
+                                  <option key={w.id} value={w.id}>
+                                    {w.name} ({w.currency || 'MAD'})
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  value={linkTxVal}
+                                  onChange={(e) =>
+                                    setReviewEdits((prev) => ({
+                                      ...prev,
+                                      [item.id]: { ...prev[item.id], linkedTxId: e.target.value },
+                                    }))
+                                  }
+                                  className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-[11px] max-w-[200px]"
+                                >
+                                  <option value="">Link to existing transaction...</option>
+                                  {transactions.slice(0, 40).map((tx) => (
+                                    <option key={tx.id} value={tx.id}>
+                                      {tx.createdAt.slice(0, 10)} · {(tx.notes || tx.category || tx.type).slice(0, 22)} ({Number(tx.amount).toFixed(0)} MAD)
+                                    </option>
+                                  ))}
+                                </select>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isBusy || !linkTxVal}
+                                  onClick={async () => {
+                                    await reviewInbox.decideItem(item.id, {
+                                      action: 'link_existing',
+                                      linkedTransactionId: linkTxVal,
+                                    });
+                                    setReconcileNotice(`Linked "${item.parsedDescription}" to existing transaction.`);
+                                  }}
+                                  className="h-7 px-2 text-[11px]"
+                                >
+                                  Link Existing
+                                </Button>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  disabled={isBusy}
+                                  onClick={async () => {
+                                    await reviewInbox.decideItem(item.id, {
+                                      action: 'post_transaction',
+                                      walletId: walletVal,
+                                      category: catVal,
+                                      amount: Number(amtVal),
+                                      description: descVal,
+                                    });
+                                    setReconcileNotice(`Posted "${descVal}" to ledger & journal.`);
+                                  }}
+                                  className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white"
+                                >
+                                  {isBusy ? 'Posting...' : 'Confirm & Post'}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isBusy}
+                                  onClick={() =>
+                                    reviewInbox.decideItem(item.id, {
+                                      action: 'mark_duplicate',
+                                      decisionNotes: 'Marked duplicate from Review Inbox',
+                                    })
+                                  }
+                                  className="h-7 px-2 text-[11px]"
+                                >
+                                  Duplicate
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isBusy}
+                                  onClick={() =>
+                                    reviewInbox.decideItem(item.id, {
+                                      action: 'reject',
+                                      decisionNotes: 'Rejected from Review Inbox',
+                                    })
+                                  }
+                                  className="h-7 px-2 text-[11px] text-rose-600"
+                                >
+                                  Reject
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          item.decisionNotes && (
+                            <p className="text-[11px] text-gray-500 italic">Note: {item.decisionNotes}</p>
+                          )
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* 3. Double-Entry Accounting & Journal Audit */}
-        {activeWorkbench === 'journal_audit' && (
+        {activeSection === 'journal_audit' && (
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -860,56 +1190,52 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
               <Button
                 type="button"
                 size="sm"
-                disabled={workbenchLoading}
+                disabled={workbench.loadingSection === 'journal_audit'}
                 onClick={async () => {
-                  setWorkbenchLoading(true);
-                  try {
-                    const res = await dashboardService.backfillJournalEntries(token);
-                    setJournalSummary(res.summary);
+                  const res = await workbench.backfillJournal();
+                  if (res) {
                     setReconcileNotice(
                       `Backfilled ${res.backfilledCount} historical transactions into balanced double-entry journal lines.`
                     );
-                  } finally {
-                    setWorkbenchLoading(false);
                   }
                 }}
                 className="bg-indigo-600 text-white hover:bg-indigo-700 text-xs"
               >
-                Backfill Historical Transactions
+                {workbench.loadingSection === 'journal_audit' ? 'Backfilling...' : 'Backfill Historical Transactions'}
               </Button>
             </div>
 
-            {journalSummary && (
+            {workbench.journalSummary && (
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
                     <span className="text-gray-500">Journal Entries</span>
                     <p className="text-base font-bold font-mono text-gray-900 dark:text-white">
-                      {journalSummary.totalEntries} ({journalSummary.totalLines} lines)
+                      {workbench.journalSummary.totalEntries} ({workbench.journalSummary.totalLines} lines)
                     </p>
                   </div>
                   <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
                     <span className="text-gray-500">Total Debits</span>
                     <p className="text-base font-bold font-mono text-gray-900 dark:text-white">
-                      {journalSummary.totalDebitsMad.toFixed(2)} MAD
+                      {workbench.journalSummary.totalDebitsMad.toFixed(2)} MAD
                     </p>
                   </div>
                   <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
                     <span className="text-gray-500">Total Credits</span>
                     <p className="text-base font-bold font-mono text-gray-900 dark:text-white">
-                      {journalSummary.totalCreditsMad.toFixed(2)} MAD
+                      {workbench.journalSummary.totalCreditsMad.toFixed(2)} MAD
                     </p>
                   </div>
                   <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
                     <span className="text-gray-500">Trial Balance Integrity</span>
-                    <p className={`text-base font-bold ${journalSummary.isSystemBalanced ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {journalSummary.isSystemBalanced ? '100% Balanced' : `${journalSummary.imbalancedEntriesCount} Imbalanced`}
+                    <p className={`text-base font-bold ${workbench.journalSummary.isSystemBalanced ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {workbench.journalSummary.isSystemBalanced ? '100% Balanced' : `${workbench.journalSummary.imbalancedEntriesCount} Imbalanced`}
                     </p>
                   </div>
                 </div>
 
-                <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                  {journalSummary.walletComparison.map((wc) => (
+                <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                  {workbench.journalSummary.walletComparison.map((wc) => (
                     <div key={wc.walletId} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-gray-50/70 dark:bg-gray-800/40">
                       <span className="font-semibold text-gray-800 dark:text-gray-200">
                         {wc.walletName} ({wc.accountSubtype})
@@ -930,13 +1256,35 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
         )}
 
         {/* 4. External Wealth Items (Unified Net Worth) & Multi-Currency FX Rates */}
-        {activeWorkbench === 'external_wealth_fx' && (
+        {activeSection === 'external_wealth_fx' && (
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-4">
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 p-2.5 border border-emerald-100 dark:border-emerald-900/40">
+                <span className="text-gray-500 dark:text-gray-400">External Assets</span>
+                <p className="font-mono font-bold text-sm text-emerald-700 dark:text-emerald-300">
+                  +{workbench.externalSummary.totalExternalAssetsMad.toLocaleString()} MAD
+                </p>
+              </div>
+              <div className="rounded-lg bg-rose-50/60 dark:bg-rose-950/20 p-2.5 border border-rose-100 dark:border-rose-900/40">
+                <span className="text-gray-500 dark:text-gray-400">External Liabilities</span>
+                <p className="font-mono font-bold text-sm text-rose-700 dark:text-rose-300">
+                  -{workbench.externalSummary.totalExternalLiabilitiesMad.toLocaleString()} MAD
+                </p>
+              </div>
+              <div className="rounded-lg bg-indigo-50/60 dark:bg-indigo-950/20 p-2.5 border border-indigo-100 dark:border-indigo-900/40">
+                <span className="text-gray-500 dark:text-gray-400">Net External Wealth</span>
+                <p className="font-mono font-bold text-sm text-indigo-700 dark:text-indigo-300">
+                  {workbench.externalSummary.netExternalWealthMad >= 0 ? '+' : ''}
+                  {workbench.externalSummary.netExternalWealthMad.toLocaleString()} MAD
+                </p>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* External Assets & Liabilities */}
               <div className="space-y-2.5">
                 <h4 className="text-sm font-bold text-gray-900 dark:text-white">
-                  External Assets &amp; Liabilities (Unified Net Worth)
+                  External Assets &amp; Liabilities (Real Estate, Vehicles, Metals, Loans)
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <Input
@@ -1001,15 +1349,15 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                       );
                       setWealthName('');
                       setWealthAmountMad('');
-                      await loadWorkbenchData('external_wealth_fx');
+                      await workbench.loadSection('external_wealth_fx');
                     }}
                     className="bg-indigo-600 text-white text-xs"
                   >
                     + Add
                   </Button>
                 </div>
-                <div className="space-y-1 max-h-40 overflow-y-auto">
-                  {externalWealth.map((item) => (
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {workbench.externalWealth.map((item) => (
                     <div key={item.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-gray-50 dark:bg-gray-800">
                       <div className="min-w-0 pr-2">
                         <span className="font-bold text-gray-900 dark:text-white">{item.name}</span>{' '}
@@ -1021,22 +1369,18 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                             Stale ({item.ageDays}d)
                           </span>
                         )}
-                        {(item.valuationHistory?.length || 0) > 0 && (
-                          <span className="ml-1.5 text-[10px] text-indigo-600 dark:text-indigo-400">
-                            {item.valuationHistory!.length} valuation(s)
-                          </span>
-                        )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className={`font-mono font-bold ${!item.isLiability ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {!item.isLiability ? '+' : '-'}{Number(item.valueMad ?? item.estimatedValue).toLocaleString()} MAD
+                          {!item.isLiability ? '+' : '-'}
+                          {Number(item.valueMad ?? item.estimatedValue).toLocaleString()} MAD
                           {item.currency !== 'MAD' ? ` (${Number(item.estimatedValue).toLocaleString()} ${item.currency})` : ''}
                         </span>
                         <button
                           type="button"
                           onClick={async () => {
                             await dashboardService.deleteExternalWealthItem(item.id, token);
-                            await loadWorkbenchData('external_wealth_fx');
+                            await workbench.loadSection('external_wealth_fx');
                           }}
                           className="text-gray-400 hover:text-rose-600"
                         >
@@ -1080,15 +1424,15 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                         },
                         token
                       );
-                      await loadWorkbenchData('external_wealth_fx');
+                      await workbench.loadSection('external_wealth_fx');
                     }}
                     className="bg-indigo-600 text-white text-xs"
                   >
                     Lock FX Rate
                   </Button>
                 </div>
-                <div className="space-y-1 max-h-36 overflow-y-auto">
-                  {fxRates.map((r) => (
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {workbench.fxRates.map((r) => (
                     <div key={r.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-gray-50 dark:bg-gray-800">
                       <span className="font-mono font-semibold">
                         1 {r.baseCurrency} = {Number(r.rate).toFixed(4)} {r.quoteCurrency}
@@ -1105,12 +1449,12 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
         )}
 
         {/* 5. Counterparty & Merchant Identity Layer */}
-        {activeWorkbench === 'counterparties' && (
+        {activeSection === 'counterparties' && (
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h4 className="text-sm font-bold text-gray-900 dark:text-white">
-                  Merchant &amp; Counterparty Registry ({counterpartiesList.length})
+                  Merchant &amp; Counterparty Registry ({workbench.counterparties.length})
                 </h4>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Normalize noisy statement aliases to canonical entities with aggregated spend, receivables/payables, and non-destructive merge.
@@ -1120,10 +1464,10 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => loadWorkbenchData('counterparties')}
+                onClick={() => workbench.loadSection('counterparties')}
                 className="text-xs"
               >
-                <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${workbench.loadingSection === 'counterparties' ? 'animate-spin' : ''}`} /> Refresh
               </Button>
             </div>
 
@@ -1173,7 +1517,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                   setCpName('');
                   setCpAliases('');
                   setCpDefaultCat('');
-                  await loadWorkbenchData('counterparties');
+                  await workbench.loadSection('counterparties');
                 }}
                 className="bg-indigo-600 text-white text-xs"
               >
@@ -1181,20 +1525,20 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
               </Button>
             </div>
 
-            {counterpartiesList.length >= 2 && (
+            {workbench.counterparties.length >= 2 && (
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40 p-2.5 text-xs">
                 <GitMerge className="h-3.5 w-3.5 text-indigo-500" />
                 <span className="font-semibold">Merge Duplicate Counterparty:</span>
                 <Select value={mergeSourceId} onChange={(e) => setMergeSourceId(e.target.value)} className="text-xs w-44">
                   <option value="">Source (to merge)</option>
-                  {counterpartiesList.map((c) => (
+                  {workbench.counterparties.map((c) => (
                     <option key={c.id} value={c.id}>{c.canonicalName}</option>
                   ))}
                 </Select>
                 <span>→</span>
                 <Select value={mergeTargetId} onChange={(e) => setMergeTargetId(e.target.value)} className="text-xs w-44">
                   <option value="">Target (canonical)</option>
-                  {counterpartiesList.map((c) => (
+                  {workbench.counterparties.map((c) => (
                     <option key={c.id} value={c.id}>{c.canonicalName}</option>
                   ))}
                 </Select>
@@ -1208,7 +1552,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                     setMergeSourceId('');
                     setMergeTargetId('');
                     setReconcileNotice('Merged counterparty aliases and re-linked history without modifying amounts or dates.');
-                    await loadWorkbenchData('counterparties');
+                    await workbench.loadSection('counterparties');
                   }}
                   className="text-xs"
                 >
@@ -1217,11 +1561,11 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
               </div>
             )}
 
-            <div className="space-y-1.5 max-h-52 overflow-y-auto">
-              {counterpartiesList.length === 0 ? (
+            <div className="space-y-1.5 max-h-56 overflow-y-auto">
+              {workbench.counterparties.length === 0 ? (
                 <p className="text-xs text-gray-500 py-2">No counterparties registered yet.</p>
               ) : (
-                counterpartiesList.map((cp) => (
+                workbench.counterparties.map((cp) => (
                   <div
                     key={cp.id}
                     className="flex flex-wrap items-center justify-between gap-2 text-xs py-2 px-2.5 rounded border border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/40"
@@ -1258,7 +1602,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
         )}
 
         {/* 6. Operational Diagnostics & Financial Integrity Report */}
-        {activeWorkbench === 'integrity_diagnostics' && (
+        {activeSection === 'integrity_diagnostics' && (
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -1273,45 +1617,45 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={workbenchLoading}
-                onClick={() => loadWorkbenchData('integrity_diagnostics')}
+                disabled={workbench.loadingSection === 'integrity_diagnostics'}
+                onClick={() => workbench.loadSection('integrity_diagnostics')}
                 className="text-xs"
               >
-                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${workbenchLoading ? 'animate-spin' : ''}`} /> Run Diagnostics
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${workbench.loadingSection === 'integrity_diagnostics' ? 'animate-spin' : ''}`} /> Run Diagnostics
               </Button>
             </div>
 
-            {integrityReport && (
+            {workbench.integrityReport && (
               <div className="space-y-3 text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
                   <div className="flex items-center gap-2">
                     <span className={`px-2 py-0.5 rounded font-bold uppercase text-[11px] ${
-                      integrityReport.healthy
+                      workbench.integrityReport.healthy
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
                         : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
                     }`}>
-                      {integrityReport.healthy ? '✓ Healthy — 0 Exceptions' : `⚠ ${integrityReport.totalExceptions} Exception(s)`}
+                      {workbench.integrityReport.healthy ? '✓ Healthy — 0 Exceptions' : `⚠ ${workbench.integrityReport.totalExceptions} Exception(s)`}
                     </span>
                     <span className="text-gray-500">
-                      {integrityReport.walletCount} wallets · {integrityReport.transactionCount} transactions · {integrityReport.journalEntryCount} journal entries
+                      {workbench.integrityReport.walletCount} wallets · {workbench.integrityReport.transactionCount} transactions · {workbench.integrityReport.journalEntryCount} journal entries
                     </span>
                   </div>
                   <span className="font-mono text-[11px] text-gray-500">
-                    Checked {new Date(integrityReport.checkedAt).toLocaleString()}
+                    Checked {new Date(workbench.integrityReport.checkedAt).toLocaleString()}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {[
-                    { label: 'Unjournaled Transactions', count: integrityReport.checks.unjournaledTransactions.length },
-                    { label: 'Duplicate Postings', count: integrityReport.checks.duplicateJournalPostings.length },
-                    { label: 'Unbalanced Journal Entries', count: integrityReport.checks.unbalancedJournalEntries.length },
-                    { label: 'Orphaned Journal Lines', count: integrityReport.checks.orphanedJournalLines.length },
-                    { label: 'Orphaned Reversals', count: integrityReport.checks.orphanedReversals.length },
-                    { label: 'Completed Occurrences w/o Tx', count: integrityReport.checks.completedOccurrencesWithoutTx.length },
-                    { label: 'Broken Statement Links', count: integrityReport.checks.brokenStatementLinks.length },
-                    { label: 'Unreconciled Goals', count: integrityReport.checks.unreconciledGoals.length },
-                    { label: 'Stale External Valuations', count: integrityReport.checks.staleExternalValuations.length },
+                    { label: 'Unjournaled Transactions', count: workbench.integrityReport.checks.unjournaledTransactions.length },
+                    { label: 'Duplicate Postings', count: workbench.integrityReport.checks.duplicateJournalPostings.length },
+                    { label: 'Unbalanced Journal Entries', count: workbench.integrityReport.checks.unbalancedJournalEntries.length },
+                    { label: 'Orphaned Journal Lines', count: workbench.integrityReport.checks.orphanedJournalLines.length },
+                    { label: 'Orphaned Reversals', count: workbench.integrityReport.checks.orphanedReversals.length },
+                    { label: 'Completed Occurrences w/o Tx', count: workbench.integrityReport.checks.completedOccurrencesWithoutTx.length },
+                    { label: 'Broken Statement Links', count: workbench.integrityReport.checks.brokenStatementLinks.length },
+                    { label: 'Unreconciled Goals', count: workbench.integrityReport.checks.unreconciledGoals.length },
+                    { label: 'Stale External Valuations', count: workbench.integrityReport.checks.staleExternalValuations.length },
                   ].map((chk) => (
                     <div
                       key={chk.label}

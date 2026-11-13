@@ -1,14 +1,13 @@
 import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send, Cloud, Clock, Check, User, ShieldCheck, LogOut, Mail, Key, Smartphone } from 'lucide-react';
+import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send, Cloud, Clock, Check, User, ShieldCheck, LogOut, Mail, Key, Smartphone, ArrowRight, Landmark } from 'lucide-react';
 import { googleSignIn, getGoogleAccessToken } from '../../lib/googleAuth';
 import { uploadToGoogleDrive } from '../../lib/driveUpload';
 import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
-import { WalletsManager } from './WalletsManager';
-import { UsersAndRolesSection } from './UsersAndRolesSection';
 import { ThemeStudioCard } from './ThemeStudioCard';
+import { parseFinancialRuleDetails } from '../../lib/auditContracts';
 import { getCapacitorApiBaseUrl, setCapacitorApiBaseUrl, isNativePlatform, getPlatformName } from '../../lib/capacitorBridge';
 import {
   getOfflineOutbox,
@@ -72,6 +71,7 @@ interface SettingsTabProps {
   handleUpdateWallet?: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   handleDeleteWallet?: (id: string, reassignToWalletId?: string) => Promise<any>;
   notifications: NotificationsApi;
+  onDataChange?: () => Promise<void> | void;
 }
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -83,14 +83,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   handleExportSql,
   handleImportSql,
   wallets = [],
-  subscriptions = [],
-  debts = [],
-  investmentsData = null,
   setActiveTab,
-  handleCreateWallet,
-  handleUpdateWallet,
-  handleDeleteWallet,
   notifications,
+  onDataChange,
 }) => {
   const importFileRef = useRef<HTMLInputElement>(null);
   const validateFileRef = useRef<HTMLInputElement>(null);
@@ -398,25 +393,69 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </CardContent>
       </Card>
 
-      {/* ── Theme & Frontend Style Studio (6 Themes + Architectural Controls) ── */}
+      {/* ── Theme & Frontend Style Studio (12 Themes + Architectural Controls) ── */}
       <ThemeStudioCard />
 
-      {/* ── User Management & Role-Based Access Control ── */}
-      <UsersAndRolesSection />
+      {/* ── Quick Links to Dedicated Administration & Accounting Screens ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                <Landmark className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                  Accounts &amp; Accounting Workbench
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Manage {wallets.length} wallet{wallets.length === 1 ? '' : 's'}, statement CSV import, review inbox, double-entry journal &amp; FX rates.
+                </p>
+              </div>
+            </div>
+            {setActiveTab && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveTab('accounts')}
+                className="shrink-0 whitespace-nowrap gap-1 text-xs"
+              >
+                Open <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* ── Wallets & Accounts Management ── */}
-      {handleCreateWallet && handleUpdateWallet && handleDeleteWallet && (
-        <WalletsManager
-          wallets={wallets}
-          subscriptions={subscriptions}
-          debts={debts}
-          investmentsData={investmentsData}
-          onOpenInvestments={setActiveTab ? () => setActiveTab('investments') : undefined}
-          onCreateWallet={handleCreateWallet}
-          onUpdateWallet={handleUpdateWallet}
-          onDeleteWallet={handleDeleteWallet}
-        />
-      )}
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                  Users, Roles &amp; Access Control
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Configure workspace members, RBAC permissions, isolation mode &amp; audit logs.
+                </p>
+              </div>
+            </div>
+            {setActiveTab && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveTab('users')}
+                className="shrink-0 whitespace-nowrap gap-1 text-xs"
+              >
+                Manage <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* ── Smart Multi-Domain Notification Engine & Channels ── */}
       <Card>
@@ -1058,30 +1097,80 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             )}
 
             {rules.length > 0 && (
-              <div className="space-y-1.5">
-                {rules.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-center justify-between text-xs bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700"
-                  >
-                    <div>
-                      <span className="font-bold text-gray-900 dark:text-white">{r.name}</span>
-                      <span className="text-gray-500 ml-2 font-mono text-[11px]">
-                        WHEN {r.triggerType} ({r.conditionsJson}) → {r.actionType}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        await dashboardService.deleteFinancialRule(r.id, token);
-                        setRules((prev) => prev.filter((item) => item.id !== r.id));
-                      }}
-                      className="text-rose-600 hover:underline text-[11px]"
+              <div className="space-y-2">
+                {rules.map((r) => {
+                  const parsed = parseFinancialRuleDetails(r);
+                  return (
+                    <div
+                      key={r.id}
+                      className="flex flex-wrap items-center justify-between gap-2 text-xs bg-white dark:bg-gray-800 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700"
                     >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-bold text-gray-900 dark:text-white">{r.name}</span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                              r.enabled
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                            }`}
+                          >
+                            {r.enabled ? 'Active' : 'Paused'}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-[10px] font-mono">
+                            {r.triggerType.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400">
+                          {parsed.conditionChips.map((chip) => (
+                            <span
+                              key={chip}
+                              className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 font-mono text-[10px]"
+                            >
+                              {chip}
+                            </span>
+                          ))}
+                          <span>→</span>
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{parsed.actionSummary}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const updated = await dashboardService.upsertFinancialRule(
+                              {
+                                id: r.id,
+                                name: r.name,
+                                enabled: !r.enabled,
+                                triggerType: r.triggerType,
+                                conditions: parsed.conditions,
+                                actionType: r.actionType,
+                                actionPayload: parsed.actionPayload,
+                                approvalPolicy: r.approvalPolicy,
+                              },
+                              token
+                            );
+                            setRules((prev) => prev.map((item) => (item.id === r.id ? updated : item)));
+                          }}
+                          className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          {r.enabled ? 'Pause' : 'Enable'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await dashboardService.deleteFinancialRule(r.id, token);
+                            setRules((prev) => prev.filter((item) => item.id !== r.id));
+                          }}
+                          className="text-rose-600 hover:underline text-[11px]"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -1134,6 +1223,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   onClick={async () => {
                     const res = await flushOfflineOutbox(token, { forceRetry: true });
                     await refreshOutboxState();
+                    if (res.synced > 0) await onDataChange?.();
                     showNotifToast(`Synced ${res.synced}, Conflicts: ${res.conflicts}, Remaining: ${res.remaining}.`);
                   }}
                 >
@@ -1142,13 +1232,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <Button
                   size="sm"
                   variant="outline"
+                  title="Clears unlocked in-memory session cache only; encrypted offline outbox items stay safely preserved."
                   onClick={() => {
                     const res = clearOfflineFinancialCachesOnLogout();
                     refreshOutboxState();
-                    showNotifToast(`Cleared session caches; preserved ${res.preservedPendingCount} pending offline item(s).`);
+                    showNotifToast(`Cleared session cache only; preserved ${res.preservedPendingCount} encrypted offline draft(s).`);
                   }}
                 >
-                  Clear Cache (Safe)
+                  Clear Session Cache Only
                 </Button>
                 {outboxCount > 0 && !confirmDiscardOutbox && (
                   <Button

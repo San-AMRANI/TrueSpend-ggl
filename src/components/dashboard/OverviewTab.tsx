@@ -12,11 +12,12 @@ import {
   CommitmentOccurrence,
   FinancialReviewItem,
   FinancialIntegrityReport,
+  ExternalWealthItem,
+  WalletsWorkbenchSection,
 } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SettleDebtModal } from '../SettleDebtModal';
-import { WalletsManager } from './WalletsManager';
 import { getSpendingPace, isInMonth, netExpenseOf } from '../../lib/finance';
 import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 import { generateFacts, selectFacts } from '../../lib/financialFacts';
@@ -28,10 +29,10 @@ import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
 import {
   AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
-  Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap,
-  Target, ChevronRight, Plus, Repeat, Snowflake, ShieldCheck, Coins,
+  Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User,
+  Target, ChevronRight, Plus, Repeat,
   Calculator, Search, Flame, Scale, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2,
-  Eye, EyeOff, Inbox, Calendar, FileCheck2
+  Eye, EyeOff, Inbox, Calendar, FileCheck2, X
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { normalizeCategory } from '../../lib/categories';
@@ -52,6 +53,7 @@ interface OverviewTabProps {
   handleCreateWallet?: (payload: { name: string; type: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   handleUpdateWallet?: (id: string, payload: { name?: string; type?: 'Bank' | 'Cash' | 'Savings' | 'Investment'; isMain?: boolean; initialBalance?: number }) => Promise<any>;
   handleDeleteWallet?: (id: string, reassignToWalletId?: string) => Promise<any>;
+  onDataChange?: () => Promise<void> | void;
   onOpenQuickTransaction?: (type: 'Expense' | 'Income' | 'Transfer') => void;
   onOpenSmartCalculator?: () => void;
   onOpenCommandPalette?: () => void;
@@ -69,9 +71,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   setActiveTab,
   openTransaction,
   handleSettle,
-  handleCreateWallet,
-  handleUpdateWallet,
-  handleDeleteWallet,
+  onDataChange,
   onOpenQuickTransaction,
   onOpenSmartCalculator,
   onOpenCommandPalette,
@@ -79,25 +79,44 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
   const { token } = useAuth();
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
-  const [showWalletsModal, setShowWalletsModal] = useState(false);
   const [showWaterfall, setShowWaterfall] = useState(false);
   const [insightModalType, setInsightModalType] = useState<'forecast' | 'health' | null>(null);
 
-  // Live Operational Radar state (Commitments, Review Inbox, Ledger Integrity)
+  // Live Operational Radar state (Commitments, Review Inbox, Ledger Integrity, External Wealth)
   const [upcomingCommitments, setUpcomingCommitments] = useState<CommitmentOccurrence[]>([]);
   const [pendingReviews, setPendingReviews] = useState<FinancialReviewItem[]>([]);
   const [integritySummary, setIntegritySummary] = useState<FinancialIntegrityReport | null>(null);
+  const [externalWealthSummary, setExternalWealthSummary] = useState<{
+    items: ExternalWealthItem[];
+    totalExternalAssetsMad: number;
+    totalExternalLiabilitiesMad: number;
+    netExternalWealthMad: number;
+    staleCount: number;
+  } | null>(null);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
+
+  // Commitment settlement confirmation modal state
+  const [settlingOccurrence, setSettlingOccurrence] = useState<CommitmentOccurrence | null>(null);
+  const [occAction, setOccAction] = useState<'pay' | 'partial' | 'skip'>('pay');
+  const [occAmount, setOccAmount] = useState('');
+  const [occDate, setOccDate] = useState(new Date().toISOString().slice(0, 10));
+  const [occWalletId, setOccWalletId] = useState('');
+  const [occNotes, setOccNotes] = useState('');
+
+  const openAccountsSection = (section: WalletsWorkbenchSection) => {
+    window.dispatchEvent(new CustomEvent('truespend:openAccountsSection', { detail: section }));
+  };
 
   const loadOperationalRadar = useCallback(async () => {
     if (!token) return;
     try {
       const todayIso = new Date().toISOString().slice(0, 10);
       const twoWeeksIso = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
-      const [occList, revList, intRes] = await Promise.all([
+      const [occList, revList, intRes, extWealth] = await Promise.all([
         dashboardService.getCommitmentOccurrences(token).catch(() => [] as CommitmentOccurrence[]),
         dashboardService.getReviewInbox(token).catch(() => [] as FinancialReviewItem[]),
         dashboardService.getFinancialIntegrityReport(token).catch(() => null),
+        dashboardService.getExternalWealthItems(token).catch(() => null),
       ]);
       const planned = (Array.isArray(occList) ? occList : [])
         .filter(
@@ -113,6 +132,17 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       );
       setPendingReviews(pending);
       if (intRes) setIntegritySummary(intRes);
+      if (extWealth) {
+        const items = Array.isArray(extWealth.items) ? extWealth.items : [];
+        const staleCount = items.filter((item) => item.isStaleEstimate).length;
+        setExternalWealthSummary({
+          items,
+          totalExternalAssetsMad: Number(extWealth.totalExternalAssetsMad) || 0,
+          totalExternalLiabilitiesMad: Number(extWealth.totalExternalLiabilitiesMad) || 0,
+          netExternalWealthMad: Number(extWealth.netExternalWealthMad) || 0,
+          staleCount,
+        });
+      }
     } catch {
       // Non-blocking operational radar load
     }
@@ -122,17 +152,27 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     loadOperationalRadar();
   }, [loadOperationalRadar, transactions.length]);
 
-  const handleQuickApproveReview = async (itemId: string) => {
+  const handleQuickApproveReview = async (item: FinancialReviewItem) => {
     if (!token) return;
-    setBusyActionId(itemId);
+    setBusyActionId(item.id);
     try {
-      await dashboardService.decideReviewItem(itemId, { decision: 'confirm_create' }, token);
+      await dashboardService.decideReviewItem(
+        item.id,
+        {
+          action: 'post_transaction',
+          walletId: item.walletId || kpis?.accounts?.find((w) => w.isMain)?.id || kpis?.accounts?.[0]?.id,
+          category: item.parsedCategory || undefined,
+          description: item.parsedDescription || undefined,
+          amount: Number(item.parsedAmount) || undefined,
+        },
+        token
+      );
       window.dispatchEvent(
         new CustomEvent('truespend:toast', {
           detail: { message: 'Review item approved and posted to ledger', type: 'success' },
         })
       );
-      await loadOperationalRadar();
+      await Promise.all([loadOperationalRadar(), Promise.resolve(onDataChange?.())]);
     } catch (e: any) {
       window.dispatchEvent(
         new CustomEvent('truespend:toast', {
@@ -144,21 +184,44 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     }
   };
 
-  const handleQuickSettleOccurrence = async (occId: string) => {
-    if (!token) return;
-    setBusyActionId(occId);
+  const openOccurrenceSettleModal = (occ: CommitmentOccurrence) => {
+    const remaining = Math.max(0, Number(occ.expectedAmount || 0) - Number(occ.paidAmount || 0));
+    setSettlingOccurrence(occ);
+    setOccAction('pay');
+    setOccAmount(remaining > 0 ? remaining.toFixed(2) : String(occ.expectedAmount || '0'));
+    setOccDate(new Date().toISOString().slice(0, 10));
+    setOccWalletId(kpis?.accounts?.find((w) => w.isMain)?.id || kpis?.accounts?.[0]?.id || '');
+    setOccNotes('');
+  };
+
+  const handleConfirmSettleOccurrence = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !settlingOccurrence) return;
+    setBusyActionId(settlingOccurrence.id);
     try {
-      await dashboardService.settleCommitmentOccurrence(occId, { action: 'pay' }, token);
+      const parsedAmount = Number(occAmount);
+      await dashboardService.settleCommitmentOccurrence(
+        settlingOccurrence.id,
+        {
+          action: occAction,
+          ...(occAction !== 'skip' && Number.isFinite(parsedAmount) && parsedAmount > 0 ? { actualAmount: parsedAmount } : {}),
+          ...(occAction !== 'skip' && occDate ? { actualDate: occDate } : {}),
+          ...(occAction !== 'skip' && occWalletId ? { walletId: occWalletId } : {}),
+          ...(occNotes.trim() ? { notes: occNotes.trim(), reason: occNotes.trim() } : {}),
+        },
+        token
+      );
       window.dispatchEvent(
         new CustomEvent('truespend:toast', {
-          detail: { message: 'Commitment settled and journaled', type: 'success' },
+          detail: { message: `${settlingOccurrence.title} updated and journaled`, type: 'success' },
         })
       );
-      await loadOperationalRadar();
-    } catch (e: any) {
+      setSettlingOccurrence(null);
+      await Promise.all([loadOperationalRadar(), Promise.resolve(onDataChange?.())]);
+    } catch (err: any) {
       window.dispatchEvent(
         new CustomEvent('truespend:toast', {
-          detail: { message: e.message || 'Failed to settle commitment', type: 'error' },
+          detail: { message: err?.message || 'Failed to settle commitment', type: 'error' },
         })
       );
     } finally {
@@ -523,15 +586,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 <span>Waterfall</span>
                 {showWaterfall ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               </button>
-              {handleCreateWallet && (
-                <button
-                  type="button"
-                  onClick={() => setShowWalletsModal(true)}
-                  className="text-xs font-medium text-indigo-300 hover:text-white bg-indigo-900/40 hover:bg-indigo-900/80 border border-indigo-700/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
-                >
-                  <WalletCards className="h-3.5 w-3.5" /> Wallets
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => openAccountsSection('wallets')}
+                className="text-xs font-medium text-indigo-300 hover:text-white bg-indigo-900/40 hover:bg-indigo-900/80 border border-indigo-700/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm whitespace-nowrap shrink-0"
+              >
+                <WalletCards className="h-3.5 w-3.5" /> Accounts
+              </button>
             </div>
           </CardHeader>
           <CardContent>
@@ -637,6 +698,33 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   </span>
                 )}
               </div>
+              {externalWealthSummary && externalWealthSummary.items.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono tabular-nums text-gray-300 bg-gray-950/60 rounded-lg px-2.5 py-1.5 border border-gray-800">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="text-indigo-300 font-semibold">
+                      External Wealth (Off-Ledger):{' '}
+                      {isPrivacyMode
+                        ? '****'
+                        : `${externalWealthSummary.netExternalWealthMad >= 0 ? '+' : ''}${externalWealthSummary.netExternalWealthMad.toFixed(0)} MAD`}
+                    </span>
+                    <span className="text-gray-400">
+                      (Assets +{externalWealthSummary.totalExternalAssetsMad.toFixed(0)} · Liabilities −{externalWealthSummary.totalExternalLiabilitiesMad.toFixed(0)})
+                    </span>
+                    {externalWealthSummary.staleCount > 0 && (
+                      <span className="text-amber-300">
+                        · {externalWealthSummary.staleCount} stale valuation{externalWealthSummary.staleCount > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openAccountsSection('external_wealth_fx')}
+                    className="text-indigo-300 hover:text-white underline whitespace-nowrap shrink-0"
+                  >
+                    Manage →
+                  </button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -877,7 +965,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                       size="sm"
                       variant="outline"
                       disabled={busyActionId === occ.id}
-                      onClick={() => handleQuickSettleOccurrence(occ.id)}
+                      onClick={() => openOccurrenceSettleModal(occ)}
                       className="h-6 px-2 text-[11px] whitespace-nowrap shrink-0"
                     >
                       {busyActionId === occ.id ? '...' : 'Settle'}
@@ -908,10 +996,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               </p>
               <button
                 type="button"
-                onClick={() => setShowWalletsModal(true)}
+                onClick={() => openAccountsSection('review_inbox')}
                 className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
               >
-                Workbench ({pendingReviews.length}) →
+                Review Inbox ({pendingReviews.length}) →
               </button>
             </div>
 
@@ -924,18 +1012,18 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   >
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-gray-900 dark:text-white">
-                        {item.merchant || item.category || 'Review Item'}
+                        {item.parsedDescription || item.parsedCategory || 'Review Item'}
                       </p>
                       <p className="truncate text-[10px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
-                        {item.amount ? `${parseFloat(String(item.amount)).toFixed(0)} MAD · ` : ''}
-                        {item.sourceType.replace(/_/g, ' ')}
+                        {item.parsedAmount ? `${parseFloat(String(item.parsedAmount)).toFixed(0)} ${item.parsedCurrency || 'MAD'} · ` : ''}
+                        {item.parsedDate} · {item.sourceType.replace(/_/g, ' ')}
                       </p>
                     </div>
                     <Button
                       type="button"
                       size="sm"
                       disabled={busyActionId === item.id}
-                      onClick={() => handleQuickApproveReview(item.id)}
+                      onClick={() => handleQuickApproveReview(item)}
                       className="h-6 px-2 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white whitespace-nowrap shrink-0"
                     >
                       {busyActionId === item.id ? '...' : 'Confirm'}
@@ -966,7 +1054,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               </p>
               <button
                 type="button"
-                onClick={() => setShowWalletsModal(true)}
+                onClick={() => openAccountsSection('journal_audit')}
                 className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
               >
                 Inspect Journal →
@@ -1619,19 +1707,128 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         }}
       />
 
-      {showWalletsModal && handleCreateWallet && handleUpdateWallet && handleDeleteWallet && (
-        <WalletsManager
-          wallets={kpis?.accounts || []}
-          subscriptions={subscriptions}
-          debts={debts}
-          investmentsData={investmentsData}
-          onOpenInvestments={() => setActiveTab('investments')}
-          isModal={true}
-          onClose={() => setShowWalletsModal(false)}
-          onCreateWallet={handleCreateWallet}
-          onUpdateWallet={handleUpdateWallet}
-          onDeleteWallet={handleDeleteWallet}
-        />
+      {settlingOccurrence && (
+        <div
+          className="fixed inset-0 z-[85] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setSettlingOccurrence(null)}
+        >
+          <form
+            onSubmit={handleConfirmSettleOccurrence}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                  Settle Commitment
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {settlingOccurrence.title} · Expected {Number(settlingOccurrence.expectedAmount || 0).toFixed(2)} {settlingOccurrence.currency || 'MAD'} on {settlingOccurrence.expectedDate}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSettlingOccurrence(null)}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {(['pay', 'partial', 'skip'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setOccAction(mode)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                    occAction === mode
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  {mode === 'pay' ? 'Full Settle' : mode === 'partial' ? 'Partial' : 'Skip'}
+                </button>
+              ))}
+            </div>
+
+            {occAction !== 'skip' && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Actual Amount ({settlingOccurrence.currency || 'MAD'})
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      value={occAmount}
+                      onChange={(e) => setOccAmount(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-mono text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Settlement Date
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={occDate}
+                      onChange={(e) => setOccDate(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Posting Wallet / Account
+                  </label>
+                  <select
+                    value={occWalletId}
+                    onChange={(e) => setOccWalletId(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
+                  >
+                    {(kpis?.accounts || []).map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.balance.toFixed(2)} {w.currency || 'MAD'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                {occAction === 'skip' ? 'Skip Reason (Optional)' : 'Notes / Variance Reason (Optional)'}
+              </label>
+              <input
+                type="text"
+                value={occNotes}
+                onChange={(e) => setOccNotes(e.target.value)}
+                placeholder={occAction === 'skip' ? 'e.g. Waived this month' : 'e.g. Paid via CIH transfer'}
+                className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="outline" size="sm" onClick={() => setSettlingOccurrence(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={busyActionId === settlingOccurrence.id}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {busyActionId === settlingOccurrence.id ? 'Posting...' : occAction === 'skip' ? 'Confirm Skip' : 'Confirm & Post'}
+              </Button>
+            </div>
+          </form>
+        </div>
       )}
 
       <FinancialInsightModal

@@ -195,6 +195,8 @@ export interface Goal {
   deadline?: string | null;
   category: string;
   notes?: string;
+  contributionEventsCount?: number;
+  contributionHistory?: GoalContributionEvent[];
   createdAt: string;
   updatedAt: string;
 }
@@ -326,6 +328,7 @@ export interface UserSettings {
 
 export type DashboardTab =
   | 'overview'
+  | 'accounts'
   | 'investments'
   | 'forecast'
   | 'calculators'
@@ -341,6 +344,15 @@ export type DashboardTab =
   | 'chat'
   | 'reports'
   | 'contexts';
+
+export type WalletsWorkbenchSection =
+  | 'wallets'
+  | 'statement_import'
+  | 'review_inbox'
+  | 'journal_audit'
+  | 'external_wealth_fx'
+  | 'counterparties'
+  | 'integrity_diagnostics';
 
 export type StockMarketType = 'US' | 'BVC' | 'ETF' | 'GLOBAL' | 'BINANCE' | 'CRYPTO';
 export type StockOrderAction = 'BUY' | 'SELL' | 'DIVIDEND';
@@ -1279,16 +1291,26 @@ export interface StatementImportRowRecord {
   id: string;
   batchId: string;
   userId: string;
+  walletId: string | null;
   rowDate: string;
   description: string;
   amount: string;
   currency: string;
-  direction: 'inflow' | 'outflow';
-  externalRef: string | null;
+  externalReference: string | null;
   rowHash: string;
-  matchStatus: 'matched' | 'unmatched' | 'ambiguous' | 'duplicate' | 'imported' | 'ignored';
-  matchedTransactionId: string | null;
-  confidenceScore: string;
+  matchStatus:
+    | 'matched'
+    | 'unmatched'
+    | 'ambiguous'
+    | 'duplicate'
+    | 'confirmed_linked'
+    | 'confirmed_created'
+    | 'ignored'
+    | string;
+  matchConfidence: string;
+  suggestedTransactionId: string | null;
+  candidateTransactionIdsJson?: string | null;
+  linkedTransactionId: string | null;
   createdAt: string;
 }
 
@@ -1297,10 +1319,16 @@ export interface StatementBatchWithRows {
   userId: string;
   walletId: string | null;
   fileName: string;
+  fileFormat?: string;
+  statementOpeningBalance?: string | null;
+  statementClosingBalance?: string | null;
+  status?: string;
   totalRows: number;
   matchedCount: number;
   unmatchedCount: number;
+  ambiguousCount: number;
   duplicateCount: number;
+  reconciledVariance?: string | null;
   createdAt: string;
   rows: StatementImportRowRecord[];
 }
@@ -1308,18 +1336,20 @@ export interface StatementBatchWithRows {
 export interface FinancialReviewItem {
   id: string;
   userId: string;
-  sourceType: 'receipt_ocr' | 'statement_row' | 'voice_capture' | 'subscription_candidate' | 'rule_action';
-  status: 'Captured' | 'Needs Review' | 'Confirmed' | 'Rejected' | 'Duplicate' | 'Linked to Existing Transaction';
-  merchant: string;
-  amount: string;
-  currency: string;
-  category: string;
-  proposedDate: string;
+  sourceType: 'receipt_ocr' | 'statement_row' | 'voice_capture' | 'subscription_candidate' | 'rule_action' | string;
+  status: 'Captured' | 'Needs Review' | 'Confirmed' | 'Linked' | 'Posted' | 'Rejected' | 'Duplicate' | string;
+  confidenceScore: string;
+  parsedAmount: string;
+  parsedCurrency: string;
+  parsedDate: string;
+  parsedDescription: string;
+  parsedCategory: string;
+  parsedType: 'Income' | 'Expense' | 'Transfer' | string;
   walletId: string | null;
-  confidence: string;
   linkedTransactionId: string | null;
+  counterpartyId?: string | null;
   rawPayloadJson: string | null;
-  notes: string | null;
+  decisionNotes: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1354,12 +1384,14 @@ export interface GoalContributionEvent {
   id: string;
   userId: string;
   goalId: string;
-  walletId: string | null;
-  linkedTransactionId: string | null;
-  eventType: 'opening_seed' | 'contribution' | 'withdrawal' | 'reallocation' | 'reconciliation';
+  transactionId: string | null;
+  sourceWalletId: string | null;
+  destinationWalletId: string | null;
+  eventType: 'opening_seed' | 'contribution' | 'withdrawal' | 'reallocation' | 'reconciliation' | string;
   amount: string;
-  note: string | null;
+  notes: string | null;
   eventDate: string;
+  createdAt?: string;
 }
 
 export interface SavedWhatIfScenario {
@@ -1368,12 +1400,10 @@ export interface SavedWhatIfScenario {
   name: string;
   description: string | null;
   isApprovedPlan: boolean;
-  parametersJson: string;
+  baselineSnapshotJson: string;
   eventsJson: string;
-  baselineNetWorth12m: string;
-  simulatedNetWorth12m: string;
-  lowest30dBalance: string;
-  survivalRunwayDays: number;
+  assumptionsJson: string;
+  projectedSummaryJson: string;
   createdAt: string;
   updatedAt: string;
 }

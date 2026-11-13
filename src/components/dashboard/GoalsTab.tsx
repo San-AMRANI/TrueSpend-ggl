@@ -33,8 +33,13 @@ import {
   Layers,
   Link as LinkIcon,
   AlertCircle,
+  History,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
+import { useAuth } from '../../context/AuthContext';
+import { useGoalEvents } from '../../hooks/useGoalEvents';
 
 interface GoalsTabProps {
   goals: Goal[];
@@ -195,6 +200,10 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
   onDeleteGoal,
   onCreateWallet,
 }) => {
+  const { token } = useAuth();
+  const { eventsByGoal, loadingGoalId, fetchEventsForGoal } = useGoalEvents(token);
+  const [expandedAuditGoalId, setExpandedAuditGoalId] = useState<string | null>(null);
+
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [walletFilter, setWalletFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'deadline' | 'progress' | 'target'>('deadline');
@@ -531,12 +540,16 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
 
     setIsSubmitting(true);
     try {
-      await onContributeGoal(contributeTarget.id, {
+      const goalId = contributeTarget.id;
+      await onContributeGoal(goalId, {
         amount: amt,
         walletId: actionSourceWalletId || undefined,
         destinationWalletId: actionDestWalletId || undefined,
         note: actionNote.trim() || undefined,
       });
+      if (expandedAuditGoalId === goalId) {
+        fetchEventsForGoal(goalId);
+      }
       setContributeTarget(null);
       setActionAmount('');
       setActionSourceWalletId('');
@@ -558,12 +571,16 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
 
     setIsSubmitting(true);
     try {
-      await onWithdrawGoal(withdrawTarget.id, {
+      const goalId = withdrawTarget.id;
+      await onWithdrawGoal(goalId, {
         amount: amt,
         walletId: actionDestWalletId || undefined, // destination account where cash goes
         destinationWalletId: actionDestWalletId || undefined,
         note: actionNote.trim() || undefined,
       });
+      if (expandedAuditGoalId === goalId) {
+        fetchEventsForGoal(goalId);
+      }
       setWithdrawTarget(null);
       setActionAmount('');
       setActionSourceWalletId('');
@@ -1178,19 +1195,26 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                   <div className="rounded-xl border border-gray-100 dark:border-gray-800/60 bg-gray-50/50 dark:bg-gray-800/30 p-2.5 space-y-1.5 text-xs">
                     {/* Linked Wallet Details */}
                     {linkedWallet && (
-                      <div className="flex items-center justify-between text-gray-600 dark:text-gray-300">
-                        <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-                          <Landmark className="h-3.5 w-3.5 text-emerald-500" />
-                          <span>Vault Balance:</span>
-                        </span>
-                        <span className="font-bold text-gray-900 dark:text-white">
-                          {Number(linkedWallet.balance).toLocaleString()} MAD
-                          {goal.autoSyncBalance && (
-                            <span className="ml-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
-                              (Auto-Synced)
-                            </span>
-                          )}
-                        </span>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-gray-600 dark:text-gray-300">
+                          <span className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                            <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                            <span>Vault Balance:</span>
+                          </span>
+                          <span className="font-bold text-gray-900 dark:text-white">
+                            {Number(linkedWallet.balance).toLocaleString()} MAD
+                            {goal.autoSyncBalance && (
+                              <span className="ml-1 text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                                (Auto-Synced)
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                          {goal.autoSyncBalance
+                            ? `Mirrored Vault: Goal mirrors the live balance of "${linkedWallet.name}".`
+                            : `Allocated Slice: Tracks earmarked contributions inside "${linkedWallet.name}".`}
+                        </p>
                       </div>
                     )}
 
@@ -1264,6 +1288,110 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                       <span>Soak Surplus (+{Math.round(availableSurplus)} MAD)</span>
                     </button>
                   )}
+
+                  {/* Contribution Audit History Toggle & Drawer */}
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (expandedAuditGoalId === goal.id) {
+                          setExpandedAuditGoalId(null);
+                        } else {
+                          setExpandedAuditGoalId(goal.id);
+                          fetchEventsForGoal(goal.id);
+                        }
+                      }}
+                      className="w-full flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-800 px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <History className="h-3.5 w-3.5 text-indigo-500" />
+                        <span>
+                          Contribution Audit Log
+                          {typeof goal.contributionEventsCount === 'number'
+                            ? ` (${goal.contributionEventsCount})`
+                            : eventsByGoal[goal.id]
+                            ? ` (${eventsByGoal[goal.id].length})`
+                            : ''}
+                        </span>
+                      </span>
+                      {expandedAuditGoalId === goal.id ? (
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+
+                    {expandedAuditGoalId === goal.id && (
+                      <div className="mt-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/70 p-2.5 space-y-1.5 text-[11px]">
+                        {loadingGoalId === goal.id ? (
+                          <p className="text-gray-400 py-1">Loading contribution events...</p>
+                        ) : (eventsByGoal[goal.id] || []).length === 0 ? (
+                          <p className="text-gray-400 py-1">
+                            No auditable contribution events recorded yet for this goal.
+                          </p>
+                        ) : (
+                          <>
+                            <div className="max-h-40 overflow-y-auto space-y-1">
+                              {(eventsByGoal[goal.id] || []).map((ev) => {
+                                const amt = Number(ev.amount || 0);
+                                const isWithdrawal = ev.eventType === 'withdrawal';
+                                return (
+                                  <div
+                                    key={ev.id}
+                                    className="flex items-start justify-between gap-2 rounded-lg bg-white dark:bg-gray-800/70 px-2 py-1.5 border border-gray-100 dark:border-gray-800"
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-mono text-[10px] text-gray-400">{ev.eventDate}</span>
+                                        <span className="uppercase font-bold text-[9px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
+                                          {ev.eventType.replace(/_/g, ' ')}
+                                        </span>
+                                        {ev.transactionId && (
+                                          <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                                            Tx Linked
+                                          </span>
+                                        )}
+                                      </div>
+                                      {ev.notes && (
+                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                          {ev.notes}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <span
+                                      className={`font-mono font-bold shrink-0 ${
+                                        isWithdrawal
+                                          ? 'text-rose-600 dark:text-rose-400'
+                                          : 'text-emerald-600 dark:text-emerald-400'
+                                      }`}
+                                    >
+                                      {isWithdrawal ? '−' : '+'}
+                                      {Math.abs(amt).toFixed(2)} MAD
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {(() => {
+                              const evSum = (eventsByGoal[goal.id] || []).reduce((acc, ev) => {
+                                const amt = Number(ev.amount || 0);
+                                return ev.eventType === 'withdrawal' ? acc - Math.abs(amt) : acc + amt;
+                              }, 0);
+                              const diff = Math.abs(evSum - current);
+                              return (
+                                <div className="flex items-center justify-between pt-1 border-t border-gray-200 dark:border-gray-800 text-[10px] font-mono">
+                                  <span className="text-gray-500">Event Net: {evSum.toFixed(2)} MAD</span>
+                                  <span className={diff <= 0.05 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-amber-600 dark:text-amber-400 font-bold'}>
+                                    {diff <= 0.05 ? 'Reconciled' : `Variance ${diff.toFixed(2)} MAD`}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Actions */}
                   <div className="grid grid-cols-2 gap-2 pt-1">

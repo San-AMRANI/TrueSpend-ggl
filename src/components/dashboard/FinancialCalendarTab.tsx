@@ -1,13 +1,15 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Landmark, Trash2, WalletCards, CalendarDays, TrendingUp, Repeat, Zap, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, Landmark, Trash2, WalletCards, CalendarDays, TrendingUp, Repeat, Zap, CheckCircle2, ExternalLink, X } from 'lucide-react';
 import { Debt, Payroll, Transaction, Subscription, KPI, Wallet, InvestmentsData, CommitmentOccurrence } from '../../types';
 import { Button } from '../ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { CashFlowTab } from './CashFlowTab';
 import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
+import { useCommitmentOccurrences } from '../../hooks/useCommitmentOccurrences';
+import { buildPayrollConfirmPayload } from '../../lib/auditContracts';
 
-type EventKind = 'income' | 'expense' | 'transfer' | 'debt' | 'payroll' | 'goal' | 'subscription' | 'dca' | 'investment';
+type EventKind = 'income' | 'expense' | 'transfer' | 'debt' | 'payroll' | 'goal' | 'subscription' | 'dca' | 'investment' | 'occurrence';
 type CalendarEvent = {
   id: string;
   date: string;
@@ -20,6 +22,7 @@ type CalendarEvent = {
   goalId?: string;
   dcaPlanId?: string;
   subscription?: Subscription;
+  occurrence?: CommitmentOccurrence;
 };
 
 const dateKey = (value: Date | string) => new Date(value).toISOString().slice(0, 10);
@@ -39,6 +42,7 @@ interface FinancialCalendarTabProps {
   onCreatePayroll: (scheduledFor: string, amount: number) => Promise<void>;
   onDeletePayroll: (id: string) => Promise<void>;
   onPaySubscription?: (id: string, payload?: { walletId?: string; date?: string }) => Promise<any>;
+  onDataChange?: () => Promise<void> | void;
 }
 
 export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
@@ -54,6 +58,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   onCreatePayroll,
   onDeletePayroll,
   onPaySubscription,
+  onDataChange,
 }) => {
   const { token } = useAuth();
   const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'cashflow'>('calendar');
@@ -64,7 +69,9 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   const [selectedDate, setSelectedDate] = useState(today);
   const [amount, setAmount] = useState('');
   const [confirmedPayrollInput, setConfirmedPayrollInput] = useState('');
-  const [occurrences, setOccurrences] = useState<CommitmentOccurrence[]>([]);
+  const [confirmedPayrollDate, setConfirmedPayrollDate] = useState(today);
+  const [confirmedPayrollWalletId, setConfirmedPayrollWalletId] = useState('');
+  const [payrollVarianceNotes, setPayrollVarianceNotes] = useState('');
   const [showOccurrences, setShowOccurrences] = useState(false);
   const [showAddRecurringIncome, setShowAddRecurringIncome] = useState(false);
   const [recIncomeTitle, setRecIncomeTitle] = useState('');
@@ -73,19 +80,38 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const loadOccurrences = useCallback(async () => {
-    if (!token) return;
-    try {
-      const list = await dashboardService.getCommitmentOccurrences(token);
-      setOccurrences(list);
-    } catch {}
-  }, [token]);
+  // Commitment Settlement Drawer / Modal state
+  const [settlingOcc, setSettlingOcc] = useState<CommitmentOccurrence | null>(null);
+  const [settleAction, setSettleAction] = useState<'pay' | 'partial' | 'reschedule' | 'skip'>('pay');
+  const [settleAmount, setSettleAmount] = useState('');
+  const [settleDate, setSettleDate] = useState(today);
+  const [settleWalletId, setSettleWalletId] = useState('');
+  const [settleLinkedTxId, setSettleLinkedTxId] = useState('');
+  const [settleNotes, setSettleNotes] = useState('');
+
+  const {
+    occurrences,
+    busyId: occBusyId,
+    refresh: loadOccurrences,
+    settleOccurrence,
+    createRecurringIncome,
+  } = useCommitmentOccurrences(token, onDataChange);
 
   useEffect(() => {
-    if (showOccurrences) {
+    if (token) {
       loadOccurrences();
     }
-  }, [showOccurrences, loadOccurrences]);
+  }, [token, loadOccurrences]);
+
+  useEffect(() => {
+    const defaultWallet = wallets.find((w) => w.isMain)?.id || wallets[0]?.id || '';
+    if (!confirmedPayrollWalletId && defaultWallet) {
+      setConfirmedPayrollWalletId(defaultWallet);
+    }
+    if (!settleWalletId && defaultWallet) {
+      setSettleWalletId(defaultWallet);
+    }
+  }, [wallets, confirmedPayrollWalletId, settleWalletId]);
 
   const events = useMemo<CalendarEvent[]>(() => {
     const transactionEvents = transactions.map((transaction) => {
@@ -123,14 +149,40 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
       amount: Number.parseFloat(payroll.amount),
       payroll,
     }));
-    const debtEvents = debts.filter((debt) => debt.status === 'Pending' && debt.dueDate).map((debt) => ({
-      id: `debt-${debt.id}`,
-      date: dateKey(debt.dueDate!),
-      kind: 'debt' as const,
-      title: debt.contactName,
-      amount: Number.parseFloat(debt.remainingBalance),
-      debtId: debt.id,
-    }));
+    const occurrenceSubSourceMonthKeys = new Set<string>();
+    const occurrenceDebtSourceMonthKeys = new Set<string>();
+
+    const occurrenceEvents: CalendarEvent[] = (occurrences || [])
+      .filter((occ) => occ.status !== 'cancelled')
+      .map((occ) => {
+        const occMonth = occ.expectedDate.slice(0, 7);
+        if (occ.sourceType === 'subscription' && occ.sourceId) {
+          occurrenceSubSourceMonthKeys.add(`${occ.sourceId}:${occMonth}`);
+        }
+        if (occ.sourceType === 'debt_installment' && occ.sourceId) {
+          occurrenceDebtSourceMonthKeys.add(`${occ.sourceId}:${occMonth}`);
+        }
+        return {
+          id: `occ-${occ.id}`,
+          date: occ.expectedDate,
+          kind: 'occurrence' as const,
+          title: `${occ.sourceType === 'recurring_income' ? '💵 ' : '🗓️ '}${occ.title} (${occ.status})`,
+          amount: Number.parseFloat(occ.expectedAmount || '0'),
+          occurrence: occ,
+        };
+      });
+
+    const debtEvents = debts
+      .filter((debt) => debt.status === 'Pending' && debt.dueDate)
+      .filter((debt) => !occurrenceDebtSourceMonthKeys.has(`${debt.id}:${dateKey(debt.dueDate!).slice(0, 7)}`))
+      .map((debt) => ({
+        id: `debt-${debt.id}`,
+        date: dateKey(debt.dueDate!),
+        kind: 'debt' as const,
+        title: debt.contactName,
+        amount: Number.parseFloat(debt.remainingBalance),
+        debtId: debt.id,
+      }));
 
     const dcaEvents: CalendarEvent[] = [];
 
@@ -152,11 +204,15 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
       });
     }
 
-    // Project active recurring subscriptions onto this calendar month
+    // Project active recurring subscriptions onto this calendar month (only when no occurrence exists for that sub/month)
     const subscriptionEvents: CalendarEvent[] = [];
     const daysInViewMonth = new Date(Date.UTC(ref.year, ref.month + 1, 0)).getUTCDate();
+    const viewMonthKey = `${ref.year}-${String(ref.month + 1).padStart(2, '0')}`;
 
     (subscriptions || []).filter((sub) => sub.status === 'active' || sub.status === 'planned').forEach((sub) => {
+      if (occurrenceSubSourceMonthKeys.has(`${sub.id}:${viewMonthKey}`)) {
+        return;
+      }
       const subAmount = parseFloat(sub.amount) || 0;
       let billDay = 1;
       let anchorYear = ref.year;
@@ -201,8 +257,8 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
       });
     });
 
-    return [...transactionEvents, ...payrollEvents, ...debtEvents, ...dcaEvents, ...subscriptionEvents];
-  }, [debts, payrolls, transactions, subscriptions, investmentsData, ref]);
+    return [...transactionEvents, ...payrollEvents, ...occurrenceEvents, ...debtEvents, ...dcaEvents, ...subscriptionEvents];
+  }, [debts, payrolls, transactions, subscriptions, investmentsData, occurrences, ref]);
 
   const visible = events.filter((event) => {
     const eventDate = new Date(`${event.date}T00:00:00Z`);
@@ -220,8 +276,34 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   };
   const selectDay = (key: string) => {
     setSelectedDate(key);
+    setConfirmedPayrollDate(key);
     setAmount('');
     setNotice(null);
+  };
+  const openSettlementModal = (occ: CommitmentOccurrence, initialAction: 'pay' | 'partial' | 'reschedule' | 'skip' = 'pay') => {
+    const rem = Math.max(0, Number(occ.expectedAmount || 0) - Number(occ.paidAmount || 0));
+    const defaultWallet = wallets.find((w) => w.isMain)?.id || wallets[0]?.id || '';
+    setSettlingOcc(occ);
+    setSettleAction(initialAction);
+    setSettleAmount(
+      initialAction === 'partial'
+        ? (rem / 2).toFixed(2)
+        : rem > 0
+        ? rem.toFixed(2)
+        : String(Number(occ.expectedAmount || 0).toFixed(2))
+    );
+    setSettleDate(
+      initialAction === 'reschedule'
+        ? (() => {
+            const d = new Date(`${occ.expectedDate}T12:00:00Z`);
+            d.setUTCDate(d.getUTCDate() + 7);
+            return d.toISOString().slice(0, 10);
+          })()
+        : today
+    );
+    setSettleWalletId(defaultWallet);
+    setSettleLinkedTxId('');
+    setSettleNotes('');
   };
   const showNotice = (message: string) => {
     setNotice(message);
@@ -267,6 +349,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     subscription: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
     dca: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-semibold',
     investment: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 font-semibold',
+    occurrence: 'bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 font-semibold',
   };
 
   return (
@@ -452,6 +535,42 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                           placeholder={String(selectedPayroll.amount)}
                           className="w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                         />
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-0.5">
+                              Received Date
+                            </label>
+                            <input
+                              type="date"
+                              value={confirmedPayrollDate}
+                              onChange={(e) => setConfirmedPayrollDate(e.target.value)}
+                              className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-0.5">
+                              Deposit Account
+                            </label>
+                            <select
+                              value={confirmedPayrollWalletId}
+                              onChange={(e) => setConfirmedPayrollWalletId(e.target.value)}
+                              className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                            >
+                              {wallets.map((w) => (
+                                <option key={w.id} value={w.id}>
+                                  {w.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <input
+                          type="text"
+                          value={payrollVarianceNotes}
+                          onChange={(e) => setPayrollVarianceNotes(e.target.value)}
+                          placeholder="Variance / bonus notes (optional)"
+                          className="w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                        />
                         <Button
                           className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                           disabled={saving}
@@ -461,14 +580,28 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                               const actual = confirmedPayrollInput
                                 ? parseFloat(confirmedPayrollInput)
                                 : parseFloat(selectedPayroll.amount);
+                              const payload = buildPayrollConfirmPayload({
+                                confirmedAmount: actual,
+                                confirmedDate: confirmedPayrollDate || selectedDate,
+                                walletId: confirmedPayrollWalletId || undefined,
+                                varianceNotes: payrollVarianceNotes || undefined,
+                              });
                               const res = await dashboardService.confirmPayroll(
                                 selectedPayroll.id,
-                                { confirmedAmount: actual, confirmedAt: selectedDate },
+                                payload,
                                 token
                               );
                               setConfirmedPayrollInput('');
+                              setPayrollVarianceNotes('');
+                              await Promise.all([loadOccurrences(), Promise.resolve(onDataChange?.())]);
+                              const varianceTxt =
+                                Math.abs(Number(res.variance || 0)) > 0.01
+                                  ? ` (variance ${Number(res.variance) > 0 ? '+' : ''}${Number(res.variance).toFixed(2)} MAD)`
+                                  : '';
                               showNotice(
-                                `Payroll confirmed (+${actual.toFixed(2)} MAD, ${res.varianceType}) and posted to Bank!`
+                                res.alreadyConfirmed
+                                  ? 'Payroll was already confirmed in the ledger.'
+                                  : `Payroll confirmed (+${actual.toFixed(2)} MAD${varianceTxt}) and posted to wallet!`
                               );
                             } catch (err: any) {
                               showNotice(err?.message || 'Failed to confirm payroll');
@@ -561,19 +694,15 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                               onClick={async () => {
                                 const amt = parseFloat(recIncomeAmount);
                                 if (!recIncomeTitle.trim() || !Number.isFinite(amt) || amt <= 0) return;
-                                await dashboardService.createRecurringIncomeCommitment(
-                                  {
-                                    title: recIncomeTitle.trim(),
-                                    expectedAmount: amt,
-                                    expectedDate: selectedDate,
-                                    cadence: recIncomeCadence,
-                                  },
-                                  token
-                                );
+                                await createRecurringIncome({
+                                  title: recIncomeTitle.trim(),
+                                  expectedAmount: amt,
+                                  expectedDate: selectedDate,
+                                  cadence: recIncomeCadence,
+                                });
                                 setRecIncomeTitle('');
                                 setRecIncomeAmount('');
                                 setShowAddRecurringIncome(false);
-                                await loadOccurrences();
                                 showNotice('Recurring income commitment scheduled!');
                               }}
                               className="px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-semibold"
@@ -616,72 +745,39 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                               </p>
                             )}
 
-                            {(occ.status === 'scheduled' || occ.status === 'partial') && (
+                            {(occ.status === 'scheduled' || occ.status === 'partial' || occ.status === 'overdue') && (
                               <div className="flex flex-wrap gap-1 pt-0.5">
                                 <button
                                   type="button"
-                                  onClick={async () => {
-                                    await dashboardService.settleCommitmentOccurrence(
-                                      occ.id,
-                                      { action: 'pay', walletId: wallets[0]?.id },
-                                      token
-                                    );
-                                    await loadOccurrences();
-                                    showNotice(`Settled ${occ.title} and posted transaction.`);
-                                  }}
+                                  disabled={occBusyId === occ.id}
+                                  onClick={() => openSettlementModal(occ, 'pay')}
                                   className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-semibold"
                                 >
-                                  Settle
+                                  Settle…
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={async () => {
-                                    const rem = Math.max(0, Number(occ.expectedAmount || 0) - Number(occ.paidAmount || 0));
-                                    const half = Number((rem / 2).toFixed(2));
-                                    if (half <= 0) return;
-                                    await dashboardService.settleCommitmentOccurrence(
-                                      occ.id,
-                                      { action: 'partial', actualAmount: half, walletId: wallets[0]?.id },
-                                      token
-                                    );
-                                    await loadOccurrences();
-                                    showNotice(`Recorded partial payment (${half} MAD) for ${occ.title}.`);
-                                  }}
+                                  disabled={occBusyId === occ.id}
+                                  onClick={() => openSettlementModal(occ, 'partial')}
                                   className="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-semibold"
                                 >
-                                  50% Partial
+                                  Partial…
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={async () => {
-                                    const d = new Date(`${occ.expectedDate}T12:00:00Z`);
-                                    d.setUTCDate(d.getUTCDate() + 7);
-                                    await dashboardService.settleCommitmentOccurrence(
-                                      occ.id,
-                                      { action: 'reschedule', newDate: d.toISOString().slice(0, 10), reason: 'Rescheduled +7d' },
-                                      token
-                                    );
-                                    await loadOccurrences();
-                                    showNotice(`Rescheduled ${occ.title} by +7 days.`);
-                                  }}
+                                  disabled={occBusyId === occ.id}
+                                  onClick={() => openSettlementModal(occ, 'reschedule')}
                                   className="px-2 py-0.5 rounded bg-amber-600 text-white text-[10px] font-semibold"
                                 >
-                                  +7d
+                                  Reschedule…
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={async () => {
-                                    await dashboardService.settleCommitmentOccurrence(
-                                      occ.id,
-                                      { action: 'skip', reason: 'Skipped from calendar' },
-                                      token
-                                    );
-                                    await loadOccurrences();
-                                    showNotice(`Skipped ${occ.title}.`);
-                                  }}
+                                  disabled={occBusyId === occ.id}
+                                  onClick={() => openSettlementModal(occ, 'skip')}
                                   className="px-2 py-0.5 rounded bg-gray-500 text-white text-[10px] font-semibold"
                                 >
-                                  Skip
+                                  Skip…
                                 </button>
                               </div>
                             )}
@@ -784,6 +880,49 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                       );
                     }
 
+                    if (event.kind === 'occurrence' && event.occurrence) {
+                      const occ = event.occurrence;
+                      const isActionable = occ.status === 'scheduled' || occ.status === 'partial' || occ.status === 'overdue';
+                      return (
+                        <div
+                          key={event.id}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-teal-200 dark:border-teal-900/60 bg-teal-50/40 dark:bg-teal-950/20 p-3.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">{occ.title}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {occ.sourceType.replace(/_/g, ' ')} · Status: <strong className="uppercase">{occ.status}</strong>
+                              {Number(occ.paidAmount || 0) > 0 ? ` · Paid ${Number(occ.paidAmount).toFixed(2)} ${occ.currency || 'MAD'}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-mono font-bold text-sm text-gray-900 dark:text-white">
+                              {Number(occ.expectedAmount || 0).toFixed(2)} {occ.currency || 'MAD'}
+                            </span>
+                            {isActionable && (
+                              <Button
+                                size="sm"
+                                className="h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white"
+                                onClick={() => openSettlementModal(occ, 'pay')}
+                              >
+                                Settle…
+                              </Button>
+                            )}
+                            {occ.linkedTransactionId && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 text-xs"
+                                onClick={() => openTransaction(occ.linkedTransactionId!)}
+                              >
+                                Open Tx
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <button
                         key={event.id}
@@ -816,6 +955,194 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
               )}
             </CardContent>
           </Card>
+
+          {/* Interactive Commitment Settlement Modal */}
+          {settlingOcc && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+              onClick={() => setSettlingOcc(null)}
+            >
+              <form
+                onClick={(e) => e.stopPropagation()}
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const parsedAmount = Number(settleAmount);
+                  try {
+                    await settleOccurrence(settlingOcc.id, {
+                      action: settleAction,
+                      ...((settleAction === 'pay' || settleAction === 'partial') && Number.isFinite(parsedAmount) && parsedAmount > 0
+                        ? { actualAmount: parsedAmount }
+                        : {}),
+                      ...((settleAction === 'pay' || settleAction === 'partial') && settleDate
+                        ? { actualDate: settleDate }
+                        : {}),
+                      ...(settleAction === 'reschedule' && settleDate
+                        ? { newDate: settleDate }
+                        : {}),
+                      ...((settleAction === 'pay' || settleAction === 'partial') && settleWalletId && !settleLinkedTxId
+                        ? { walletId: settleWalletId }
+                        : {}),
+                      ...(settleLinkedTxId ? { linkedTransactionId: settleLinkedTxId } : {}),
+                      ...(settleNotes.trim()
+                        ? { notes: settleNotes.trim(), reason: settleNotes.trim(), varianceNotes: settleNotes.trim() }
+                        : {}),
+                    });
+                    showNotice(`Updated commitment: ${settlingOcc.title}`);
+                    setSettlingOcc(null);
+                  } catch (err: any) {
+                    showNotice(err?.message || 'Could not settle commitment.');
+                  }
+                }}
+                className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-2xl space-y-4"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                      Commitment Settlement Drawer
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {settlingOcc.title} · Expected {Number(settlingOcc.expectedAmount || 0).toFixed(2)} {settlingOcc.currency || 'MAD'} on {settlingOcc.expectedDate}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSettlingOcc(null)}
+                    className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(['pay', 'partial', 'reschedule', 'skip'] as const).map((action) => (
+                    <button
+                      key={action}
+                      type="button"
+                      onClick={() => setSettleAction(action)}
+                      className={`px-2 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                        settleAction === action
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+                      }`}
+                    >
+                      {action === 'pay' ? 'Pay Full' : action === 'partial' ? 'Partial' : action === 'reschedule' ? 'Move Date' : 'Skip'}
+                    </button>
+                  ))}
+                </div>
+
+                {(settleAction === 'pay' || settleAction === 'partial') && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Actual Amount ({settlingOcc.currency || 'MAD'})
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={settleAmount}
+                          onChange={(e) => setSettleAmount(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-mono text-gray-900 dark:text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Actual Date
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={settleDate}
+                          onChange={(e) => setSettleDate(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Link Existing Transaction (Optional)
+                      </label>
+                      <select
+                        value={settleLinkedTxId}
+                        onChange={(e) => setSettleLinkedTxId(e.target.value)}
+                        className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs text-gray-900 dark:text-white"
+                      >
+                        <option value="">Create new wallet transaction automatically</option>
+                        {transactions.slice(0, 20).map((tx) => (
+                          <option key={tx.id} value={tx.id}>
+                            {tx.createdAt.slice(0, 10)} · {tx.notes || tx.category} · {Number(tx.amount).toFixed(2)} MAD
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {!settleLinkedTxId && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Wallet / Account
+                        </label>
+                        <select
+                          value={settleWalletId}
+                          onChange={(e) => setSettleWalletId(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
+                        >
+                          {wallets.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.name} ({w.balance.toFixed(2)} {w.currency || 'MAD'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {settleAction === 'reschedule' && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      New Expected Date
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={settleDate}
+                      onChange={(e) => setSettleDate(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    {settleAction === 'skip' || settleAction === 'reschedule' ? 'Reason (Optional)' : 'Notes / Variance Notes (Optional)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settleNotes}
+                    onChange={(e) => setSettleNotes(e.target.value)}
+                    placeholder="Add context for the audit log..."
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setSettlingOcc(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={occBusyId === settlingOcc.id}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    {occBusyId === settlingOcc.id ? 'Saving...' : 'Confirm Action'}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
         </>
       )}
     </div>
