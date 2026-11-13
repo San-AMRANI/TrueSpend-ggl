@@ -61,6 +61,8 @@ import {
   RefreshCw,
   CalendarRange,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { AnimatedMetricValue, AnimatedProgressBar, MotionModal } from '../ui/MotionPrimitives';
 
 type FixedPlanKey = 'balanced' | 'savings_first' | 'essentials';
 type PlanKey = 'spex_ai' | FixedPlanKey;
@@ -1412,12 +1414,20 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
     <div className="space-y-6">
 
       {/* ── Toast ── */}
-      {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium shadow-lg transition-all ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900'}`}>
-          {toast.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-          {toast.msg}
-        </div>
-      )}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 12, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium shadow-lg ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900'}`}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Header ── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1466,7 +1476,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
             <div className="text-left sm:text-right shrink-0">
               <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">Period Income Baseline</p>
               <p className="text-lg font-black font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
-                {totalIncome.toFixed(2)} MAD
+                <AnimatedMetricValue value={totalIncome} suffix=" MAD" />
               </p>
             </div>
           </div>
@@ -1474,7 +1484,13 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
           {/* 4-Pillar Stacked Allocation Bar */}
           {totalIncome > 0 && (
             <div className="space-y-1.5">
-              <div className="h-3 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex">
+              <motion.div
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                style={{ transformOrigin: 'left' }}
+                className="h-3 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex"
+              >
                 <div
                   className="h-full bg-indigo-600 transition-all duration-500"
                   style={{ width: `${Math.min(100, (fourPillar.spentOnObligations / totalIncome) * 100)}%` }}
@@ -1495,7 +1511,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                   style={{ width: `${Math.min(100, (fourPillar.totalActualRetainedAndSaved / totalIncome) * 100)}%` }}
                   title={`Retained in Bank & Saved: ${fourPillar.totalActualRetainedAndSaved.toFixed(0)} MAD`}
                 />
-              </div>
+              </motion.div>
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400 font-mono">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-indigo-600" />
@@ -1528,7 +1544,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                 </span>
               </div>
               <p className="text-xl font-black font-mono tabular-nums text-gray-900 dark:text-white">
-                {fourPillar.spentOnObligations.toFixed(0)} MAD
+                <AnimatedMetricValue value={fourPillar.spentOnObligations} decimals={0} suffix=" MAD" />
               </p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
                 Budget: {fourPillar.plannedObligationsBudget.toFixed(0)} MAD •{' '}
@@ -1547,7 +1563,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                 </span>
               </div>
               <p className="text-xl font-black font-mono tabular-nums text-gray-900 dark:text-white">
-                {fourPillar.spentOnMyself.toFixed(0)} MAD
+                <AnimatedMetricValue value={fourPillar.spentOnMyself} decimals={0} suffix=" MAD" />
               </p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
                 Budget: {fourPillar.plannedMyselfBudget.toFixed(0)} MAD •{' '}
@@ -1566,7 +1582,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                 </span>
               </div>
               <p className="text-xl font-black font-mono tabular-nums text-gray-900 dark:text-white">
-                {fourPillar.investedAmount.toFixed(0)} MAD
+                <AnimatedMetricValue value={fourPillar.investedAmount} decimals={0} suffix=" MAD" />
               </p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
                 Target: {fourPillar.plannedInvestmentBudget.toFixed(0)} MAD • Stocks &amp; Crypto
@@ -1582,7 +1598,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                 </span>
               </div>
               <p className="text-xl font-black font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
-                {fourPillar.effectiveSavedForBudget.toFixed(0)} MAD
+                <AnimatedMetricValue value={fourPillar.effectiveSavedForBudget} decimals={0} suffix=" MAD" />
               </p>
               <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 font-mono">
                 Live in Bank: {fourPillar.liveRetainedInBank.toFixed(0)} MAD
@@ -1597,7 +1613,9 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card className="p-4">
           <p className="text-xs text-gray-500 dark:text-gray-400">Spendable Living Budget</p>
-          <p className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">{livingBudgetTotal.toFixed(0)}</p>
+          <p className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
+            <AnimatedMetricValue value={livingBudgetTotal} decimals={0} />
+          </p>
           <p className="text-xs text-gray-400 font-mono">
             MAD ({totalBudget.toFixed(0)} total w/ wealth)
           </p>
@@ -1605,7 +1623,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         <Card className="p-4">
           <p className="text-xs text-gray-500 dark:text-gray-400">Living Spent So Far</p>
           <p className={`text-2xl font-bold font-mono tabular-nums ${livingSpentTotal > livingBudgetTotal && livingBudgetTotal > 0 ? 'text-red-600' : 'text-gray-900 dark:text-gray-100'}`}>
-            {livingSpentTotal.toFixed(0)}
+            <AnimatedMetricValue value={livingSpentTotal} decimals={0} />
           </p>
           <p className="text-xs text-gray-400 font-mono">
             Oblig: {fourPillar.spentOnObligations.toFixed(0)} • Myself: {fourPillar.spentOnMyself.toFixed(0)}
@@ -1614,7 +1632,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         <Card className="p-4">
           <p className="text-xs text-gray-500 dark:text-gray-400">Spendable Remaining</p>
           <p className={`text-2xl font-bold font-mono tabular-nums ${livingRemaining < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-            {livingBudgetTotal > 0 ? livingRemaining.toFixed(0) : '—'}
+            {livingBudgetTotal > 0 ? <AnimatedMetricValue value={livingRemaining} decimals={0} /> : '—'}
           </p>
           <p className="text-xs text-gray-400">MAD safe to spend</p>
         </Card>
@@ -1622,7 +1640,9 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
           <p className="text-xs text-gray-500 dark:text-gray-400">Budget Health Score</p>
           <div className="flex items-end gap-2">
             <p className={`text-2xl font-bold ${gradeColor}`}>{grade}</p>
-            <p className="text-sm text-gray-500 mb-0.5 font-mono">{healthScore}/100</p>
+            <p className="text-sm text-gray-500 mb-0.5 font-mono">
+              <AnimatedMetricValue value={healthScore} decimals={0} />/100
+            </p>
           </div>
           <p className="text-xs text-gray-400">{overBudgetCount > 0 ? `${overBudgetCount} living cat. over budget` : 'All living budgets on track'}</p>
         </Card>
@@ -1642,12 +1662,12 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <div className="flex-1 h-3 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${livingSpentTotal > livingBudgetTotal ? 'bg-red-500' : pace.difference > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                  style={{ width: `${livingBudgetTotal > 0 ? Math.min(100, (livingSpentTotal / livingBudgetTotal) * 100) : 0}%` }}
-                />
-              </div>
+              <AnimatedProgressBar
+                className="flex-1"
+                trackClassName="h-3 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden"
+                percent={livingBudgetTotal > 0 ? (livingSpentTotal / livingBudgetTotal) * 100 : 0}
+                barClassName={livingSpentTotal > livingBudgetTotal ? 'bg-red-500' : pace.difference > 0 ? 'bg-amber-500' : 'bg-emerald-500'}
+              />
               <span className="text-sm tabular-nums font-mono text-gray-500 dark:text-gray-400 shrink-0">
                 {livingBudgetTotal > 0 ? `${Math.min(100, (livingSpentTotal / livingBudgetTotal) * 100).toFixed(0)}%` : '—'}
               </span>
@@ -2143,20 +2163,30 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
               { id: 'obligations', label: `🏛️ Obligations (${budgetRows.filter((c) => getCategoryPillar(c) === 'obligations').length})` },
               { id: 'myself', label: `✨ Spent on Myself (${budgetRows.filter((c) => getCategoryPillar(c) === 'myself').length})` },
               { id: 'wealth', label: `🏦 Saved & Invested (${budgetRows.filter((c) => isWealthAllocationCategory(c)).length})` },
-            ] as { id: PillarFilter; label: string }[]).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setPillarFilter(tab.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
-                  pillarFilter === tab.id
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            ] as { id: PillarFilter; label: string }[]).map((tab) => {
+              const active = pillarFilter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setPillarFilter(tab.id)}
+                  className={`relative px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                    active
+                      ? 'text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="budgetPillarFilterPill"
+                      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                      className="absolute inset-0 rounded-lg bg-indigo-600 shadow-xs"
+                    />
+                  )}
+                  <span className="relative z-10">{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -2236,15 +2266,16 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
       )}
 
       {/* ── Auto-Budget Modal (Spex AI Personalized Pattern + 3 Fixed Plans) ── */}
-      {autoBudgetOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/50 backdrop-blur-sm"
-          onClick={() => !autoBudgetLoading && !spexGenerating && setAutoBudgetOpen(false)}
+      <MotionModal
+        isOpen={autoBudgetOpen}
+        onClose={() => !autoBudgetLoading && !spexGenerating && setAutoBudgetOpen(false)}
+        zIndexClass="z-50"
+        containerClassName="w-full sm:max-w-2xl my-auto"
+      >
+        <Card
+          className="w-full shadow-2xl rounded-2xl max-h-[92dvh] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
         >
-          <Card
-            className="w-full sm:max-w-2xl shadow-2xl rounded-t-2xl sm:rounded-2xl max-h-[94dvh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
             <CardHeader className="flex-shrink-0 pb-2 border-b border-gray-100 dark:border-gray-800">
               {/* drag handle on mobile */}
               <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 mx-auto mb-3 sm:hidden" />
@@ -2676,8 +2707,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
               </div>
             </CardContent>
           </Card>
-        </div>
-      )}
+      </MotionModal>
     </div>
   );
 };

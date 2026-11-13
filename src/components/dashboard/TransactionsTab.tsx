@@ -46,6 +46,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface TransactionsTabProps {
   transactions: Transaction[];
@@ -1330,42 +1331,35 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
 
             {/* View Mode Switcher */}
             <div className="flex items-center self-end sm:self-auto gap-1 rounded-xl border border-gray-200 dark:border-gray-800 p-1 bg-gray-50 dark:bg-gray-800/40">
-              <button
-                type="button"
-                onClick={() => setViewMode('grouped')}
-                className={`p-1.5 rounded-lg text-xs font-medium transition-all ${
-                  viewMode === 'grouped'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
-                }`}
-                title="Grouped by Date Timeline"
-              >
-                <Layers className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('compact')}
-                className={`p-1.5 rounded-lg text-xs font-medium transition-all ${
-                  viewMode === 'compact'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
-                }`}
-                title="Compact List Rows"
-              >
-                <List className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-lg text-xs font-medium transition-all ${
-                  viewMode === 'table'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
-                }`}
-                title="Spreadsheet / Table View"
-              >
-                <TableIcon className="h-4 w-4" />
-              </button>
+              {([
+                { id: 'grouped', title: 'Grouped by Date Timeline', Icon: Layers },
+                { id: 'compact', title: 'Compact List Rows', Icon: List },
+                { id: 'table', title: 'Spreadsheet / Table View', Icon: TableIcon },
+              ] as const).map(({ id, title, Icon }) => {
+                const active = viewMode === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setViewMode(id)}
+                    className={`relative p-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                      active
+                        ? 'text-gray-900 dark:text-gray-100'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                    }`}
+                    title={title}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="txViewModePill"
+                        transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                        className="absolute inset-0 rounded-lg bg-white dark:bg-gray-700 shadow-sm"
+                      />
+                    )}
+                    <Icon className="relative z-10 h-4 w-4" />
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1464,8 +1458,15 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
           </div>
 
           {/* Advanced Filters Expandable Drawer */}
+          <AnimatePresence initial={false}>
           {showFilters && (
-            <div className="space-y-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40 p-4 animate-in slide-in-from-top-2">
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              className="space-y-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40 p-4"
+            >
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                   <SlidersHorizontal className="w-4 h-4 text-gray-500" /> Advanced Filters
@@ -1634,8 +1635,9 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                   ))}
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
         </CardHeader>
 
         <CardContent className="space-y-4 pt-4">
@@ -1665,8 +1667,15 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
           </div>
 
           {/* Floating/Sticky Batch Action Bar */}
+          <AnimatePresence>
           {selectedTxIds.size > 0 && (
-            <div className="sticky top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 px-4 py-3 shadow-xl animate-in fade-in slide-in-from-top-2">
+            <motion.div
+              initial={{ opacity: 0, y: -8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.98 }}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              className="sticky top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 px-4 py-3 shadow-xl"
+            >
               <div className="flex items-center gap-2">
                 <CheckSquare className="h-4 w-4 text-emerald-400 dark:text-emerald-600" />
                 <span className="text-xs font-bold">
@@ -1721,8 +1730,9 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                   <X className="h-4 w-4" />
                 </button>
               </div>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
 
           {/* VIEW MODE 1: Grouped by Date (Default modern fintech layout) */}
           {viewMode === 'grouped' && (

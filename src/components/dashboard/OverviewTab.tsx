@@ -37,7 +37,7 @@ import {
 import { format } from 'date-fns';
 import { normalizeCategory } from '../../lib/categories';
 import { usePrivacy } from '../../context/PrivacyContext';
-import { AnimatedMetricValue, MotionModal } from '../ui/MotionPrimitives';
+import { AnimatedMetricValue, AnimatedProgressBar, MotionModal, StaggerList, StaggerItem } from '../ui/MotionPrimitives';
 import { AnimatePresence, motion } from 'motion/react';
 
 interface OverviewTabProps {
@@ -717,7 +717,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                     <span className="text-[10px] text-gray-500">(incl. Net Debts)</span>
                   </p>
                   <p className="text-lg font-semibold text-white font-mono tabular-nums">
-                    {isPrivacyMode ? '******' : `${netWorth.toFixed(2)} MAD`}
+                    <AnimatedMetricValue value={netWorth} masked={isPrivacyMode} maskText="******" suffix=" MAD" />
                   </p>
                 </div>
                 <button
@@ -789,23 +789,23 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CardHeader>
           <CardContent>
             <div className={`break-words text-xl font-bold font-mono tabular-nums sm:text-3xl ${dailyStatusStyles[kpis?.dailyStatus || 'on_track']}`}>
-              {kpis?.dailyRemaining.toFixed(2) || '0.00'} <span className="text-sm sm:text-base">MAD</span>
+              <AnimatedMetricValue value={kpis?.dailyRemaining ?? 0} /> <span className="text-sm sm:text-base">MAD</span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums">
               {kpis?.dailySpent.toFixed(2) || '0.00'} spent of {kpis?.dailyAllowance.toFixed(2) || '0.00'} MAD
             </p>
-            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-              <div
-                className={`h-full rounded-full transition-all ${
-                  (kpis?.dailyUsagePercent ?? 0) > 100
-                    ? 'bg-red-500'
-                    : (kpis?.dailyUsagePercent ?? 0) > 80
-                    ? 'bg-amber-500'
-                    : 'bg-blue-600'
-                }`}
-                style={{ width: `${Math.min(100, kpis?.dailyUsagePercent ?? 0)}%` }}
-              />
-            </div>
+            <AnimatedProgressBar
+              className="mt-3"
+              trackClassName="h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
+              percent={kpis?.dailyUsagePercent ?? 0}
+              barClassName={
+                (kpis?.dailyUsagePercent ?? 0) > 100
+                  ? 'bg-red-500'
+                  : (kpis?.dailyUsagePercent ?? 0) > 80
+                  ? 'bg-amber-500'
+                  : 'bg-blue-600'
+              }
+            />
           </CardContent>
         </Card>
 
@@ -821,7 +821,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CardHeader>
           <CardContent>
             <div className="break-words text-xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100 sm:text-3xl">
-              {kpis?.adjustedTrueSpend?.toFixed(2) || '0.00'} <span className="text-sm sm:text-base font-normal text-gray-500">MAD</span>
+              <AnimatedMetricValue value={kpis?.adjustedTrueSpend ?? 0} /> <span className="text-sm sm:text-base font-normal text-gray-500">MAD</span>
             </div>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Total expenses minus reimbursements &amp; debts
@@ -835,7 +835,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       </div>
 
       {/* Behavioral Memory: Discipline Streak, 50/30/20 Macro Benchmark & Anomaly Detector */}
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3">
+      <StaggerList className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3">
+        <StaggerItem className="min-w-0">
         {/* Card 1: Spending Discipline Streak */}
         <Card className="min-w-0 border-gray-200 dark:border-gray-800">
           <CardContent className="p-4 flex flex-col justify-between h-full">
@@ -868,8 +869,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </p>
           </CardContent>
         </Card>
+        </StaggerItem>
 
         {/* Card 2: Live 50/30/20 Macro Benchmark */}
+        <StaggerItem className="min-w-0">
         <Card className="min-w-0 border-gray-200 dark:border-gray-800">
           <CardContent className="p-4 flex flex-col justify-between h-full">
             <div className="flex items-center justify-between gap-2">
@@ -894,31 +897,39 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 <span>·</span>
                 <span className="text-emerald-600 dark:text-emerald-400">Save {behavioralInsights.savingsPct}%</span>
               </div>
-              <div className="mt-1.5 flex h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+              <motion.div
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                style={{ transformOrigin: 'left' }}
+                className="mt-1.5 flex h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
+              >
                 <div
-                  className="bg-indigo-500 transition-all"
+                  className="bg-indigo-500 transition-transform duration-300"
                   style={{ width: `${behavioralInsights.needsPct}%` }}
                   title={`Needs: ${behavioralInsights.needsPct}%`}
                 />
                 <div
-                  className="bg-amber-500 transition-all"
+                  className="bg-amber-500 transition-transform duration-300"
                   style={{ width: `${behavioralInsights.wantsPct}%` }}
                   title={`Wants: ${behavioralInsights.wantsPct}%`}
                 />
                 <div
-                  className="bg-emerald-500 transition-all"
+                  className="bg-emerald-500 transition-transform duration-300"
                   style={{ width: `${behavioralInsights.savingsPct}%` }}
                   title={`Savings & Invest: ${behavioralInsights.savingsPct}%`}
                 />
-              </div>
+              </motion.div>
               <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                 Benchmark: 50% Needs · 30% Wants · 20% Savings &amp; Invest
               </p>
             </div>
           </CardContent>
         </Card>
+        </StaggerItem>
 
         {/* Card 3: Automated Spending Anomaly Detector */}
+        <StaggerItem className="min-w-0">
         <Card className="min-w-0 border-gray-200 dark:border-gray-800">
           <CardContent className="p-4 flex flex-col justify-between h-full">
             <div className="flex items-center justify-between gap-2">
@@ -974,10 +985,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             )}
           </CardContent>
         </Card>
-      </div>
+        </StaggerItem>
+      </StaggerList>
 
       {/* Live Financial Operations, 14-Day Commitment Radar & Ledger Integrity Strip */}
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3">
+      <StaggerList className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3">
+        <StaggerItem className="min-w-0">
         {/* 1. Upcoming 14-Day Commitments Radar */}
         <Card className="min-w-0 border-gray-200 dark:border-gray-800">
           <CardContent className="p-4 flex flex-col justify-between h-full">
@@ -1035,8 +1048,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             )}
           </CardContent>
         </Card>
+        </StaggerItem>
 
         {/* 2. Financial Review Inbox Queue */}
+        <StaggerItem className="min-w-0">
         <Card className="min-w-0 border-gray-200 dark:border-gray-800">
           <CardContent className="p-4 flex flex-col justify-between h-full">
             <div className="flex items-center justify-between gap-2">
@@ -1093,8 +1108,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             )}
           </CardContent>
         </Card>
+        </StaggerItem>
 
         {/* 3. Double-Entry Ledger & Trial Balance Pulse */}
+        <StaggerItem className="min-w-0">
         <Card className="min-w-0 border-gray-200 dark:border-gray-800">
           <CardContent className="p-4 flex flex-col justify-between h-full">
             <div className="flex items-center justify-between gap-2">
@@ -1137,7 +1154,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </div>
           </CardContent>
         </Card>
-      </div>
+        </StaggerItem>
+      </StaggerList>
 
       {/* Binance Spot & Investment Portfolio Pulse Strip */}
       <Card className="min-w-0 overflow-hidden border-emerald-200/70 dark:border-emerald-900/40 bg-gradient-to-r from-white via-emerald-50/20 to-indigo-50/20 dark:from-gray-900 dark:via-emerald-950/15 dark:to-indigo-950/15">
@@ -1308,12 +1326,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                     <span>Day {kpis.forecast.elapsedDays} of {kpis.forecast.totalDays}</span>
                     <span>{kpis.forecast.daysRemaining} days left</span>
                   </div>
-                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all"
-                      style={{ width: `${Math.min(100, (kpis.forecast.elapsedDays / kpis.forecast.totalDays) * 100)}%` }}
-                    />
-                  </div>
+                  <AnimatedProgressBar
+                    className="mt-1"
+                    trackClassName="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800"
+                    percent={kpis.forecast.totalDays > 0 ? (kpis.forecast.elapsedDays / kpis.forecast.totalDays) * 100 : 0}
+                    barClassName="bg-gradient-to-r from-blue-500 to-indigo-500"
+                  />
                 </div>
                 {/* Spending pace tag */}
                 {kpis.forecast.spendingPacePercent > 0 && (
@@ -1357,15 +1375,21 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   <div className="relative flex h-20 w-20 shrink-0 items-center justify-center">
                     <svg viewBox="0 0 36 36" className="h-full w-full -rotate-90">
                       <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" className="text-gray-200 dark:text-gray-800" />
-                      <circle
+                      <motion.circle
                         cx="18" cy="18" r="15.5" fill="none" strokeWidth="3"
                         strokeLinecap="round"
                         stroke="currentColor"
                         className={healthColor(kpis.healthScore)}
-                        strokeDasharray={`${(kpis.healthScore / 100) * 97.4} 97.4`}
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: Math.max(0, Math.min(1, kpis.healthScore / 100)) }}
+                        transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
                       />
                     </svg>
-                    <span className={`absolute text-xl font-bold ${healthColor(kpis.healthScore)}`}>{kpis.healthScore}</span>
+                    <AnimatedMetricValue
+                      value={kpis.healthScore}
+                      decimals={0}
+                      className={`absolute text-xl font-bold ${healthColor(kpis.healthScore)}`}
+                    />
                   </div>
                   <div>
                     <p className={`text-lg font-bold ${healthColor(kpis.healthScore)}`}>{healthLabel(kpis.healthScore)}</p>
@@ -1374,19 +1398,20 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 </div>
                 {/* Factor Breakdown */}
                 <div className="space-y-2">
-                  {kpis.healthFactors?.map((factor) => (
+                  {kpis.healthFactors?.map((factor, idx) => (
                     <div key={factor.name} className="flex items-center gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex justify-between text-xs">
                           <span className="font-medium text-gray-700 dark:text-gray-300">{factor.name}</span>
                           <span className="tabular-nums text-gray-500 dark:text-gray-400">{factor.score}/{factor.maxPoints}</span>
                         </div>
-                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
-                          <div
-                            className={`h-full rounded-full transition-all ${factor.score / factor.maxPoints >= 0.7 ? 'bg-emerald-500' : factor.score / factor.maxPoints >= 0.4 ? 'bg-amber-500' : 'bg-red-500'}`}
-                            style={{ width: `${(factor.score / factor.maxPoints) * 100}%` }}
-                          />
-                        </div>
+                        <AnimatedProgressBar
+                          className="mt-1"
+                          delay={idx * 0.04}
+                          trackClassName="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800"
+                          percent={factor.maxPoints > 0 ? (factor.score / factor.maxPoints) * 100 : 0}
+                          barClassName={factor.score / factor.maxPoints >= 0.7 ? 'bg-emerald-500' : factor.score / factor.maxPoints >= 0.4 ? 'bg-amber-500' : 'bg-red-500'}
+                        />
                         <p className="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">{factor.label}</p>
                       </div>
                     </div>
@@ -1449,8 +1474,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/70">
               <p className="text-xs text-gray-500 dark:text-gray-400">90-Day Projected Net Worth</p>
-              <p className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-1 font-mono">
-                {holisticForecast.projectedNetWorth90d.toLocaleString()} MAD
+              <p className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mt-1 font-mono tabular-nums">
+                <AnimatedMetricValue value={holisticForecast.projectedNetWorth90d} decimals={0} masked={isPrivacyMode} maskText="******" suffix=" MAD" />
               </p>
               <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">
                 {holisticForecast.projectedNetWorth90d >= holisticForecast.currentNetWorth ? '+' : ''}
@@ -1460,8 +1485,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
             <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/70">
               <p className="text-xs text-gray-500 dark:text-gray-400">12-Month Projected Net Worth</p>
-              <p className="text-lg sm:text-xl font-bold text-indigo-600 dark:text-indigo-400 mt-1 font-mono">
-                {holisticForecast.projectedNetWorth12m.toLocaleString()} MAD
+              <p className="text-lg sm:text-xl font-bold text-indigo-600 dark:text-indigo-400 mt-1 font-mono tabular-nums">
+                <AnimatedMetricValue value={holisticForecast.projectedNetWorth12m} decimals={0} masked={isPrivacyMode} maskText="******" suffix=" MAD" />
               </p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                 {holisticForecast.savingsRateBaseline.toFixed(1)}% projected savings rate
@@ -1471,13 +1496,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             <div className="p-3.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/70">
               <p className="text-xs text-gray-500 dark:text-gray-400">30-Day Lowest Cash Point</p>
               <p
-                className={`text-lg sm:text-xl font-bold mt-1 font-mono ${
+                className={`text-lg sm:text-xl font-bold mt-1 font-mono tabular-nums ${
                   holisticForecast.hasLiquidityPinchBeforePayday
                     ? 'text-rose-600 dark:text-rose-400'
                     : 'text-gray-900 dark:text-white'
                 }`}
               >
-                {holisticForecast.lowest30dBalance.toLocaleString()} MAD
+                <AnimatedMetricValue value={holisticForecast.lowest30dBalance} decimals={0} masked={isPrivacyMode} maskText="******" suffix=" MAD" />
               </p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                 Around {holisticForecast.lowest30dDateLabel} · {holisticForecast.survivalRunwayDays}d runway
@@ -1571,7 +1596,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="break-words text-2xl font-bold text-blue-900">{activeReceivables.toFixed(2)} MAD</div>
+            <div className="break-words text-2xl font-bold text-blue-900">
+              <AnimatedMetricValue value={activeReceivables} suffix=" MAD" />
+            </div>
             <p className="mb-4 text-xs text-blue-700">Money owed to you from splits</p>
             <div className="space-y-3">
               {debts
@@ -1663,14 +1690,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                     </div>
 
                     <div className="mt-2.5 space-y-1">
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                        <div
-                          className={`h-full rounded-full transition-all ${
-                            isCompleted ? 'bg-emerald-500' : 'bg-indigo-500'
-                          }`}
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
+                      <AnimatedProgressBar
+                        trackClassName="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+                        percent={progress}
+                        barClassName={isCompleted ? 'bg-emerald-500' : 'bg-indigo-500'}
+                      />
                       <div className="flex justify-between text-[11px] text-gray-500 dark:text-gray-400">
                         <span className="font-semibold text-gray-800 dark:text-gray-200">
                           {current.toLocaleString()} MAD

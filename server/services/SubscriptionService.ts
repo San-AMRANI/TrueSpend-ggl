@@ -33,6 +33,46 @@ export interface UpdateSubscriptionDTO {
   websiteUrl?: string;
 }
 
+export interface ChangeSubscriptionPlanDTO {
+  newName?: string;
+  newAmount: number;
+  newCurrency?: string;
+  newBillingCycle: string;
+  effectiveDate?: string;
+  nextBillingDate?: string | null;
+  recalculateNextDate?: boolean;
+  walletId?: string | null;
+  paymentMode?: 'none' | 'difference' | 'full';
+  paymentAmount?: number;
+  status?: 'active' | 'planned' | 'paused' | 'reviewing' | 'cancelled';
+  notes?: string;
+}
+
+function getCycleMonths(cycleRaw?: string | null): number {
+  const raw = (cycleRaw || 'monthly').trim().toLowerCase();
+  if (raw === 'weekly') return 12 / 52;
+  if (raw === 'biweekly') return 24 / 52;
+  if (raw === 'yearly') return 12;
+  if (raw === 'quarterly' || raw === 'every_3_months') return 3;
+  if (raw === 'every_2_months') return 2;
+  if (raw === 'every_6_months') return 6;
+  if (raw === 'every_10_months') return 10;
+
+  const customMonthsMatch = raw.match(/^every_(\d+)_months?$/);
+  if (customMonthsMatch) return Math.max(1, parseInt(customMonthsMatch[1], 10));
+
+  const customDaysMatch = raw.match(/^every_(\d+)_days?$/);
+  if (customDaysMatch) return Math.max(1, parseInt(customDaysMatch[1], 10)) / 30.4375;
+
+  return 1;
+}
+
+function getNormalizedMonthlyCost(amount: number, cycleRaw?: string | null): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const months = getCycleMonths(cycleRaw);
+  return months > 0 ? amount / months : amount;
+}
+
 function advanceDateByCycle(baseDate: Date, cycleRaw?: string | null): Date {
   const result = new Date(baseDate.getTime());
   const raw = (cycleRaw || 'monthly').trim().toLowerCase();
@@ -59,6 +99,10 @@ function advanceDateByCycle(baseDate: Date, cycleRaw?: string | null): Date {
   }
   if (raw === 'every_6_months') {
     result.setMonth(result.getMonth() + 6);
+    return result;
+  }
+  if (raw === 'every_10_months') {
+    result.setMonth(result.getMonth() + 10);
     return result;
   }
 
@@ -247,6 +291,140 @@ export class SubscriptionService {
     return {
       subscription: updatedSub,
       transaction: createdTx,
+    };
+  }
+
+  async changeSubscriptionPlan(userId: string, id: string, dto: ChangeSubscriptionPlanDTO) {
+    const sub = await this.getSubscriptionById(id, userId);
+
+    const newAmountNum = Number(dto.newAmount);
+    if (!Number.isFinite(newAmountNum) || newAmountNum <= 0) {
+      throw new Error('New plan amount must be greater than zero');
+    }
+
+    const oldAmountNum = parseFloat(sub.amount as string) || 0;
+    const oldCycle = sub.billingCycle || 'monthly';
+    const newCycle = (dto.newBillingCycle || oldCycle).trim().toLowerCase();
+    const oldName = sub.name;
+    const finalName = dto.newName?.trim() ? dto.newName.trim() : oldName;
+    const finalCurrency = dto.newCurrency?.trim() || sub.currency || 'MAD';
+
+    const oldMonthly = getNormalizedMonthlyCost(oldAmountNum, oldCycle);
+    const newMonthly = getNormalizedMonthlyCost(newAmountNum, newCycle);
+    const oldMonths = getCycleMonths(oldCycle);
+    const newMonths = getCycleMonths(newCycle);
+
+    let direction: 'upgrade' | 'downgrade' | 'switch' = 'switch';
+    if (newAmountNum > oldAmountNum && newMonths >= oldMonths) {
+      direction = 'upgrade';
+    } else if (newAmountNum < oldAmountNum && newMonths <= oldMonths) {
+      direction = 'downgrade';
+    } else if (Math.abs(newMonthly - oldMonthly) >= 0.01) {
+      direction = newMonthly > oldMonthly ? 'upgrade' : 'downgrade';
+    } else if (Math.abs(newAmountNum - oldAmountNum) >= 0.01) {
+      direction = newAmountNum > oldAmountNum ? 'upgrade' : 'downgrade';
+    }
+
+    let walletId = dto.walletId !== undefined ? dto.walletId?.trim() || null : sub.walletId || null;
+    if (walletId) {
+      const wallet = await walletRepository.findById(walletId, userId);
+      if (!wallet) walletId = null;
+    }
+
+    const effectiveDateObj = dto.effectiveDate ? new Date(dto.effectiveDate) : new Date();
+    const effectiveIso = !isNaN(effectiveDateObj.getTime())
+      ? effectiveDateObj.toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+
+    let nextBillingDateValue: Date | null = sub.nextBillingDate ? new Date(sub.nextBillingDate) : null;
+    if (dto.nextBillingDate !== undefined) {
+      nextBillingDateValue = dto.nextBillingDate ? new Date(dto.nextBillingDate) : null;
+    } else if (dto.recalculateNextDate !== false) {
+      nextBillingDateValue = advanceDateByCycle(new Date(`${effectiveIso}T00:00:00`), newCycle);
+    }
+
+    const paymentMode = dto.paymentMode || 'none';
+    let chargedAmount = 0;
+    if (paymentMode === 'full') {
+      chargedAmount =
+        dto.paymentAmount !== undefined && Number(dto.paymentAmount) > 0
+          ? Number(dto.paymentAmount)
+          : newAmountNum;
+    } else if (paymentMode === 'difference') {
+      const diffDefault = Math.max(0, newAmountNum - oldAmountNum);
+      chargedAmount =
+        dto.paymentAmount !== undefined && Number(dto.paymentAmount) > 0
+          ? Number(dto.paymentAmount)
+          : diffDefault;
+    }
+
+    let createdTx: any = null;
+    if (chargedAmount > 0) {
+      let targetWalletId = walletId;
+      if (!targetWalletId) {
+        const wallets = await walletRepository.findAllByUserId(userId);
+        const mainWallet =
+          wallets.find((w) => w.type === 'Bank' && w.isMain) ||
+          wallets.find((w) => w.type === 'Bank') ||
+          wallets[0];
+        if (!mainWallet) throw new Error('No wallet available to record plan payment');
+        targetWalletId = mainWallet.id;
+      }
+
+      const labelTag = direction === 'downgrade' ? 'Downgrade' : direction === 'upgrade' ? 'Upgrade' : 'Plan Switch';
+      const noteText =
+        oldName === finalName
+          ? `Subscription ${labelTag}: ${finalName} (${oldAmountNum.toFixed(0)} ${oldCycle} → ${newAmountNum.toFixed(0)} ${newCycle})`
+          : `Subscription ${labelTag}: ${oldName} → ${finalName} (${newAmountNum.toFixed(0)} ${newCycle})`;
+
+      createdTx = await transactionService.createTransaction(userId, {
+        amount: Math.round(chargedAmount * 100) / 100,
+        type: 'Expense',
+        category: sub.category || 'Subscriptions & Streaming',
+        notes: noteText,
+        walletId: targetWalletId,
+        transaction_date: effectiveIso,
+      });
+    }
+
+    const changeNoteLine = `[${effectiveIso}] Plan ${direction}: ${oldAmountNum.toFixed(0)} ${sub.currency || 'MAD'}/${oldCycle} → ${newAmountNum.toFixed(0)} ${finalCurrency}/${newCycle}`;
+    const finalNotes =
+      dto.notes !== undefined
+        ? dto.notes.trim()
+        : sub.notes
+        ? `${sub.notes} · ${changeNoteLine}`
+        : changeNoteLine;
+
+    const updatedSub = await subscriptionRepository.update(id, userId, {
+      name: finalName,
+      amount: newAmountNum.toFixed(2),
+      currency: finalCurrency,
+      billingCycle: newCycle,
+      walletId,
+      nextBillingDate: nextBillingDateValue,
+      status: dto.status || (sub.status === 'planned' && chargedAmount > 0 ? 'active' : sub.status),
+      notes: finalNotes,
+    });
+
+    const monthlyDelta = Math.round((newMonthly - oldMonthly) * 100) / 100;
+    return {
+      subscription: updatedSub,
+      transaction: createdTx,
+      summary: {
+        direction,
+        oldName,
+        newName: finalName,
+        oldAmount: oldAmountNum,
+        newAmount: newAmountNum,
+        oldBillingCycle: oldCycle,
+        newBillingCycle: newCycle,
+        oldMonthlyEquivalent: Math.round(oldMonthly * 100) / 100,
+        newMonthlyEquivalent: Math.round(newMonthly * 100) / 100,
+        monthlyDelta,
+        annualizedDelta: Math.round(monthlyDelta * 12 * 100) / 100,
+        chargedAmount: Math.round(chargedAmount * 100) / 100,
+        nextBillingDate: nextBillingDateValue ? nextBillingDateValue.toISOString() : null,
+      },
     };
   }
 

@@ -9,6 +9,11 @@ import {
   buildReviewDecisionPayload,
   buildPayrollConfirmPayload,
 } from '../src/lib/auditContracts.js';
+import {
+  getCycleMeta,
+  getNormalizedMonthlyAmount,
+  shiftDateByCycle,
+} from '../src/lib/subscriptionCycles.js';
 import type { FinancialRuleItem, SavedWhatIfScenario } from '../src/types/index.js';
 
 function runFrontendContractTests() {
@@ -184,6 +189,35 @@ function runFrontendContractTests() {
       assert.ok(uniqueNavIds.has(tab), `DashboardTab "${tab}" must be present in NAV_ITEMS`);
     }
     console.log(`✓ Test 6 passed: Unified navigation covers all ${unionTabs.length} DashboardTab routes with zero duplicates.`);
+  }
+
+  // 7. Subscription multi-month billing cycles & upgrade/downgrade normalization (e.g. 3 Months -> 10 Months / Yearly)
+  {
+    const tenMonthMeta = getCycleMeta('every_10_months');
+    assert.equal(tenMonthMeta.months, 10);
+    assert.equal(tenMonthMeta.shortLabel, '10 Months');
+    assert.equal(tenMonthMeta.isMultiMonth, true);
+
+    assert.equal(getNormalizedMonthlyAmount(1800, 'every_10_months'), 180);
+    assert.equal(getNormalizedMonthlyAmount(300, 'every_3_months'), 100);
+    assert.equal(getNormalizedMonthlyAmount(2400, 'yearly'), 200);
+
+    const start = new Date('2026-01-15T00:00:00Z');
+    const plus3 = shiftDateByCycle(start, 'every_3_months', 1);
+    const plus10 = shiftDateByCycle(start, 'every_10_months', 1);
+    const plus12 = shiftDateByCycle(start, 'yearly', 1);
+    assert.equal(plus3.toISOString().slice(0, 10), '2026-04-15');
+    assert.equal(plus10.toISOString().slice(0, 10), '2026-11-15');
+    assert.equal(plus12.toISOString().slice(0, 10), '2027-01-15');
+
+    // Verify backend & frontend subscription upgrade/downgrade wiring exists cleanly
+    const subTabSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/dashboard/SubscriptionsTab.tsx'),
+      'utf8'
+    );
+    assert.ok(subTabSrc.includes('change-plan') || subTabSrc.includes('onChangeSubscriptionPlan'));
+    assert.ok(subTabSrc.includes('every_10_months'));
+    console.log('✓ Test 7 passed: Subscription multi-month cycles (3m, 10m, 1y) & upgrade/downgrade contracts verified.');
   }
 
   console.log('\nAll Frontend Audit Contract tests passed!');

@@ -10,5 +10,6 @@ router.post('/subscriptions', requireAuth, (req, res) => subscriptionController.
 router.put('/subscriptions/:id', requireAuth, (req, res) => subscriptionController.updateSubscription(req as any, res));
 router.delete('/subscriptions/:id', requireAuth, (req, res) => subscriptionController.deleteSubscription(req as any, res));
 router.post('/subscriptions/:id/pay', requireAuth, (req, res) => subscriptionController.logPayment(req as any, res));
+router.post('/subscriptions/:id/change-plan', requireAuth, (req, res) => subscriptionController.changePlan(req as any, res));
 
 export default router;

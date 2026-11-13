@@ -131,7 +131,7 @@ export const MotionModal: React.FC<MotionBackdropProps> = ({
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
         onClick={onClose}
-        className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-black/55 backdrop-blur-xs p-3 sm:p-6`}
+        className={`fixed inset-0 ${zIndexClass} flex items-center justify-center bg-black/55 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto`}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -147,3 +147,82 @@ export const MotionModal: React.FC<MotionBackdropProps> = ({
     )}
   </AnimatePresence>
 );
+
+interface StaggerListProps {
+  children: React.ReactNode;
+  className?: string;
+  staggerDelay?: number;
+}
+
+export const StaggerList: React.FC<StaggerListProps> = ({
+  children,
+  className = '',
+  staggerDelay = 0.035,
+}) => (
+  <motion.div
+    initial="hidden"
+    animate="visible"
+    variants={{
+      hidden: {},
+      visible: {
+        transition: {
+          staggerChildren: staggerDelay,
+        },
+      },
+    }}
+    className={className}
+  >
+    {children}
+  </motion.div>
+);
+
+interface StaggerItemProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+export const StaggerItem: React.FC<StaggerItemProps> = ({ children, className = '' }) => (
+  <motion.div
+    variants={{
+      hidden: { opacity: 0, y: 8 },
+      visible: {
+        opacity: 1,
+        y: 0,
+        transition: { duration: 0.19, ease: SETTLE_EASE },
+      },
+    }}
+    className={className}
+  >
+    {children}
+  </motion.div>
+);
+
+interface AnimatedProgressBarProps {
+  percent: number;
+  className?: string;
+  barClassName?: string;
+  trackClassName?: string;
+  delay?: number;
+}
+
+export const AnimatedProgressBar: React.FC<AnimatedProgressBarProps> = ({
+  percent,
+  className = '',
+  barClassName = 'bg-indigo-600 dark:bg-indigo-500',
+  trackClassName = 'h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800',
+  delay = 0.04,
+}) => {
+  const ratio = Math.max(0, Math.min(1, (Number.isFinite(percent) ? percent : 0) / 100));
+  return (
+    <div className={`${trackClassName} ${className}`}>
+      <motion.div
+        initial={{ scaleX: 0 }}
+        animate={{ scaleX: ratio }}
+        transition={{ duration: 0.42, delay, ease: SETTLE_EASE }}
+        style={{ transformOrigin: 'left' }}
+        className={`h-full w-full rounded-full ${barClassName}`}
+      />
+    </div>
+  );
+};
+

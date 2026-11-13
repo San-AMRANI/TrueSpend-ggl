@@ -40,6 +40,8 @@ import {
 import { format, differenceInDays } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useGoalEvents } from '../../hooks/useGoalEvents';
+import { motion, AnimatePresence } from 'motion/react';
+import { AnimatedMetricValue, AnimatedProgressBar, MotionModal } from '../ui/MotionPrimitives';
 
 interface GoalsTabProps {
   goals: Goal[];
@@ -637,14 +639,16 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
           <div>
             <div className="text-xs font-medium uppercase tracking-wider text-indigo-200/70">Total Target</div>
             <div className="mt-1 text-xl sm:text-2xl font-black">
-              {metrics.totalTarget.toLocaleString()} <span className="text-xs font-semibold text-indigo-300">MAD</span>
+              <AnimatedMetricValue value={metrics.totalTarget} decimals={0} />{' '}
+              <span className="text-xs font-semibold text-indigo-300">MAD</span>
             </div>
           </div>
 
           <div>
             <div className="text-xs font-medium uppercase tracking-wider text-indigo-200/70">Total Saved</div>
             <div className="mt-1 text-xl sm:text-2xl font-black text-emerald-400">
-              {metrics.totalSaved.toLocaleString()} <span className="text-xs font-semibold text-emerald-300">MAD</span>
+              <AnimatedMetricValue value={metrics.totalSaved} decimals={0} />{' '}
+              <span className="text-xs font-semibold text-emerald-300">MAD</span>
             </div>
           </div>
 
@@ -652,7 +656,7 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
             <div className="text-xs font-medium uppercase tracking-wider text-indigo-200/70">Overall Progress</div>
             <div className="mt-1 flex items-baseline gap-2">
               <span className="text-xl sm:text-2xl font-black text-indigo-300">
-                {metrics.overallProgress.toFixed(1)}%
+                <AnimatedMetricValue value={metrics.overallProgress} decimals={1} suffix="%" />
               </span>
               <span className="text-xs text-indigo-200/60">
                 ({metrics.completedCount} done, {metrics.activeCount} active)
@@ -663,7 +667,7 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
           <div>
             <div className="text-xs font-medium uppercase tracking-wider text-indigo-200/70">Monthly Savings Pace</div>
             <div className="mt-1 text-xl sm:text-2xl font-black text-amber-300">
-              {Math.round(metrics.totalMonthlyNeeded).toLocaleString()}{' '}
+              <AnimatedMetricValue value={Math.round(metrics.totalMonthlyNeeded)} decimals={0} />{' '}
               <span className="text-xs font-semibold text-amber-200/80">MAD / mo</span>
             </div>
           </div>
@@ -764,7 +768,7 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                 <Landmark className="h-4 w-4 text-emerald-500" />
               </div>
               <div className="mt-1.5 text-xl font-black text-gray-900 dark:text-white">
-                {savingsAllocation.totalInSavingsWallets.toLocaleString()}{' '}
+                <AnimatedMetricValue value={savingsAllocation.totalInSavingsWallets} decimals={0} />{' '}
                 <span className="text-xs font-bold text-gray-400">MAD</span>
               </div>
               <div className="mt-0.5 text-[11px] text-gray-500">Across {savingsWallets.length} savings accounts</div>
@@ -776,7 +780,7 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                 <Target className="h-4 w-4 text-indigo-500" />
               </div>
               <div className="mt-1.5 text-xl font-black text-indigo-600 dark:text-indigo-400">
-                {savingsAllocation.totalAllocatedToSavingsGoals.toLocaleString()}{' '}
+                <AnimatedMetricValue value={savingsAllocation.totalAllocatedToSavingsGoals} decimals={0} />{' '}
                 <span className="text-xs font-bold text-gray-400">MAD</span>
               </div>
               <div className="mt-0.5 text-[11px] text-gray-500">
@@ -790,7 +794,7 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                 <Sparkles className="h-4 w-4 text-teal-500" />
               </div>
               <div className="mt-1.5 text-xl font-black text-teal-600 dark:text-teal-400">
-                {savingsAllocation.unallocatedSavings.toLocaleString()}{' '}
+                <AnimatedMetricValue value={savingsAllocation.unallocatedSavings} decimals={0} />{' '}
                 <span className="text-xs font-bold text-gray-400">MAD</span>
               </div>
               <div className="mt-0.5 text-[11px] text-gray-500">Available in savings, unassigned to goals</div>
@@ -917,36 +921,34 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           {/* Status Pills */}
           <div className="flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1 text-xs font-semibold text-gray-600 dark:text-gray-300">
-            <button
-              onClick={() => setFilter('all')}
-              className={`rounded-lg px-3 py-1.5 transition-all ${
-                filter === 'all'
-                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm'
-                  : 'hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              All ({goals.length})
-            </button>
-            <button
-              onClick={() => setFilter('active')}
-              className={`rounded-lg px-3 py-1.5 transition-all ${
-                filter === 'active'
-                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm'
-                  : 'hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              Active ({metrics.activeCount})
-            </button>
-            <button
-              onClick={() => setFilter('completed')}
-              className={`rounded-lg px-3 py-1.5 transition-all ${
-                filter === 'completed'
-                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-sm'
-                  : 'hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              Completed ({metrics.completedCount})
-            </button>
+            {([
+              { id: 'all', label: `All (${goals.length})` },
+              { id: 'active', label: `Active (${metrics.activeCount})` },
+              { id: 'completed', label: `Completed (${metrics.completedCount})` },
+            ] as const).map((tab) => {
+              const active = filter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setFilter(tab.id)}
+                  className={`relative rounded-lg px-3 py-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                    active
+                      ? 'text-gray-900 dark:text-white'
+                      : 'hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="goalsStatusFilterPill"
+                      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                      className="absolute inset-0 rounded-lg bg-white dark:bg-gray-900 shadow-sm"
+                    />
+                  )}
+                  <span className="relative z-10">{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Wallet Filter Dropdown */}
@@ -1026,7 +1028,8 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <motion.div layout className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <AnimatePresence mode="popLayout">
           {displayedGoals.map((goal) => {
             const target = parseFloat(goal.targetAmount) || 0;
             const current = parseFloat(goal.currentAmount) || 0;
@@ -1074,9 +1077,17 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
             }
 
             return (
-              <Card
+              <motion.div
                 key={goal.id}
-                className={`group relative overflow-hidden transition-all duration-200 hover:shadow-md ${
+                layout
+                initial={{ opacity: 0, y: 8, scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.97 }}
+                whileHover={{ y: -2 }}
+                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              >
+              <Card
+                className={`group relative h-full overflow-hidden transition-shadow duration-200 hover:shadow-md ${
                   isCompleted ? 'border-emerald-300 dark:border-emerald-800/60 bg-emerald-50/10' : ''
                 }`}
               >
@@ -1168,20 +1179,19 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
 
                   {/* Progress Bar */}
                   <div className="space-y-1">
-                    <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          isCompleted
-                            ? 'bg-emerald-500'
-                            : progress >= 75
-                            ? 'bg-gradient-to-r from-indigo-500 to-emerald-500'
-                            : progress >= 50
-                            ? 'bg-gradient-to-r from-indigo-500 to-sky-500'
-                            : 'bg-indigo-500'
-                        }`}
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
+                    <AnimatedProgressBar
+                      trackClassName="relative h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
+                      percent={progress}
+                      barClassName={
+                        isCompleted
+                          ? 'bg-emerald-500'
+                          : progress >= 75
+                          ? 'bg-gradient-to-r from-indigo-500 to-emerald-500'
+                          : progress >= 50
+                          ? 'bg-gradient-to-r from-indigo-500 to-sky-500'
+                          : 'bg-indigo-500'
+                      }
+                    />
                     <div className="flex justify-between text-[10px] font-semibold text-gray-400 px-0.5">
                       <span>0%</span>
                       <span>25%</span>
@@ -1321,8 +1331,15 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                       )}
                     </button>
 
-                    {expandedAuditGoalId === goal.id && (
-                      <div className="mt-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/70 p-2.5 space-y-1.5 text-[11px]">
+                    <AnimatePresence initial={false}>
+                      {expandedAuditGoalId === goal.id && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                          className="mt-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/70 p-2.5 space-y-1.5 text-[11px]"
+                        >
                         {loadingGoalId === goal.id ? (
                           <p className="text-gray-400 py-1">Loading contribution events...</p>
                         ) : (eventsByGoal[goal.id] || []).length === 0 ? (
@@ -1389,8 +1406,9 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                             })()}
                           </>
                         )}
-                      </div>
-                    )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
 
                   {/* Actions */}
@@ -1415,15 +1433,21 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
                   </div>
                 </CardContent>
               </Card>
+              </motion.div>
             );
           })}
-        </div>
+          </AnimatePresence>
+        </motion.div>
       )}
 
       {/* CREATE / EDIT GOAL MODAL */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+      <MotionModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        zIndexClass="z-50"
+        containerClassName="w-full max-w-lg my-auto"
+      >
+        <div className="relative w-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-5 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
@@ -1644,13 +1668,16 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
               </div>
             </form>
           </div>
-        </div>
-      )}
+      </MotionModal>
 
       {/* QUICK CREATE SAVINGS WALLET MODAL */}
-      {showNewWalletModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+      <MotionModal
+        isOpen={showNewWalletModal}
+        onClose={() => setShowNewWalletModal(false)}
+        zIndexClass="z-50"
+        containerClassName="w-full max-w-md my-auto"
+      >
+        <div className="relative w-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
@@ -1731,13 +1758,17 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
               </div>
             </form>
           </div>
-        </div>
-      )}
+      </MotionModal>
 
       {/* CONTRIBUTE / DEPOSIT MODAL */}
-      {contributeTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+      <MotionModal
+        isOpen={!!contributeTarget}
+        onClose={() => setContributeTarget(null)}
+        zIndexClass="z-50"
+        containerClassName="w-full max-w-md my-auto"
+      >
+        {contributeTarget && (
+        <div className="relative w-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
@@ -1871,13 +1902,18 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
               </div>
             </form>
           </div>
-        </div>
-      )}
+        )}
+      </MotionModal>
 
       {/* WITHDRAW MODAL */}
-      {withdrawTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+      <MotionModal
+        isOpen={!!withdrawTarget}
+        onClose={() => setWithdrawTarget(null)}
+        zIndexClass="z-50"
+        containerClassName="w-full max-w-md my-auto"
+      >
+        {withdrawTarget && (
+        <div className="relative w-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">
@@ -1985,8 +2021,8 @@ export const GoalsTab: React.FC<GoalsTabProps> = ({
               </div>
             </form>
           </div>
-        </div>
-      )}
+        )}
+      </MotionModal>
     </div>
   );
 };

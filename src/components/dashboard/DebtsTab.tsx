@@ -26,6 +26,8 @@ import {
   Building2,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { motion, AnimatePresence } from 'motion/react';
+import { AnimatedMetricValue, MotionModal } from '../ui/MotionPrimitives';
 
 interface DebtsTabProps {
   debts: Debt[];
@@ -262,7 +264,7 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
               <h3 className="font-semibold text-xs sm:text-sm uppercase tracking-wide">Owed to you</h3>
             </div>
             <p className="text-2xl sm:text-3xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
-              {totalReceivable.toFixed(2)} <span className="text-sm font-sans font-normal text-gray-500">MAD</span>
+              <AnimatedMetricValue value={totalReceivable} /> <span className="text-sm font-sans font-normal text-gray-500">MAD</span>
             </p>
           </CardContent>
         </Card>
@@ -277,19 +279,27 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
               <h3 className="font-semibold text-xs sm:text-sm uppercase tracking-wide">You owe</h3>
             </div>
             <p className="text-2xl sm:text-3xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
-              {totalPayable.toFixed(2)} <span className="text-sm font-sans font-normal text-gray-500">MAD</span>
+              <AnimatedMetricValue value={totalPayable} /> <span className="text-sm font-sans font-normal text-gray-500">MAD</span>
             </p>
           </CardContent>
         </Card>
       </div>
 
       {/* ── Interconnected Monthly Budget Sync & Protection ── */}
-      {budgetSuccessMsg && (
-        <div className="rounded-xl bg-emerald-600 text-white p-3 text-xs font-semibold flex items-center gap-2 shadow-sm animate-in fade-in">
-          <CheckCircle2 className="h-4 w-4" />
-          <span>{budgetSuccessMsg}</span>
-        </div>
-      )}
+      <AnimatePresence>
+        {budgetSuccessMsg && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+            className="rounded-xl bg-emerald-600 text-white p-3 text-xs font-semibold flex items-center gap-2 shadow-sm"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            <span>{budgetSuccessMsg}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {totalPayable > 0 && (
         <Card
@@ -394,28 +404,33 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg">
-                  <button
-                    type="button"
-                    onClick={() => setPayoffStrategy('avalanche')}
-                    className={`px-3 py-1 text-xs font-medium rounded-md whitespace-nowrap transition-all ${
-                      payoffStrategy === 'avalanche'
-                        ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                        : 'text-gray-600 dark:text-gray-400'
-                    }`}
-                  >
-                    Avalanche (Highest APR)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPayoffStrategy('snowball')}
-                    className={`px-3 py-1 text-xs font-medium rounded-md whitespace-nowrap transition-all ${
-                      payoffStrategy === 'snowball'
-                        ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                        : 'text-gray-600 dark:text-gray-400'
-                    }`}
-                  >
-                    Snowball (Smallest First)
-                  </button>
+                  {([
+                    { id: 'avalanche', label: 'Avalanche (Highest APR)' },
+                    { id: 'snowball', label: 'Snowball (Smallest First)' },
+                  ] as const).map((strat) => {
+                    const active = payoffStrategy === strat.id;
+                    return (
+                      <button
+                        key={strat.id}
+                        type="button"
+                        onClick={() => setPayoffStrategy(strat.id)}
+                        className={`relative px-3 py-1 text-xs font-medium rounded-md whitespace-nowrap transition-colors cursor-pointer ${
+                          active
+                            ? 'text-indigo-600 dark:text-indigo-400'
+                            : 'text-gray-600 dark:text-gray-400'
+                        }`}
+                      >
+                        {active && (
+                          <motion.span
+                            layoutId="debtStrategyPill"
+                            transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                            className="absolute inset-0 rounded-md bg-white dark:bg-gray-800 shadow-xs"
+                          />
+                        )}
+                        <span className="relative z-10">{strat.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -506,28 +521,45 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
       )}
 
       {/* Add New Debt Form / Button */}
-      {!showAddForm ? (
-        <Button onClick={() => setShowAddForm(true)} className="w-full sm:w-auto shadow-sm">
-          <Plus className="h-4 w-4 mr-1.5" /> Add New Debt, Split, or Amortized Loan
-        </Button>
-      ) : (
-        <div className="relative animate-in fade-in slide-in-from-top-4 duration-200">
-          <DebtForm
-            onSuccess={() => {
-              fetchData();
-              setShowAddForm(false);
-            }}
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="absolute top-3 right-3 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
-            onClick={() => setShowAddForm(false)}
+      <AnimatePresence mode="wait" initial={false}>
+        {!showAddForm ? (
+          <motion.div
+            key="add-debt-btn"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.14 }}
           >
-            Cancel
-          </Button>
-        </div>
-      )}
+            <Button onClick={() => setShowAddForm(true)} className="w-full sm:w-auto shadow-sm">
+              <Plus className="h-4 w-4 mr-1.5" /> Add New Debt, Split, or Amortized Loan
+            </Button>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="add-debt-form"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className="relative"
+          >
+            <DebtForm
+              onSuccess={() => {
+                fetchData();
+                setShowAddForm(false);
+              }}
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute top-3 right-3 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+              onClick={() => setShowAddForm(false)}
+            >
+              Cancel
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Debts List */}
       <Card>
@@ -542,46 +574,35 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
 
             {/* Tabs */}
             <div className="flex bg-gray-100 dark:bg-gray-900 p-1 rounded-lg w-full sm:w-auto overflow-x-auto hide-scrollbar">
-              <button
-                onClick={() => setActiveTab('receivable')}
-                className={`flex-1 sm:flex-none px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-md whitespace-nowrap transition-all ${
-                  activeTab === 'receivable'
-                    ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                }`}
-              >
-                Owed to You
-              </button>
-              <button
-                onClick={() => setActiveTab('payable')}
-                className={`flex-1 sm:flex-none px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-md whitespace-nowrap transition-all ${
-                  activeTab === 'payable'
-                    ? 'bg-white dark:bg-gray-800 text-orange-600 dark:text-orange-400 shadow-sm'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                }`}
-              >
-                You Owe
-              </button>
-              <button
-                onClick={() => setActiveTab('cleared')}
-                className={`flex-1 sm:flex-none px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-md whitespace-nowrap transition-all ${
-                  activeTab === 'cleared'
-                    ? 'bg-white dark:bg-gray-800 text-green-600 dark:text-green-400 shadow-sm'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                }`}
-              >
-                Settled / Freed
-              </button>
-              <button
-                onClick={() => setActiveTab('all')}
-                className={`flex-1 sm:flex-none px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-md whitespace-nowrap transition-all ${
-                  activeTab === 'all'
-                    ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
-                }`}
-              >
-                All
-              </button>
+              {([
+                { id: 'receivable', label: 'Owed to You', activeColor: 'text-blue-600 dark:text-blue-400' },
+                { id: 'payable', label: 'You Owe', activeColor: 'text-orange-600 dark:text-orange-400' },
+                { id: 'cleared', label: 'Settled / Freed', activeColor: 'text-green-600 dark:text-green-400' },
+                { id: 'all', label: 'All', activeColor: 'text-gray-900 dark:text-gray-100' },
+              ] as const).map((tab) => {
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`relative flex-1 sm:flex-none px-3.5 py-1.5 text-xs sm:text-sm font-medium rounded-md whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                      active
+                        ? tab.activeColor
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="debtFilterPill"
+                        transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                        className="absolute inset-0 rounded-md bg-white dark:bg-gray-800 shadow-sm"
+                      />
+                    )}
+                    <span className="relative z-10">{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </CardHeader>
@@ -789,8 +810,15 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
                     </div>
 
                     {/* Expandable Dated Amortization Schedule Table */}
-                    {isScheduleExpanded && schedule.length > 0 && (
-                      <div className="mt-4 pl-0 sm:pl-14 animate-in fade-in duration-150">
+                    <AnimatePresence initial={false}>
+                      {isScheduleExpanded && schedule.length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                          className="mt-4 pl-0 sm:pl-14"
+                        >
                         <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-gray-50/50 dark:bg-gray-900/40">
                           <div className="px-3.5 py-2.5 border-b border-gray-200 dark:border-gray-800 flex flex-wrap items-center justify-between gap-2 text-xs">
                             <span className="font-semibold text-gray-900 dark:text-gray-100">
@@ -843,8 +871,9 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
                             </table>
                           </div>
                         </div>
-                      </div>
-                    )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
 
                     {debt.settlements && debt.settlements.length > 0 && (
                       <div className="mt-3 pl-14 sm:pl-14">
@@ -934,9 +963,14 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
       />
 
       {/* Edit Debt Modal */}
-      {editingDebt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4">
+      <MotionModal
+        isOpen={!!editingDebt}
+        onClose={() => setEditingDebt(null)}
+        zIndexClass="z-50"
+        containerClassName="w-full max-w-md my-auto"
+      >
+        {editingDebt && (
+          <div className="w-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-bold text-gray-900 dark:text-white">Edit Debt Record</h3>
               <button
@@ -993,13 +1027,18 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
               </div>
             </form>
           </div>
-        </div>
-      )}
+        )}
+      </MotionModal>
 
       {/* Delete Debt Confirmation Modal */}
-      {deletingDebt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4">
+      <MotionModal
+        isOpen={!!deletingDebt}
+        onClose={() => setDeletingDebt(null)}
+        zIndexClass="z-50"
+        containerClassName="w-full max-w-sm my-auto"
+      >
+        {deletingDebt && (
+          <div className="w-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl space-y-4">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 shrink-0">
                 <Trash2 className="h-5 w-5" />
@@ -1032,8 +1071,8 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
               </Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </MotionModal>
     </div>
   );
 };

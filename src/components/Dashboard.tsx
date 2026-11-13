@@ -133,6 +133,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleUpdateSubscription,
     handleDeleteSubscription,
     handlePaySubscription,
+    handleChangeSubscriptionPlan,
     handleDetectSubscriptions,
     handleUpsertStockPosition,
     handleUpdateStockPosition,
@@ -480,6 +481,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               onUpdateSubscription={handleUpdateSubscription}
               onDeleteSubscription={handleDeleteSubscription}
               onPaySubscription={handlePaySubscription}
+              onChangeSubscriptionPlan={handleChangeSubscriptionPlan}
               onDetectSubscriptions={handleDetectSubscriptions}
             />
           )}

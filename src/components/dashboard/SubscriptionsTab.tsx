@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Subscription,
+  SubscriptionPlanChangePayload,
+  SubscriptionPlanPaymentMode,
   DetectedSubscription,
   Wallet,
   Goal,
@@ -27,19 +29,28 @@ import {
   Edit2,
   Zap,
   TrendingDown,
+  TrendingUp,
   Clock,
   Sliders,
   Info,
   X,
   Play,
   Pause,
-  RotateCcw,
   Layers,
   PiggyBank,
   ArrowUpDown,
+  ArrowRight,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
+import {
+  StaggerList,
+  StaggerItem,
+  AnimatedProgressBar,
+  AnimatedMetricValue,
+  MotionModal,
+} from '../ui/MotionPrimitives';
 
 interface SubscriptionsTabProps {
   subscriptions: Subscription[];
@@ -53,6 +64,7 @@ interface SubscriptionsTabProps {
   onUpdateSubscription: (id: string, payload: Partial<Subscription>) => Promise<any>;
   onDeleteSubscription: (id: string) => Promise<any>;
   onPaySubscription: (id: string, payload?: { walletId?: string; date?: string }) => Promise<any>;
+  onChangeSubscriptionPlan?: (id: string, payload: SubscriptionPlanChangePayload) => Promise<any>;
   onDetectSubscriptions: () => Promise<DetectedSubscription[]>;
 }
 
@@ -184,6 +196,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
   onUpdateSubscription,
   onDeleteSubscription,
   onPaySubscription,
+  onChangeSubscriptionPlan,
   onDetectSubscriptions,
 }) => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -199,6 +212,25 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
   const [isDetecting, setIsDetecting] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+
+  // Upgrade / Downgrade Plan Switcher Modal state
+  const [switchingSub, setSwitchingSub] = useState<Subscription | null>(null);
+  const [switchNewName, setSwitchNewName] = useState('');
+  const [switchNewAmount, setSwitchNewAmount] = useState('');
+  const [switchNewCurrency, setSwitchNewCurrency] = useState('MAD');
+  const [switchNewCycle, setSwitchNewCycle] = useState<SubscriptionBillingCycle>('every_10_months');
+  const [switchIsCustomCycle, setSwitchIsCustomCycle] = useState(false);
+  const [switchCustomCount, setSwitchCustomCount] = useState('10');
+  const [switchCustomUnit, setSwitchCustomUnit] = useState<'months' | 'days'>('months');
+  const [switchEffectiveDate, setSwitchEffectiveDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [switchRecalculateExpiry, setSwitchRecalculateExpiry] = useState(true);
+  const [switchNextBillingDate, setSwitchNextBillingDate] = useState('');
+  const [switchPaymentMode, setSwitchPaymentMode] = useState<SubscriptionPlanPaymentMode>('none');
+  const [switchPaymentAmount, setSwitchPaymentAmount] = useState('');
+  const [switchWalletId, setSwitchWalletId] = useState('');
+  const [switchStatus, setSwitchStatus] = useState<SubscriptionStatus>('active');
+  const [switchNotes, setSwitchNotes] = useState('');
+  const [isSubmittingSwitch, setIsSubmittingSwitch] = useState(false);
 
   // Pruning Simulator State
   const [prunedSubIds, setPrunedSubIds] = useState<Set<string>>(new Set());
@@ -681,6 +713,165 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
     setTimeout(() => setActionSuccessMessage(null), 4500);
   };
 
+  const recomputeSwitchDatesAndDefaults = (
+    sub: Subscription,
+    effDate: string,
+    targetCycle: SubscriptionBillingCycle,
+    recalc: boolean,
+    nextAmountStr: string,
+    payMode: SubscriptionPlanPaymentMode
+  ) => {
+    if (recalc) {
+      const parsedEff = new Date(`${effDate}T00:00:00`);
+      if (!isNaN(parsedEff.getTime())) {
+        setSwitchNextBillingDate(shiftDateByCycle(parsedEff, targetCycle, 1).toISOString().slice(0, 10));
+      }
+    }
+    const oldAmt = parseFloat(sub.amount) || 0;
+    const newAmt = parseFloat(nextAmountStr) || 0;
+    if (payMode === 'full') {
+      setSwitchPaymentAmount(newAmt > 0 ? newAmt.toFixed(2) : '');
+    } else if (payMode === 'difference') {
+      const diff = Math.max(0, newAmt - oldAmt);
+      setSwitchPaymentAmount(diff > 0 ? diff.toFixed(2) : '0.00');
+    }
+  };
+
+  const handleOpenSwitchPlanModal = (sub: Subscription) => {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const currentMeta = getCycleMeta(sub.billingCycle);
+    // Suggest natural next duration step (e.g. 3 months -> 10 months, else yearly, or monthly if already yearly)
+    const suggestedCycle: SubscriptionBillingCycle =
+      currentMeta.months === 3
+        ? 'every_10_months'
+        : currentMeta.months >= 12
+        ? 'every_3_months'
+        : currentMeta.months === 1
+        ? 'every_3_months'
+        : 'yearly';
+
+    const currentAmt = parseFloat(sub.amount) || 0;
+    const bankWallet =
+      wallets.find((w) => w.id === sub.walletId) ||
+      wallets.find((w) => w.type === 'Bank' && w.isMain) ||
+      wallets[0];
+
+    setSwitchingSub(sub);
+    setSwitchNewName(sub.name);
+    setSwitchNewAmount(currentAmt > 0 ? currentAmt.toFixed(2) : '');
+    setSwitchNewCurrency(sub.currency || 'MAD');
+    setSwitchIsCustomCycle(false);
+    setSwitchCustomCount(String(getCycleMeta(suggestedCycle).months || 10));
+    setSwitchCustomUnit('months');
+    setSwitchNewCycle(suggestedCycle);
+    setSwitchEffectiveDate(todayIso);
+    setSwitchRecalculateExpiry(true);
+    setSwitchNextBillingDate(shiftDateByCycle(new Date(`${todayIso}T00:00:00`), suggestedCycle, 1).toISOString().slice(0, 10));
+    setSwitchPaymentMode('none');
+    setSwitchPaymentAmount(currentAmt > 0 ? currentAmt.toFixed(2) : '');
+    setSwitchWalletId(bankWallet?.id || '');
+    setSwitchStatus(sub.status === 'planned' ? 'active' : sub.status);
+    setSwitchNotes('');
+  };
+
+  const activeSwitchCycle: SubscriptionBillingCycle = switchIsCustomCycle
+    ? (`every_${Math.max(1, parseInt(switchCustomCount, 10) || 1)}_${switchCustomUnit}` as SubscriptionBillingCycle)
+    : switchNewCycle;
+
+  const switchPreview = useMemo(() => {
+    if (!switchingSub) return null;
+    const oldAmt = parseFloat(switchingSub.amount) || 0;
+    const oldMeta = getCycleMeta(switchingSub.billingCycle);
+    const oldMonthly = getNormalizedMonthlyAmount(oldAmt, switchingSub.billingCycle);
+
+    const newAmt = parseFloat(switchNewAmount) || 0;
+    const newMeta = getCycleMeta(activeSwitchCycle);
+    const newMonthly = getNormalizedMonthlyAmount(newAmt, activeSwitchCycle);
+
+    let direction: 'upgrade' | 'downgrade' | 'switch' = 'switch';
+    if (newAmt > oldAmt && newMeta.months >= oldMeta.months) {
+      direction = 'upgrade';
+    } else if (newAmt < oldAmt && newMeta.months <= oldMeta.months) {
+      direction = 'downgrade';
+    } else if (Math.abs(newMonthly - oldMonthly) >= 0.01) {
+      direction = newMonthly > oldMonthly ? 'upgrade' : 'downgrade';
+    } else if (Math.abs(newAmt - oldAmt) >= 0.01) {
+      direction = newAmt > oldAmt ? 'upgrade' : 'downgrade';
+    }
+
+    const monthlyDelta = newMonthly - oldMonthly;
+    const annualizedDelta = monthlyDelta * 12;
+    const monthlyPctChange = oldMonthly > 0 ? (monthlyDelta / oldMonthly) * 100 : 0;
+
+    return {
+      oldAmt,
+      oldMeta,
+      oldMonthly,
+      newAmt,
+      newMeta,
+      newMonthly,
+      direction,
+      monthlyDelta,
+      annualizedDelta,
+      monthlyPctChange,
+    };
+  }, [switchingSub, switchNewAmount, activeSwitchCycle]);
+
+  const handleConfirmSwitchPlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!switchingSub) return;
+    const parsedNewAmt = parseFloat(switchNewAmount);
+    if (!Number.isFinite(parsedNewAmt) || parsedNewAmt <= 0) return;
+
+    setIsSubmittingSwitch(true);
+    try {
+      const payload: SubscriptionPlanChangePayload = {
+        newName: switchNewName.trim() || switchingSub.name,
+        newAmount: parsedNewAmt,
+        newCurrency: switchNewCurrency || switchingSub.currency || 'MAD',
+        newBillingCycle: activeSwitchCycle,
+        effectiveDate: switchEffectiveDate,
+        recalculateNextDate: switchRecalculateExpiry,
+        nextBillingDate: switchNextBillingDate ? new Date(`${switchNextBillingDate}T00:00:00`).toISOString() : null,
+        walletId: switchWalletId || null,
+        paymentMode: switchPaymentMode,
+        paymentAmount:
+          switchPaymentMode !== 'none' ? Math.max(0, parseFloat(switchPaymentAmount) || 0) : undefined,
+        status: switchStatus,
+        notes: switchNotes.trim() ? switchNotes.trim() : undefined,
+      };
+
+      if (onChangeSubscriptionPlan) {
+        const res = await onChangeSubscriptionPlan(switchingSub.id, payload);
+        const dirLabel =
+          res?.summary?.direction === 'downgrade'
+            ? 'Downgraded'
+            : res?.summary?.direction === 'upgrade'
+            ? 'Upgraded'
+            : 'Updated plan for';
+        showToast(
+          `${dirLabel} "${payload.newName}" → ${parsedNewAmt.toFixed(0)} ${payload.newCurrency} / ${getCycleMeta(activeSwitchCycle).shortLabel}`
+        );
+      } else {
+        await onUpdateSubscription(switchingSub.id, {
+          name: payload.newName,
+          amount: parsedNewAmt.toFixed(2),
+          currency: payload.newCurrency,
+          billingCycle: activeSwitchCycle,
+          walletId: payload.walletId,
+          nextBillingDate: payload.nextBillingDate,
+          status: payload.status,
+        });
+        showToast(`Switched "${payload.newName}" to ${getCycleMeta(activeSwitchCycle).shortLabel}`);
+      }
+      setSwitchingSub(null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to change subscription plan');
+    } finally {
+      setIsSubmittingSwitch(false);
+    }
+  };
+
   const activeModalCycle: SubscriptionBillingCycle = isCustomCycle
     ? (`every_${Math.max(1, parseInt(customIntervalCount, 10) || 1)}_${customIntervalUnit}` as SubscriptionBillingCycle)
     : formData.billingCycle;
@@ -746,109 +937,114 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
       </div>
 
       {/* Top Metric Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <StaggerList className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {/* Normalized Monthly Burn */}
-        <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                Normalized Monthly Burn
-              </span>
-              <Repeat className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-            </div>
-            <div className="mt-3 flex items-baseline gap-1.5 tabular-nums">
-              <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-                {totalMonthlyBurn.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">MAD / mo</span>
-            </div>
-            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-              {activeSubs.length} active ({threeMonthSubs.length} on 3-month terms)
-              {plannedMonthlyAddition > 0 && (
-                <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                  {' '}· +{plannedMonthlyAddition.toFixed(0)} MAD/mo planned
+        <StaggerItem>
+          <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs h-full transition-colors hover:border-indigo-300/70 dark:hover:border-indigo-800">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Normalized Monthly Burn
                 </span>
-              )}
-            </p>
-          </CardContent>
-        </Card>
+                <Repeat className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div className="mt-3 flex items-baseline gap-1.5 tabular-nums">
+                <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+                  <AnimatedMetricValue value={totalMonthlyBurn} decimals={2} />
+                </span>
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">MAD / mo</span>
+              </div>
+              <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {activeSubs.length} active ({threeMonthSubs.length} on 3-month terms)
+                {plannedMonthlyAddition > 0 && (
+                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">
+                    {' '}· +{plannedMonthlyAddition.toFixed(0)} MAD/mo planned
+                  </span>
+                )}
+              </p>
+            </CardContent>
+          </Card>
+        </StaggerItem>
 
         {/* Multi-Month Sinking Fund */}
-        <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                Multi-Month Sinking Fund
-              </span>
-              <PiggyBank className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div className="mt-3 flex items-baseline gap-1.5 tabular-nums">
-              <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-                {multiMonthSinkingFundMonthly.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </span>
-              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">MAD / mo set-aside</span>
-            </div>
-            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-              {multiMonthSubs.length > 0
-                ? `Target accrued now: ${multiMonthRecommendedReserveNow.toFixed(0)} MAD across ${multiMonthSubs.length} pass${multiMonthSubs.length === 1 ? '' : 'es'}`
-                : 'For 3-month, 6-month & annual passes'}
-            </p>
-          </CardContent>
-        </Card>
+        <StaggerItem>
+          <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs h-full transition-colors hover:border-emerald-300/70 dark:hover:border-emerald-800">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Multi-Month Sinking Fund
+                </span>
+                <PiggyBank className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="mt-3 flex items-baseline gap-1.5 tabular-nums">
+                <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+                  <AnimatedMetricValue value={multiMonthSinkingFundMonthly} decimals={2} />
+                </span>
+                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">MAD / mo set-aside</span>
+              </div>
+              <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                {multiMonthSubs.length > 0
+                  ? `Target accrued now: ${multiMonthRecommendedReserveNow.toFixed(0)} MAD across ${multiMonthSubs.length} pass${multiMonthSubs.length === 1 ? '' : 'es'}`
+                  : 'For 3-month, 10-month & annual passes'}
+              </p>
+            </CardContent>
+          </Card>
+        </StaggerItem>
 
         {/* Annualized Commitment */}
-        <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                Annualized Total Cost
-              </span>
-              <TrendingDown className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div className="mt-3 flex items-baseline gap-1.5 tabular-nums">
-              <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-                {totalAnnualDrain.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-              </span>
-              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">MAD / yr</span>
-            </div>
-            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-              {monthlySalary > 0
-                ? `${((totalAnnualDrain / (monthlySalary * 12)) * 100).toFixed(1)}% of annual income · ${lifeEnergyHours.toFixed(1)} work hrs/mo`
-                : `${(totalMonthlyBurn / 30).toFixed(1)} MAD/day baseline commitment`}
-            </p>
-          </CardContent>
-        </Card>
+        <StaggerItem>
+          <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs h-full transition-colors hover:border-amber-300/70 dark:hover:border-amber-800">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Annualized Total Cost
+                </span>
+                <TrendingDown className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="mt-3 flex items-baseline gap-1.5 tabular-nums">
+                <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+                  <AnimatedMetricValue value={totalAnnualDrain} decimals={0} />
+                </span>
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">MAD / yr</span>
+              </div>
+              <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                {monthlySalary > 0
+                  ? `${((totalAnnualDrain / (monthlySalary * 12)) * 100).toFixed(1)}% of annual income · ${lifeEnergyHours.toFixed(1)} work hrs/mo`
+                  : `${(totalMonthlyBurn / 30).toFixed(1)} MAD/day baseline commitment`}
+              </p>
+            </CardContent>
+          </Card>
+        </StaggerItem>
 
         {/* Upcoming Renewals (14 Days) & Planned */}
-        <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                Due in 14 Days &amp; Planned
-              </span>
-              <Calendar className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div className="mt-3 flex items-baseline gap-1.5 tabular-nums">
-              <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
-                {upcomingRenewals.length}
-              </span>
-              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
-                upcoming · {plannedSubs.length} planned
-              </span>
-            </div>
-            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 truncate">
-              {upcomingRenewals.length > 0
-                ? `Next: ${upcomingRenewals[0].name} (${parseFloat(upcomingRenewals[0].amount).toFixed(0)} MAD)`
-                : plannedSubs.length > 0
-                ? `Planned: ${plannedSubs.map((p) => p.name).join(', ')}`
-                : 'No renewals due in the next 14 days'}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        <StaggerItem>
+          <Card className="border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xs h-full transition-colors hover:border-purple-300/70 dark:hover:border-purple-800">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Due in 14 Days &amp; Planned
+                </span>
+                <Calendar className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div className="mt-3 flex items-baseline gap-1.5 tabular-nums">
+                <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+                  <AnimatedMetricValue value={upcomingRenewals.length} decimals={0} />
+                </span>
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+                  upcoming · {plannedSubs.length} planned
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 truncate">
+                {upcomingRenewals.length > 0
+                  ? `Next: ${upcomingRenewals[0].name} (${parseFloat(upcomingRenewals[0].amount).toFixed(0)} MAD)`
+                  : plannedSubs.length > 0
+                  ? `Planned: ${plannedSubs.map((p) => p.name).join(', ')}`
+                  : 'No renewals due in the next 14 days'}
+              </p>
+            </CardContent>
+          </Card>
+        </StaggerItem>
+      </StaggerList>
 
       {/* 90-Day Renewal Cashflow Schedule & Category Allocation */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -941,7 +1137,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                 Add active subscriptions or 3-month passes to view category allocation.
               </p>
             ) : (
-              categoryBreakdown.slice(0, 5).map((cat) => {
+              categoryBreakdown.slice(0, 5).map((cat, idx) => {
                 const pct = totalMonthlyBurn > 0 ? Math.round((cat.monthly / totalMonthlyBurn) * 100) : 0;
                 return (
                   <div key={cat.category} className="space-y-1">
@@ -954,12 +1150,12 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                         {cat.monthly.toFixed(0)} MAD/mo ({pct}%)
                       </span>
                     </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-                      <div
-                        className="h-full rounded-full bg-indigo-600 dark:bg-indigo-500 transition-all"
-                        style={{ width: `${Math.max(4, pct)}%` }}
-                      />
-                    </div>
+                    <AnimatedProgressBar
+                      percent={Math.max(4, pct)}
+                      delay={idx * 0.04}
+                      trackClassName="h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
+                      barClassName="bg-indigo-600 dark:bg-indigo-500"
+                    />
                   </div>
                 );
               })
@@ -1081,13 +1277,20 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setFilterStatus(tab.id)}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                  className={`relative rounded-lg px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     filterStatus === tab.id
-                      ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-2xs'
+                      ? 'text-gray-900 dark:text-gray-100'
                       : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                   }`}
                 >
-                  {tab.label}
+                  {filterStatus === tab.id && (
+                    <motion.span
+                      layoutId="subStatusFilterPill"
+                      transition={{ type: 'spring', bounce: 0.18, duration: 0.34 }}
+                      className="absolute inset-0 rounded-lg bg-white dark:bg-gray-900 shadow-2xs"
+                    />
+                  )}
+                  <span className="relative z-10">{tab.label}</span>
                 </button>
               ))}
             </div>
@@ -1106,13 +1309,20 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                   key={cTab.id}
                   type="button"
                   onClick={() => setFilterCycle(cTab.id)}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+                  className={`relative rounded-lg px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     filterCycle === cTab.id
-                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      ? 'text-white'
                       : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
                   }`}
                 >
-                  {cTab.label}
+                  {filterCycle === cTab.id && (
+                    <motion.span
+                      layoutId="subCycleFilterPill"
+                      transition={{ type: 'spring', bounce: 0.18, duration: 0.34 }}
+                      className="absolute inset-0 rounded-lg bg-indigo-600 shadow-2xs"
+                    />
+                  )}
+                  <span className="relative z-10">{cTab.label}</span>
                 </button>
               ))}
             </div>
@@ -1185,7 +1395,8 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredSubs.map((sub) => {
+            <AnimatePresence mode="popLayout">
+            {filteredSubs.map((sub, idx) => {
               const meta = getCycleMeta(sub.billingCycle);
               const term = computeTermProgress(sub.nextBillingDate, sub.billingCycle);
               const daysLeft = term.daysRemaining;
@@ -1208,14 +1419,19 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                 <motion.div
                   key={sub.id}
                   layout
-                  className={`group relative flex flex-col justify-between rounded-2xl border p-5 transition-all ${
+                  initial={{ opacity: 0, y: 8, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  whileHover={{ y: -2 }}
+                  transition={{ duration: 0.2, delay: Math.min(idx * 0.025, 0.2), ease: [0.16, 1, 0.3, 1] }}
+                  className={`group relative flex flex-col justify-between rounded-2xl border p-5 transition-colors ${
                     isPrunedInSim
                       ? 'border-dashed border-emerald-400 bg-emerald-50/30 dark:bg-emerald-950/20'
                       : isPlanned
                       ? 'border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/15 dark:bg-indigo-950/10'
                       : sub.status === 'reviewing'
                       ? 'border-amber-200 dark:border-amber-900/50 bg-amber-50/20 dark:bg-amber-950/10'
-                      : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-700'
+                      : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300/70 dark:hover:border-indigo-800'
                   }`}
                 >
                   <div>
@@ -1353,18 +1569,17 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
 
                         {!isPlanned && (
                           <>
-                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  isOverdue || isUrgent
-                                    ? 'bg-rose-500'
-                                    : meta.isMultiMonth
-                                    ? 'bg-indigo-600 dark:bg-indigo-400'
-                                    : 'bg-emerald-500'
-                                }`}
-                                style={{ width: `${term.percentElapsed}%` }}
-                              />
-                            </div>
+                            <AnimatedProgressBar
+                              percent={term.percentElapsed}
+                              trackClassName="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+                              barClassName={
+                                isOverdue || isUrgent
+                                  ? 'bg-rose-500'
+                                  : meta.isMultiMonth
+                                  ? 'bg-indigo-600 dark:bg-indigo-400'
+                                  : 'bg-emerald-500'
+                              }
+                            />
                             {meta.isMultiMonth && (
                               <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 pt-0.5 tabular-nums">
                                 <span>
@@ -1412,7 +1627,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                   </div>
 
                   {/* Card Footer: Quick Actions */}
-                  <div className="mt-4 flex items-center gap-2 border-t border-gray-100 dark:border-gray-800/80 pt-3">
+                  <div className="mt-4 flex items-center gap-1.5 border-t border-gray-100 dark:border-gray-800/80 pt-3">
                     <Button
                       size="sm"
                       onClick={() => {
@@ -1420,21 +1635,33 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                         setPaymentDateInput(new Date().toISOString().slice(0, 10));
                         setPayingSub(sub);
                       }}
-                      className={`flex-1 text-xs ${
+                      className={`flex-1 min-w-0 px-2.5 text-xs ${
                         isPlanned
                           ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
                           : 'bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
                       }`}
                     >
-                      <Zap className="mr-1.5 h-3.5 w-3.5" />
-                      {isPlanned ? `Start & Pay (${meta.shortLabel})` : `Renew (+${meta.shortLabel})`}
+                      <Zap className="mr-1 h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">
+                        {isPlanned ? `Start (${meta.shortLabel})` : `Renew (${meta.shortLabel})`}
+                      </span>
                     </Button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenSwitchPlanModal(sub)}
+                      className="flex h-8 px-2 items-center justify-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                      title="Upgrade or downgrade plan (price & duration)"
+                    >
+                      <ChevronsUpDown className="h-3.5 w-3.5 shrink-0" />
+                      <span>Plan</span>
+                    </button>
 
                     {sub.status === 'active' ? (
                       <button
                         type="button"
                         onClick={() => handleQuickStatusChange(sub, 'paused')}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 text-gray-400 hover:border-gray-300 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 text-gray-400 hover:border-gray-300 hover:text-gray-700 dark:hover:text-gray-200 transition-colors cursor-pointer"
                         title="Pause subscription"
                       >
                         <Pause className="h-3.5 w-3.5" />
@@ -1443,7 +1670,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                       <button
                         type="button"
                         onClick={() => handleQuickStatusChange(sub, 'active')}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 text-emerald-600 hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 text-emerald-600 hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors cursor-pointer"
                         title="Activate without logging payment"
                       >
                         <Play className="h-3.5 w-3.5" />
@@ -1453,7 +1680,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                     <button
                       type="button"
                       onClick={() => togglePruned(sub.id)}
-                      className={`flex h-8 px-2.5 items-center justify-center rounded-lg border text-[11px] font-medium transition-colors ${
+                      className={`flex h-8 px-2 items-center justify-center rounded-lg border text-[11px] font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                         isPrunedInSim
                           ? 'border-emerald-500 bg-emerald-600 text-white'
                           : 'border-gray-200 dark:border-gray-800 text-gray-500 hover:border-gray-300 hover:text-gray-800 dark:hover:text-gray-200'
@@ -1466,6 +1693,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                 </motion.div>
               );
             })}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -1595,20 +1823,18 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
       </Card>
 
       {/* Create / Edit Modal */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs overflow-y-auto">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-xl rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl my-8"
-          >
+      <MotionModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        containerClassName="w-full max-w-xl rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl my-8 max-h-[90vh] overflow-y-auto ts-scrollbar"
+      >
             <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
                   {editingSub ? 'Edit Subscription / Term Pass' : 'Add Subscription or Multi-Month Pass'}
                 </h3>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Configure 3-month passes (insurance, gym), monthly bills, or planned upcoming memberships.
+                  Configure 3-month or 10-month passes, annual plans, monthly bills, or upcoming memberships.
                 </p>
               </div>
               <button
@@ -1656,12 +1882,13 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                   Billing Duration / Cycle *
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {(
                     [
                       { id: 'every_3_months', title: 'Every 3 Months', sub: '3-Mo Pass (Gym/Ins)' },
                       { id: 'monthly', title: 'Every Month', sub: 'Standard Monthly' },
                       { id: 'every_6_months', title: 'Every 6 Months', sub: '6-Mo Pass' },
+                      { id: 'every_10_months', title: 'Every 10 Months', sub: '10-Mo Extended Pass' },
                       { id: 'yearly', title: 'Yearly (12 Mo)', sub: 'Annual Plan' },
                     ] as const
                   ).map((opt) => {
@@ -1991,18 +2218,454 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                 </Button>
               </div>
             </form>
-          </motion.div>
-        </div>
-      )}
+      </MotionModal>
+
+      {/* Upgrade / Downgrade Plan Switcher Modal */}
+      <MotionModal
+        isOpen={Boolean(switchingSub)}
+        onClose={() => !isSubmittingSwitch && setSwitchingSub(null)}
+        containerClassName="w-full max-w-2xl rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl my-8 max-h-[92vh] overflow-y-auto ts-scrollbar"
+      >
+        {switchingSub && switchPreview && (
+          <form onSubmit={handleConfirmSwitchPlan} className="space-y-4">
+            <div className="flex items-start justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-950/60 text-2xl">
+                  {switchingSub.icon || '📱'}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 truncate">
+                      Upgrade or Downgrade Plan
+                    </h3>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                        switchPreview.direction === 'upgrade'
+                          ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300'
+                          : switchPreview.direction === 'downgrade'
+                          ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300'
+                          : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                      }`}
+                    >
+                      {switchPreview.direction === 'upgrade' ? (
+                        <TrendingUp className="h-3 w-3" />
+                      ) : switchPreview.direction === 'downgrade' ? (
+                        <TrendingDown className="h-3 w-3" />
+                      ) : (
+                        <ChevronsUpDown className="h-3 w-3" />
+                      )}
+                      <span>
+                        {switchPreview.direction === 'upgrade'
+                          ? 'Plan Upgrade'
+                          : switchPreview.direction === 'downgrade'
+                          ? 'Plan Downgrade'
+                          : 'Plan Switch'}
+                      </span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate tabular-nums">
+                    Current: {switchingSub.name} · {switchPreview.oldAmt.toFixed(2)} {switchingSub.currency || 'MAD'} /{' '}
+                    {switchPreview.oldMeta.shortLabel} ({switchPreview.oldMonthly.toFixed(0)} MAD/mo)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isSubmittingSwitch && setSwitchingSub(null)}
+                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* New Term / Billing Duration Selector */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                New Plan Duration / Billing Period *
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {(
+                  [
+                    { id: 'monthly', title: 'Monthly', sub: '1-Month Cycle' },
+                    { id: 'every_3_months', title: '3 Months', sub: 'Quarterly Pass' },
+                    { id: 'every_6_months', title: '6 Months', sub: 'Half-Year Pass' },
+                    { id: 'every_10_months', title: '10 Months', sub: '10-Month Pass' },
+                    { id: 'yearly', title: '1 Year (12 Mo)', sub: 'Annual Plan' },
+                    { id: 'every_2_months', title: '2 Months', sub: 'Bi-Monthly' },
+                  ] as const
+                ).map((opt) => {
+                  const selected = !switchIsCustomCycle && switchNewCycle === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setSwitchIsCustomCycle(false);
+                        setSwitchNewCycle(opt.id);
+                        recomputeSwitchDatesAndDefaults(
+                          switchingSub,
+                          switchEffectiveDate,
+                          opt.id,
+                          switchRecalculateExpiry,
+                          switchNewAmount,
+                          switchPaymentMode
+                        );
+                      }}
+                      className={`rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
+                        selected
+                          ? 'border-indigo-600 bg-indigo-50/80 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 ring-1 ring-indigo-600'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">{opt.title}</div>
+                      <div className="text-[10px] text-gray-500 dark:text-gray-400">{opt.sub}</div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSwitchIsCustomCycle(!switchIsCustomCycle)}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
+                    switchIsCustomCycle
+                      ? 'border-indigo-600 bg-indigo-600 text-white'
+                      : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  Custom Duration (N Months / Days)
+                </button>
+                {switchIsCustomCycle && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-gray-500">Every</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={switchCustomCount}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSwitchCustomCount(val);
+                        const customId = `every_${Math.max(1, parseInt(val, 10) || 1)}_${switchCustomUnit}` as SubscriptionBillingCycle;
+                        recomputeSwitchDatesAndDefaults(
+                          switchingSub,
+                          switchEffectiveDate,
+                          customId,
+                          switchRecalculateExpiry,
+                          switchNewAmount,
+                          switchPaymentMode
+                        );
+                      }}
+                      className="w-16 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-center font-semibold tabular-nums"
+                    />
+                    <select
+                      value={switchCustomUnit}
+                      onChange={(e) => {
+                        const unit = e.target.value as 'months' | 'days';
+                        setSwitchCustomUnit(unit);
+                        const customId = `every_${Math.max(1, parseInt(switchCustomCount, 10) || 1)}_${unit}` as SubscriptionBillingCycle;
+                        recomputeSwitchDatesAndDefaults(
+                          switchingSub,
+                          switchEffectiveDate,
+                          customId,
+                          switchRecalculateExpiry,
+                          switchNewAmount,
+                          switchPaymentMode
+                        );
+                      }}
+                      className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs"
+                    >
+                      <option value="months">Months</option>
+                      <option value="days">Days</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* New Price, Name & Effective Date */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  New Plan Price ({switchPreview.newMeta.shortLabel}) *
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    required
+                    value={switchNewAmount}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSwitchNewAmount(v);
+                      recomputeSwitchDatesAndDefaults(
+                        switchingSub,
+                        switchEffectiveDate,
+                        activeSwitchCycle,
+                        false,
+                        v,
+                        switchPaymentMode
+                      );
+                    }}
+                    placeholder="e.g. 1800.00"
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono tabular-nums font-bold text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <select
+                    value={switchNewCurrency}
+                    onChange={(e) => setSwitchNewCurrency(e.target.value)}
+                    className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-2 text-xs text-gray-900 dark:text-gray-100"
+                  >
+                    <option value="MAD">MAD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Updated Plan Title
+                </label>
+                <input
+                  type="text"
+                  value={switchNewName}
+                  onChange={(e) => setSwitchNewName(e.target.value)}
+                  placeholder={switchingSub.name}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Switch Effective Date
+                </label>
+                <input
+                  type="date"
+                  value={switchEffectiveDate}
+                  onChange={(e) => {
+                    const eff = e.target.value;
+                    setSwitchEffectiveDate(eff);
+                    recomputeSwitchDatesAndDefaults(
+                      switchingSub,
+                      eff,
+                      activeSwitchCycle,
+                      switchRecalculateExpiry,
+                      switchNewAmount,
+                      switchPaymentMode
+                    );
+                  }}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
+                />
+              </div>
+            </div>
+
+            {/* Side-by-Side Comparison Card */}
+            <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center tabular-nums">
+                <div className="rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-3">
+                  <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Current Plan</span>
+                  <div className="text-base font-bold text-gray-900 dark:text-gray-100 mt-0.5">
+                    {switchPreview.oldAmt.toFixed(0)} {switchingSub.currency || 'MAD'}
+                    <span className="text-xs font-normal text-gray-500"> / {switchPreview.oldMeta.shortLabel}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500 font-mono">
+                    {switchPreview.oldMonthly.toFixed(2)} MAD / mo
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center justify-center text-center">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                    <span>{switchPreview.oldMeta.shortLabel}</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                    <span>{switchPreview.newMeta.shortLabel}</span>
+                  </div>
+                  <span
+                    className={`mt-1 text-xs font-mono font-bold ${
+                      switchPreview.monthlyDelta < 0
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : switchPreview.monthlyDelta > 0
+                        ? 'text-rose-600 dark:text-rose-400'
+                        : 'text-gray-500'
+                    }`}
+                  >
+                    {switchPreview.monthlyDelta >= 0 ? '+' : ''}
+                    {switchPreview.monthlyDelta.toFixed(2)} MAD/mo
+                    {Math.abs(switchPreview.monthlyPctChange) >= 0.5
+                      ? ` (${switchPreview.monthlyDelta > 0 ? '+' : ''}${switchPreview.monthlyPctChange.toFixed(0)}%)`
+                      : ''}
+                  </span>
+                  <span className="text-[10px] text-gray-500 font-mono">
+                    {switchPreview.annualizedDelta >= 0 ? '+' : ''}
+                    {switchPreview.annualizedDelta.toFixed(0)} MAD / yr impact
+                  </span>
+                </div>
+
+                <div className="rounded-lg bg-white dark:bg-gray-900 border border-indigo-300 dark:border-indigo-700 p-3">
+                  <span className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400">New Plan</span>
+                  <div className="text-base font-bold text-gray-900 dark:text-gray-100 mt-0.5">
+                    {switchPreview.newAmt.toFixed(0)} {switchNewCurrency}
+                    <span className="text-xs font-normal text-gray-500"> / {switchPreview.newMeta.shortLabel}</span>
+                  </div>
+                  <div className="text-[11px] text-indigo-700 dark:text-indigo-300 font-mono font-semibold">
+                    {switchPreview.newMonthly.toFixed(2)} MAD / mo
+                  </div>
+                </div>
+              </div>
+
+              {/* Renewal / Expiry Date Recalculation */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-indigo-200/60 dark:border-indigo-900/50 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={switchRecalculateExpiry}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setSwitchRecalculateExpiry(checked);
+                      if (checked) {
+                        recomputeSwitchDatesAndDefaults(
+                          switchingSub,
+                          switchEffectiveDate,
+                          activeSwitchCycle,
+                          true,
+                          switchNewAmount,
+                          switchPaymentMode
+                        );
+                      } else if (switchingSub.nextBillingDate) {
+                        setSwitchNextBillingDate(new Date(switchingSub.nextBillingDate).toISOString().slice(0, 10));
+                      }
+                    }}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>Recalculate expiry / next renewal date (+{switchPreview.newMeta.shortLabel})</span>
+                </label>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 text-[11px]">Next renewal:</span>
+                  <input
+                    type="date"
+                    value={switchNextBillingDate}
+                    onChange={(e) => {
+                      setSwitchRecalculateExpiry(false);
+                      setSwitchNextBillingDate(e.target.value);
+                    }}
+                    className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2.5 py-1 text-xs text-gray-900 dark:text-gray-100"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Transaction / Payment Handling */}
+            <div className="space-y-2.5 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40 p-3.5">
+              <label className="block text-xs font-semibold text-gray-800 dark:text-gray-200">
+                Payment &amp; Ledger Recording
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {(
+                  [
+                    { id: 'none', title: 'Plan Update Only', desc: 'Switch price & term only (no tx today)' },
+                    { id: 'difference', title: 'Pay Upgrade Diff', desc: 'Log prorated or price difference today' },
+                    { id: 'full', title: 'Pay Full New Plan', desc: 'Deduct full new plan amount today' },
+                  ] as const
+                ).map((pm) => (
+                  <button
+                    key={pm.id}
+                    type="button"
+                    onClick={() => {
+                      setSwitchPaymentMode(pm.id);
+                      recomputeSwitchDatesAndDefaults(
+                        switchingSub,
+                        switchEffectiveDate,
+                        activeSwitchCycle,
+                        false,
+                        switchNewAmount,
+                        pm.id
+                      );
+                    }}
+                    className={`rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
+                      switchPaymentMode === pm.id
+                        ? 'border-indigo-600 bg-white dark:bg-gray-900 ring-1 ring-indigo-600'
+                        : 'border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-900/50 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="text-xs font-bold text-gray-900 dark:text-gray-100">{pm.title}</div>
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{pm.desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              {switchPaymentMode !== 'none' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Charge Amount Today ({switchNewCurrency})
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={switchPaymentAmount}
+                      onChange={(e) => setSwitchPaymentAmount(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-mono tabular-nums text-gray-900 dark:text-gray-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Charge Wallet
+                    </label>
+                    <select
+                      value={switchWalletId}
+                      onChange={(e) => setSwitchWalletId(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100"
+                    >
+                      {wallets.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name} ({w.type}) — {w.balance.toFixed(0)} MAD
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-2 border-t border-gray-100 dark:border-gray-800 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmittingSwitch}
+                onClick={() => setSwitchingSub(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmittingSwitch || !(parseFloat(switchNewAmount) > 0)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {isSubmittingSwitch
+                  ? 'Applying Plan...'
+                  : switchPreview.direction === 'downgrade'
+                  ? 'Confirm Downgrade'
+                  : switchPreview.direction === 'upgrade'
+                  ? 'Confirm Upgrade'
+                  : 'Confirm Plan Switch'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </MotionModal>
 
       {/* Log Payment / Activate Pass Modal */}
-      {payingSub && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl"
-          >
+      <MotionModal
+        isOpen={Boolean(payingSub)}
+        onClose={() => setPayingSub(null)}
+        containerClassName="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl"
+      >
+        {payingSub && (
+          <>
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 dark:bg-indigo-950 text-2xl">
                 {payingSub.icon || '📱'}
@@ -2078,9 +2741,9 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                 {payingSub.status === 'planned' ? 'Activate & Record Payment' : 'Confirm Payment & Extend Term'}
               </Button>
             </div>
-          </motion.div>
-        </div>
-      )}
+          </>
+        )}
+      </MotionModal>
     </div>
   );
 };

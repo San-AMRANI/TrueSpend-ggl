@@ -619,6 +619,24 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleChangeSubscriptionPlan = async (
+    id: string,
+    payload: import('../types').SubscriptionPlanChangePayload
+  ) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.changeSubscriptionPlan(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error changing subscription plan:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDetectSubscriptions = async (): Promise<DetectedSubscription[]> => {
     if (!token) return [];
     try {
@@ -904,6 +922,7 @@ export function useDashboardData(token: string | null) {
     handleUpdateSubscription,
     handleDeleteSubscription,
     handlePaySubscription,
+    handleChangeSubscriptionPlan,
     handleDetectSubscriptions,
     handleUpsertStockPosition,
     handleUpdateStockPosition,

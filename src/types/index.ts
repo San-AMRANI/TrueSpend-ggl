@@ -207,6 +207,7 @@ export type SubscriptionBillingCycle =
   | 'every_3_months'
   | 'quarterly'
   | 'every_6_months'
+  | 'every_10_months'
   | 'yearly'
   | 'weekly'
   | 'biweekly'
@@ -230,6 +231,46 @@ export interface Subscription {
   websiteUrl?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type SubscriptionPlanChangeDirection = 'upgrade' | 'downgrade' | 'switch';
+export type SubscriptionPlanPaymentMode = 'none' | 'difference' | 'full';
+
+export interface SubscriptionPlanChangePayload {
+  newName?: string;
+  newAmount: number;
+  newCurrency?: string;
+  newBillingCycle: SubscriptionBillingCycle;
+  effectiveDate?: string;
+  nextBillingDate?: string | null;
+  recalculateNextDate?: boolean;
+  walletId?: string | null;
+  paymentMode: SubscriptionPlanPaymentMode;
+  paymentAmount?: number;
+  status?: SubscriptionStatus;
+  notes?: string;
+}
+
+export interface SubscriptionPlanChangeSummary {
+  direction: SubscriptionPlanChangeDirection;
+  oldName: string;
+  newName: string;
+  oldAmount: number;
+  newAmount: number;
+  oldBillingCycle: string;
+  newBillingCycle: string;
+  oldMonthlyEquivalent: number;
+  newMonthlyEquivalent: number;
+  monthlyDelta: number;
+  annualizedDelta: number;
+  chargedAmount: number;
+  nextBillingDate: string | null;
+}
+
+export interface SubscriptionPlanChangeResult {
+  subscription: Subscription;
+  transaction: Transaction | null;
+  summary: SubscriptionPlanChangeSummary;
 }
 
 export interface DetectedSubscription {

@@ -10,6 +10,8 @@ import {
   FinancialContext,
   Goal,
   Subscription,
+  SubscriptionPlanChangePayload,
+  SubscriptionPlanChangeResult,
   DetectedSubscription,
   InvestmentsData,
   BinanceAccountOverview,
@@ -58,6 +60,8 @@ export const dashboardService = {
     apiClient.delete<{ success: boolean }>(`/api/subscriptions/${id}`, token),
   paySubscription: (id: string, payload: { walletId?: string; date?: string }, token: string | null) =>
     apiClient.post<{ subscription: Subscription; transaction: Transaction }>(`/api/subscriptions/${id}/pay`, payload, token),
+  changeSubscriptionPlan: (id: string, payload: SubscriptionPlanChangePayload, token: string | null) =>
+    apiClient.post<SubscriptionPlanChangeResult>(`/api/subscriptions/${id}/change-plan`, payload, token),
   detectSubscriptions: (token: string | null) =>
     apiClient.get<DetectedSubscription[]>('/api/subscriptions/detect', token),
   getGoals: (token: string | null) => apiClient.get<Goal[]>('/api/goals', token),

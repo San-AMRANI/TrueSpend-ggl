@@ -48,6 +48,15 @@ export const STANDARD_BILLING_CYCLES: CycleMeta[] = [
     isMultiMonth: true,
   },
   {
+    id: 'every_10_months',
+    label: 'Every 10 Months (10-Month Term)',
+    shortLabel: '10 Months',
+    badgeLabel: '10-Mo Pass',
+    months: 10,
+    days: 300,
+    isMultiMonth: true,
+  },
+  {
     id: 'yearly',
     label: 'Every 12 Months (Yearly)',
     shortLabel: 'Yearly',
@@ -137,6 +146,7 @@ export function getNormalizedMonthlyAmount(amountInput: string | number, cycle?:
   if (raw === 'quarterly' || raw === 'every_3_months') return amt / 3;
   if (raw === 'every_2_months') return amt / 2;
   if (raw === 'every_6_months') return amt / 6;
+  if (raw === 'every_10_months') return amt / 10;
 
   const meta = getCycleMeta(raw);
   if (meta.months > 0) {
@@ -184,6 +194,10 @@ export function shiftDateByCycle(baseDate: Date, cycle?: string | null, directio
   }
   if (raw === 'every_6_months') {
     result.setMonth(result.getMonth() + 6 * direction);
+    return result;
+  }
+  if (raw === 'every_10_months') {
+    result.setMonth(result.getMonth() + 10 * direction);
     return result;
   }
 
