@@ -28,6 +28,11 @@ import {
   Banknote,
   Bot,
   Palette,
+  Inbox,
+  FileSpreadsheet,
+  Scale,
+  GitBranch,
+  Copy,
 } from 'lucide-react';
 import {
   DashboardTab,
@@ -69,6 +74,70 @@ interface CommandItem {
   keywords?: string;
 }
 
+function evaluateSafeMathExpression(raw: string): { expression: string; value: number } | null {
+  const cleaned = raw.trim().replace(/^=/, '').trim();
+  if (!cleaned) return null;
+  if (!/^[0-9+\-*/().%\s]+$/.test(cleaned) || !/\d/.test(cleaned)) return null;
+  const hasOperator = /[+\-*/%]/.test(cleaned.replace(/^-/, ''));
+  if (!raw.trim().startsWith('=') && !hasOperator) return null;
+
+  try {
+    let pos = 0;
+    const str = cleaned.replace(/\s+/g, '');
+
+    const parseExpression = (): number => {
+      let val = parseTerm();
+      while (pos < str.length && (str[pos] === '+' || str[pos] === '-')) {
+        const op = str[pos++];
+        const right = parseTerm();
+        val = op === '+' ? val + right : val - right;
+      }
+      return val;
+    };
+
+    const parseTerm = (): number => {
+      let val = parseFactor();
+      while (pos < str.length && (str[pos] === '*' || str[pos] === '/' || str[pos] === '%')) {
+        const op = str[pos++];
+        const right = parseFactor();
+        if ((op === '/' || op === '%') && right === 0) return NaN;
+        val = op === '*' ? val * right : op === '/' ? val / right : val % right;
+      }
+      return val;
+    };
+
+    const parseFactor = (): number => {
+      if (str[pos] === '+') {
+        pos++;
+        return parseFactor();
+      }
+      if (str[pos] === '-') {
+        pos++;
+        return -parseFactor();
+      }
+      if (str[pos] === '(') {
+        pos++;
+        const val = parseExpression();
+        if (str[pos] !== ')') return NaN;
+        pos++;
+        return val;
+      }
+      const start = pos;
+      while (pos < str.length && ((str[pos] >= '0' && str[pos] <= '9') || str[pos] === '.')) {
+        pos++;
+      }
+      if (start === pos) return NaN;
+      return parseFloat(str.slice(start, pos));
+    };
+
+    const result = parseExpression();
+    if (pos !== str.length || !Number.isFinite(result)) return null;
+    return { expression: cleaned, value: Math.round(result * 100) / 100 };
+  } catch {
+    return null;
+  }
+}
+
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
   onClose,
@@ -90,6 +159,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const listRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme } = useTheme();
 
+  const mathResult = useMemo(() => evaluateSafeMathExpression(query), [query]);
+
   useEffect(() => {
     if (isOpen) {
       setQuery('');
@@ -99,7 +170,35 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   }, [isOpen]);
 
   const allItems = useMemo<CommandItem[]>(() => {
-    const items: CommandItem[] = [
+    const items: CommandItem[] = [];
+
+    if (mathResult && mathResult.value > 0) {
+      const sts = kpis?.safeToSpend ?? 0;
+      const daily = kpis?.dailyAllowance ?? 0;
+      const stsPct = sts > 0 ? `${((mathResult.value / sts) * 100).toFixed(1)}% of Safe-to-Spend` : undefined;
+      const daysImpact = daily > 0 ? `${(mathResult.value / daily).toFixed(1)} days of allowance` : undefined;
+      items.push({
+        id: 'act-inline-calc-copy',
+        group: 'Quick Actions',
+        title: `= ${mathResult.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD`,
+        subtitle: [`Expression: ${mathResult.expression}`, stsPct, daysImpact].filter(Boolean).join(' · '),
+        badge: 'Copy Result',
+        badgeColor: 'text-indigo-600 dark:text-indigo-400',
+        icon: Copy,
+        keywords: `${query} ${mathResult.expression} calculator math`,
+        onSelect: () => {
+          navigator.clipboard?.writeText(String(mathResult.value));
+          window.dispatchEvent(
+            new CustomEvent('truespend:toast', {
+              detail: { message: `Copied ${mathResult.value.toFixed(2)} MAD to clipboard`, type: 'success' },
+            })
+          );
+          onClose();
+        },
+      });
+    }
+
+    items.push(
       // 1. Quick Actions
       {
         id: 'act-log-expense',
@@ -160,15 +259,71 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       {
         id: 'act-reconcile-wallets',
         group: 'Quick Actions',
-        title: 'Manage & Reconcile Wallets',
+        title: 'Manage Wallets & Accounting Workbench',
         subtitle: `Total Liquidity: ${(kpis?.totalLiquidity ?? 0).toFixed(2)} MAD across ${kpis?.accounts?.length ?? 0} accounts`,
-        badge: 'Wallets',
+        badge: 'Workbench',
         badgeColor: 'text-indigo-600 dark:text-indigo-400',
         icon: WalletCards,
-        keywords: 'reconcile balance bank cash wallet adjust',
+        keywords: 'reconcile balance bank cash wallet adjust journal review inbox csv import counterparty',
         onSelect: () => {
           onClose();
           onOpenWalletsModal();
+        },
+      },
+      {
+        id: 'act-review-inbox',
+        group: 'Quick Actions',
+        title: 'Open Financial Review Inbox & Statement Import',
+        subtitle: 'Confirm OCR receipts, CSV bank statement rows & automated rule drafts',
+        badge: 'Inbox',
+        badgeColor: 'text-emerald-600 dark:text-emerald-400',
+        icon: Inbox,
+        keywords: 'review inbox pending approval ocr receipt csv tsv statement import reconcile',
+        onSelect: () => {
+          onClose();
+          onOpenWalletsModal();
+        },
+      },
+      {
+        id: 'act-ledger-integrity',
+        group: 'Quick Actions',
+        title: 'Double-Entry Journal & Integrity Diagnostics',
+        subtitle: 'Audit Trial Balance parity, unjournaled items & counterparty aliases',
+        badge: 'Ledger',
+        badgeColor: 'text-teal-600 dark:text-teal-400',
+        icon: FileSpreadsheet,
+        keywords: 'double entry journal ledger trial balance integrity audit backfill',
+        onSelect: () => {
+          onClose();
+          onOpenWalletsModal();
+        },
+      },
+      {
+        id: 'act-networth-bridge',
+        group: 'Quick Actions',
+        title: 'Net Worth Change Bridge & External Assets',
+        subtitle: 'Attribute period wealth delta across Cash, Credit, Debt, Equities & Real Estate',
+        badge: 'Bridge',
+        badgeColor: 'text-indigo-600 dark:text-indigo-400',
+        icon: Scale,
+        keywords: 'net worth bridge change delta external assets liabilities real estate vehicle',
+        onSelect: () => {
+          setActiveTab('reports');
+          onClose();
+        },
+      },
+      {
+        id: 'act-rules-engine',
+        group: 'Quick Actions',
+        title: 'Automated Financial Rules & Execution Logs',
+        subtitle: 'Configure deterministic rules for categorization, review alerts & goal funding',
+        badge: 'Rules',
+        badgeColor: 'text-purple-600 dark:text-purple-400',
+        icon: GitBranch,
+        keywords: 'rules automation triggers conditions execution logs',
+        onSelect: () => {
+          setActiveTab('settings');
+          onClose();
         },
       },
       {
@@ -387,8 +542,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           setActiveTab('settings');
           onClose();
         },
-      },
-    ];
+      }
+    );
 
     // 3. Wallets
     (kpis?.accounts || []).forEach((w) => {
@@ -497,6 +652,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     subscriptions,
     investmentsData,
     theme,
+    mathResult,
+    query,
     onClose,
     onOpenQuickTransaction,
     onOpenSmartCalculator,
@@ -514,12 +671,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         (item) =>
           item.group === 'Quick Actions' ||
           item.group === 'Navigation' ||
-          (item.group === 'Recent Transactions' && allItems.indexOf(item) < 28)
+          (item.group === 'Recent Transactions' && allItems.indexOf(item) < 32)
       );
     }
 
     return allItems
       .filter((item) => {
+        if (item.id === 'act-inline-calc-copy') return true;
         const haystack = `${item.title} ${item.subtitle || ''} ${item.keywords || ''} ${item.group}`.toLowerCase();
         return q.split(/\s+/).every((word) => haystack.includes(word));
       })

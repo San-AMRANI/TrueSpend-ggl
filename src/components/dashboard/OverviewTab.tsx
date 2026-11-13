@@ -1,5 +1,18 @@
-import React, { useState, useMemo } from 'react';
-import { CategoryBudget, DashboardTab, Debt, KPI, Payroll, Transaction, Goal, Subscription, InvestmentsData } from '../../types';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import {
+  CategoryBudget,
+  DashboardTab,
+  Debt,
+  KPI,
+  Payroll,
+  Transaction,
+  Goal,
+  Subscription,
+  InvestmentsData,
+  CommitmentOccurrence,
+  FinancialReviewItem,
+  FinancialIntegrityReport,
+} from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { SettleDebtModal } from '../SettleDebtModal';
@@ -11,12 +24,14 @@ import { FinancialFactsCarousel } from './FinancialFactsCarousel';
 import { FinancialInsightModal } from './FinancialInsightModal';
 import { SpexAiPulseBanner } from './SpexAiPulseBanner';
 import { computeHolisticForecast } from '../../lib/predictiveEngine';
+import { dashboardService } from '../../services/api/dashboardService';
+import { useAuth } from '../../context/AuthContext';
 import {
   AlertCircle, ArrowDownRight, ArrowUpRight, Banknote, BarChart3, Heart,
   Landmark, RefreshCw, Shield, TrendingUp, WalletCards, User, Zap,
   Target, ChevronRight, Plus, Repeat, Snowflake, ShieldCheck, Coins,
   Calculator, Search, Flame, Scale, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2,
-  Eye, EyeOff
+  Eye, EyeOff, Inbox, Calendar, FileCheck2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { normalizeCategory } from '../../lib/categories';
@@ -62,10 +77,94 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   onOpenCommandPalette,
 }) => {
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
+  const { token } = useAuth();
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
   const [showWalletsModal, setShowWalletsModal] = useState(false);
   const [showWaterfall, setShowWaterfall] = useState(false);
   const [insightModalType, setInsightModalType] = useState<'forecast' | 'health' | null>(null);
+
+  // Live Operational Radar state (Commitments, Review Inbox, Ledger Integrity)
+  const [upcomingCommitments, setUpcomingCommitments] = useState<CommitmentOccurrence[]>([]);
+  const [pendingReviews, setPendingReviews] = useState<FinancialReviewItem[]>([]);
+  const [integritySummary, setIntegritySummary] = useState<FinancialIntegrityReport | null>(null);
+  const [busyActionId, setBusyActionId] = useState<string | null>(null);
+
+  const loadOperationalRadar = useCallback(async () => {
+    if (!token) return;
+    try {
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const twoWeeksIso = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+      const [occList, revList, intRes] = await Promise.all([
+        dashboardService.getCommitmentOccurrences(token).catch(() => [] as CommitmentOccurrence[]),
+        dashboardService.getReviewInbox(token).catch(() => [] as FinancialReviewItem[]),
+        dashboardService.getFinancialIntegrityReport(token).catch(() => null),
+      ]);
+      const planned = (Array.isArray(occList) ? occList : [])
+        .filter(
+          (o) =>
+            (o.status === 'scheduled' || o.status === 'overdue' || o.status === 'partial') &&
+            o.expectedDate >= todayIso &&
+            o.expectedDate <= twoWeeksIso
+        )
+        .sort((a, b) => a.expectedDate.localeCompare(b.expectedDate));
+      setUpcomingCommitments(planned);
+      const pending = (Array.isArray(revList) ? revList : []).filter(
+        (item) => item.status === 'Captured' || item.status === 'Needs Review'
+      );
+      setPendingReviews(pending);
+      if (intRes) setIntegritySummary(intRes);
+    } catch {
+      // Non-blocking operational radar load
+    }
+  }, [token]);
+
+  useEffect(() => {
+    loadOperationalRadar();
+  }, [loadOperationalRadar, transactions.length]);
+
+  const handleQuickApproveReview = async (itemId: string) => {
+    if (!token) return;
+    setBusyActionId(itemId);
+    try {
+      await dashboardService.decideReviewItem(itemId, { decision: 'confirm_create' }, token);
+      window.dispatchEvent(
+        new CustomEvent('truespend:toast', {
+          detail: { message: 'Review item approved and posted to ledger', type: 'success' },
+        })
+      );
+      await loadOperationalRadar();
+    } catch (e: any) {
+      window.dispatchEvent(
+        new CustomEvent('truespend:toast', {
+          detail: { message: e.message || 'Failed to approve review item', type: 'error' },
+        })
+      );
+    } finally {
+      setBusyActionId(null);
+    }
+  };
+
+  const handleQuickSettleOccurrence = async (occId: string) => {
+    if (!token) return;
+    setBusyActionId(occId);
+    try {
+      await dashboardService.settleCommitmentOccurrence(occId, { action: 'pay' }, token);
+      window.dispatchEvent(
+        new CustomEvent('truespend:toast', {
+          detail: { message: 'Commitment settled and journaled', type: 'success' },
+        })
+      );
+      await loadOperationalRadar();
+    } catch (e: any) {
+      window.dispatchEvent(
+        new CustomEvent('truespend:toast', {
+          detail: { message: e.message || 'Failed to settle commitment', type: 'error' },
+        })
+      );
+    } finally {
+      setBusyActionId(null);
+    }
+  };
   
   const currentFm = getCurrentFinancialMonth(payrolls);
   const year = currentFm?.year ?? -1;
@@ -735,6 +834,169 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 </p>
               </div>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Live Financial Operations, 14-Day Commitment Radar & Ledger Integrity Strip */}
+      <div className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3">
+        {/* 1. Upcoming 14-Day Commitments Radar */}
+        <Card className="min-w-0 border-gray-200 dark:border-gray-800">
+          <CardContent className="p-4 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                <Calendar className="h-4 w-4 text-indigo-500" />
+                <span>14-Day Commitments Radar</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab('calendar')}
+                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
+              >
+                Calendar ({upcomingCommitments.length}) →
+              </button>
+            </div>
+
+            {upcomingCommitments.length > 0 ? (
+              <div className="mt-2.5 space-y-1.5">
+                {upcomingCommitments.slice(0, 2).map((occ) => (
+                  <div
+                    key={occ.id}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-2.5 py-1.5 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-gray-900 dark:text-white">
+                        {occ.title}
+                      </p>
+                      <p className="truncate text-[10px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+                        Due {occ.expectedDate} · {parseFloat(String(occ.expectedAmount)).toFixed(0)} MAD
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busyActionId === occ.id}
+                      onClick={() => handleQuickSettleOccurrence(occ.id)}
+                      className="h-6 px-2 text-[11px] whitespace-nowrap shrink-0"
+                    >
+                      {busyActionId === occ.id ? '...' : 'Settle'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-2">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                  All Near-Term Bills Clear
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  No unsettled recurring bills or debt installments due in the next 14 days.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 2. Financial Review Inbox Queue */}
+        <Card className="min-w-0 border-gray-200 dark:border-gray-800">
+          <CardContent className="p-4 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                <Inbox className="h-4 w-4 text-emerald-500" />
+                <span>Financial Review Inbox</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowWalletsModal(true)}
+                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
+              >
+                Workbench ({pendingReviews.length}) →
+              </button>
+            </div>
+
+            {pendingReviews.length > 0 ? (
+              <div className="mt-2.5 space-y-1.5">
+                {pendingReviews.slice(0, 2).map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-2 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 px-2.5 py-1.5 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-gray-900 dark:text-white">
+                        {item.merchant || item.category || 'Review Item'}
+                      </p>
+                      <p className="truncate text-[10px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+                        {item.amount ? `${parseFloat(String(item.amount)).toFixed(0)} MAD · ` : ''}
+                        {item.sourceType.replace(/_/g, ' ')}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busyActionId === item.id}
+                      onClick={() => handleQuickApproveReview(item.id)}
+                      className="h-6 px-2 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white whitespace-nowrap shrink-0"
+                    >
+                      {busyActionId === item.id ? '...' : 'Confirm'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-2">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Inbox Zero Achieved
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  All OCR receipts, statement imports, and rule drafts have been reconciled.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 3. Double-Entry Ledger & Trial Balance Pulse */}
+        <Card className="min-w-0 border-gray-200 dark:border-gray-800">
+          <CardContent className="p-4 flex flex-col justify-between h-full">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                <FileCheck2 className="h-4 w-4 text-teal-500" />
+                <span>Double-Entry Ledger Audit</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowWalletsModal(true)}
+                className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
+              >
+                Inspect Journal →
+              </button>
+            </div>
+
+            <div className="mt-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      integritySummary?.healthy !== false ? 'bg-emerald-500' : 'bg-amber-500'
+                    }`}
+                  />
+                  {integritySummary?.healthy !== false
+                    ? 'Trial Balance Verified'
+                    : 'Reconciliation Needed'}
+                </span>
+                <span className="text-xs font-mono tabular-nums text-gray-500 dark:text-gray-400">
+                  {integritySummary
+                    ? `${integritySummary.checks.unjournaledTransactions.length === 0 ? '100% Journaled' : `${integritySummary.checks.unjournaledTransactions.length} unjournaled`}`
+                    : `${transactions.length} events`}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono tabular-nums">
+                {integritySummary
+                  ? `${integritySummary.journalEntryCount} balanced journal entries · ${integritySummary.totalExceptions} exceptions`
+                  : 'Atomic PostgreSQL double-entry journal active across all wallets.'}
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
