@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
-import { Transaction, KPI, CategoryBudget, DashboardTab } from '../../types';
-import { FileBarChart, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Award, Sparkles, Database } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Transaction, KPI, CategoryBudget, DashboardTab, FinancialPositionSnapshot, NetWorthChangeBridge } from '../../types';
+import { FileBarChart, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Award, Sparkles, Database, TrendingUp, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { dashboardService } from '../../services/api/dashboardService';
@@ -29,10 +29,33 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
   const { token } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'retrospective' | 'export' | 'import'>('retrospective');
+  const [activeSubTab, setActiveSubTab] = useState<'retrospective' | 'position' | 'export' | 'import'>('retrospective');
+  const [snapshots, setSnapshots] = useState<FinancialPositionSnapshot[]>([]);
+  const [bridge, setBridge] = useState<NetWorthChangeBridge | null>(null);
+  const [loadingPosition, setLoadingPosition] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const loadPositionHistory = async () => {
+    if (!token) return;
+    setLoadingPosition(true);
+    try {
+      const res = await dashboardService.getFinancialPositionHistory(token);
+      setSnapshots(res.snapshots || []);
+      setBridge(res.bridge || null);
+    } catch {
+      // handled gracefully in empty state
+    } finally {
+      setLoadingPosition(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'position') {
+      loadPositionHistory();
+    }
+  }, [activeSubTab, token]);
 
   const handleExportCSV = () => {
     if (!transactions.length) {
@@ -330,6 +353,18 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
           </button>
 
           <button
+            onClick={() => setActiveSubTab('position')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeSubTab === 'position'
+                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span>Net Worth History &amp; Bridge</span>
+          </button>
+
+          <button
             onClick={() => setActiveSubTab('export')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
               activeSubTab === 'export'
@@ -358,6 +393,125 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
       {/* Retrospective View (Signature Feature) */}
       {activeSubTab === 'retrospective' && (
         <CycleRetrospectiveView onNavigateTab={onNavigateTab} />
+      )}
+
+      {/* Whole Financial Position History & Change Bridge */}
+      {activeSubTab === 'position' && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-indigo-500" />
+                  Whole-Financial-Position History &amp; Net Worth Bridge
+                </CardTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Attributed daily snapshots across liquid cash, credit/overdraft debt, receivables, payables, stock/crypto positions, and external valuations.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                disabled={loadingPosition}
+                onClick={async () => {
+                  setLoadingPosition(true);
+                  try {
+                    await dashboardService.captureFinancialPositionSnapshot(token);
+                    await loadPositionHistory();
+                  } finally {
+                    setLoadingPosition(false);
+                  }
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loadingPosition ? 'animate-spin' : ''}`} />
+                Capture Snapshot Now
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {bridge && (
+                <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                      Net Worth Change Bridge ({bridge.fromDate} → {bridge.toDate})
+                    </span>
+                    <span className={`font-mono font-extrabold text-base ${bridge.totalDeltaMad >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {bridge.totalDeltaMad >= 0 ? '+' : ''}{bridge.totalDeltaMad.toFixed(2)} MAD
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
+                    {[
+                      { label: 'Liquid Cash', val: bridge.deltaLiquidCashMad },
+                      { label: 'Credit / Overdraft', val: bridge.deltaCreditDebtMad },
+                      { label: 'Receivables', val: bridge.deltaReceivablesMad },
+                      { label: 'Payables', val: bridge.deltaPayablesMad },
+                      { label: 'Investments', val: bridge.deltaInvestmentsMad },
+                      { label: 'External Net', val: bridge.deltaExternalNetMad },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-2">
+                        <span className="text-[11px] text-gray-500">{item.label}</span>
+                        <p className={`font-mono font-bold mt-0.5 ${item.val >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {item.val >= 0 ? '+' : ''}{item.val.toFixed(2)} MAD
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {snapshots.length === 0 ? (
+                <p className="text-xs text-gray-500 py-4 text-center">
+                  No snapshots captured yet. Click &ldquo;Capture Snapshot Now&rdquo; to record today&apos;s verified whole-financial position.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="border-b border-gray-200 dark:border-gray-800 text-gray-500 uppercase">
+                      <tr>
+                        <th className="py-2 pr-3">Date</th>
+                        <th className="py-2 px-3">Total Net Worth</th>
+                        <th className="py-2 px-3">Liquid Net Worth</th>
+                        <th className="py-2 px-3">Investments</th>
+                        <th className="py-2 px-3">External Net</th>
+                        <th className="py-2 pl-3">Provenance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {snapshots.slice(0, 20).map((s) => {
+                        const extNet = Number(s.externalAssetsMad || 0) - Number(s.externalLiabilitiesMad || 0);
+                        return (
+                          <tr key={s.id}>
+                            <td className="py-2 pr-3 font-mono font-semibold">{s.snapshotDate}</td>
+                            <td className="py-2 px-3 font-mono font-bold text-gray-900 dark:text-white">
+                              {Number(s.totalNetWorthMad).toFixed(2)} MAD
+                            </td>
+                            <td className="py-2 px-3 font-mono text-gray-700 dark:text-gray-300">
+                              {Number(s.liquidNetWorthMad).toFixed(2)} MAD
+                            </td>
+                            <td className="py-2 px-3 font-mono text-indigo-600 dark:text-indigo-400">
+                              {Number(s.investmentMarketValueMad).toFixed(2)} MAD
+                            </td>
+                            <td className="py-2 px-3 font-mono text-gray-700 dark:text-gray-300">
+                              {extNet.toFixed(2)} MAD
+                            </td>
+                            <td className="py-2 pl-3">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                s.isEstimated
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                              }`}>
+                                {s.dataSource} · {s.confidenceLevel}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Export & Backup Sub-Tab */}

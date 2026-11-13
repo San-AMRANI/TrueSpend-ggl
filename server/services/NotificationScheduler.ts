@@ -14,6 +14,7 @@ import { PushService } from './PushService.js';
 import { KpiService } from './KpiService.js';
 import { settingsService } from './SettingsService.js';
 import { investmentService } from './InvestmentService.js';
+import { coreAuditService } from './CoreAuditService.js';
 
 const pushService = new PushService();
 const kpiService = new KpiService();
@@ -189,6 +190,9 @@ export class NotificationScheduler {
         db.select().from(payrolls).where(eq(payrolls.userId, user.id)),
         kpiService.getKpisForUser(user),
       ]);
+
+      await coreAuditService.evaluateUpcomingCommitmentRules(user.id).catch(() => undefined);
+      await coreAuditService.processPendingOutboxEvents(user.id).catch(() => undefined);
 
       // 1. FUTURE CALENDAR EVENTS & SUBSCRIPTION RENEWALS (with cycle projection)
       if (prefs.forecastWarningEnabled) {

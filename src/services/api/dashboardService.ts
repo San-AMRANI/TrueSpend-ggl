@@ -42,6 +42,10 @@ import {
   ExternalWealthItem,
   BackupValidationPreview,
   AiActionImpactSimulation,
+  CounterpartyRecord,
+  FinancialPositionSnapshot,
+  NetWorthChangeBridge,
+  FinancialIntegrityReport,
 } from '../../types';
 
 export const dashboardService = {
@@ -501,11 +505,29 @@ export const dashboardService = {
   ) => apiClient.post<{ status: string; transaction?: Transaction }>(`/api/audit/review-inbox/${id}/decide`, payload, token),
   getCommitmentOccurrences: (token: string | null) =>
     apiClient.get<CommitmentOccurrence[]>('/api/audit/occurrences', token),
+  createRecurringIncomeCommitment: (
+    payload: { title: string; expectedAmount: number; expectedDate: string; cadence?: 'monthly' | 'weekly' | 'biweekly' | 'quarterly' | 'once'; currency?: string },
+    token: string | null
+  ) => apiClient.post<CommitmentOccurrence>('/api/audit/occurrences/income', payload, token),
   settleCommitmentOccurrence: (
     id: string,
-    payload: { status: 'paid' | 'skipped' | 'renegotiated'; confirmedAmount?: number; walletId?: string; varianceNotes?: string },
+    payload: {
+      action: 'pay' | 'partial' | 'skip' | 'reschedule' | 'renegotiate' | 'cancel';
+      actualAmount?: number;
+      actualDate?: string;
+      newDate?: string;
+      newAmount?: number;
+      walletId?: string;
+      isNonCashEvent?: boolean;
+      reason?: string;
+    },
     token: string | null
-  ) => apiClient.post<{ status: string; transactionId?: string | null }>(`/api/audit/occurrences/${id}/settle`, payload, token),
+  ) =>
+    apiClient.post<{
+      occurrence: CommitmentOccurrence;
+      transaction: Transaction | null;
+      status: string;
+    }>(`/api/audit/occurrences/${id}/settle`, payload, token),
   getGoalContributionEvents: (token: string | null, goalId?: string) =>
     apiClient.get<GoalContributionEvent[]>(`/api/audit/goal-events${goalId ? `?goalId=${encodeURIComponent(goalId)}` : ''}`, token),
   getSavedScenarios: (token: string | null) =>
@@ -518,14 +540,70 @@ export const dashboardService = {
     apiClient.get<{ rules: FinancialRuleItem[]; logs: FinancialRuleLogItem[] }>('/api/audit/rules', token),
   upsertFinancialRule: (payload: Record<string, unknown>, token: string | null) =>
     apiClient.post<FinancialRuleItem>('/api/audit/rules', payload, token),
+  dryRunFinancialRule: (
+    payload: {
+      ruleId?: string;
+      name?: string;
+      triggerType: string;
+      conditions: Record<string, unknown>;
+      actionType: string;
+      actionPayload?: Record<string, unknown>;
+      approvalPolicy?: string;
+      sampleEvent: Record<string, unknown>;
+    },
+    token: string | null
+  ) =>
+    apiClient.post<{
+      matched: boolean;
+      matchedConditions: string[];
+      failedConditions: string[];
+      triggerType: string;
+      actionType: string;
+      proposedResultSummary: string;
+      requiresApproval: boolean;
+      sideEffects: string;
+    }>('/api/audit/rules/dry-run', payload, token),
   deleteFinancialRule: (id: string, token: string | null) =>
     apiClient.delete<{ deletedId: string }>(`/api/audit/rules/${id}`, token),
   getExternalWealthItems: (token: string | null) =>
-    apiClient.get<ExternalWealthItem[]>('/api/audit/external-wealth', token),
+    apiClient.get<{
+      items: ExternalWealthItem[];
+      totalExternalAssetsMad: number;
+      totalExternalLiabilitiesMad: number;
+      netExternalWealthMad: number;
+    }>('/api/audit/external-wealth', token),
   upsertExternalWealthItem: (payload: Record<string, unknown>, token: string | null) =>
     apiClient.post<ExternalWealthItem>('/api/audit/external-wealth', payload, token),
   deleteExternalWealthItem: (id: string, token: string | null) =>
     apiClient.delete<{ deletedId: string }>(`/api/audit/external-wealth/${id}`, token),
+  getFinancialPositionHistory: (token: string | null) =>
+    apiClient.get<{ snapshots: FinancialPositionSnapshot[]; bridge: NetWorthChangeBridge | null }>(
+      '/api/audit/position-history',
+      token
+    ),
+  captureFinancialPositionSnapshot: (token: string | null) =>
+    apiClient.post<FinancialPositionSnapshot>('/api/audit/position-snapshot', {}, token),
+  getCounterparties: (token: string | null) =>
+    apiClient.get<CounterpartyRecord[]>('/api/audit/counterparties', token),
+  upsertCounterparty: (
+    payload: {
+      id?: string;
+      canonicalName: string;
+      counterpartyType?: string;
+      aliases?: string[];
+      defaultCategory?: string | null;
+      notes?: string | null;
+    },
+    token: string | null
+  ) => apiClient.post<CounterpartyRecord>('/api/audit/counterparties', payload, token),
+  mergeCounterparties: (sourceId: string, targetId: string, token: string | null) =>
+    apiClient.post<{ mergedIntoId: string; aliases: string[] }>(
+      '/api/audit/counterparties/merge',
+      { sourceId, targetId },
+      token
+    ),
+  getFinancialIntegrityReport: (token: string | null) =>
+    apiClient.get<FinancialIntegrityReport>('/api/audit/integrity-report', token),
   simulateAiActions: (actions: unknown[], token: string | null) =>
     apiClient.post<{ impact: AiActionImpactSimulation }>('/api/chat/simulate-actions', { actions }, token),
 };

@@ -237,4 +237,89 @@ router.delete('/audit/external-wealth/:id', requireAuth, async (req: any, res) =
   }
 });
 
+// Item F extension: Recurring non-payroll income commitments
+router.post('/audit/occurrences/income', requireAuth, async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const created = await coreAuditService.createRecurringIncomeCommitment(authReq.dbUser.id, req.body);
+    res.status(201).json(created);
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Failed to create recurring income commitment' });
+  }
+});
+
+// Item K extension: Dry-run rule preview without side effects
+router.post('/audit/rules/dry-run', requireAuth, async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const result = await coreAuditService.dryRunFinancialRule(authReq.dbUser.id, req.body);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Failed to preview rule' });
+  }
+});
+
+// Item 3: Whole Financial Position History & Net Worth Change Bridge
+router.get('/audit/position-history', requireAuth, async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const data = await coreAuditService.getFinancialPositionHistory(authReq.dbUser.id);
+    res.json(data);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Failed to load position history' });
+  }
+});
+
+router.post('/audit/position-snapshot', requireAuth, async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const snapshot = await coreAuditService.captureFinancialPositionSnapshot(authReq.dbUser.id, 'manual');
+    res.status(201).json(snapshot);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Failed to capture financial position snapshot' });
+  }
+});
+
+// Item 4: Counterparty & Merchant Identity Layer
+router.get('/audit/counterparties', requireAuth, async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const list = await coreAuditService.getCounterparties(authReq.dbUser.id);
+    res.json(list);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Failed to load counterparties' });
+  }
+});
+
+router.post('/audit/counterparties', requireAuth, async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const item = await coreAuditService.upsertCounterparty(authReq.dbUser.id, req.body);
+    res.status(201).json(item);
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Failed to save counterparty' });
+  }
+});
+
+router.post('/audit/counterparties/merge', requireAuth, async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const result = await coreAuditService.mergeCounterparties(authReq.dbUser.id, req.body.sourceId, req.body.targetId);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Failed to merge counterparties' });
+  }
+});
+
+// Item 7: Operational Diagnostics & Financial Integrity Report
+router.get('/audit/integrity-report', requireAuth, async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const report = await coreAuditService.getFinancialIntegrityReport(authReq.dbUser.id);
+    res.json(report);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Failed to compute integrity report' });
+  }
+});
+
 export default router;

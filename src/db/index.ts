@@ -531,6 +531,107 @@ export const createPool = () => {
           "created_at" timestamp NOT NULL DEFAULT now(),
           "updated_at" timestamp NOT NULL DEFAULT now()
         );
+
+        -- Next-Update Schema Hardening & Extensions (Atomic Ledger, Snapshots, Counterparties, Outbox)
+        ALTER TABLE "transactions" ADD COLUMN IF NOT EXISTS "counterparty_id" uuid;
+        ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "counterparty_id" uuid;
+        ALTER TABLE "subscriptions" ADD COLUMN IF NOT EXISTS "counterparty_id" uuid;
+        ALTER TABLE "statement_import_rows" ADD COLUMN IF NOT EXISTS "counterparty_id" uuid;
+        ALTER TABLE "financial_review_items" ADD COLUMN IF NOT EXISTS "counterparty_id" uuid;
+
+        ALTER TABLE "commitment_occurrences" ADD COLUMN IF NOT EXISTS "is_non_cash_event" boolean NOT NULL DEFAULT false;
+        ALTER TABLE "commitment_occurrences" ADD COLUMN IF NOT EXISTS "paid_amount" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "commitment_occurrences" ADD COLUMN IF NOT EXISTS "principal_component" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "commitment_occurrences" ADD COLUMN IF NOT EXISTS "interest_component" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "commitment_occurrences" ADD COLUMN IF NOT EXISTS "fee_component" numeric NOT NULL DEFAULT 0;
+        ALTER TABLE "commitment_occurrences" ADD COLUMN IF NOT EXISTS "installment_number" integer;
+        ALTER TABLE "commitment_occurrences" ADD COLUMN IF NOT EXISTS "history_json" text;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS "transactions_user_idempotency_key_unique"
+          ON "transactions"("user_id", "idempotency_key")
+          WHERE "idempotency_key" IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS "journal_entries_user_idempotency_unique"
+          ON "journal_entries"("user_id", "idempotency_key")
+          WHERE "idempotency_key" IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS "commitment_occurrences_user_source_date_unique"
+          ON "commitment_occurrences"("user_id", "source_type", "source_id", "expected_date");
+
+        CREATE TABLE IF NOT EXISTS "domain_event_outbox" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "event_type" text NOT NULL,
+          "aggregate_id" text NOT NULL,
+          "payload_json" text NOT NULL,
+          "status" text NOT NULL DEFAULT 'pending',
+          "attempts" integer NOT NULL DEFAULT 0,
+          "last_error" text,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "processed_at" timestamp
+        );
+        CREATE INDEX IF NOT EXISTS "domain_event_outbox_status_idx" ON "domain_event_outbox"("status", "created_at");
+
+        CREATE TABLE IF NOT EXISTS "financial_position_snapshots" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "snapshot_date" text NOT NULL,
+          "reporting_currency" text NOT NULL DEFAULT 'MAD',
+          "bank_balance_mad" numeric NOT NULL DEFAULT 0,
+          "cash_balance_mad" numeric NOT NULL DEFAULT 0,
+          "savings_balance_mad" numeric NOT NULL DEFAULT 0,
+          "investment_cash_mad" numeric NOT NULL DEFAULT 0,
+          "credit_card_liability_mad" numeric NOT NULL DEFAULT 0,
+          "overdraft_liability_mad" numeric NOT NULL DEFAULT 0,
+          "receivables_mad" numeric NOT NULL DEFAULT 0,
+          "payables_mad" numeric NOT NULL DEFAULT 0,
+          "investment_market_value_mad" numeric NOT NULL DEFAULT 0,
+          "external_assets_mad" numeric NOT NULL DEFAULT 0,
+          "external_liabilities_mad" numeric NOT NULL DEFAULT 0,
+          "total_net_worth_mad" numeric NOT NULL DEFAULT 0,
+          "liquid_net_worth_mad" numeric NOT NULL DEFAULT 0,
+          "fx_rates_json" text NOT NULL,
+          "components_json" text NOT NULL,
+          "data_source" text NOT NULL DEFAULT 'computed',
+          "confidence_level" text NOT NULL DEFAULT 'high',
+          "is_estimated" boolean NOT NULL DEFAULT false,
+          "trigger_source" text NOT NULL DEFAULT 'manual',
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS "financial_position_snapshots_user_date_unique"
+          ON "financial_position_snapshots"("user_id", "snapshot_date");
+
+        CREATE TABLE IF NOT EXISTS "external_wealth_valuations" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "item_id" uuid NOT NULL REFERENCES "external_wealth_items"("id") ON DELETE CASCADE,
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "estimated_value" numeric NOT NULL,
+          "currency" text NOT NULL DEFAULT 'MAD',
+          "fx_rate_used" numeric NOT NULL DEFAULT 1,
+          "fx_source" text NOT NULL DEFAULT 'reference_feed',
+          "value_mad" numeric NOT NULL,
+          "valuation_date" text NOT NULL,
+          "valuation_source" text NOT NULL DEFAULT 'manual_estimate',
+          "confidence_level" text NOT NULL DEFAULT 'medium',
+          "notes" text,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "counterparties" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "canonical_name" text NOT NULL,
+          "normalized_name" text NOT NULL,
+          "counterparty_type" text NOT NULL DEFAULT 'merchant',
+          "aliases_json" text NOT NULL DEFAULT '[]',
+          "default_category" text,
+          "website" text,
+          "logo_url" text,
+          "contact_details" text,
+          "notes" text,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "updated_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS "counterparties_user_normalized_unique"
+          ON "counterparties"("user_id", "normalized_name");
       `)
       .catch((err) => {
         console.warn('[DB Init] Schema columns ensure notice:', err?.message || err);

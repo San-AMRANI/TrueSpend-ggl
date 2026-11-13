@@ -10,7 +10,14 @@ import { WalletsManager } from './WalletsManager';
 import { UsersAndRolesSection } from './UsersAndRolesSection';
 import { ThemeStudioCard } from './ThemeStudioCard';
 import { getCapacitorApiBaseUrl, setCapacitorApiBaseUrl, isNativePlatform, getPlatformName } from '../../lib/capacitorBridge';
-import { getOfflineOutbox, flushOfflineOutbox, clearOfflineFinancialCachesOnLogout } from '../../lib/offlineOutbox';
+import {
+  getOfflineOutbox,
+  loadDecryptedOfflineOutbox,
+  flushOfflineOutbox,
+  clearOfflineFinancialCachesOnLogout,
+  forceDiscardOfflineOutbox,
+  type OfflineOutboxItem,
+} from '../../lib/offlineOutbox';
 import type {
   NotifChannelPrefs,
   NotifSettings,
@@ -95,12 +102,29 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [rules, setRules] = useState<FinancialRuleItem[]>([]);
   const [ruleLogs, setRuleLogs] = useState<FinancialRuleLogItem[]>([]);
   const [ruleName, setRuleName] = useState('');
-  const [ruleTrigger, setRuleTrigger] = useState('transaction_created');
-  const [ruleCondField, setRuleCondField] = useState('merchant_contains');
+  const [ruleTrigger, setRuleTrigger] = useState('transaction_posted');
+  const [ruleCondField, setRuleCondField] = useState<'minAmount' | 'counterparty' | 'category' | 'thresholdMad' | 'pacePercent' | 'withinDays'>('minAmount');
   const [ruleCondVal, setRuleCondVal] = useState('');
-  const [ruleActionType, setRuleActionType] = useState('flag_review');
-  const [outboxCount, setOutboxCount] = useState<number>(() => getOfflineOutbox().length);
+  const [ruleActionType, setRuleActionType] = useState('send_notification');
+  const [ruleDryRunResult, setRuleDryRunResult] = useState<{
+    matched: boolean;
+    matchedConditions: string[];
+    failedConditions: string[];
+    proposedResultSummary: string;
+    requiresApproval: boolean;
+  } | null>(null);
+  const [outboxItems, setOutboxItems] = useState<OfflineOutboxItem[]>(() => getOfflineOutbox());
+  const [confirmDiscardOutbox, setConfirmDiscardOutbox] = useState(false);
   const { user, token, signOut } = useAuth();
+
+  const refreshOutboxState = React.useCallback(async () => {
+    try {
+      const decrypted = await loadDecryptedOfflineOutbox();
+      setOutboxItems(decrypted);
+    } catch {
+      setOutboxItems(getOfflineOutbox());
+    }
+  }, []);
 
   React.useEffect(() => {
     if (token) {
@@ -112,10 +136,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         })
         .catch(() => {});
     }
-    const onOutboxUpdate = () => setOutboxCount(getOfflineOutbox().length);
+    refreshOutboxState();
+    const onOutboxUpdate = () => {
+      refreshOutboxState();
+    };
     window.addEventListener('truespend:outbox-updated', onOutboxUpdate);
     return () => window.removeEventListener('truespend:outbox-updated', onOutboxUpdate);
-  }, [token]);
+  }, [token, refreshOutboxState]);
+
+  const outboxCount = outboxItems.length;
 
   
   const handleToggleAutoBackup = async () => {
@@ -822,7 +851,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     setBackupPreview(preview);
                     showNotifToast(
                       preview.valid
-                        ? `Backup verified (${preview.totalRecords} records across ${Object.keys(preview.tableCounts).length} tables)!`
+                        ? `Backup verified (${preview.totalRows} records across ${preview.tablesWithData.length} tables)!`
                         : 'Backup validation found issues.'
                     );
                   } catch (err: any) {
@@ -862,15 +891,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     </span>
                   </div>
                   <p className="text-gray-600 dark:text-gray-300">
-                    Total Records: <strong>{backupPreview.totalRecords}</strong> across{' '}
-                    <strong>{Object.keys(backupPreview.tableCounts).length}</strong> tables ({backupPreview.totalStatements} SQL statements).
+                    Total Records: <strong>{backupPreview.totalRows}</strong> across{' '}
+                    <strong>{backupPreview.tablesWithData.length}</strong> populated tables.{' '}
+                    Referential Integrity:{' '}
+                    <strong className={backupPreview.referentialIntegrityOk ? 'text-emerald-600' : 'text-amber-600'}>
+                      {backupPreview.referentialIntegrityOk ? 'OK (0 orphans)' : `${backupPreview.orphanRecordsDetected} orphan(s) detected`}
+                    </strong>
                   </p>
-                  {backupPreview.warnings.length > 0 && (
-                    <p className="text-amber-600">{backupPreview.warnings.join(' · ')}</p>
-                  )}
-                  {backupPreview.errors.length > 0 && (
-                    <p className="text-rose-600">{backupPreview.errors.join(' · ')}</p>
-                  )}
                 </div>
               )}
             </div>
@@ -889,7 +916,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         <CardContent>
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 p-4 space-y-4">
             <p className="text-xs text-gray-600 dark:text-gray-400">
-              Define deterministic IF/THEN rules with cooldown protection. Rules can auto-categorize transactions, flag large outflows to your Review Inbox, or propose payday transfers—never silently moving money without confirmation.
+              Define deterministic IF/THEN rules with cooldown protection. Test rules safely via Dry-Run mode before saving. Rules propose Review Inbox drafts, suggest categories, or send alerts—never silently moving money without confirmation.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
               <input
@@ -904,18 +931,23 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 onChange={(e) => setRuleTrigger(e.target.value)}
                 className="px-2.5 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
               >
-                <option value="transaction_created">On Transaction Created</option>
+                <option value="transaction_posted">On Transaction Posted</option>
                 <option value="salary_confirmed">On Salary Confirmed</option>
-                <option value="statement_imported">On Statement Imported</option>
+                <option value="balance_threshold_crossed">On Balance Threshold</option>
+                <option value="commitment_approaching">On Commitment Approaching</option>
+                <option value="budget_pace_crossed">On Budget Pace Crossed</option>
               </select>
               <select
                 value={ruleCondField}
-                onChange={(e) => setRuleCondField(e.target.value)}
+                onChange={(e) => setRuleCondField(e.target.value as any)}
                 className="px-2.5 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
               >
-                <option value="amount_gt">Amount &gt; (MAD)</option>
-                <option value="merchant_contains">Merchant Contains</option>
-                <option value="category_equals">Category Equals</option>
+                <option value="minAmount">Min Amount (MAD)</option>
+                <option value="counterparty">Counterparty / Text Contains</option>
+                <option value="category">Category Contains</option>
+                <option value="thresholdMad">Wallet Balance ≤ (MAD)</option>
+                <option value="pacePercent">Budget Pace ≥ (%)</option>
+                <option value="withinDays">Due Within (Days)</option>
               </select>
               <input
                 type="text"
@@ -930,30 +962,67 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   onChange={(e) => setRuleActionType(e.target.value)}
                   className="px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 flex-1"
                 >
-                  <option value="flag_review">Flag in Review Inbox</option>
-                  <option value="propose_transfer">Propose Savings Transfer</option>
-                  <option value="create_alert">Create Alert</option>
+                  <option value="send_notification">Send Notification</option>
+                  <option value="create_review_draft">Create Review Draft</option>
+                  <option value="suggest_category">Suggest Category</option>
+                  <option value="prepare_allocation">Prepare Payday Allocation</option>
                 </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    if (!ruleCondVal.trim()) return;
+                    const conds: Record<string, unknown> = { cooldownHours: 24 };
+                    conds[ruleCondField] = ['minAmount', 'thresholdMad', 'pacePercent', 'withinDays'].includes(ruleCondField)
+                      ? Number(ruleCondVal)
+                      : ruleCondVal.trim();
+                    const res = await dashboardService.dryRunFinancialRule(
+                      {
+                        name: ruleName.trim() || 'Preview Rule',
+                        triggerType: ruleTrigger,
+                        conditions: conds,
+                        actionType: ruleActionType,
+                        actionPayload: ruleActionType === 'prepare_allocation' ? { percent: 20 } : {},
+                        sampleEvent: {
+                          amount: ['minAmount'].includes(ruleCondField) ? Number(ruleCondVal) : 1200,
+                          walletBalanceMad: ['thresholdMad'].includes(ruleCondField) ? Number(ruleCondVal) : 5000,
+                          pacePercent: ['pacePercent'].includes(ruleCondField) ? Number(ruleCondVal) : 95,
+                          withinDays: ['withinDays'].includes(ruleCondField) ? Number(ruleCondVal) : 2,
+                          counterparty: ruleCondField === 'counterparty' ? ruleCondVal.trim() : 'Sample Merchant',
+                          category: ruleCondField === 'category' ? ruleCondVal.trim() : 'Dining',
+                          description: `Dry run test event (${ruleCondVal.trim()})`,
+                        },
+                      },
+                      token
+                    );
+                    setRuleDryRunResult(res);
+                  }}
+                >
+                  Dry-Run
+                </Button>
                 <Button
                   size="sm"
                   onClick={async () => {
                     if (!ruleName.trim() || !ruleCondVal.trim()) return;
+                    const conds: Record<string, unknown> = { cooldownHours: 24 };
+                    conds[ruleCondField] = ['minAmount', 'thresholdMad', 'pacePercent', 'withinDays'].includes(ruleCondField)
+                      ? Number(ruleCondVal)
+                      : ruleCondVal.trim();
                     const created = await dashboardService.upsertFinancialRule(
                       {
                         name: ruleName.trim(),
                         triggerType: ruleTrigger,
-                        conditionField: ruleCondField,
-                        conditionOperator: ruleCondField === 'amount_gt' ? 'gt' : 'contains',
-                        conditionValue: ruleCondVal.trim(),
+                        conditions: conds,
                         actionType: ruleActionType,
-                        actionPayload: { amount: 500 },
-                        cooldownHours: 24,
+                        actionPayload: ruleActionType === 'prepare_allocation' ? { percent: 20, target: 'Savings' } : { amount: 500 },
+                        approvalPolicy: ruleActionType === 'send_notification' ? 'notify_only' : 'draft_for_approval',
                       },
                       token
                     );
                     setRules((prev) => [created, ...prev]);
                     setRuleName('');
                     setRuleCondVal('');
+                    setRuleDryRunResult(null);
                     showNotifToast('Financial rule saved!');
                   }}
                 >
@@ -961,6 +1030,32 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 </Button>
               </div>
             </div>
+
+            {ruleDryRunResult && (
+              <div className={`rounded-lg border p-2.5 text-xs ${
+                ruleDryRunResult.matched
+                  ? 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/60 dark:bg-emerald-950/30'
+                  : 'border-amber-200 bg-amber-50/70 dark:border-amber-900/60 dark:bg-amber-950/30'
+              }`}>
+                <div className="flex items-center justify-between font-bold">
+                  <span>{ruleDryRunResult.matched ? '✓ Dry-Run Matched (No Side Effects)' : '✕ Dry-Run Did Not Match'}</span>
+                  <button type="button" onClick={() => setRuleDryRunResult(null)} className="text-[11px] underline">
+                    Dismiss
+                  </button>
+                </div>
+                <p className="mt-1 text-gray-700 dark:text-gray-300">{ruleDryRunResult.proposedResultSummary}</p>
+                {ruleDryRunResult.matchedConditions.length > 0 && (
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                    Matched: {ruleDryRunResult.matchedConditions.join(', ')}
+                  </p>
+                )}
+                {ruleDryRunResult.failedConditions.length > 0 && (
+                  <p className="text-[11px] text-rose-700 dark:text-rose-300">
+                    Failed: {ruleDryRunResult.failedConditions.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
 
             {rules.length > 0 && (
               <div className="space-y-1.5">
@@ -971,8 +1066,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   >
                     <div>
                       <span className="font-bold text-gray-900 dark:text-white">{r.name}</span>
-                      <span className="text-gray-500 ml-2">
-                        WHEN {r.triggerType} ({r.conditionField} {r.conditionValue}) → {r.actionType}
+                      <span className="text-gray-500 ml-2 font-mono text-[11px]">
+                        WHEN {r.triggerType} ({r.conditionsJson}) → {r.actionType}
                       </span>
                     </div>
                     <button
@@ -993,10 +1088,12 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             {ruleLogs.length > 0 && (
               <div className="pt-2 border-t border-gray-200 dark:border-gray-800 text-[11px] text-gray-500 space-y-1">
                 <p className="font-semibold text-gray-700 dark:text-gray-300">Recent Rule Execution Audit Log:</p>
-                {ruleLogs.slice(0, 4).map((l) => (
-                  <div key={l.id} className="flex justify-between">
-                    <span>{l.ruleName}: {l.details}</span>
-                    <span className="font-mono">{new Date(l.executedAt).toLocaleDateString()}</span>
+                {ruleLogs.slice(0, 6).map((l) => (
+                  <div key={l.id} className="flex justify-between gap-2">
+                    <span className="truncate">
+                      <strong>{l.outcomeStatus}</strong> · {l.triggerEventSummary} → {l.proposedResultSummary}
+                    </span>
+                    <span className="font-mono shrink-0">{new Date(l.createdAt).toLocaleDateString()}</span>
                   </div>
                 ))}
               </div>
@@ -1011,10 +1108,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <CardTitle className="flex items-center justify-between">
             <span className="flex items-center gap-2">
               <Smartphone className="h-5 w-5 text-emerald-600" />
-              Android / Capacitor Native Runtime &amp; Offline Outbox
+              Android / Capacitor Native Runtime &amp; Encrypted Offline Outbox
             </span>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              {isNativePlatform() ? `Native (${getPlatformName()})` : 'Web / Capacitor Ready'} · Outbox: {outboxCount} Pending
+              {isNativePlatform() ? `Native (${getPlatformName()})` : 'Web / Capacitor Ready'} · Outbox: {outboxCount} Pending (AES-GCM)
             </span>
           </CardTitle>
         </CardHeader>
@@ -1023,38 +1120,94 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-gray-200 dark:border-gray-800 text-xs">
               <div>
                 <span className="font-semibold text-gray-900 dark:text-white">
-                  Offline Draft Transaction Outbox ({outboxCount} queued)
+                  Encrypted Offline Outbox ({outboxCount} queued)
                 </span>
                 <p className="text-gray-500">
-                  Offline transactions are assigned client-side idempotency keys and automatically sync on reconnect without duplicates.
+                  Queued offline drafts are AES-GCM encrypted per user, preserved across logout, retried with exponential backoff, and deduplicated via idempotency keys.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
                   variant="outline"
                   disabled={outboxCount === 0}
                   onClick={async () => {
-                    const res = await flushOfflineOutbox(token);
-                    setOutboxCount(res.remaining);
-                    showNotifToast(`Synced ${res.synced} offline transaction(s).`);
+                    const res = await flushOfflineOutbox(token, { forceRetry: true });
+                    await refreshOutboxState();
+                    showNotifToast(`Synced ${res.synced}, Conflicts: ${res.conflicts}, Remaining: ${res.remaining}.`);
                   }}
                 >
-                  Sync Outbox Now
+                  Sync / Retry Outbox
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    clearOfflineFinancialCachesOnLogout();
-                    setOutboxCount(0);
-                    showNotifToast('Cleared local offline cache.');
+                    const res = clearOfflineFinancialCachesOnLogout();
+                    refreshOutboxState();
+                    showNotifToast(`Cleared session caches; preserved ${res.preservedPendingCount} pending offline item(s).`);
                   }}
                 >
-                  Clear Local Cache
+                  Clear Cache (Safe)
                 </Button>
+                {outboxCount > 0 && !confirmDiscardOutbox && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-rose-600 border-rose-200"
+                    onClick={() => setConfirmDiscardOutbox(true)}
+                  >
+                    Discard Pending...
+                  </Button>
+                )}
+                {outboxCount > 0 && confirmDiscardOutbox && (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      className="bg-rose-600 hover:bg-rose-700 text-white"
+                      onClick={() => {
+                        forceDiscardOfflineOutbox(true);
+                        setConfirmDiscardOutbox(false);
+                        refreshOutboxState();
+                        showNotifToast('Explicitly discarded pending offline outbox items.');
+                      }}
+                    >
+                      Confirm Permanent Discard
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setConfirmDiscardOutbox(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
+
+            {outboxItems.length > 0 && (
+              <div className="space-y-1.5 max-h-40 overflow-y-auto text-xs pb-2 border-b border-gray-200 dark:border-gray-800">
+                {outboxItems.map((item) => (
+                  <div key={item.idempotencyKey} className="flex items-center justify-between gap-2 bg-white dark:bg-gray-800 p-2 rounded border border-gray-200 dark:border-gray-700">
+                    <div className="truncate">
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {String(item.payload?.notes || item.payload?.category || item.payload?.type || 'Offline Transaction')}
+                      </span>
+                      <span className="text-[11px] text-gray-500 ml-2 font-mono">
+                        {Number(item.payload?.amount || 0).toFixed(2)} MAD · Attempts: {item.retryCount}
+                      </span>
+                      {item.lastError && <p className="text-[10px] text-rose-600 truncate">{item.lastError}</p>}
+                    </div>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                      item.status === 'conflict'
+                        ? 'bg-rose-100 text-rose-700'
+                        : item.status === 'failed'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-indigo-100 text-indigo-700'
+                    }`}>
+                      {item.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-gray-200 dark:border-gray-800">
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-white">

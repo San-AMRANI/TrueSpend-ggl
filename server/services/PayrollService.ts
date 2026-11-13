@@ -142,48 +142,66 @@ export class PayrollService {
       targetWalletId = bankWallet?.id || null;
     }
 
-    const createdTx = await transactionRepository.create({
-      userId,
-      payrollId: payroll.id,
-      amount: String(actualAmt),
-      type: 'Income',
-      walletId: targetWalletId as any,
-      category: '📥 Income',
-      notes:
-        variance === 0
-          ? `Confirmed salary deposit (${actualAmt.toFixed(0)} MAD)`
-          : `Confirmed salary deposit (${actualAmt.toFixed(0)} MAD vs ${expectedAmt.toFixed(0)} MAD expected · variance ${variance >= 0 ? '+' : ''}${variance.toFixed(0)} MAD)`,
-      createdAt: receivedDate,
+    const { updatedPayroll, createdTx } = await db.transaction(async (txDb) => {
+      const createdTx = await transactionRepository.create(
+        {
+          userId,
+          payrollId: payroll.id,
+          amount: String(actualAmt),
+          type: 'Income',
+          walletId: targetWalletId as any,
+          category: '📥 Income',
+          notes:
+            variance === 0
+              ? `Confirmed salary deposit (${actualAmt.toFixed(0)} MAD)`
+              : `Confirmed salary deposit (${actualAmt.toFixed(0)} MAD vs ${expectedAmt.toFixed(0)} MAD expected · variance ${variance >= 0 ? '+' : ''}${variance.toFixed(0)} MAD)`,
+          createdAt: receivedDate,
+        },
+        txDb
+      );
+
+      await coreAuditService.postJournalEntryForTransaction(
+        userId,
+        createdTx,
+        {
+          idempotencyKey: `payroll-confirm-${payroll.id}`,
+          memo: `Confirmed Payroll Receipt (${actualAmt.toFixed(2)} MAD)`,
+        },
+        txDb
+      );
+
+      const [updatedPayroll] = await txDb
+        .update(payrolls)
+        .set({
+          status: dto.status || 'confirmed',
+          confirmedAmount: String(actualAmt),
+          confirmedAt: receivedDate,
+          varianceAmount: String(variance),
+          varianceNotes:
+            dto.varianceNotes ||
+            (variance < 0 ? 'Short-paid vs expected' : variance > 0 ? 'Overpaid / bonus included' : 'Matched expected amount'),
+        })
+        .where(and(eq(payrolls.id, payroll.id), eq(payrolls.userId, userId)))
+        .returning();
+
+      await coreAuditService.enqueueDomainEvent(
+        userId,
+        'salary_confirmed',
+        payroll.id,
+        {
+          amount: actualAmt,
+          category: '📥 Income',
+          walletId: targetWalletId || undefined,
+          description: 'Salary Confirmed',
+          eventId: payroll.id,
+        },
+        txDb
+      );
+
+      return { updatedPayroll, createdTx };
     });
 
-    await coreAuditService.postJournalEntryForTransaction(userId, createdTx, {
-      idempotencyKey: `payroll-confirm-${payroll.id}`,
-      memo: `Confirmed Payroll Receipt (${actualAmt.toFixed(2)} MAD)`,
-    });
-
-    const [updatedPayroll] = await db
-      .update(payrolls)
-      .set({
-        status: dto.status || 'confirmed',
-        confirmedAmount: String(actualAmt),
-        confirmedAt: receivedDate,
-        varianceAmount: String(variance),
-        varianceNotes:
-          dto.varianceNotes ||
-          (variance < 0 ? 'Short-paid vs expected' : variance > 0 ? 'Overpaid / bonus included' : 'Matched expected amount'),
-      })
-      .where(and(eq(payrolls.id, payroll.id), eq(payrolls.userId, userId)))
-      .returning();
-
-    await coreAuditService
-      .evaluateRulesForTrigger(userId, 'salary_confirmed', {
-        amount: actualAmt,
-        category: '📥 Income',
-        walletId: targetWalletId || undefined,
-        description: 'Salary Confirmed',
-        eventId: payroll.id,
-      })
-      .catch(() => undefined);
+    await coreAuditService.processPendingOutboxEvents(userId).catch(() => undefined);
 
     return { payroll: updatedPayroll, transaction: createdTx, variance };
   }

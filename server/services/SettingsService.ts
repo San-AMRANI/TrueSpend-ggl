@@ -4,10 +4,13 @@ import { createPool, db } from '../../src/db/index.js';
 import {
   categoryBudgets,
   commitmentOccurrences,
+  counterparties,
   debts,
   exchangeRates,
   externalWealthItems,
+  externalWealthValuations,
   financialContexts,
+  financialPositionSnapshots,
   financialRules,
   goalContributionEvents,
   goals,
@@ -29,11 +32,12 @@ import {
 } from '../../src/db/schema.js';
 
 const TRUE_SPEND_BACKUP_HEADER = '-- TrueSpend Complete PostgreSQL Database Backup';
-const BACKUP_SCHEMA_VERSION = '2.0';
+const BACKUP_SCHEMA_VERSION = '2.1';
 const MAX_BACKUP_SIZE_BYTES = 25 * 1024 * 1024;
 
 export type BackupTable =
   | 'users'
+  | 'counterparties'
   | 'wallets'
   | 'debts'
   | 'payrolls'
@@ -56,7 +60,9 @@ export type BackupTable =
   | 'commitment_occurrences'
   | 'saved_scenarios'
   | 'financial_rules'
-  | 'external_wealth_items';
+  | 'external_wealth_items'
+  | 'external_wealth_valuations'
+  | 'financial_position_snapshots';
 
 type BackupRow = {
   table: BackupTable;
@@ -66,6 +72,7 @@ type BackupRow = {
 
 export const restoreOrder: BackupTable[] = [
   'users',
+  'counterparties',
   'wallets',
   'debts',
   'payrolls',
@@ -89,6 +96,8 @@ export const restoreOrder: BackupTable[] = [
   'saved_scenarios',
   'financial_rules',
   'external_wealth_items',
+  'external_wealth_valuations',
+  'financial_position_snapshots',
 ];
 
 const backupTables = new Set<BackupTable>(restoreOrder);
@@ -392,6 +401,7 @@ export class SettingsService {
   async exportSqlDatabase(): Promise<string> {
     const [
       allUsers,
+      allCounterparties,
       allWallets,
       allDebts,
       allPayrolls,
@@ -415,8 +425,11 @@ export class SettingsService {
       allScenarios,
       allRules,
       allExternalWealth,
+      allExternalValuations,
+      allPositionSnapshots,
     ] = await Promise.all([
       db.select().from(users),
+      db.select().from(counterparties).catch(() => []),
       db.select().from(wallets),
       db.select().from(debts),
       db.select().from(payrolls),
@@ -440,6 +453,8 @@ export class SettingsService {
       db.select().from(savedScenarios).catch(() => []),
       db.select().from(financialRules).catch(() => []),
       db.select().from(externalWealthItems).catch(() => []),
+      db.select().from(externalWealthValuations).catch(() => []),
+      db.select().from(financialPositionSnapshots).catch(() => []),
     ]);
 
     const bodyLines: string[] = [];
@@ -461,6 +476,24 @@ export class SettingsService {
         emergencyBuffer: 'emergency_buffer',
         salary: 'salary',
         baseCurrency: 'base_currency',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('counterparties', allCounterparties, {
+        id: 'id',
+        userId: 'user_id',
+        canonicalName: 'canonical_name',
+        normalizedName: 'normalized_name',
+        counterpartyType: 'counterparty_type',
+        aliasesJson: 'aliases_json',
+        defaultCategory: 'default_category',
+        website: 'website',
+        logoUrl: 'logo_url',
+        contactDetails: 'contact_details',
+        notes: 'notes',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
       })
     );
 
@@ -869,6 +902,53 @@ export class SettingsService {
       })
     );
 
+    bodyLines.push(
+      ...this.buildTableInserts('external_wealth_valuations', allExternalValuations, {
+        id: 'id',
+        itemId: 'item_id',
+        userId: 'user_id',
+        valuationDate: 'valuation_date',
+        estimatedValue: 'estimated_value',
+        currency: 'currency',
+        fxRateUsed: 'fx_rate_used',
+        fxSource: 'fx_source',
+        valueMad: 'value_mad',
+        valuationSource: 'valuation_source',
+        confidenceLevel: 'confidence_level',
+        notes: 'notes',
+        createdAt: 'created_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('financial_position_snapshots', allPositionSnapshots, {
+        id: 'id',
+        userId: 'user_id',
+        snapshotDate: 'snapshot_date',
+        reportingCurrency: 'reporting_currency',
+        bankBalanceMad: 'bank_balance_mad',
+        cashBalanceMad: 'cash_balance_mad',
+        savingsBalanceMad: 'savings_balance_mad',
+        investmentCashMad: 'investment_cash_mad',
+        creditCardLiabilityMad: 'credit_card_liability_mad',
+        overdraftLiabilityMad: 'overdraft_liability_mad',
+        receivablesMad: 'receivables_mad',
+        payablesMad: 'payables_mad',
+        investmentMarketValueMad: 'investment_market_value_mad',
+        externalAssetsMad: 'external_assets_mad',
+        externalLiabilitiesMad: 'external_liabilities_mad',
+        totalNetWorthMad: 'total_net_worth_mad',
+        liquidNetWorthMad: 'liquid_net_worth_mad',
+        fxRatesJson: 'fx_rates_json',
+        componentsJson: 'components_json',
+        dataSource: 'data_source',
+        confidenceLevel: 'confidence_level',
+        isEstimated: 'is_estimated',
+        triggerSource: 'trigger_source',
+        createdAt: 'created_at',
+      })
+    );
+
     bodyLines.push('COMMIT;');
     const bodyString = bodyLines.join('\n').trim();
     const checksum = crypto.createHash('sha256').update(bodyString, 'utf8').digest('hex');
@@ -879,6 +959,7 @@ export class SettingsService {
       tablesCovered: restoreOrder.length,
       counts: {
         users: allUsers.length,
+        counterparties: allCounterparties.length,
         wallets: allWallets.length,
         debts: allDebts.length,
         payrolls: allPayrolls.length,
@@ -898,6 +979,8 @@ export class SettingsService {
         saved_scenarios: allScenarios.length,
         financial_rules: allRules.length,
         external_wealth_items: allExternalWealth.length,
+        external_wealth_valuations: allExternalValuations.length,
+        financial_position_snapshots: allPositionSnapshots.length,
       },
     };
 
@@ -908,7 +991,7 @@ export class SettingsService {
       `-- Exported-At: ${manifest.exportedAt}`,
       `-- Checksum-SHA256: ${checksum}`,
       `-- Manifest-JSON: ${JSON.stringify(manifest)}`,
-      '-- Full dependency-ordered PostgreSQL backup covering all 24 TrueSpend tables.',
+      `-- Full dependency-ordered PostgreSQL backup covering all ${restoreOrder.length} TrueSpend tables.`,
       '-- ====================================================\n',
     ];
 

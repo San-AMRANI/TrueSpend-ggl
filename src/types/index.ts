@@ -300,6 +300,18 @@ export interface Debt {
   forgivenAmount?: string;
   originTransactionId?: string | null;
   originDescription?: string | null;
+  earlySettlementSavingsMad?: number;
+  estimatedMonthsRemaining?: number;
+  totalPayoffWithFeesMad?: number;
+  amortizationSchedule?: Array<{
+    installmentNumber: number;
+    expectedDate: string;
+    expectedAmount: number;
+    principalComponent: number;
+    interestComponent: number;
+    feeComponent: number;
+    remainingPrincipalAfter: number;
+  }>;
 }
 
 export interface UserSettings {
@@ -1315,16 +1327,25 @@ export interface FinancialReviewItem {
 export interface CommitmentOccurrence {
   id: string;
   userId: string;
-  commitmentType: 'subscription' | 'debt_installment' | 'payroll' | 'planned_bill';
+  sourceType: 'subscription' | 'debt_installment' | 'payroll' | 'recurring_income' | 'planned_bill' | string;
   sourceId: string;
   title: string;
-  scheduledDate: string;
+  expectedDate: string;
   expectedAmount: string;
-  confirmedAmount: string | null;
   currency: string;
-  status: 'scheduled' | 'paid' | 'skipped' | 'overdue' | 'renegotiated';
+  status: 'scheduled' | 'completed' | 'partial' | 'skipped' | 'overdue' | 'cancelled' | string;
+  isNonCashEvent?: boolean;
+  paidAmount?: string;
+  principalComponent?: string;
+  interestComponent?: string;
+  feeComponent?: string;
+  installmentNumber?: number | null;
+  actualDate?: string | null;
+  actualAmount?: string | null;
+  varianceAmount: string;
   linkedTransactionId: string | null;
-  varianceNotes: string | null;
+  historyJson?: string | null;
+  notes?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1362,13 +1383,18 @@ export interface FinancialRuleItem {
   userId: string;
   name: string;
   enabled: boolean;
-  triggerType: 'transaction_created' | 'statement_imported' | 'balance_threshold' | 'salary_confirmed';
-  conditionField: 'merchant_contains' | 'amount_gt' | 'category_equals' | 'balance_lt';
-  conditionOperator: string;
-  conditionValue: string;
-  actionType: 'auto_categorize' | 'create_alert' | 'propose_transfer' | 'flag_review';
+  triggerType:
+    | 'transaction_posted'
+    | 'salary_confirmed'
+    | 'balance_threshold_crossed'
+    | 'commitment_approaching'
+    | 'budget_pace_crossed'
+    | string;
+  conditionsJson: string;
+  actionType: 'send_notification' | 'create_review_draft' | 'suggest_category' | 'prepare_allocation' | string;
   actionPayloadJson: string;
-  cooldownHours: number;
+  approvalPolicy: 'notify_only' | 'draft_for_approval' | string;
+  version: number;
   lastTriggeredAt: string | null;
   createdAt: string;
 }
@@ -1377,38 +1403,133 @@ export interface FinancialRuleLogItem {
   id: string;
   userId: string;
   ruleId: string;
-  ruleName: string;
-  triggerEvent: string;
-  outcome: string;
-  details: string;
-  executedAt: string;
+  ruleVersion?: number;
+  triggerEventSummary: string;
+  proposedResultSummary: string;
+  outcomeStatus: string;
+  idempotencyKey?: string;
+  createdAt: string;
+}
+
+export interface ExternalWealthValuationRecord {
+  id: string;
+  itemId: string;
+  estimatedValue: string;
+  currency: string;
+  fxRateUsed: string;
+  fxSource: string;
+  valueMad: string;
+  valuationDate: string;
+  valuationSource: string;
+  confidenceLevel: string;
+  notes?: string | null;
 }
 
 export interface ExternalWealthItem {
   id: string;
   userId: string;
   name: string;
-  itemType: 'Asset' | 'Liability';
-  category: 'Property' | 'Vehicle' | 'PreciousMetals' | 'PrivateInvestment' | 'BusinessEquity' | 'Mortgage' | 'ExternalLoan' | 'Other';
-  amountMad: string;
-  currency: string;
+  itemClass: string;
+  isLiability: boolean;
   isLiquid: boolean;
-  valuationSource: 'manual' | 'appraisal' | 'market';
-  lastUpdatedAt: string;
-  notes: string | null;
+  estimatedValue: string;
+  valueMad?: number;
+  fxRateUsed?: number;
+  currency: string;
+  valuationDate: string;
+  valuationSource: string;
+  confidenceLevel?: string;
+  isStaleEstimate?: boolean;
+  ageDays?: number;
+  notes?: string | null;
+  valuationHistory?: ExternalWealthValuationRecord[];
+}
+
+export interface CounterpartyRecord {
+  id: string;
+  userId: string;
+  canonicalName: string;
+  normalizedName: string;
+  counterpartyType: 'merchant' | 'person' | 'employer' | 'financial_institution' | 'service_provider' | string;
+  aliasesJson: string;
+  aliases: string[];
+  defaultCategory: string | null;
+  website?: string | null;
+  contactDetails?: string | null;
+  notes?: string | null;
+  totalSpendMad: number;
+  totalIncomeMad: number;
+  transactionCount: number;
+  outstandingReceivablesMad: number;
+  outstandingPayablesMad: number;
+  subscriptionsCount: number;
+}
+
+export interface FinancialPositionSnapshot {
+  id: string;
+  snapshotDate: string;
+  reportingCurrency: string;
+  bankBalanceMad: string;
+  cashBalanceMad: string;
+  savingsBalanceMad: string;
+  investmentCashMad: string;
+  creditCardLiabilityMad: string;
+  overdraftLiabilityMad: string;
+  receivablesMad: string;
+  payablesMad: string;
+  investmentMarketValueMad: string;
+  externalAssetsMad: string;
+  externalLiabilitiesMad: string;
+  totalNetWorthMad: string;
+  liquidNetWorthMad: string;
+  dataSource: string;
+  confidenceLevel: string;
+  isEstimated: boolean;
+  triggerSource: string;
+}
+
+export interface NetWorthChangeBridge {
+  fromDate: string;
+  toDate: string;
+  deltaLiquidCashMad: number;
+  deltaCreditDebtMad: number;
+  deltaReceivablesMad: number;
+  deltaPayablesMad: number;
+  deltaInvestmentsMad: number;
+  deltaExternalNetMad: number;
+  totalDeltaMad: number;
+}
+
+export interface FinancialIntegrityReport {
+  healthy: boolean;
+  checkedAt: string;
+  totalExceptions: number;
+  walletCount: number;
+  transactionCount: number;
+  journalEntryCount: number;
+  checks: {
+    unjournaledTransactions: Array<{ id: string; type: string; amount: string; notes: string | null }>;
+    duplicateJournalPostings: Array<{ transactionId: string; count: number }>;
+    unbalancedJournalEntries: Array<{ id: string; debits: number; credits: number; lineCount: number }>;
+    orphanedJournalLines: Array<{ id: string; journalEntryId: string }>;
+    orphanedReversals: Array<{ id: string; reversalOfEntryId: string | null }>;
+    completedOccurrencesWithoutTx: Array<{ id: string; title: string; expectedDate: string }>;
+    brokenStatementLinks: Array<{ id: string; description: string; linkedTransactionId: string | null }>;
+    unreconciledGoals: Array<{ id: string; name: string; currentAmount: number; eventNetAmount: number; diff: number }>;
+    staleExternalValuations: Array<{ id: string; name: string; valuationDate: string; ageDays: number }>;
+  };
 }
 
 export interface BackupValidationPreview {
   valid: boolean;
   schemaVersion: string;
   checksumVerified: boolean;
-  expectedChecksum: string | null;
-  computedChecksum: string;
-  totalStatements: number;
-  totalRecords: number;
-  tableCounts: Record<string, number>;
-  warnings: string[];
-  errors: string[];
+  totalRows: number;
+  tablesWithData: Array<{ table: string; count: number }>;
+  countsByTable: Record<string, number>;
+  referentialIntegrityOk: boolean;
+  orphanRecordsDetected: number;
+  manifest: Record<string, any> | null;
 }
 
 export interface AiActionImpactSimulation {

@@ -22,6 +22,9 @@ import {
   Globe,
   CreditCard,
   RefreshCw,
+  Users,
+  Activity,
+  GitMerge,
 } from 'lucide-react';
 import { Card, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -38,6 +41,8 @@ import {
   FinancialReviewItem,
   ExternalWealthItem,
   ExchangeRateRecord,
+  CounterpartyRecord,
+  FinancialIntegrityReport,
 } from '../../types';
 import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
@@ -82,13 +87,15 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
 
   // Core Audit Workbench Sub-panel state
   const [activeWorkbench, setActiveWorkbench] = useState<
-    'none' | 'statement_import' | 'review_inbox' | 'journal_audit' | 'external_wealth_fx'
+    'none' | 'statement_import' | 'review_inbox' | 'journal_audit' | 'external_wealth_fx' | 'counterparties' | 'integrity_diagnostics'
   >('none');
   const [journalSummary, setJournalSummary] = useState<JournalAuditSummary | null>(null);
   const [statementBatches, setStatementBatches] = useState<StatementBatchWithRows[]>([]);
   const [reviewItems, setReviewItems] = useState<FinancialReviewItem[]>([]);
   const [externalWealth, setExternalWealth] = useState<ExternalWealthItem[]>([]);
   const [fxRates, setFxRates] = useState<ExchangeRateRecord[]>([]);
+  const [counterpartiesList, setCounterpartiesList] = useState<CounterpartyRecord[]>([]);
+  const [integrityReport, setIntegrityReport] = useState<FinancialIntegrityReport | null>(null);
   const [workbenchLoading, setWorkbenchLoading] = useState(false);
 
   // Statement import form state
@@ -101,7 +108,16 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   const [wealthType, setWealthType] = useState<'Asset' | 'Liability'>('Asset');
   const [wealthCategory, setWealthCategory] = useState('Property');
   const [wealthAmountMad, setWealthAmountMad] = useState('');
+  const [wealthCurrency, setWealthCurrency] = useState('MAD');
   const [wealthIsLiquid, setWealthIsLiquid] = useState(false);
+
+  // Counterparty form & merge state
+  const [cpName, setCpName] = useState('');
+  const [cpType, setCpType] = useState<'merchant' | 'person' | 'employer' | 'financial_institution' | 'service_provider'>('merchant');
+  const [cpAliases, setCpAliases] = useState('');
+  const [cpDefaultCat, setCpDefaultCat] = useState('');
+  const [mergeSourceId, setMergeSourceId] = useState('');
+  const [mergeTargetId, setMergeTargetId] = useState('');
 
   // FX Rate form state
   const [fxBaseCurrency, setFxBaseCurrency] = useState('USD');
@@ -139,12 +155,18 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
           const inbox = await dashboardService.getReviewInbox(token);
           setReviewItems(inbox);
         } else if (panel === 'external_wealth_fx') {
-          const [items, rates] = await Promise.all([
+          const [wealthRes, rates] = await Promise.all([
             dashboardService.getExternalWealthItems(token),
             dashboardService.getExchangeRates(token),
           ]);
-          setExternalWealth(items);
+          setExternalWealth(Array.isArray(wealthRes) ? wealthRes : wealthRes.items || []);
           setFxRates(rates);
+        } else if (panel === 'counterparties') {
+          const list = await dashboardService.getCounterparties(token);
+          setCounterpartiesList(list);
+        } else if (panel === 'integrity_diagnostics') {
+          const report = await dashboardService.getFinancialIntegrityReport(token);
+          setIntegrityReport(report);
         }
       } catch (e: any) {
         setError(e?.message || 'Failed to load audit panel data');
@@ -573,6 +595,8 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 { id: 'review_inbox', label: 'Review Inbox', icon: Inbox },
                 { id: 'journal_audit', label: 'Double-Entry Ledger', icon: BookOpen },
                 { id: 'external_wealth_fx', label: 'External Wealth & FX', icon: Globe },
+                { id: 'counterparties', label: 'Counterparties', icon: Users },
+                { id: 'integrity_diagnostics', label: 'Integrity Diagnostics', icon: Activity },
               ] as const
             ).map((btn) => {
               const Icon = btn.icon;
@@ -935,14 +959,20 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                     <option value="ExternalLoan">External Loan</option>
                   </Select>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Input
                     type="number"
-                    placeholder="Valuation (MAD)"
+                    placeholder="Estimated Valuation"
                     value={wealthAmountMad}
                     onChange={(e) => setWealthAmountMad(e.target.value)}
-                    className="text-xs flex-1"
+                    className="text-xs flex-1 min-w-[120px]"
                   />
+                  <Select value={wealthCurrency} onChange={(e) => setWealthCurrency(e.target.value)} className="text-xs w-20">
+                    <option value="MAD">MAD</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                    <option value="GBP">GBP</option>
+                  </Select>
                   <label className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
                     <input
                       type="checkbox"
@@ -959,10 +989,13 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                       await dashboardService.upsertExternalWealthItem(
                         {
                           name: wealthName.trim(),
-                          itemType: wealthType,
-                          category: wealthCategory,
-                          amountMad: parseFloat(wealthAmountMad) || 0,
+                          itemClass: wealthCategory,
+                          isLiability: wealthType === 'Liability',
+                          estimatedValue: parseFloat(wealthAmountMad) || 0,
+                          currency: wealthCurrency,
                           isLiquid: wealthIsLiquid,
+                          valuationSource: 'manual_estimate',
+                          confidenceLevel: 'medium',
                         },
                         token
                       );
@@ -975,15 +1008,29 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                     + Add
                   </Button>
                 </div>
-                <div className="space-y-1 max-h-36 overflow-y-auto">
+                <div className="space-y-1 max-h-40 overflow-y-auto">
                   {externalWealth.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-gray-50 dark:bg-gray-800">
-                      <span>
-                        <strong>{item.name}</strong> ({item.category} · {item.isLiquid ? 'Liquid' : 'Illiquid'})
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className={`font-mono font-bold ${item.itemType === 'Asset' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {item.itemType === 'Asset' ? '+' : '-'}{Number(item.amountMad).toLocaleString()} MAD
+                    <div key={item.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-gray-50 dark:bg-gray-800">
+                      <div className="min-w-0 pr-2">
+                        <span className="font-bold text-gray-900 dark:text-white">{item.name}</span>{' '}
+                        <span className="text-[11px] text-gray-500">
+                          ({item.itemClass} · {item.isLiquid ? 'Liquid' : 'Illiquid'} · {item.valuationDate})
+                        </span>
+                        {item.isStaleEstimate && (
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] font-semibold">
+                            Stale ({item.ageDays}d)
+                          </span>
+                        )}
+                        {(item.valuationHistory?.length || 0) > 0 && (
+                          <span className="ml-1.5 text-[10px] text-indigo-600 dark:text-indigo-400">
+                            {item.valuationHistory!.length} valuation(s)
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`font-mono font-bold ${!item.isLiability ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {!item.isLiability ? '+' : '-'}{Number(item.valueMad ?? item.estimatedValue).toLocaleString()} MAD
+                          {item.currency !== 'MAD' ? ` (${Number(item.estimatedValue).toLocaleString()} ${item.currency})` : ''}
                         </span>
                         <button
                           type="button"
@@ -1054,6 +1101,231 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* 5. Counterparty & Merchant Identity Layer */}
+        {activeWorkbench === 'counterparties' && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                  Merchant &amp; Counterparty Registry ({counterpartiesList.length})
+                </h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Normalize noisy statement aliases to canonical entities with aggregated spend, receivables/payables, and non-destructive merge.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => loadWorkbenchData('counterparties')}
+                className="text-xs"
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+              <Input
+                type="text"
+                placeholder="Canonical name (e.g. Marjane)"
+                value={cpName}
+                onChange={(e) => setCpName(e.target.value)}
+                className="text-xs"
+              />
+              <Select value={cpType} onChange={(e) => setCpType(e.target.value as any)} className="text-xs">
+                <option value="merchant">Merchant</option>
+                <option value="person">Person</option>
+                <option value="employer">Employer</option>
+                <option value="financial_institution">Financial Institution</option>
+                <option value="service_provider">Service Provider</option>
+              </Select>
+              <Input
+                type="text"
+                placeholder="Aliases (comma-separated)"
+                value={cpAliases}
+                onChange={(e) => setCpAliases(e.target.value)}
+                className="text-xs"
+              />
+              <Input
+                type="text"
+                placeholder="Default category (optional)"
+                value={cpDefaultCat}
+                onChange={(e) => setCpDefaultCat(e.target.value)}
+                className="text-xs"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={async () => {
+                  if (!cpName.trim()) return;
+                  await dashboardService.upsertCounterparty(
+                    {
+                      canonicalName: cpName.trim(),
+                      counterpartyType: cpType,
+                      aliases: cpAliases.split(',').map((s) => s.trim()).filter(Boolean),
+                      defaultCategory: cpDefaultCat.trim() || null,
+                    },
+                    token
+                  );
+                  setCpName('');
+                  setCpAliases('');
+                  setCpDefaultCat('');
+                  await loadWorkbenchData('counterparties');
+                }}
+                className="bg-indigo-600 text-white text-xs"
+              >
+                + Save Counterparty
+              </Button>
+            </div>
+
+            {counterpartiesList.length >= 2 && (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40 p-2.5 text-xs">
+                <GitMerge className="h-3.5 w-3.5 text-indigo-500" />
+                <span className="font-semibold">Merge Duplicate Counterparty:</span>
+                <Select value={mergeSourceId} onChange={(e) => setMergeSourceId(e.target.value)} className="text-xs w-44">
+                  <option value="">Source (to merge)</option>
+                  {counterpartiesList.map((c) => (
+                    <option key={c.id} value={c.id}>{c.canonicalName}</option>
+                  ))}
+                </Select>
+                <span>→</span>
+                <Select value={mergeTargetId} onChange={(e) => setMergeTargetId(e.target.value)} className="text-xs w-44">
+                  <option value="">Target (canonical)</option>
+                  {counterpartiesList.map((c) => (
+                    <option key={c.id} value={c.id}>{c.canonicalName}</option>
+                  ))}
+                </Select>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!mergeSourceId || !mergeTargetId || mergeSourceId === mergeTargetId}
+                  onClick={async () => {
+                    await dashboardService.mergeCounterparties(mergeSourceId, mergeTargetId, token);
+                    setMergeSourceId('');
+                    setMergeTargetId('');
+                    setReconcileNotice('Merged counterparty aliases and re-linked history without modifying amounts or dates.');
+                    await loadWorkbenchData('counterparties');
+                  }}
+                  className="text-xs"
+                >
+                  Merge Safely
+                </Button>
+              </div>
+            )}
+
+            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+              {counterpartiesList.length === 0 ? (
+                <p className="text-xs text-gray-500 py-2">No counterparties registered yet.</p>
+              ) : (
+                counterpartiesList.map((cp) => (
+                  <div
+                    key={cp.id}
+                    className="flex flex-wrap items-center justify-between gap-2 text-xs py-2 px-2.5 rounded border border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/40"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-900 dark:text-white">{cp.canonicalName}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold">
+                          {cp.counterpartyType}
+                        </span>
+                        {cp.defaultCategory && (
+                          <span className="text-[10px] text-gray-500">{cp.defaultCategory}</span>
+                        )}
+                      </div>
+                      {cp.aliases.length > 0 && (
+                        <p className="text-[11px] text-gray-500 truncate">Aliases: {cp.aliases.join(', ')}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 font-mono text-[11px] shrink-0">
+                      <span>{cp.transactionCount} tx</span>
+                      {cp.totalSpendMad > 0 && <span className="text-rose-600 font-bold">-{cp.totalSpendMad.toFixed(0)} MAD</span>}
+                      {cp.totalIncomeMad > 0 && <span className="text-emerald-600 font-bold">+{cp.totalIncomeMad.toFixed(0)} MAD</span>}
+                      {(cp.outstandingReceivablesMad > 0 || cp.outstandingPayablesMad > 0) && (
+                        <span className="text-amber-600">
+                          Debt: +{(cp.outstandingReceivablesMad - cp.outstandingPayablesMad).toFixed(0)} MAD
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 6. Operational Diagnostics & Financial Integrity Report */}
+        {activeWorkbench === 'integrity_diagnostics' && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-bold text-gray-900 dark:text-white">
+                  Operational Diagnostics &amp; Ledger Integrity Report
+                </h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Verifies unjournaled transactions, duplicate postings, unbalanced entries, orphaned reversals, unlinked commitments, goals &amp; stale valuations.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={workbenchLoading}
+                onClick={() => loadWorkbenchData('integrity_diagnostics')}
+                className="text-xs"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 mr-1 ${workbenchLoading ? 'animate-spin' : ''}`} /> Run Diagnostics
+              </Button>
+            </div>
+
+            {integrityReport && (
+              <div className="space-y-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded font-bold uppercase text-[11px] ${
+                      integrityReport.healthy
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                    }`}>
+                      {integrityReport.healthy ? '✓ Healthy — 0 Exceptions' : `⚠ ${integrityReport.totalExceptions} Exception(s)`}
+                    </span>
+                    <span className="text-gray-500">
+                      {integrityReport.walletCount} wallets · {integrityReport.transactionCount} transactions · {integrityReport.journalEntryCount} journal entries
+                    </span>
+                  </div>
+                  <span className="font-mono text-[11px] text-gray-500">
+                    Checked {new Date(integrityReport.checkedAt).toLocaleString()}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {[
+                    { label: 'Unjournaled Transactions', count: integrityReport.checks.unjournaledTransactions.length },
+                    { label: 'Duplicate Postings', count: integrityReport.checks.duplicateJournalPostings.length },
+                    { label: 'Unbalanced Journal Entries', count: integrityReport.checks.unbalancedJournalEntries.length },
+                    { label: 'Orphaned Journal Lines', count: integrityReport.checks.orphanedJournalLines.length },
+                    { label: 'Orphaned Reversals', count: integrityReport.checks.orphanedReversals.length },
+                    { label: 'Completed Occurrences w/o Tx', count: integrityReport.checks.completedOccurrencesWithoutTx.length },
+                    { label: 'Broken Statement Links', count: integrityReport.checks.brokenStatementLinks.length },
+                    { label: 'Unreconciled Goals', count: integrityReport.checks.unreconciledGoals.length },
+                    { label: 'Stale External Valuations', count: integrityReport.checks.staleExternalValuations.length },
+                  ].map((chk) => (
+                    <div
+                      key={chk.label}
+                      className="flex items-center justify-between rounded border border-gray-100 dark:border-gray-800 p-2 bg-gray-50/50 dark:bg-gray-800/30"
+                    >
+                      <span className="text-gray-700 dark:text-gray-300">{chk.label}</span>
+                      <span className={`font-mono font-bold ${chk.count === 0 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                        {chk.count}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

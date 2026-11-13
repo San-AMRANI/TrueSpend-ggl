@@ -259,6 +259,7 @@ export const debts = pgTable('debts', {
   installmentAmount: decimal('installment_amount'),
   installmentFrequency: text('installment_frequency').default('one_time').notNull(), // 'one_time' | 'monthly' | 'biweekly' | 'weekly'
   currency: text('currency').default('MAD').notNull(),
+  counterpartyId: uuid('counterparty_id'),
   status: debtStatusEnum('status').notNull(),
   dueDate: timestamp('due_date'),
   createdAt: timestamp('created_at').defaultNow(),
@@ -305,13 +306,16 @@ export const transactions = pgTable('transactions', {
   exchangeRateUsed: decimal('exchange_rate_used').default('1').notNull(),
   fxSource: text('fx_source').default('locked_at_posting').notNull(), // 'locked_at_posting' | 'manual' | 'estimated_backfill'
   idempotencyKey: text('idempotency_key'),
+  counterpartyId: uuid('counterparty_id'),
   type: transactionTypeEnum('type').notNull(),
   category: text('category'),
   notes: text('notes'),
   /** Present only for income generated from a calendar payroll. */
   payrollId: uuid('payroll_id').references(() => payrolls.id),
   contextId: uuid('context_id').references(() => financialContexts.id),
-});
+}, (table) => [
+  uniqueIndex('transactions_user_idempotency_key_unique').on(table.userId, table.idempotencyKey),
+]);
 
 /** One installed browser/PWA can register one FCM token and delivery schedule. (Legacy) */
 export const notificationDevices = pgTable('notification_devices', {
@@ -410,6 +414,7 @@ export const subscriptions = pgTable('subscriptions', {
   notes: text('notes'),
   icon: text('icon').default('📱'),
   websiteUrl: text('website_url'),
+  counterpartyId: uuid('counterparty_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -455,7 +460,9 @@ export const journalEntries = pgTable('journal_entries', {
   memo: text('memo'),
   postedAt: timestamp('posted_at').defaultNow().notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex('journal_entries_user_idempotency_unique').on(table.userId, table.idempotencyKey),
+]);
 
 /** A. Balanced Double-Entry Accounting Journal Lines */
 export const journalLines = pgTable('journal_lines', {
@@ -520,6 +527,7 @@ export const statementImportRows = pgTable('statement_import_rows', {
   matchConfidence: decimal('match_confidence').default('0').notNull(),
   suggestedTransactionId: uuid('suggested_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
   linkedTransactionId: uuid('linked_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  counterpartyId: uuid('counterparty_id'),
   candidateTransactionIdsJson: text('candidate_transaction_ids_json'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -528,7 +536,7 @@ export const statementImportRows = pgTable('statement_import_rows', {
 export const financialReviewItems = pgTable('financial_review_items', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  sourceType: text('source_type').notNull(), // 'receipt_ocr' | 'statement_row' | 'voice_draft' | 'unmatched_investment' | 'suspected_duplicate' | 'recurring_suggestion'
+  sourceType: text('source_type').notNull(), // 'receipt_ocr' | 'statement_row' | 'voice_draft' | 'unmatched_investment' | 'suspected_duplicate' | 'recurring_suggestion' | 'rule_category_suggestion'
   status: text('status').default('Needs Review').notNull(), // 'Captured' | 'Needs Review' | 'Confirmed' | 'Linked' | 'Posted' | 'Rejected' | 'Duplicate'
   confidenceScore: decimal('confidence_score').default('0.8').notNull(),
   parsedAmount: decimal('parsed_amount').notNull(),
@@ -539,6 +547,7 @@ export const financialReviewItems = pgTable('financial_review_items', {
   parsedType: text('parsed_type').default('Expense').notNull(),
   walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
   linkedTransactionId: uuid('linked_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  counterpartyId: uuid('counterparty_id'),
   rawPayloadJson: text('raw_payload_json'),
   decisionNotes: text('decision_notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -549,21 +558,35 @@ export const financialReviewItems = pgTable('financial_review_items', {
 export const commitmentOccurrences = pgTable('commitment_occurrences', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  sourceType: text('source_type').notNull(), // 'subscription' | 'debt_installment' | 'payroll' | 'planned_bill'
+  sourceType: text('source_type').notNull(), // 'subscription' | 'debt_installment' | 'payroll' | 'recurring_income' | 'planned_bill'
   sourceId: text('source_id').notNull(),
   title: text('title').notNull(),
   expectedDate: text('expected_date').notNull(), // YYYY-MM-DD
   expectedAmount: decimal('expected_amount').notNull(),
   currency: text('currency').default('MAD').notNull(),
-  status: text('status').default('scheduled').notNull(), // 'scheduled' | 'completed' | 'overdue' | 'skipped' | 'partial'
+  status: text('status').default('scheduled').notNull(), // 'scheduled' | 'completed' | 'overdue' | 'skipped' | 'partial' | 'cancelled'
+  isNonCashEvent: boolean('is_non_cash_event').default(false).notNull(),
+  paidAmount: decimal('paid_amount').default('0').notNull(),
+  principalComponent: decimal('principal_component').default('0').notNull(),
+  interestComponent: decimal('interest_component').default('0').notNull(),
+  feeComponent: decimal('fee_component').default('0').notNull(),
+  installmentNumber: integer('installment_number'),
   actualDate: text('actual_date'),
   actualAmount: decimal('actual_amount'),
   varianceAmount: decimal('variance_amount').default('0').notNull(),
   linkedTransactionId: uuid('linked_transaction_id').references(() => transactions.id, { onDelete: 'set null' }),
+  historyJson: text('history_json'), // Preserves original & renegotiated dates/amounts/reasons
   notes: text('notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex('commitment_occurrences_user_source_date_unique').on(
+    table.userId,
+    table.sourceType,
+    table.sourceId,
+    table.expectedDate
+  ),
+]);
 
 /** I. Auditable Goal & Sinking-Fund Contribution Events */
 export const goalContributionEvents = pgTable('goal_contribution_events', {
@@ -643,6 +666,88 @@ export const externalWealthItems = pgTable('external_wealth_items', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
+
+// ─── Next-Update Extensions (Position History, Counterparties, Outbox) ───────
+
+/** 1. Transactional Outbox for Post-Commit Notifications & Rules */
+export const domainEventOutbox = pgTable('domain_event_outbox', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  eventType: text('event_type').notNull(), // 'transaction_posted' | 'salary_confirmed' | 'balance_threshold_crossed' | 'commitment_approaching' | 'budget_pace_crossed'
+  aggregateId: text('aggregate_id').notNull(),
+  payloadJson: text('payload_json').notNull(),
+  status: text('status').default('pending').notNull(), // 'pending' | 'processed' | 'failed'
+  attempts: integer('attempts').default(0).notNull(),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  processedAt: timestamp('processed_at'),
+});
+
+/** 3a. Whole-Financial-Position Historical Snapshots */
+export const financialPositionSnapshots = pgTable('financial_position_snapshots', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  snapshotDate: text('snapshot_date').notNull(), // YYYY-MM-DD
+  reportingCurrency: text('reporting_currency').default('MAD').notNull(),
+  bankBalanceMad: decimal('bank_balance_mad').default('0').notNull(),
+  cashBalanceMad: decimal('cash_balance_mad').default('0').notNull(),
+  savingsBalanceMad: decimal('savings_balance_mad').default('0').notNull(),
+  investmentCashMad: decimal('investment_cash_mad').default('0').notNull(),
+  creditCardLiabilityMad: decimal('credit_card_liability_mad').default('0').notNull(),
+  overdraftLiabilityMad: decimal('overdraft_liability_mad').default('0').notNull(),
+  receivablesMad: decimal('receivables_mad').default('0').notNull(),
+  payablesMad: decimal('payables_mad').default('0').notNull(),
+  investmentMarketValueMad: decimal('investment_market_value_mad').default('0').notNull(),
+  externalAssetsMad: decimal('external_assets_mad').default('0').notNull(),
+  externalLiabilitiesMad: decimal('external_liabilities_mad').default('0').notNull(),
+  totalNetWorthMad: decimal('total_net_worth_mad').default('0').notNull(),
+  liquidNetWorthMad: decimal('liquid_net_worth_mad').default('0').notNull(),
+  fxRatesJson: text('fx_rates_json').notNull(),
+  componentsJson: text('components_json').notNull(),
+  dataSource: text('data_source').default('computed').notNull(), // 'verified_reconciled' | 'computed' | 'estimated'
+  confidenceLevel: text('confidence_level').default('high').notNull(), // 'high' | 'medium' | 'low'
+  isEstimated: boolean('is_estimated').default(false).notNull(),
+  triggerSource: text('trigger_source').default('manual').notNull(), // 'manual' | 'daily' | 'event'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('financial_position_snapshots_user_date_unique').on(table.userId, table.snapshotDate),
+]);
+
+/** 3b. External Wealth Valuation History (Preserves Prior Appraisals on Edit) */
+export const externalWealthValuations = pgTable('external_wealth_valuations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  itemId: uuid('item_id').references(() => externalWealthItems.id, { onDelete: 'cascade' }).notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  estimatedValue: decimal('estimated_value').notNull(),
+  currency: text('currency').default('MAD').notNull(),
+  fxRateUsed: decimal('fx_rate_used').default('1').notNull(),
+  fxSource: text('fx_source').default('reference_feed').notNull(),
+  valueMad: decimal('value_mad').notNull(),
+  valuationDate: text('valuation_date').notNull(), // YYYY-MM-DD
+  valuationSource: text('valuation_source').default('manual_estimate').notNull(),
+  confidenceLevel: text('confidence_level').default('medium').notNull(),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/** 4. Normalized Counterparty & Merchant Identity Registry */
+export const counterparties = pgTable('counterparties', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  canonicalName: text('canonical_name').notNull(),
+  normalizedName: text('normalized_name').notNull(),
+  counterpartyType: text('counterparty_type').default('merchant').notNull(), // 'merchant' | 'person' | 'employer' | 'financial_institution' | 'service_provider'
+  aliasesJson: text('aliases_json').default('[]').notNull(),
+  defaultCategory: text('default_category'),
+  website: text('website'),
+  logoUrl: text('logo_url'),
+  contactDetails: text('contact_details'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('counterparties_user_normalized_unique').on(table.userId, table.normalizedName),
+]);
 
 // ─── Relations ────────────────────────────────────────────────────────────────
 

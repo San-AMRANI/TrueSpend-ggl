@@ -172,6 +172,19 @@ export class DebtService {
           ? Number(((remainingNum * (apr / 100) * Math.max(1, monthsRemaining)) / 12).toFixed(2))
           : 0;
 
+      const amortizationSchedule = coreAuditService.generateDebtInstallmentSchedule({
+        id: debt.id,
+        contactName: debt.contactName,
+        type: debt.type,
+        remainingBalance: remainingNum,
+        installmentAmount: instAmt > 0 ? instAmt : null,
+        installmentFrequency: (debt as any).installmentFrequency || 'one_time',
+        interestRateApr: apr,
+        feesAmount: feesAmt,
+        dueDate: debt.dueDate,
+        currency: (debt as any).currency || 'MAD',
+      });
+
       return {
         ...debt,
         remainingBalance: remainingNum <= 0.001 ? '0' : debt.remainingBalance,
@@ -183,6 +196,7 @@ export class DebtService {
         earlySettlementSavingsMad: projectedRemainingInterest,
         estimatedMonthsRemaining: monthsRemaining,
         totalPayoffWithFeesMad: Number((remainingNum + feesAmt + projectedRemainingInterest).toFixed(2)),
+        amortizationSchedule,
       };
     });
   }
@@ -269,58 +283,54 @@ export class DebtService {
 
       const currentRemaining = parseFloat(debt.remainingBalance as unknown as string);
       const newRemaining = Math.max(0, Number((currentRemaining - dto.amount).toFixed(2)));
+      const txType: 'Income' | 'Expense' = debt.type === 'Receivable' ? 'Income' : 'Expense';
+      const txCategory = dto.category || (debt.type === 'Receivable' ? '📥 Income' : '💳 Debt & Obligations');
+      const userWallets = await walletService.getWallets(userId);
+      const targetWalletId =
+        dto.walletId || userWallets.find((w) => w.isMain)?.id || userWallets[0]?.id || null;
 
-      await debtRepository.update(dto.debt_id, userId, {
-        remainingBalance: newRemaining <= 0.001 ? '0' : String(newRemaining),
-        status: newRemaining <= 0.001 ? 'Cleared' : 'Pending',
+      await db.transaction(async (txDb) => {
+        await debtRepository.update(
+          dto.debt_id!,
+          userId,
+          {
+            remainingBalance: newRemaining <= 0.001 ? '0' : String(newRemaining),
+            status: newRemaining <= 0.001 ? 'Cleared' : 'Pending',
+          },
+          txDb
+        );
+
+        const newTx = await transactionRepository.create(
+          {
+            userId,
+            amount: String(dto.amount),
+            type: txType,
+            walletId: targetWalletId,
+            category: txCategory,
+            notes: `Settlement for ${debt.contactName}`,
+          },
+          txDb
+        );
+
+        await transactionRepository.createSplit(
+          {
+            transactionId: newTx.id,
+            reimbursableAmount: debt.type === 'Receivable' ? String(dto.amount) : '0',
+            linkedContactId: dto.debt_id,
+          },
+          txDb
+        );
+
+        await coreAuditService.postJournalEntryForTransaction(
+          userId,
+          newTx,
+          {
+            idempotencyKey: `debt-settle-${newTx.id}`,
+            memo: `Debt settlement for ${debt.contactName}`,
+          },
+          txDb
+        );
       });
-
-      const txType = debt.type === 'Receivable' ? 'Income' : 'Expense';
-      const txCategory = dto.category || (debt.type === 'Receivable' ? 'Reimbursement' : 'Debt Repayment');
-
-      let targetWalletId: string;
-      try {
-        const wallets = await walletService.getWallets(userId);
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (dto.walletId && uuidRegex.test(dto.walletId)) {
-          const found = wallets.find((w) => w.id === dto.walletId);
-          targetWalletId = found ? found.id : wallets[0]?.id;
-        } else if (dto.walletId === 'Bank') {
-          const bankWallet =
-            wallets.find((w) => w.type === 'Bank' && w.isMain) ||
-            wallets.find((w) => w.type === 'Bank') ||
-            wallets[0];
-          targetWalletId = bankWallet?.id;
-        } else {
-          const cashWallet = wallets.find((w) => w.type === 'Cash') || wallets[0];
-          targetWalletId = cashWallet?.id;
-        }
-      } catch {
-        targetWalletId = dto.walletId as string;
-      }
-
-      const newTx = await transactionRepository.create({
-        userId,
-        amount: String(dto.amount),
-        type: txType,
-        walletId: targetWalletId,
-        category: txCategory,
-        notes: `Settlement for ${debt.contactName}`,
-      });
-
-      await transactionRepository.createSplit({
-        transactionId: newTx.id,
-        // Only Receivable settlements are reimbursable to the user; Payable settlements are bill/debt payments.
-        reimbursableAmount: debt.type === 'Receivable' ? String(dto.amount) : '0',
-        linkedContactId: dto.debt_id,
-      });
-
-      await coreAuditService
-        .postJournalEntryForTransaction(userId, newTx, {
-          idempotencyKey: `debt-settle-${newTx.id}`,
-          memo: `Debt settlement for ${debt.contactName}`,
-        })
-        .catch(() => undefined);
 
       return { message: 'Debt settled' };
     } else {

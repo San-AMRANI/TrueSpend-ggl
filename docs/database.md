@@ -43,7 +43,7 @@ CREATE TYPE financial_context_status AS ENUM ('Planned', 'Active', 'Completed');
 
 ---
 
-## 3. Complete Table Inventory (34 Relational Tables)
+## 3. Complete Table Inventory (38 Relational Tables)
 
 | # | Table Name | Primary Domain Role |
 | :- | :--- | :--- |
@@ -53,9 +53,9 @@ CREATE TYPE financial_context_status AS ENUM ('Planned', 'Active', 'Completed');
 | **4** | `stock_positions` | US, Global, ETF, and Casablanca BVC stock holdings & watchlist positions (`ticker`, `sector`, `shares`, `avg_cost_per_share`, `current_price`, `annual_dividend_per_share`) |
 | **5** | `stock_orders` | Execution ledger for `BUY`, `SELL`, and `DIVIDEND` stock orders with realized P&L and wallet sync |
 | **6** | `subscriptions` | Recurring bills and multi-month commitments (`every_3_months`, `quarterly`, `every_2_months`, `every_6_months`, `monthly`, `yearly`, `weekly`, `biweekly`) |
-| **7** | `transactions` | Core cash-flow ledger (`Income`, `Expense`, `Transfer`, `Debt Repayment`) with historical FX locking (`currency`, `native_amount`, `exchange_rate_used`, `fx_source`), `idempotency_key`, and reconciliation status |
+| **7** | `transactions` | Core cash-flow ledger (`Income`, `Expense`, `Transfer`, `Debt Repayment`) with historical FX locking (`currency`, `native_amount`, `exchange_rate_used`, `fx_source`), `UNIQUE(user_id, idempotency_key)`, `counterparty_id`, and reconciliation status |
 | **8** | `splits` | Reimbursable shared-expense splits linked to transactions and debt counterparties |
-| **9** | `debts` | Counterparty `Receivable` and `Payable` obligations with installment plans, APR/rate type, fees, and counterparty classification |
+| **9** | `debts` | Counterparty `Receivable` and `Payable` obligations with installment plans, APR/rate type, fees, and `counterparty_id` classification |
 | **10** | `payrolls` | Dated salary inflows anchoring custom financial month boundaries with expected vs. confirmed status, actual receipt date/amount, and linked income transaction |
 | **11** | `category_budgets` | Monthly category spending limits (`UNIQUE(user_id, category, year, month)`) with `rollover_enabled`, `carryover_amount`, and `alert_threshold_percent` |
 | **12** | `goals` | Savings milestones with deadlines, `auto_sync_balance`, `funding_mode` (`manual`, `mirrored_wallet`, `allocated_slice`), and `allocated_amount` |
@@ -63,19 +63,23 @@ CREATE TYPE financial_context_status AS ENUM ('Planned', 'Active', 'Completed');
 | **14** | `push_subscriptions` | Web Push VAPID browser/PWA endpoints |
 | **15** | `notification_preferences` | Per-user alert rules, delivery times, timezone, and quiet hours |
 | **16** | `notification_deliveries` | Idempotency log (`UNIQUE(user_id, type, scheduled_for)`) preventing duplicate notifications *(plus `notification_devices`)* |
-| **17** | `journal_entries` | Immutable double-entry accounting headers (`transaction_id`, `entry_type`, `status`, `reversal_of_entry_id`) |
+| **17** | `journal_entries` | Immutable double-entry accounting headers (`transaction_id`, `entry_type`, `status`, `reversal_of_entry_id`, `UNIQUE(user_id, idempotency_key)`) |
 | **18** | `journal_lines` | Balanced double-entry debit/credit lines (`entry_id`, `wallet_id`, `account_code`, `debit_mad`, `credit_mad`, `native_currency`, `exchange_rate`) |
 | **19** | `exchange_rates` | Historical FX rates ledger (`rate_date`, `base_currency`, `quote_currency`, `rate`, `source`) |
 | **20** | `statement_import_batches` | Bank/card CSV/TSV import batch telemetry (`wallet_id`, `file_name`, `file_hash`, `total_rows`, `imported_rows`, `duplicate_rows`) |
-| **21** | `statement_import_rows` | Individual parsed bank statement rows with confidence scoring, duplicate detection, and matched transaction link |
-| **22** | `financial_review_items` | Persistent review inbox for OCR receipts, voice captures, statement imports, and anomaly flags |
-| **23** | `commitment_occurrences` | Unified dated billing & obligation ledger across subscriptions, debts, and payrolls (`expected`, `paid`, `skipped`, `overdue`, `rescheduled`) |
+| **21** | `statement_import_rows` | Individual parsed bank statement rows with confidence scoring, duplicate detection, `counterparty_id`, and matched transaction link |
+| **22** | `financial_review_items` | Persistent review inbox for OCR receipts, voice captures, statement imports, `counterparty_id`, and rule-generated drafts/allocation proposals |
+| **23** | `commitment_occurrences` | Unified dated billing & obligation ledger (`UNIQUE(user_id, source_type, source_id, expected_date)`) across subscriptions, debt amortization installments, payrolls, and recurring non-payroll income (`scheduled`, `completed`, `partial`, `skipped`, `overdue`, `cancelled`) with principal/interest/fee splits and `history_json` |
 | **24** | `goal_contribution_events` | Immutable audit history of goal contributions, withdrawals, wallet auto-syncs, and manual adjustments |
 | **25** | `saved_scenarios` | Persisted What-If simulation configurations and comparison results (`income_drop`, `subscription_trim`, `debt_payoff`, `stock_crash`, `major_purchase`, `composite`) |
-| **26** | `financial_rules` | User-defined deterministic IF/THEN automation rules (`transaction_created`, `salary_confirmed`, `subscription_due`) |
-| **27** | `financial_rule_logs` | Execution audit trail for automated financial rules |
+| **26** | `financial_rules` | User-defined deterministic IF/THEN automation rules (`transaction_posted`, `salary_confirmed`, `balance_threshold_crossed`, `commitment_approaching`, `budget_pace_crossed`) |
+| **27** | `financial_rule_logs` | Execution audit trail for automated financial rules (`UNIQUE(idempotency_key)`) |
 | **28** | `external_wealth_items` | Non-bank net worth assets & liabilities (`RealEstate`, `Vehicle`, `Retirement`, `PrivateEquity`, `PreciousMetals`, `BusinessOwnership`, `OtherAsset`, `OtherLiability`) |
-| **29–34** | `market_data_*` & `portfolio_*` | `market_data_symbols`, `market_data_daily_bars`, `market_data_usage`, `portfolio_daily_snapshots`, `investment_dividend_events`, and `investment_settings` |
+| **29** | `domain_event_outbox` | Transactional post-commit outbox (`event_type`, `payload_json`, `status`, `attempts`, `last_error`) decoupling notifications and rules from core ACID ledger transactions |
+| **30** | `financial_position_snapshots` | Daily whole-financial-position balance sheet snapshots (`UNIQUE(user_id, snapshot_date)`) with liquid net worth, credit/overdraft liabilities, investments, external wealth, FX rates, and data confidence provenance |
+| **31** | `external_wealth_valuations` | Append-only historical valuation audit trail for external assets and liabilities (`fx_rate_used`, `fx_source`, `value_mad`, `valuation_date`, `valuation_source`, `confidence_level`) |
+| **32** | `counterparties` | Canonical merchant, person, employer, and institution identity registry (`canonical_name`, `normalized_name`, `aliases_json`, `default_category`) supporting non-destructive entity merging |
+| **33–38** | `market_data_*` & `portfolio_*` | `market_data_symbols`, `market_data_daily_bars`, `market_data_usage`, `portfolio_daily_snapshots`, `investment_dividend_events`, and `investment_settings` |
 
 ---
 
@@ -179,9 +183,9 @@ Transactions and category budgets use 15 canonical expense categories plus 3 sys
 
 ---
 
-## 6. Database Operations & Maintenance (Schema v2.0 Backup Engine)
+## 6. Database Operations & Maintenance (Schema v2.1 Backup Engine)
 
-- **Full-Schema v2.0 SQL Dump Export (`GET /api/settings/export-sql`)**: Generates a complete, transactional `.sql` backup script across all 24 user-data tables in topological dependency order with `-- Schema-Version: 2.0`, `-- Checksum-SHA256`, and `-- Manifest-JSON` headers.
-- **Non-Destructive Backup Validation Preview (`POST /api/settings/validate-backup`)**: Parses and verifies backup headers, SHA-256 checksums, and per-table row counts before executing any destructive restore.
+- **Full-Schema v2.1 SQL Dump Export (`GET /api/settings/export-sql`)**: Generates a complete, transactional `.sql` backup script across all 27 user-data tables (including `counterparties`, `external_wealth_valuations`, and `financial_position_snapshots`) in topological dependency order with `-- Schema-Version: 2.1`, `-- Checksum-SHA256`, and `-- Manifest-JSON` headers.
+- **Non-Destructive Backup Validation Preview (`POST /api/settings/validate-backup`)**: Parses and verifies backup headers, SHA-256 checksums, referential integrity, and per-table row counts before executing any destructive restore.
 - **Atomic SQL Restore (`POST /api/settings/import-sql`)**: Validates header integrity, acquires `ACCESS EXCLUSIVE` table locks, and restores data inside a single `BEGIN ... COMMIT` block.
 - **Automated Google Drive Backups**: `NotificationScheduler.ts` checks eligibility every 15 minutes (`daily`, `3days`, `weekly`) and uploads encrypted multipart `.sql` dumps to Google Drive.

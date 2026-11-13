@@ -66,6 +66,10 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   const [confirmedPayrollInput, setConfirmedPayrollInput] = useState('');
   const [occurrences, setOccurrences] = useState<CommitmentOccurrence[]>([]);
   const [showOccurrences, setShowOccurrences] = useState(false);
+  const [showAddRecurringIncome, setShowAddRecurringIncome] = useState(false);
+  const [recIncomeTitle, setRecIncomeTitle] = useState('');
+  const [recIncomeAmount, setRecIncomeAmount] = useState('');
+  const [recIncomeCadence, setRecIncomeCadence] = useState<'monthly' | 'weekly' | 'biweekly' | 'quarterly' | 'once'>('monthly');
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -512,33 +516,178 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                     <span>{showOccurrences ? 'Hide' : 'Open'}</span>
                   </button>
                   {showOccurrences && (
-                    <div className="mt-2 space-y-1.5 max-h-44 overflow-y-auto text-xs">
-                      {occurrences.slice(0, 8).map((occ) => (
-                        <div
-                          key={occ.id}
-                          className="flex items-center justify-between gap-2 rounded border border-gray-100 dark:border-gray-800 p-1.5"
+                    <div className="mt-2 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-gray-500">Rolling horizon obligations &amp; income</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddRecurringIncome((v) => !v)}
+                          className="text-[11px] font-semibold text-emerald-600 hover:underline"
                         >
-                          <div className="truncate">
-                            <p className="font-semibold text-gray-900 dark:text-white truncate">{occ.title}</p>
-                            <p className="text-[10px] text-gray-500">
-                              {occ.scheduledDate} · {occ.commitmentType} · {occ.status}
-                            </p>
-                          </div>
-                          {occ.status === 'scheduled' && (
+                          {showAddRecurringIncome ? 'Close' : '+ Recurring Income'}
+                        </button>
+                      </div>
+
+                      {showAddRecurringIncome && (
+                        <div className="p-2 rounded border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-1.5">
+                          <input
+                            type="text"
+                            placeholder="Title (e.g. Rental Income / Freelance)"
+                            value={recIncomeTitle}
+                            onChange={(e) => setRecIncomeTitle(e.target.value)}
+                            className="w-full px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                          />
+                          <div className="flex gap-1.5">
+                            <input
+                              type="number"
+                              placeholder="Amount (MAD)"
+                              value={recIncomeAmount}
+                              onChange={(e) => setRecIncomeAmount(e.target.value)}
+                              className="flex-1 px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                            />
+                            <select
+                              value={recIncomeCadence}
+                              onChange={(e) => setRecIncomeCadence(e.target.value as any)}
+                              className="px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                            >
+                              <option value="monthly">Monthly</option>
+                              <option value="weekly">Weekly</option>
+                              <option value="biweekly">Biweekly</option>
+                              <option value="quarterly">Quarterly</option>
+                              <option value="once">One-time</option>
+                            </select>
                             <button
                               type="button"
                               onClick={async () => {
-                                await dashboardService.settleCommitmentOccurrence(occ.id, { status: 'paid' }, token);
+                                const amt = parseFloat(recIncomeAmount);
+                                if (!recIncomeTitle.trim() || !Number.isFinite(amt) || amt <= 0) return;
+                                await dashboardService.createRecurringIncomeCommitment(
+                                  {
+                                    title: recIncomeTitle.trim(),
+                                    expectedAmount: amt,
+                                    expectedDate: selectedDate,
+                                    cadence: recIncomeCadence,
+                                  },
+                                  token
+                                );
+                                setRecIncomeTitle('');
+                                setRecIncomeAmount('');
+                                setShowAddRecurringIncome(false);
                                 await loadOccurrences();
-                                showNotice(`Marked ${occ.title} as paid.`);
+                                showNotice('Recurring income commitment scheduled!');
                               }}
-                              className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-semibold shrink-0"
+                              className="px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-semibold"
                             >
-                              Settle
+                              Add
                             </button>
-                          )}
+                          </div>
                         </div>
-                      ))}
+                      )}
+
+                      <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                        {occurrences.slice(0, 12).map((occ) => (
+                          <div
+                            key={occ.id}
+                            className="rounded border border-gray-100 dark:border-gray-800 p-2 space-y-1"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="truncate">
+                                <p className="font-semibold text-gray-900 dark:text-white truncate">{occ.title}</p>
+                                <p className="text-[10px] text-gray-500">
+                                  {occ.expectedDate} · {occ.sourceType} · {occ.status}
+                                  {occ.installmentNumber ? ` · #${occ.installmentNumber}` : ''}
+                                </p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <span className="font-mono font-bold text-gray-900 dark:text-white">
+                                  {Number(occ.expectedAmount || 0).toFixed(0)} {occ.currency || 'MAD'}
+                                </span>
+                                {Number(occ.paidAmount || 0) > 0 && (
+                                  <p className="text-[10px] text-emerald-600 font-mono">
+                                    Paid: {Number(occ.paidAmount).toFixed(0)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            {(Number(occ.principalComponent || 0) > 0 || Number(occ.interestComponent || 0) > 0) && (
+                              <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">
+                                Principal {Number(occ.principalComponent || 0).toFixed(2)} · Interest {Number(occ.interestComponent || 0).toFixed(2)}
+                              </p>
+                            )}
+
+                            {(occ.status === 'scheduled' || occ.status === 'partial') && (
+                              <div className="flex flex-wrap gap-1 pt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await dashboardService.settleCommitmentOccurrence(
+                                      occ.id,
+                                      { action: 'pay', walletId: wallets[0]?.id },
+                                      token
+                                    );
+                                    await loadOccurrences();
+                                    showNotice(`Settled ${occ.title} and posted transaction.`);
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-semibold"
+                                >
+                                  Settle
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const rem = Math.max(0, Number(occ.expectedAmount || 0) - Number(occ.paidAmount || 0));
+                                    const half = Number((rem / 2).toFixed(2));
+                                    if (half <= 0) return;
+                                    await dashboardService.settleCommitmentOccurrence(
+                                      occ.id,
+                                      { action: 'partial', actualAmount: half, walletId: wallets[0]?.id },
+                                      token
+                                    );
+                                    await loadOccurrences();
+                                    showNotice(`Recorded partial payment (${half} MAD) for ${occ.title}.`);
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-semibold"
+                                >
+                                  50% Partial
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    const d = new Date(`${occ.expectedDate}T12:00:00Z`);
+                                    d.setUTCDate(d.getUTCDate() + 7);
+                                    await dashboardService.settleCommitmentOccurrence(
+                                      occ.id,
+                                      { action: 'reschedule', newDate: d.toISOString().slice(0, 10), reason: 'Rescheduled +7d' },
+                                      token
+                                    );
+                                    await loadOccurrences();
+                                    showNotice(`Rescheduled ${occ.title} by +7 days.`);
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-amber-600 text-white text-[10px] font-semibold"
+                                >
+                                  +7d
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await dashboardService.settleCommitmentOccurrence(
+                                      occ.id,
+                                      { action: 'skip', reason: 'Skipped from calendar' },
+                                      token
+                                    );
+                                    await loadOccurrences();
+                                    showNotice(`Skipped ${occ.title}.`);
+                                  }}
+                                  className="px-2 py-0.5 rounded bg-gray-500 text-white text-[10px] font-semibold"
+                                >
+                                  Skip
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

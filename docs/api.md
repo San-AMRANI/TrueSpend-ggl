@@ -297,27 +297,34 @@ All `/api/investments*` endpoints enforce `requireAuth`, RBAC (`canAccessInvestm
 
 ## 10. Core Accounting, Reconciliation & Wealth Audit API (`coreAuditRoutes.ts`)
 
-### `GET /api/audit/overview`
-- **Description**: Returns a unified payload containing double-entry `journalEntries` (with nested `lines`), `exchangeRates`, `statementBatches`, `reviewItems`, `commitmentOccurrences`, `goalEvents`, `savedScenarios`, `financialRules`, `ruleLogs`, and `externalWealthItems`.
-
-### Double-Entry Journal & FX Ledger
-- `POST /api/audit/journal/backfill`: Idempotently generates balanced double-entry `journal_entries` and `journal_lines` for all existing transactions and verifies wallet balances against the journal ledger.
-- `GET /api/audit/fx` | `POST /api/audit/fx`: Lists or upserts historical exchange rates (`USD/MAD`, `EUR/MAD`, etc.) in `exchange_rates`.
+### Double-Entry Journal, Integrity Diagnostics & FX Ledger
+- `GET /api/audit/journal` & `POST /api/audit/journal/backfill`: Returns journal audit verification summary or idempotently backfills missing double-entry `journal_entries` and `journal_lines`.
+- `GET /api/audit/integrity-report`: Runs operational diagnostics across 9 checks (unjournaled transactions, duplicate postings, unbalanced entries, orphaned journal lines, orphaned reversals, unlinked completed commitments, broken statement links, unreconciled goals, stale external valuations).
+- `GET /api/audit/fx-rates` & `POST /api/audit/fx-rates`: Lists or locks historical exchange rates (`USD/MAD`, `EUR/MAD`, etc.) in `exchange_rates` using newest-effective-date resolution.
 
 ### Bank Statement CSV/TSV Import & Matching
-- `POST /api/audit/statements/import`: Parses raw CSV/TSV bank or card statements, computes SHA-256 file deduplication, scores candidate matches against existing transactions, and stages rows in `statement_import_rows`.
-- `GET /api/audit/statements/:batchId/rows`: Lists parsed rows for a statement import batch.
-- `POST /api/audit/statements/rows/:rowId/approve`: Approves a statement row (either reconciling an existing matched transaction or creating a new transaction + balanced journal entry).
+- `GET /api/audit/statements` & `POST /api/audit/statements/import`: Lists or parses raw CSV/TSV bank statements with SHA-256 deduplication and candidate matching.
+- `POST /api/audit/statements/rows/:id/resolve`: Resolves a statement row (`confirm_match`, `create_transaction`, or `ignore`).
 
 ### Persistent Financial Review Inbox
-- `GET /api/audit/review-items` | `POST /api/audit/review-items`: Lists or creates review items from OCR receipts, voice dictation, statement imports, or anomaly alerts.
-- `POST /api/audit/review-items/:id/resolve`: Approves (and optionally creates the transaction) or dismisses a review item.
+- `GET /api/audit/review-inbox` & `POST /api/audit/review-inbox`: Lists or creates review items from OCR receipts, voice dictation, statement imports, or rule proposals.
+- `POST /api/audit/review-inbox/:id/decide`: Confirms (`confirm_create`), links (`link_existing`), rejects, or marks duplicate.
 
 ### Unified Commitment Occurrences Ledger
-- `POST /api/audit/commitments/sync`: Generates and synchronizes dated `commitment_occurrences` across active subscriptions, debts, and scheduled payrolls.
-- `POST /api/audit/commitments/:id/status`: Marks an occurrence as `paid`, `skipped`, `overdue`, or `rescheduled` (automatically logging the corresponding transaction when `paid`).
+- `GET /api/audit/occurrences`: Synchronizes rolling horizon occurrences across active subscriptions, amortized debt installments, payrolls, and recurring non-payroll income.
+- `POST /api/audit/occurrences/income`: Creates recurring non-payroll income commitments (`monthly`, `weekly`, `biweekly`, `quarterly`, `once`).
+- `POST /api/audit/occurrences/:id/settle`: Settles (`pay`, `partial`), skips (`skip`), reschedules (`reschedule`), renegotiates (`renegotiate`), or cancels (`cancel`) an occurrence atomically with real transaction & journal posting and full change history (`history_json`).
+
+### Whole-Financial-Position History & Net Worth Change Bridge
+- `GET /api/audit/position-history`: Lists historical daily balance-sheet snapshots and computes `NetWorthChangeBridge` deltas across liquid cash, credit/overdraft debt, receivables, payables, investments, and external net worth.
+- `POST /api/audit/position-snapshot`: Captures an immediate point-in-time `financial_position_snapshots` record.
+
+### Counterparty & Merchant Identity Layer
+- `GET /api/audit/counterparties` & `POST /api/audit/counterparties`: Lists or upserts canonical counterparties (`merchant`, `person`, `employer`, `financial_institution`, `service_provider`) with normalized aliases and aggregated totals.
+- `POST /api/audit/counterparties/merge`: Atomically merges a duplicate counterparty into a canonical target, consolidating aliases and re-linking child records without altering historical transaction amounts or dates.
 
 ### Saved What-If Scenarios, Financial Rules Engine & External Wealth
-- `POST /api/audit/scenarios` | `DELETE /api/audit/scenarios/:id`: Saves or deletes multi-variable What-If simulation scenarios (`saved_scenarios`).
-- `POST /api/audit/rules` | `PUT /api/audit/rules/:id` | `DELETE /api/audit/rules/:id` | `POST /api/audit/rules/:id/execute`: CRUD and manual execution trigger for deterministic IF/THEN `financial_rules`.
-- `POST /api/audit/external-wealth` | `PUT /api/audit/external-wealth/:id` | `DELETE /api/audit/external-wealth/:id`: CRUD for non-bank net worth assets and liabilities (`external_wealth_items`).
+- `GET /api/audit/scenarios`, `POST /api/audit/scenarios`, `DELETE /api/audit/scenarios/:id`: Persists and manages What-If scenarios.
+- `GET /api/audit/rules`, `POST /api/audit/rules`, `DELETE /api/audit/rules/:id`: Manages deterministic IF/THEN rules (`transaction_posted`, `salary_confirmed`, `balance_threshold_crossed`, `commitment_approaching`, `budget_pace_crossed`) with actions (`send_notification`, `create_review_draft`, `suggest_category`, `prepare_allocation`).
+- `POST /api/audit/rules/dry-run`: Evaluates rule conditions against sample payloads without triggering side effects.
+- `GET /api/audit/external-wealth`, `POST /api/audit/external-wealth`, `DELETE /api/audit/external-wealth/:id`: CRUD for non-bank net worth assets/liabilities with append-only `external_wealth_valuations` history.
