@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { getApiUrl } from '../../lib/capacitorBridge';
 import {
   CategoryBudget,
   KPI,
@@ -250,7 +251,7 @@ export const dashboardService = {
       token
     ),
   getSqlBlob: async (token: string | null) => {
-    const response = await fetch('/api/settings/export-sql', {
+    const response = await fetch(getApiUrl('/api/settings/export-sql'), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!response.ok) {
@@ -260,7 +261,7 @@ export const dashboardService = {
     return await response.blob();
   },
   exportSql: async (token: string | null) => {
-    const response = await fetch('/api/settings/export-sql', {
+    const response = await fetch(getApiUrl('/api/settings/export-sql'), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!response.ok) {
@@ -662,4 +663,3 @@ export const dashboardService = {
   simulateAiActions: (actions: unknown[], token: string | null) =>
     apiClient.post<{ impact: AiActionImpactSimulation }>('/api/chat/simulate-actions', { actions }, token),
 };
-

@@ -53,6 +53,7 @@ import {
 } from '../lib/aiContext';
 import { playAudioBlob, playBrowserSpeech } from '../lib/speechEngine';
 import type { AiActionImpactSimulation } from '../types';
+import { getApiUrl } from '../lib/capacitorBridge';
 
 /**
  * Ensures Markdown tables have a blank line before the header row and valid GFM separator rows
@@ -1384,7 +1385,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
   const fetchModelStatuses = useCallback(async () => {
     try {
-      const res = await fetch('/api/chat/models', {
+      const res = await fetch(getApiUrl('/api/chat/models'), {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -1415,7 +1416,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const handleResetCooldowns = async () => {
     setIsResettingCooldowns(true);
     try {
-      const res = await fetch('/api/chat/reset-cooldown', {
+      const res = await fetch(getApiUrl('/api/chat/reset-cooldown'), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1633,7 +1634,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       setAudioLoadingIndex(index);
 
       try {
-        const res = await fetch('/api/chat/tts', {
+        const res = await fetch(getApiUrl('/api/chat/tts'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1703,7 +1704,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             content: messageContent.slice(0, 12000),
           }));
 
-        const response = await fetch('/api/chat', {
+        const response = await fetch(getApiUrl('/api/chat'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1890,7 +1891,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       return;
     }
     try {
-      const response = await fetch('/api/chat/actions', {
+      const response = await fetch(getApiUrl('/api/chat/actions'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ actions: message.actions }),

@@ -48,6 +48,11 @@ export function getCapacitorApiBaseUrl(): string {
   return DEFAULT_CLOUD_API_URL.replace(/\/+$/, '');
 }
 
+export function getApiUrl(path: string): string {
+  if (!path.startsWith('/api')) return path;
+  return isNativePlatform() ? `${getCapacitorApiBaseUrl()}${path}` : path;
+}
+
 export function setCapacitorApiBaseUrl(url: string): void {
   try {
     const cleaned = url.trim().replace(/\/+$/, '');
@@ -104,7 +109,7 @@ function installNativeApiFetchInterceptor() {
     if (native || (customBase && customBase.trim())) {
       const baseUrl = getCapacitorApiBaseUrl();
       if (typeof input === 'string' && input.startsWith('/api')) {
-        const targetUrl = `${baseUrl}${input}`;
+        const targetUrl = getApiUrl(input);
         return originalFetch(targetUrl, {
           ...init,
           credentials: init?.credentials ?? 'include',

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Bell, BellOff, Database, Download, Moon, Sun, Monitor, Upload, Send, Cloud, Clock, Check, User, ShieldCheck, LogOut, Mail, Key, Smartphone, ArrowRight, Landmark } from 'lucide-react';
@@ -17,6 +17,7 @@ import {
   forceDiscardOfflineOutbox,
   type OfflineOutboxItem,
 } from '../../lib/offlineOutbox';
+import { fetchLatestAndroidRelease, getLatestAndroidApkUrl, type AndroidRelease } from '../../lib/androidRelease';
 import type {
   NotifChannelPrefs,
   NotifSettings,
@@ -36,6 +37,7 @@ import type {
 } from '../../types';
 
 interface NotificationsApi {
+  native?: boolean;
   supported: boolean;
   permission: NotificationPermission;
   settings: NotifSettings;
@@ -92,6 +94,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [notifToast, setNotifToast] = useState<string | null>(null);
   const [isDriveConnecting, setIsDriveConnecting] = useState(false);
   const [isDriveBackingUp, setIsDriveBackingUp] = useState(false);
+  const [latestAndroidRelease, setLatestAndroidRelease] = useState<AndroidRelease | null>(null);
   const [apiBaseInput, setApiBaseInput] = useState<string>(() => getCapacitorApiBaseUrl());
   const [backupPreview, setBackupPreview] = useState<BackupValidationPreview | null>(null);
   const [rules, setRules] = useState<FinancialRuleItem[]>([]);
@@ -141,6 +144,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
   const outboxCount = outboxItems.length;
 
+  useEffect(() => {
+    let active = true;
+    fetchLatestAndroidRelease().then(release => {
+      if (active) setLatestAndroidRelease(release);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
   
   const handleToggleAutoBackup = async () => {
     if (userSettings?.automatedDriveBackups) {
@@ -1305,16 +1317,23 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   Install TrueSpend Android App (.apk)
                 </h3>
                 <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                  Download the compiled Capacitor Android package (<code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">TrueSpend.apk</code>, <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">com.truespend.app</code>) directly to your Android phone or emulator.
+                  Download the latest GitHub release of the Capacitor Android package (<code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">TrueSpend.apk</code>, <code className="bg-gray-200 dark:bg-gray-800 px-1 py-0.5 rounded">com.truespend.app</code>) directly to your Android phone or emulator.
                 </p>
+                {latestAndroidRelease && (
+                  <p className="text-[11px] text-emerald-700 dark:text-emerald-300 mt-2">
+                    Latest release: {latestAndroidRelease.name} ({latestAndroidRelease.tagName})
+                  </p>
+                )}
               </div>
               <a
-                href="/api/download-apk"
+                href={latestAndroidRelease?.apkUrl || getLatestAndroidApkUrl()}
                 download="TrueSpend.apk"
+                target="_blank"
+                rel="noreferrer"
                 className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-colors shrink-0"
               >
                 <Download className="h-4 w-4" />
-                Download TrueSpend.apk
+                Install latest APK
               </a>
             </div>
 

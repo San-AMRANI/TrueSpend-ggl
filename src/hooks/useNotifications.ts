@@ -10,6 +10,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LocalNotifications } from '@capacitor/local-notifications';
+import { isNativePlatform } from '../lib/capacitorBridge';
 import type {
   CategoryBudget,
   DashboardTab,
@@ -116,6 +118,8 @@ const DEFAULT_CHANNELS: NotifChannelPrefs = {
 
 // Check every 30 seconds for scheduled or random interval delivery
 const CHECK_INTERVAL_MS = 30_000;
+const NATIVE_NOTIFICATION_ID = 1001;
+const NATIVE_CHANNEL_ID = 'truespend-daily-insights';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function toDay(date: Date) {
@@ -1216,7 +1220,8 @@ export function buildInsight(
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useNotifications() {
-  const [supported, setSupported] = useState(false);
+  const native = isNativePlatform();
+  const [supported, setSupported] = useState(native);
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [settings, setSettings] = useState<NotifSettings>({
     enabled: localStorage.getItem(KEY_ENABLED) === 'true',
@@ -1246,11 +1251,31 @@ export function useNotifications() {
   permissionRef.current = permission;
 
   useEffect(() => {
+    if (native) {
+      void (async () => {
+        try {
+          await LocalNotifications.createChannel({
+            id: NATIVE_CHANNEL_ID,
+            name: 'Daily financial insights',
+            description: 'TrueSpend budget and spending insights',
+            importance: 3,
+            sound: 'default',
+            vibration: true,
+          });
+          const result = await LocalNotifications.checkPermissions();
+          setPermission(result.display as NotificationPermission);
+        } catch (error) {
+          console.error('[TrueSpend] Native notifications unavailable:', error);
+          setSupported(false);
+        }
+      })();
+      return;
+    }
     if ('Notification' in window) {
       setSupported(true);
       setPermission(Notification.permission);
     }
-  }, []);
+  }, [native]);
 
   // Generate live diversified smart feed from the latest financial snapshot
   const smartFeed = useMemo(
@@ -1303,6 +1328,11 @@ export function useNotifications() {
   };
 
   const requestPermission = useCallback(async (): Promise<boolean> => {
+    if (native) {
+      const result = await LocalNotifications.requestPermissions();
+      setPermission(result.display as NotificationPermission);
+      return result.display === 'granted';
+    }
     if (!('Notification' in window)) return false;
     const result = await Notification.requestPermission();
     setPermission(result);
@@ -1310,7 +1340,7 @@ export function useNotifications() {
       await subscribeToServer();
     }
     return result === 'granted';
-  }, []);
+  }, [native]);
 
   const fetchServerPreferences = useCallback(async () => {
     const token = localStorage.getItem('auth_token');
@@ -1394,6 +1424,28 @@ export function useNotifications() {
       preferredCategory?: NotificationCategory,
       customPayload?: { title: string; body: string }
     ) => {
+      if (native) {
+        const s = settingsRef.current;
+        const insight = customPayload
+          ? {
+              id: `custom-${Date.now()}`,
+              category: preferredCategory || ('creative' as NotificationCategory),
+              ...customPayload,
+            }
+          : buildInsight(data, s.channels, preferredCategory);
+        void LocalNotifications.schedule({
+          notifications: [{
+            id: NATIVE_NOTIFICATION_ID,
+            title: insight.title,
+            body: insight.body,
+            channelId: NATIVE_CHANNEL_ID,
+            schedule: { at: new Date(Date.now() + 1000), allowWhileIdle: true },
+          }],
+        }).then(() => recordSentInsight(insight.id, insight.category)).catch(error => {
+          console.error('[TrueSpend] Native notification failed:', error);
+        });
+        return;
+      }
       if (!('Notification' in window) || Notification.permission !== 'granted') return;
 
       const s = settingsRef.current;
@@ -1433,7 +1485,7 @@ export function useNotifications() {
         console.error('[TrueSpend] Notification constructor failed:', e);
       }
     },
-    []
+    [native]
   );
 
   const sendNow = useCallback(
@@ -1521,10 +1573,32 @@ export function useNotifications() {
     (data: NotifData) => {
       dataRef.current = data;
       setSnapshot(data);
+      if (native) {
+        const [hours, minutes] = settingsRef.current.time.split(':').map(Number);
+        const nextDelivery = new Date();
+        nextDelivery.setHours(hours, minutes, 0, 0);
+        if (nextDelivery <= new Date()) nextDelivery.setDate(nextDelivery.getDate() + 1);
+        const scheduledInsight = buildInsight(data, settingsRef.current.channels);
+        void LocalNotifications.cancel({ notifications: [{ id: NATIVE_NOTIFICATION_ID }] });
+        void LocalNotifications.schedule({
+          notifications: [{
+            id: NATIVE_NOTIFICATION_ID,
+            title: scheduledInsight.title,
+            body: scheduledInsight.body,
+            channelId: NATIVE_CHANNEL_ID,
+            schedule: { at: nextDelivery, repeats: true, every: 'day', allowWhileIdle: true },
+          }],
+        });
+        return;
+      }
       startInterval();
     },
-    [startInterval]
+    [native, startInterval]
   );
+
+  useEffect(() => {
+    if (native && settings.enabled && dataRef.current) scheduleDaily(dataRef.current);
+  }, [native, settings.enabled, settings.time, settings.channels, scheduleDaily]);
 
   useEffect(() => {
     startInterval();
@@ -1569,6 +1643,7 @@ export function useNotifications() {
   }, []);
 
   return {
+    native,
     supported,
     permission,
     settings,

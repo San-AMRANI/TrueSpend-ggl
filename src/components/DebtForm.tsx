@@ -5,6 +5,7 @@ import { Select } from './ui/Select';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { useAuth } from '../context/AuthContext';
 import { SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
+import { getApiUrl } from '../lib/capacitorBridge';
 
 export default function DebtForm({ onSuccess }: { onSuccess: () => void }) {
   const { token } = useAuth();
@@ -30,7 +31,7 @@ export default function DebtForm({ onSuccess }: { onSuccess: () => void }) {
     try {
       const apr = parseFloat(formData.interestRateApr) || 0;
       const instAmt = parseFloat(formData.installmentAmount);
-      const res = await fetch('/api/debts', {
+      const res = await fetch(getApiUrl('/api/debts'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
