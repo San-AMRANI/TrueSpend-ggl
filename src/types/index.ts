@@ -301,6 +301,9 @@ export interface CategoryBudget {
 export interface Payroll {
   id: string;
   userId: string;
+  walletId?: string | null;
+  walletName?: string | null;
+  walletType?: string | null;
   scheduledFor: string;
   amount: string;
   status?: 'expected' | 'confirmed' | 'matched';

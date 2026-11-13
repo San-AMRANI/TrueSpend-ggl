@@ -114,6 +114,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     openTransaction,
     handleSaveSettings,
     handleCreatePayroll,
+    handleUpdatePayroll,
     handleDeletePayroll,
     handleExportSql,
     handleImportSql,
@@ -427,6 +428,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               openTransaction={openTransaction}
               setActiveTab={setActiveTab}
               onCreatePayroll={handleCreatePayroll}
+              onUpdatePayroll={handleUpdatePayroll}
               onDeletePayroll={handleDeletePayroll}
               onPaySubscription={handlePaySubscription}
               onDataChange={fetchData}

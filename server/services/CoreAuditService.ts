@@ -1261,11 +1261,13 @@ export class CoreAuditService {
   }
 
   async syncAndGetCommitmentOccurrences(userId: string, horizonDays = 90) {
-    const [userSubs, userDebts, userPayrolls] = await Promise.all([
+    const [userSubs, userDebts, userPayrolls, userWallets] = await Promise.all([
       db.select().from(subscriptions).where(eq(subscriptions.userId, userId)),
       db.select().from(debts).where(eq(debts.userId, userId)),
       db.select().from(payrolls).where(eq(payrolls.userId, userId)),
+      db.select().from(wallets).where(eq(wallets.userId, userId)),
     ]);
+    const walletMap = new Map(userWallets.map((w) => [w.id, w]));
 
     const todayStr = new Date().toISOString().slice(0, 10);
     const horizonEnd = new Date(Date.now() + Math.max(7, horizonDays) * 86400000);
@@ -1338,19 +1340,58 @@ export class CoreAuditService {
     // 3. Sync scheduled payroll occurrences
     for (const pr of userPayrolls) {
       const expectedDate = new Date(pr.scheduledFor).toISOString().slice(0, 10);
+      const prWallet = (pr as any).walletId ? walletMap.get((pr as any).walletId) : null;
+      const isConfirmed = pr.status === 'confirmed' || pr.status === 'matched';
       rowsToInsert.push({
         userId,
         sourceType: 'payroll',
         sourceId: pr.id,
-        title: '💰 Scheduled Salary / Payroll',
+        title: prWallet ? `💰 Scheduled Salary / Payroll → ${prWallet.name}` : '💰 Scheduled Salary / Payroll',
         expectedDate,
         expectedAmount: String(pr.amount),
         currency: 'MAD',
-        status: pr.status === 'confirmed' || pr.status === 'matched' ? 'completed' : expectedDate < todayStr ? 'overdue' : 'scheduled',
+        status: isConfirmed ? 'completed' : expectedDate < todayStr ? 'overdue' : 'scheduled',
         actualDate: pr.confirmedAt ? new Date(pr.confirmedAt).toISOString().slice(0, 10) : null,
         actualAmount: pr.confirmedAmount ? String(pr.confirmedAmount) : null,
         varianceAmount: String(pr.varianceAmount || '0'),
+        notes: prWallet ? `Destination account: ${prWallet.name} (${prWallet.type})` : null,
       });
+
+      if (isConfirmed) {
+        await db
+          .update(commitmentOccurrences)
+          .set({
+            status: 'completed',
+            title: prWallet ? `💰 Scheduled Salary / Payroll → ${prWallet.name}` : '💰 Scheduled Salary / Payroll',
+            actualDate: pr.confirmedAt ? new Date(pr.confirmedAt).toISOString().slice(0, 10) : expectedDate,
+            actualAmount: pr.confirmedAmount ? String(pr.confirmedAmount) : String(pr.amount),
+            varianceAmount: String(pr.varianceAmount || '0'),
+            notes: prWallet ? `Destination account: ${prWallet.name} (${prWallet.type})` : null,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(commitmentOccurrences.userId, userId),
+              eq(commitmentOccurrences.sourceType, 'payroll'),
+              eq(commitmentOccurrences.sourceId, pr.id)
+            )
+          );
+      } else if (prWallet) {
+        await db
+          .update(commitmentOccurrences)
+          .set({
+            title: `💰 Scheduled Salary / Payroll → ${prWallet.name}`,
+            notes: `Destination account: ${prWallet.name} (${prWallet.type})`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(commitmentOccurrences.userId, userId),
+              eq(commitmentOccurrences.sourceType, 'payroll'),
+              eq(commitmentOccurrences.sourceId, pr.id)
+            )
+          );
+      }
     }
 
     // Concurrency-safe insert via DB unique constraint on (user_id, source_type, source_id, expected_date)

@@ -21,6 +21,15 @@ export class PayrollController {
     }
   }
 
+  async updatePayroll(req: AuthRequest, res: Response) {
+    try {
+      const payroll = await payrollService.updatePayroll(req.dbUser.id, req.params.id, req.body);
+      res.json(payroll);
+    } catch (error: any) {
+      res.status(error?.message === 'Payroll not found' ? 404 : 400).json({ error: error?.message || 'Unable to update payroll' });
+    }
+  }
+
   async deletePayroll(req: AuthRequest, res: Response) {
     try {
       await payrollService.deletePayroll(req.dbUser.id, req.params.id);

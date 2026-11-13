@@ -124,8 +124,13 @@ export const dashboardService = {
   createTransaction: (payload: Record<string, unknown>, token: string | null) =>
     apiClient.post<{ message: string; transaction: Transaction }>('/api/transactions', payload, token),
   getPayrolls: (token: string | null) => apiClient.get<Payroll[]>('/api/payrolls', token),
-  createPayroll: (payload: { scheduledFor: string; amount: number }, token: string | null) =>
+  createPayroll: (payload: { scheduledFor: string; amount: number; walletId?: string | null }, token: string | null) =>
     apiClient.post<Payroll>('/api/payrolls', payload, token),
+  updatePayroll: (
+    id: string,
+    payload: { scheduledFor?: string; amount?: number; walletId?: string | null },
+    token: string | null
+  ) => apiClient.put<Payroll>(`/api/payrolls/${id}`, payload, token),
   confirmPayroll: (
     id: string,
     payload: { confirmedAmount?: number; confirmedDate?: string; walletId?: string; varianceNotes?: string },

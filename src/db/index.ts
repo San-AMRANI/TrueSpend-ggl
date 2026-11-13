@@ -319,6 +319,7 @@ export const createPool = () => {
         ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "installment_frequency" text NOT NULL DEFAULT 'one_time';
         ALTER TABLE "debts" ADD COLUMN IF NOT EXISTS "currency" text NOT NULL DEFAULT 'MAD';
 
+        ALTER TABLE "payrolls" ADD COLUMN IF NOT EXISTS "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL;
         ALTER TABLE "payrolls" ADD COLUMN IF NOT EXISTS "status" text NOT NULL DEFAULT 'expected';
         ALTER TABLE "payrolls" ADD COLUMN IF NOT EXISTS "confirmed_amount" numeric;
         ALTER TABLE "payrolls" ADD COLUMN IF NOT EXISTS "confirmed_at" timestamp;

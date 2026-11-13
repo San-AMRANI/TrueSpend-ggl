@@ -7,6 +7,8 @@ import {
   parseFinancialRuleDetails,
   normalizeStatementImportResult,
   buildReviewDecisionPayload,
+  buildPayrollCreatePayload,
+  buildPayrollUpdatePayload,
   buildPayrollConfirmPayload,
 } from '../src/lib/auditContracts.js';
 import {
@@ -218,6 +220,44 @@ function runFrontendContractTests() {
     assert.ok(subTabSrc.includes('change-plan') || subTabSrc.includes('onChangeSubscriptionPlan'));
     assert.ok(subTabSrc.includes('every_10_months'));
     console.log('✓ Test 7 passed: Subscription multi-month cycles (3m, 10m, 1y) & upgrade/downgrade contracts verified.');
+  }
+
+  // 8. Payroll destination bank account / wallet selection & pre-confirmation updates
+  {
+    const createPayload = buildPayrollCreatePayload({
+      scheduledFor: '2026-05-28',
+      amount: 14500,
+      walletId: 'wallet-cih-bank',
+    });
+    assert.deepEqual(createPayload, {
+      scheduledFor: '2026-05-28',
+      amount: 14500,
+      walletId: 'wallet-cih-bank',
+    });
+
+    const updatePayload = buildPayrollUpdatePayload({
+      walletId: 'wallet-attijari-bank',
+    });
+    assert.deepEqual(updatePayload, {
+      walletId: 'wallet-attijari-bank',
+    });
+
+    const calSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/components/dashboard/FinancialCalendarTab.tsx'),
+      'utf8'
+    );
+    assert.ok(calSrc.includes('payroll-wallet'));
+    assert.ok(calSrc.includes('expected-payroll-wallet'));
+    assert.ok(calSrc.includes('onUpdatePayroll'));
+    assert.ok(calSrc.includes('resolvedPayrollWallet'));
+
+    const payrollSvcSrc = fs.readFileSync(
+      path.resolve(process.cwd(), 'server/services/PayrollService.ts'),
+      'utf8'
+    );
+    assert.ok(payrollSvcSrc.includes('updatePayroll'));
+    assert.ok(payrollSvcSrc.includes('resolveTargetWallet'));
+    console.log('✓ Test 8 passed: Payroll destination bank/wallet setup, update, and confirmation contracts verified.');
   }
 
   console.log('\nAll Frontend Audit Contract tests passed!');

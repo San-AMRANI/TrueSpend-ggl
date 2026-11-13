@@ -23,8 +23,37 @@ const monthBounds = (date: Date) => ({
 });
 
 export class PayrollService {
+  private async resolveTargetWallet(userId: string, requestedWalletId?: string | null) {
+    const userWallets = await walletService.getWallets(userId);
+    if (requestedWalletId) {
+      const matched = userWallets.find((w) => w.id === requestedWalletId);
+      if (!matched) {
+        throw new Error('Selected deposit bank account / wallet was not found');
+      }
+      return matched;
+    }
+    return (
+      userWallets.find((w) => w.type === 'Bank' && w.isMain) ||
+      userWallets.find((w) => w.type === 'Bank') ||
+      userWallets.find((w) => w.isMain) ||
+      userWallets[0] ||
+      null
+    );
+  }
+
   async getPayrollsForUser(userId: string) {
-    const list = await payrollRepository.findAllByUserId(userId);
+    const [list, userWallets] = await Promise.all([
+      payrollRepository.findAllByUserId(userId),
+      walletService.getWallets(userId),
+    ]);
+    const walletMap = new Map(userWallets.map((w) => [w.id, w]));
+    const defaultWallet =
+      userWallets.find((w) => w.type === 'Bank' && w.isMain) ||
+      userWallets.find((w) => w.type === 'Bank') ||
+      userWallets.find((w) => w.isMain) ||
+      userWallets[0] ||
+      null;
+
     const enriched = [];
     for (const p of list) {
       const linkedTx = await transactionRepository.findByPayrollId(p.id);
@@ -33,16 +62,21 @@ export class PayrollService {
           ? 'matched'
           : 'confirmed'
         : (p as any).status || 'expected';
+      const resolvedWalletId = (p as any).walletId || linkedTx?.walletId || defaultWallet?.id || null;
+      const resolvedWallet = resolvedWalletId ? walletMap.get(resolvedWalletId) || null : null;
       enriched.push({
         ...p,
         status: effectiveStatus,
+        walletId: resolvedWalletId,
+        walletName: resolvedWallet?.name || null,
+        walletType: resolvedWallet?.type || null,
         linkedTransactionId: linkedTx?.id || null,
       });
     }
     return enriched;
   }
 
-  async createPayroll(userId: string, dto: { scheduledFor?: string; amount?: number }) {
+  async createPayroll(userId: string, dto: { scheduledFor?: string; amount?: number; walletId?: string | null }) {
     if (!dto.scheduledFor) throw new Error('A payroll date is required');
     if (!Number.isFinite(dto.amount) || (dto.amount || 0) <= 0) throw new Error('Payroll amount must be greater than zero');
 
@@ -51,14 +85,72 @@ export class PayrollService {
     const existingForMonth = await payrollRepository.findForMonth(userId, start, end);
     if (existingForMonth) throw new Error('This calendar month already has a payroll. Edit the existing entry in Transactions after it is posted.');
 
+    const targetWallet = await this.resolveTargetWallet(userId, dto.walletId);
+
     const created = await payrollRepository.create({
       userId,
       scheduledFor,
       amount: String(dto.amount),
+      walletId: targetWallet?.id || null,
     });
 
     await coreAuditService.syncAndGetCommitmentOccurrences(userId).catch(() => undefined);
-    return created;
+    return {
+      ...created,
+      walletId: created.walletId || targetWallet?.id || null,
+      walletName: targetWallet?.name || null,
+      walletType: targetWallet?.type || null,
+    };
+  }
+
+  async updatePayroll(
+    userId: string,
+    payrollId: string,
+    dto: { scheduledFor?: string; amount?: number; walletId?: string | null }
+  ) {
+    const payroll = await payrollRepository.findByIdAndUserId(payrollId, userId);
+    if (!payroll) throw new Error('Payroll not found');
+    const existingTx = await transactionRepository.findByPayrollId(payrollId);
+    if (existingTx || (payroll as any).status === 'confirmed' || (payroll as any).status === 'matched') {
+      throw new Error('This payroll has already been confirmed and posted. Edit its transaction instead.');
+    }
+
+    const updates: Partial<{ scheduledFor: Date; amount: string; walletId: string | null }> = {};
+    if (dto.amount !== undefined) {
+      if (!Number.isFinite(Number(dto.amount)) || Number(dto.amount) <= 0) {
+        throw new Error('Payroll amount must be greater than zero');
+      }
+      updates.amount = String(dto.amount);
+    }
+    if (dto.scheduledFor !== undefined) {
+      const scheduledFor = asCalendarDate(dto.scheduledFor);
+      const { start, end } = monthBounds(scheduledFor);
+      const existingForMonth = await payrollRepository.findForMonth(userId, start, end, payrollId);
+      if (existingForMonth) {
+        throw new Error('This calendar month already has a different payroll.');
+      }
+      updates.scheduledFor = scheduledFor;
+    }
+
+    let targetWallet = null;
+    if (dto.walletId !== undefined) {
+      targetWallet = dto.walletId ? await this.resolveTargetWallet(userId, dto.walletId) : null;
+      updates.walletId = targetWallet?.id || null;
+    } else if ((payroll as any).walletId) {
+      targetWallet = await this.resolveTargetWallet(userId, (payroll as any).walletId).catch(() => null);
+    }
+
+    const updated =
+      Object.keys(updates).length > 0
+        ? await payrollRepository.update(payrollId, userId, updates)
+        : payroll;
+
+    await coreAuditService.syncAndGetCommitmentOccurrences(userId).catch(() => undefined);
+    return {
+      ...updated,
+      walletName: targetWallet?.name || null,
+      walletType: targetWallet?.type || null,
+    };
   }
 
   async deletePayroll(userId: string, payrollId: string) {
@@ -86,6 +178,7 @@ export class PayrollService {
           .update(payrolls)
           .set({
             status: 'confirmed',
+            walletId: (payroll as any).walletId || existingTx.walletId || null,
             confirmedAmount: String(existingTx.amount),
             confirmedAt: existingTx.createdAt || new Date(),
             varianceAmount: String(
@@ -132,15 +225,11 @@ export class PayrollService {
     const variance = Number((actualAmt - expectedAmt).toFixed(2));
     const receivedDate = dto.confirmedDate ? asCalendarDate(dto.confirmedDate) : new Date();
 
-    let targetWalletId: string | null = dto.walletId || null;
-    if (!targetWalletId) {
-      const userWallets = await walletService.getWallets(userId);
-      const bankWallet =
-        userWallets.find((w) => w.type === 'Bank' && w.isMain) ||
-        userWallets.find((w) => w.type === 'Bank') ||
-        userWallets[0];
-      targetWalletId = bankWallet?.id || null;
-    }
+    const targetWallet = await this.resolveTargetWallet(
+      userId,
+      dto.walletId || (payroll as any).walletId || undefined
+    ).catch(async () => this.resolveTargetWallet(userId, undefined));
+    const targetWalletId: string | null = targetWallet?.id || null;
 
     const { updatedPayroll, createdTx } = await db.transaction(async (txDb) => {
       const createdTx = await transactionRepository.create(
@@ -153,8 +242,8 @@ export class PayrollService {
           category: '📥 Income',
           notes:
             variance === 0
-              ? `Confirmed salary deposit (${actualAmt.toFixed(0)} MAD)`
-              : `Confirmed salary deposit (${actualAmt.toFixed(0)} MAD vs ${expectedAmt.toFixed(0)} MAD expected · variance ${variance >= 0 ? '+' : ''}${variance.toFixed(0)} MAD)`,
+              ? `Confirmed salary deposit (${actualAmt.toFixed(0)} MAD${targetWallet ? ` · ${targetWallet.name}` : ''})`
+              : `Confirmed salary deposit (${actualAmt.toFixed(0)} MAD vs ${expectedAmt.toFixed(0)} MAD expected · variance ${variance >= 0 ? '+' : ''}${variance.toFixed(0)} MAD${targetWallet ? ` · ${targetWallet.name}` : ''})`,
           createdAt: receivedDate,
         },
         txDb
@@ -165,7 +254,7 @@ export class PayrollService {
         createdTx,
         {
           idempotencyKey: `payroll-confirm-${payroll.id}`,
-          memo: `Confirmed Payroll Receipt (${actualAmt.toFixed(2)} MAD)`,
+          memo: `Confirmed Payroll Receipt (${actualAmt.toFixed(2)} MAD${targetWallet ? ` -> ${targetWallet.name}` : ''})`,
         },
         txDb
       );
@@ -174,6 +263,7 @@ export class PayrollService {
         .update(payrolls)
         .set({
           status: dto.status || 'confirmed',
+          walletId: targetWalletId,
           confirmedAmount: String(actualAmt),
           confirmedAt: receivedDate,
           varianceAmount: String(variance),
@@ -192,7 +282,7 @@ export class PayrollService {
           amount: actualAmt,
           category: '📥 Income',
           walletId: targetWalletId || undefined,
-          description: 'Salary Confirmed',
+          description: `Salary Confirmed${targetWallet ? ` (${targetWallet.name})` : ''}`,
           eventId: payroll.id,
         },
         txDb
@@ -201,9 +291,21 @@ export class PayrollService {
       return { updatedPayroll, createdTx };
     });
 
-    await coreAuditService.processPendingOutboxEvents(userId).catch(() => undefined);
+    await Promise.all([
+      coreAuditService.processPendingOutboxEvents(userId).catch(() => undefined),
+      coreAuditService.syncAndGetCommitmentOccurrences(userId).catch(() => undefined),
+    ]);
 
-    return { payroll: updatedPayroll, transaction: createdTx, variance };
+    return {
+      payroll: {
+        ...updatedPayroll,
+        walletId: targetWalletId,
+        walletName: targetWallet?.name || null,
+        walletType: targetWallet?.type || null,
+      },
+      transaction: createdTx,
+      variance,
+    };
   }
 }
 

@@ -269,6 +269,7 @@ export const debts = pgTable('debts', {
 export const payrolls = pgTable('payrolls', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').references(() => users.id).notNull(),
+  walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
   scheduledFor: timestamp('scheduled_for').notNull(),
   amount: decimal('amount').notNull(),
   status: text('status').default('expected').notNull(), // 'expected' | 'confirmed' | 'matched'
@@ -801,6 +802,10 @@ export const payrollsRelations = relations(payrolls, ({ one, many }) => ({
     fields: [payrolls.userId],
     references: [users.id],
   }),
+  wallet: one(wallets, {
+    fields: [payrolls.walletId],
+    references: [wallets.id],
+  }),
   transactions: many(transactions),
 }));
 
@@ -865,6 +870,7 @@ export const walletsRelations = relations(wallets, ({ one, many }) => ({
   goals: many(goals),
   subscriptions: many(subscriptions),
   transactions: many(transactions),
+  payrolls: many(payrolls),
   stockPositions: many(stockPositions),
 }));
 

@@ -40,7 +40,8 @@ interface FinancialCalendarTabProps {
   investmentsData?: InvestmentsData | null;
   openTransaction: (id: string) => void;
   setActiveTab: (tab: any) => void;
-  onCreatePayroll: (scheduledFor: string, amount: number) => Promise<void>;
+  onCreatePayroll: (scheduledFor: string, amount: number, walletId?: string | null) => Promise<void>;
+  onUpdatePayroll?: (id: string, payload: { scheduledFor?: string; amount?: number; walletId?: string | null }) => Promise<void>;
   onDeletePayroll: (id: string) => Promise<void>;
   onPaySubscription?: (id: string, payload?: { walletId?: string; date?: string }) => Promise<any>;
   onDataChange?: () => Promise<void> | void;
@@ -57,6 +58,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   openTransaction,
   setActiveTab,
   onCreatePayroll,
+  onUpdatePayroll,
   onDeletePayroll,
   onPaySubscription,
   onDataChange,
@@ -69,6 +71,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   const [ref, setRef] = useState({ year: now.getUTCFullYear(), month: now.getUTCMonth() });
   const [selectedDate, setSelectedDate] = useState(today);
   const [amount, setAmount] = useState('');
+  const [scheduledPayrollWalletId, setScheduledPayrollWalletId] = useState('');
   const [confirmedPayrollInput, setConfirmedPayrollInput] = useState('');
   const [confirmedPayrollDate, setConfirmedPayrollDate] = useState(today);
   const [confirmedPayrollWalletId, setConfirmedPayrollWalletId] = useState('');
@@ -90,6 +93,20 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   const [settleLinkedTxId, setSettleLinkedTxId] = useState('');
   const [settleNotes, setSettleNotes] = useState('');
 
+  const sortedPayrollWallets = useMemo(() => {
+    const score = (w: Wallet) =>
+      (w.type === 'Bank' ? 4 : 0) + (w.isMain ? 2 : 0) + (w.type === 'Savings' ? 1 : 0);
+    return [...wallets].sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
+  }, [wallets]);
+
+  const preferredPayrollWalletId = useMemo(
+    () => sortedPayrollWallets[0]?.id || '',
+    [sortedPayrollWallets]
+  );
+
+  const formatWalletOption = (w: Wallet) =>
+    `${w.name} · ${w.type}${w.isMain ? ' (Main)' : ''} · ${Number(w.balance || 0).toFixed(0)} ${w.currency || 'MAD'}`;
+
   const {
     occurrences,
     busyId: occBusyId,
@@ -105,14 +122,16 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   }, [token, loadOccurrences]);
 
   useEffect(() => {
-    const defaultWallet = wallets.find((w) => w.isMain)?.id || wallets[0]?.id || '';
-    if (!confirmedPayrollWalletId && defaultWallet) {
-      setConfirmedPayrollWalletId(defaultWallet);
+    if (!scheduledPayrollWalletId && preferredPayrollWalletId) {
+      setScheduledPayrollWalletId(preferredPayrollWalletId);
     }
-    if (!settleWalletId && defaultWallet) {
-      setSettleWalletId(defaultWallet);
+    if (!confirmedPayrollWalletId && preferredPayrollWalletId) {
+      setConfirmedPayrollWalletId(preferredPayrollWalletId);
     }
-  }, [wallets, confirmedPayrollWalletId, settleWalletId]);
+    if (!settleWalletId && preferredPayrollWalletId) {
+      setSettleWalletId(preferredPayrollWalletId);
+    }
+  }, [preferredPayrollWalletId, scheduledPayrollWalletId, confirmedPayrollWalletId, settleWalletId]);
 
   const events = useMemo<CalendarEvent[]>(() => {
     const transactionEvents = transactions.map((transaction) => {
@@ -142,14 +161,18 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
         transactionId: transaction.id,
       };
     });
-    const payrollEvents = payrolls.map((payroll) => ({
-      id: `payroll-${payroll.id}`,
-      date: dateKey(payroll.scheduledFor),
-      kind: 'payroll' as const,
-      title: 'Payroll',
-      amount: Number.parseFloat(payroll.amount),
-      payroll,
-    }));
+    const payrollEvents = payrolls.map((payroll) => {
+      const targetWallet = wallets.find((w) => w.id === payroll.walletId);
+      const walletLabel = targetWallet?.name || payroll.walletName;
+      return {
+        id: `payroll-${payroll.id}`,
+        date: dateKey(payroll.scheduledFor),
+        kind: 'payroll' as const,
+        title: walletLabel ? `Payroll → ${walletLabel}` : 'Payroll',
+        amount: Number.parseFloat(payroll.amount),
+        payroll,
+      };
+    });
     const occurrenceSubSourceMonthKeys = new Set<string>();
     const occurrenceDebtSourceMonthKeys = new Set<string>();
 
@@ -259,7 +282,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     });
 
     return [...transactionEvents, ...payrollEvents, ...occurrenceEvents, ...debtEvents, ...dcaEvents, ...subscriptionEvents];
-  }, [debts, payrolls, transactions, subscriptions, investmentsData, occurrences, ref]);
+  }, [debts, payrolls, transactions, subscriptions, investmentsData, occurrences, wallets, ref]);
 
   const visible = events.filter((event) => {
     const eventDate = new Date(`${event.date}T00:00:00Z`);
@@ -268,6 +291,17 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   const selected = visible.filter((event) => event.date === selectedDate);
   const selectedPayroll = payrolls.find((payroll) => dateKey(payroll.scheduledFor) === selectedDate);
   const generatedTransaction = selectedPayroll ? transactions.find((transaction) => transaction.payrollId === selectedPayroll.id) : undefined;
+  const resolvedPayrollWalletId = generatedTransaction?.walletId || selectedPayroll?.walletId || preferredPayrollWalletId;
+  const resolvedPayrollWallet = wallets.find((w) => w.id === resolvedPayrollWalletId) || null;
+
+  useEffect(() => {
+    if (selectedPayroll) {
+      setConfirmedPayrollWalletId(selectedPayroll.walletId || generatedTransaction?.walletId || preferredPayrollWalletId);
+    } else if (preferredPayrollWalletId) {
+      setConfirmedPayrollWalletId(preferredPayrollWalletId);
+    }
+  }, [selectedPayroll?.id, selectedPayroll?.walletId, generatedTransaction?.walletId, preferredPayrollWalletId]);
+
   const days = new Date(Date.UTC(ref.year, ref.month + 1, 0)).getUTCDate();
   const offset = (new Date(Date.UTC(ref.year, ref.month, 1)).getUTCDay() + 6) % 7;
 
@@ -316,11 +350,17 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
       showNotice('Enter a payroll amount greater than zero.');
       return;
     }
+    const targetWalletId = scheduledPayrollWalletId || preferredPayrollWalletId || undefined;
+    const chosenWallet = wallets.find((w) => w.id === targetWalletId);
     setSaving(true);
     try {
-      await onCreatePayroll(selectedDate, parsedAmount);
+      await onCreatePayroll(selectedDate, parsedAmount, targetWalletId);
       setAmount('');
-      showNotice(`Payroll set for ${formatDate(selectedDate)}.`);
+      showNotice(
+        chosenWallet
+          ? `Payroll set for ${formatDate(selectedDate)} → ${chosenWallet.name}.`
+          : `Payroll set for ${formatDate(selectedDate)}.`
+      );
     } catch (error: any) {
       showNotice(error?.message || 'Could not save this payroll.');
     } finally {
@@ -494,37 +534,97 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                 <p className="font-medium text-gray-900 dark:text-gray-100">{formatDate(selectedDate)}</p>
                 {selectedPayroll ? (
                   <>
-                    <div className="rounded-lg bg-violet-50 p-3 dark:bg-violet-950/50 space-y-1.5">
-                      <div className="flex items-center justify-between">
+                    <div className="rounded-lg bg-violet-50 p-3 dark:bg-violet-950/50 space-y-2 border border-violet-200/70 dark:border-violet-800/40">
+                      <div className="flex items-center justify-between gap-2">
                         <p className="text-xs font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">
                           {selectedPayroll.status === 'confirmed' || selectedPayroll.status === 'matched' || generatedTransaction
                             ? 'Confirmed Salary Inflow'
                             : 'Expected Scheduled Payroll'}
                         </p>
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          className={`text-[11px] font-semibold uppercase tracking-wide ${
                             selectedPayroll.status === 'confirmed' || selectedPayroll.status === 'matched' || generatedTransaction
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300'
-                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300'
+                              ? 'text-emerald-700 dark:text-emerald-300'
+                              : 'text-amber-700 dark:text-amber-300'
                           }`}
                         >
                           {selectedPayroll.status || (generatedTransaction ? 'confirmed' : 'expected')}
                         </span>
                       </div>
-                      <p className="text-lg font-bold text-violet-800 dark:text-violet-100">
+                      <p className="text-lg font-bold tabular-nums text-violet-900 dark:text-violet-100">
                         +{Number(selectedPayroll.confirmedAmount || selectedPayroll.amount).toFixed(2)} MAD
                       </p>
+
+                      {/* Explicit Destination Bank Account / Wallet Display & Pre-Confirmation Switcher */}
+                      <div className="pt-1 border-t border-violet-200/60 dark:border-violet-800/40 space-y-1">
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="text-violet-700 dark:text-violet-300 font-medium flex items-center gap-1">
+                            <Landmark className="h-3.5 w-3.5 shrink-0" />
+                            <span>Destination Account</span>
+                          </span>
+                          <span className="font-semibold text-violet-950 dark:text-violet-100 truncate">
+                            {resolvedPayrollWallet
+                              ? `${resolvedPayrollWallet.name} · ${resolvedPayrollWallet.type}`
+                              : selectedPayroll.walletName || 'Unassigned'}
+                          </span>
+                        </div>
+                        {!generatedTransaction &&
+                          selectedPayroll.status !== 'confirmed' &&
+                          selectedPayroll.status !== 'matched' &&
+                          onUpdatePayroll &&
+                          sortedPayrollWallets.length > 0 && (
+                            <div>
+                              <label
+                                htmlFor="expected-payroll-wallet"
+                                className="sr-only"
+                              >
+                                Change expected payroll destination bank account
+                              </label>
+                              <select
+                                id="expected-payroll-wallet"
+                                value={selectedPayroll.walletId || resolvedPayrollWalletId || ''}
+                                disabled={saving}
+                                onChange={async (e) => {
+                                  const nextWalletId = e.target.value;
+                                  const nextWallet = wallets.find((w) => w.id === nextWalletId);
+                                  setConfirmedPayrollWalletId(nextWalletId);
+                                  setSaving(true);
+                                  try {
+                                    await onUpdatePayroll(selectedPayroll.id, { walletId: nextWalletId || null });
+                                    showNotice(
+                                      nextWallet
+                                        ? `Expected payroll destination set to ${nextWallet.name} (${nextWallet.type}).`
+                                        : 'Expected payroll destination updated.'
+                                    );
+                                  } catch (err: any) {
+                                    showNotice(err?.message || 'Could not update deposit bank account.');
+                                  } finally {
+                                    setSaving(false);
+                                  }
+                                }}
+                                className="w-full rounded-md border border-violet-200 bg-white px-2.5 py-1 text-xs text-gray-900 dark:border-violet-700/60 dark:bg-gray-900 dark:text-gray-100"
+                              >
+                                {sortedPayrollWallets.map((w) => (
+                                  <option key={w.id} value={w.id}>
+                                    {formatWalletOption(w)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                      </div>
+
                       {selectedPayroll.varianceAmount && Math.abs(Number(selectedPayroll.varianceAmount)) > 0.01 && (
-                        <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                        <p className="text-xs font-semibold tabular-nums text-amber-700 dark:text-amber-300">
                           Variance vs Expected ({Number(selectedPayroll.amount).toFixed(0)} MAD):{' '}
                           {Number(selectedPayroll.varianceAmount) > 0 ? '+' : ''}
                           {Number(selectedPayroll.varianceAmount).toFixed(2)} MAD
                         </p>
                       )}
                       <p className="text-xs text-violet-700 dark:text-violet-300">
-                        {generatedTransaction || selectedPayroll.status === 'confirmed'
-                          ? 'Confirmed and posted to your primary wallet & double-entry ledger.'
-                          : 'Expected salary does not fabricate received cash until you confirm receipt.'}
+                        {generatedTransaction || selectedPayroll.status === 'confirmed' || selectedPayroll.status === 'matched'
+                          ? `Confirmed and deposited into ${resolvedPayrollWallet ? `${resolvedPayrollWallet.name} (${resolvedPayrollWallet.type})` : selectedPayroll.walletName || 'your selected account'} & double-entry ledger.`
+                          : `Expected salary does not count as received cash until you confirm receipt into ${resolvedPayrollWallet ? resolvedPayrollWallet.name : 'your bank account'}.`}
                       </p>
                     </div>
                     {generatedTransaction ? (
@@ -542,9 +642,9 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                           value={confirmedPayrollInput}
                           onChange={(e) => setConfirmedPayrollInput(e.target.value)}
                           placeholder={String(selectedPayroll.amount)}
-                          className="w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                          className="w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 tabular-nums dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                         />
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-0.5">
                               Received Date
@@ -558,16 +658,16 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                           </div>
                           <div>
                             <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-0.5">
-                              Deposit Account
+                              Deposit Bank / Account
                             </label>
                             <select
                               value={confirmedPayrollWalletId}
                               onChange={(e) => setConfirmedPayrollWalletId(e.target.value)}
                               className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
                             >
-                              {wallets.map((w) => (
+                              {sortedPayrollWallets.map((w) => (
                                 <option key={w.id} value={w.id}>
-                                  {w.name}
+                                  {formatWalletOption(w)}
                                 </option>
                               ))}
                             </select>
@@ -589,10 +689,12 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                               const actual = confirmedPayrollInput
                                 ? parseFloat(confirmedPayrollInput)
                                 : parseFloat(selectedPayroll.amount);
+                              const chosenWalletId = confirmedPayrollWalletId || selectedPayroll.walletId || preferredPayrollWalletId || undefined;
+                              const chosenWallet = wallets.find((w) => w.id === chosenWalletId);
                               const payload = buildPayrollConfirmPayload({
                                 confirmedAmount: actual,
                                 confirmedDate: confirmedPayrollDate || selectedDate,
-                                walletId: confirmedPayrollWalletId || undefined,
+                                walletId: chosenWalletId,
                                 varianceNotes: payrollVarianceNotes || undefined,
                               });
                               const res = await dashboardService.confirmPayroll(
@@ -610,7 +712,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                               showNotice(
                                 res.alreadyConfirmed
                                   ? 'Payroll was already confirmed in the ledger.'
-                                  : `Payroll confirmed (+${actual.toFixed(2)} MAD${varianceTxt}) and posted to wallet!`
+                                  : `Payroll confirmed (+${actual.toFixed(2)} MAD${varianceTxt}) and deposited to ${chosenWallet?.name || 'wallet'}!`
                               );
                             } catch (err: any) {
                               showNotice(err?.message || 'Failed to confirm payroll');
@@ -630,19 +732,47 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                   </>
                 ) : (
                   <>
-                    <p className="text-gray-500 dark:text-gray-400">Set this day as the one payroll for {monthLabel(ref.year, ref.month)}. You must also set the next month to form a complete financial period.</p>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300" htmlFor="payroll-amount">Payroll amount (MAD)</label>
-                    <input
-                      id="payroll-amount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={amount}
-                      onChange={(event) => setAmount(event.target.value)}
-                      className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                      placeholder="e.g. 8000"
-                    />
-                    <Button className="w-full" disabled={saving} onClick={savePayroll}>
+                    <p className="text-gray-500 dark:text-gray-400">Set this day as the one payroll for {monthLabel(ref.year, ref.month)} and choose which bank account or wallet it deposits into.</p>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="payroll-amount">
+                        Expected Payroll Amount (MAD)
+                      </label>
+                      <input
+                        id="payroll-amount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={amount}
+                        onChange={(event) => setAmount(event.target.value)}
+                        className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 tabular-nums dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                        placeholder="e.g. 8000"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="payroll-wallet">
+                        Deposit Bank Account / Wallet
+                      </label>
+                      <select
+                        id="payroll-wallet"
+                        value={scheduledPayrollWalletId || preferredPayrollWalletId}
+                        onChange={(e) => setScheduledPayrollWalletId(e.target.value)}
+                        className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                      >
+                        {sortedPayrollWallets.length === 0 ? (
+                          <option value="">No wallets found — create one in Accounts &amp; Wallets</option>
+                        ) : (
+                          sortedPayrollWallets.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {formatWalletOption(w)}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                        This tells TrueSpend which bank account will receive your salary when confirmed.
+                      </p>
+                    </div>
+                    <Button className="w-full" disabled={saving || sortedPayrollWallets.length === 0} onClick={savePayroll}>
                       <WalletCards className="mr-2 h-4 w-4" />{saving ? 'Saving…' : 'Set payroll day'}
                     </Button>
                   </>
@@ -805,6 +935,25 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
             <CardContent>
               {selected.length ? (
                 <div className="space-y-2">
+                  {selectedPayroll && (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-violet-200 dark:border-violet-900/60 bg-violet-50/40 dark:bg-violet-950/20 p-3.5">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                          {selectedPayroll.status === 'confirmed' || selectedPayroll.status === 'matched' || generatedTransaction
+                            ? 'Confirmed Salary Deposit'
+                            : 'Expected Scheduled Payroll'}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          Destination: <strong>{resolvedPayrollWallet ? `${resolvedPayrollWallet.name} (${resolvedPayrollWallet.type})` : selectedPayroll.walletName || 'Unassigned'}</strong>
+                          {' · '}
+                          <span className="uppercase">{selectedPayroll.status || (generatedTransaction ? 'confirmed' : 'expected')}</span>
+                        </p>
+                      </div>
+                      <span className="font-mono font-bold tabular-nums text-sm text-violet-800 dark:text-violet-200 shrink-0">
+                        +{Number(selectedPayroll.confirmedAmount || selectedPayroll.amount).toFixed(2)} MAD
+                      </span>
+                    </div>
+                  )}
                   {selected.filter((event) => event.kind !== 'payroll').map((event) => {
                     if (event.kind === 'subscription' && event.subscription) {
                       const sub = event.subscription;

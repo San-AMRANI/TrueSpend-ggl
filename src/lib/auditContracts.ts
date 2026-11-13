@@ -170,6 +170,30 @@ export function buildReviewDecisionPayload(input: {
   };
 }
 
+export function buildPayrollCreatePayload(input: {
+  scheduledFor: string;
+  amount: number;
+  walletId?: string | null;
+}) {
+  return {
+    scheduledFor: input.scheduledFor,
+    amount: input.amount,
+    ...(input.walletId ? { walletId: input.walletId } : {}),
+  };
+}
+
+export function buildPayrollUpdatePayload(input: {
+  scheduledFor?: string;
+  amount?: number;
+  walletId?: string | null;
+}) {
+  return {
+    ...(input.scheduledFor ? { scheduledFor: input.scheduledFor } : {}),
+    ...(input.amount !== undefined && Number.isFinite(input.amount) ? { amount: input.amount } : {}),
+    ...(input.walletId !== undefined ? { walletId: input.walletId || null } : {}),
+  };
+}
+
 export function buildPayrollConfirmPayload(input: {
   confirmedAmount?: number;
   confirmedDate?: string;

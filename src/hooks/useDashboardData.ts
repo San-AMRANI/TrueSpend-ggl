@@ -309,8 +309,19 @@ export function useDashboardData(token: string | null) {
     }
   };
 
-  const handleCreatePayroll = async (scheduledFor: string, amount: number) => {
-    await dashboardService.createPayroll({ scheduledFor, amount }, token);
+  const handleCreatePayroll = async (scheduledFor: string, amount: number, walletId?: string | null) => {
+    await dashboardService.createPayroll(
+      { scheduledFor, amount, ...(walletId ? { walletId } : {}) },
+      token
+    );
+    await fetchData();
+  };
+
+  const handleUpdatePayroll = async (
+    payrollId: string,
+    payload: { scheduledFor?: string; amount?: number; walletId?: string | null }
+  ) => {
+    await dashboardService.updatePayroll(payrollId, payload, token);
     await fetchData();
   };
 
@@ -902,6 +913,7 @@ export function useDashboardData(token: string | null) {
     openTransaction,
     handleSaveSettings,
     handleCreatePayroll,
+    handleUpdatePayroll,
     handleDeletePayroll,
     handleSeedData,
     handleExportSql,
