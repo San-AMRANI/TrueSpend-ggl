@@ -37,6 +37,8 @@ import {
 import { format } from 'date-fns';
 import { normalizeCategory } from '../../lib/categories';
 import { usePrivacy } from '../../context/PrivacyContext';
+import { AnimatedMetricValue, MotionModal } from '../ui/MotionPrimitives';
+import { AnimatePresence, motion } from 'motion/react';
 
 interface OverviewTabProps {
   kpis: KPI | null;
@@ -598,7 +600,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <CardContent>
             <div className="flex items-baseline justify-between gap-2">
               <div className="break-words text-2xl font-bold sm:text-3xl font-mono tabular-nums">
-                {isPrivacyMode ? '******' : (kpis?.safeToSpend ?? 0).toFixed(2)} <span className="text-lg text-gray-400">MAD</span>
+                <AnimatedMetricValue
+                  value={kpis?.safeToSpend ?? 0}
+                  masked={isPrivacyMode}
+                  maskText="******"
+                />{' '}
+                <span className="text-lg text-gray-400">MAD</span>
               </div>
               <div className="text-right shrink-0">
                 <span className="text-xs font-mono tabular-nums font-semibold text-indigo-300">
@@ -617,51 +624,89 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   return (
                     <span key={acc.id} className="flex items-center gap-1">
                       {acc.type === 'Bank' ? <Landmark className="h-3 w-3" /> : acc.type === 'Cash' ? <Banknote className="h-3 w-3" /> : acc.type === 'Investment' ? <TrendingUp className="h-3 w-3 text-amber-400" /> : <WalletCards className="h-3 w-3" />}
-                      {acc.name}: {acc.balance.toFixed(2)}
-                      {isLow && <span className="text-rose-400 font-bold" title={`Upcoming bills (${accCommitted.toFixed(0)} MAD) exceed balance`}>⚠️</span>}
+                      {acc.name}: {isPrivacyMode ? '****' : acc.balance.toFixed(2)}
+                      {isLow && <span className="text-rose-400 font-bold" title={`Upcoming bills (${accCommitted.toFixed(0)} MAD) exceed balance`}>!</span>}
                     </span>
                   );
                 })}
               </p>
             </div>
 
-            {showWaterfall ? (
-              <div className="mt-3 rounded-xl border border-gray-800 bg-gray-950/70 p-3 space-y-1.5 text-xs font-mono tabular-nums animate-in fade-in">
-                <div className="flex justify-between text-gray-300">
-                  <span>Total Liquid Accounts</span>
-                  <span className="font-semibold text-white">{(kpis?.totalLiquidity ?? 0).toFixed(2)} MAD</span>
-                </div>
-                <div className="flex justify-between text-gray-400">
-                  <span>− Emergency Safety Buffer</span>
-                  <span className="text-amber-300">−{(kpis?.emergencyBuffer ?? 0).toFixed(2)} MAD</span>
-                </div>
-                {(kpis?.investmentReserve ?? 0) > 0 && (
-                  <div className="flex justify-between text-gray-400">
-                    <span>− Brokerage Capital Reserve</span>
-                    <span className="text-amber-300">−{(kpis?.investmentReserve ?? 0).toFixed(2)} MAD</span>
+            <AnimatePresence initial={false} mode="wait">
+              {showWaterfall ? (
+                <motion.div
+                  key="waterfall-expanded"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.16 }}
+                  className="mt-3 rounded-xl border border-gray-800 bg-gray-950/70 p-3 space-y-1.5 text-xs font-mono tabular-nums"
+                >
+                  <div className="flex justify-between text-gray-300">
+                    <span>Total Liquid Accounts</span>
+                    <span className="font-semibold text-white">
+                      {isPrivacyMode ? '******' : `${(kpis?.totalLiquidity ?? 0).toFixed(2)} MAD`}
+                    </span>
                   </div>
-                )}
-                {(kpis?.pendingPayables ?? 0) > 0 && (
                   <div className="flex justify-between text-gray-400">
-                    <span>− Pending Debt Payables</span>
-                    <span className="text-rose-300">−{(kpis?.pendingPayables ?? 0).toFixed(2)} MAD</span>
+                    <span>− Emergency Safety Buffer</span>
+                    <span className="text-amber-300">
+                      {isPrivacyMode ? '−****' : `−${(kpis?.emergencyBuffer ?? 0).toFixed(2)} MAD`}
+                    </span>
                   </div>
-                )}
-                <div className="border-t border-gray-800 pt-1.5 flex justify-between font-bold text-indigo-300">
-                  <span>= True Safe to Spend</span>
-                  <span>{(kpis?.safeToSpend ?? 0).toFixed(2)} MAD</span>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-mono tabular-nums text-gray-400">
-                <span>Liquidity {(kpis?.totalLiquidity ?? 0).toFixed(0)}</span>
-                {stockPortfolioMad > 0 && <span className="text-emerald-400">· Stocks +{stockPortfolioMad.toFixed(0)}</span>}
-                <span>· Buffer −{(kpis?.emergencyBuffer ?? 0).toFixed(0)}</span>
-                {(kpis?.investmentReserve ?? 0) > 0 && <span className="text-amber-400">· Inv Reserve −{(kpis?.investmentReserve ?? 0).toFixed(0)}</span>}
-                {monthlySubBurn > 0 && <span className="text-purple-400">· Subs {monthlySubBurn.toFixed(0)}/mo</span>}
-                {(kpis?.pendingPayables ?? 0) > 0 && <span>· Payables −{(kpis?.pendingPayables ?? 0).toFixed(0)}</span>}
-              </div>
-            )}
+                  {(kpis?.investmentReserve ?? 0) > 0 && (
+                    <div className="flex justify-between text-gray-400">
+                      <span>− Brokerage Capital Reserve</span>
+                      <span className="text-amber-300">
+                        {isPrivacyMode ? '−****' : `−${(kpis?.investmentReserve ?? 0).toFixed(2)} MAD`}
+                      </span>
+                    </div>
+                  )}
+                  {(kpis?.pendingPayables ?? 0) > 0 && (
+                    <div className="flex justify-between text-gray-400">
+                      <span>− Pending Debt Payables</span>
+                      <span className="text-rose-300">
+                        {isPrivacyMode ? '−****' : `−${(kpis?.pendingPayables ?? 0).toFixed(2)} MAD`}
+                      </span>
+                    </div>
+                  )}
+                  <div className="border-t border-gray-800 pt-1.5 flex justify-between font-bold text-indigo-300">
+                    <span>= True Safe to Spend</span>
+                    <span>{isPrivacyMode ? '******' : `${(kpis?.safeToSpend ?? 0).toFixed(2)} MAD`}</span>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="waterfall-compact"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.14 }}
+                  className="mt-3 flex flex-wrap gap-2 text-[11px] font-mono tabular-nums text-gray-400"
+                >
+                  <span>Liquidity {isPrivacyMode ? '****' : (kpis?.totalLiquidity ?? 0).toFixed(0)}</span>
+                  {stockPortfolioMad > 0 && (
+                    <span className="text-emerald-400">
+                      · Stocks {isPrivacyMode ? '****' : `+${stockPortfolioMad.toFixed(0)}`}
+                    </span>
+                  )}
+                  <span>· Buffer {isPrivacyMode ? '****' : `−${(kpis?.emergencyBuffer ?? 0).toFixed(0)}`}</span>
+                  {(kpis?.investmentReserve ?? 0) > 0 && (
+                    <span className="text-amber-400">
+                      · Inv Reserve {isPrivacyMode ? '****' : `−${(kpis?.investmentReserve ?? 0).toFixed(0)}`}
+                    </span>
+                  )}
+                  {monthlySubBurn > 0 && (
+                    <span className="text-purple-400">
+                      · Subs {isPrivacyMode ? '****' : `${monthlySubBurn.toFixed(0)}/mo`}
+                    </span>
+                  )}
+                  {(kpis?.pendingPayables ?? 0) > 0 && (
+                    <span>· Payables {isPrivacyMode ? '****' : `−${(kpis?.pendingPayables ?? 0).toFixed(0)}`}</span>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Net Worth Badge */}
             <div className="mt-4 pt-3 border-t border-gray-800 space-y-2">
@@ -678,7 +723,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('investments')}
-                  className="text-xs font-medium text-emerald-300 hover:text-white bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-800/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap shrink-0"
+                  className="text-xs font-medium text-emerald-300 hover:text-white bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-800/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <TrendingUp className="h-3.5 w-3.5" />
                   <span>{activeStockPositions.length > 0 ? `${activeStockPositions.length} Positions` : 'Investments'}</span>
@@ -689,12 +734,15 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   Actual Holdings: {isPrivacyMode ? '****' : `${actualHoldingsNetWorth.toFixed(2)} MAD`}
                 </span>
                 <span>
-                  (Cash &amp; Savings {nonInvestmentLiquidity.toFixed(2)} + Inv {effectiveInvestmentMad.toFixed(2)})
+                  {isPrivacyMode
+                    ? '(Cash & Savings **** + Inv ****)'
+                    : `(Cash & Savings ${nonInvestmentLiquidity.toFixed(2)} + Inv ${effectiveInvestmentMad.toFixed(2)})`}
                 </span>
                 {(activeReceivables > 0 || activePayables > 0) && (
                   <span className={netDebtAdjustment >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                    · Net Debts {netDebtAdjustment >= 0 ? '+' : ''}
-                    {netDebtAdjustment.toFixed(2)} (+{activeReceivables.toFixed(2)} owed to you − {activePayables.toFixed(2)} payable)
+                    {isPrivacyMode
+                      ? '· Net Debts ****'
+                      : `· Net Debts ${netDebtAdjustment >= 0 ? '+' : ''}${netDebtAdjustment.toFixed(2)} (+${activeReceivables.toFixed(2)} owed to you − ${activePayables.toFixed(2)} payable)`}
                   </span>
                 )}
               </div>
@@ -708,7 +756,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                         : `${externalWealthSummary.netExternalWealthMad >= 0 ? '+' : ''}${externalWealthSummary.netExternalWealthMad.toFixed(0)} MAD`}
                     </span>
                     <span className="text-gray-400">
-                      (Assets +{externalWealthSummary.totalExternalAssetsMad.toFixed(0)} · Liabilities −{externalWealthSummary.totalExternalLiabilitiesMad.toFixed(0)})
+                      {isPrivacyMode
+                        ? '(Assets **** · Liabilities ****)'
+                        : `(Assets +${externalWealthSummary.totalExternalAssetsMad.toFixed(0)} · Liabilities −${externalWealthSummary.totalExternalLiabilitiesMad.toFixed(0)})`}
                     </span>
                     {externalWealthSummary.staleCount > 0 && (
                       <span className="text-amber-300">
@@ -1707,15 +1757,16 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         }}
       />
 
-      {settlingOccurrence && (
-        <div
-          className="fixed inset-0 z-[85] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          onClick={() => setSettlingOccurrence(null)}
-        >
+      <MotionModal
+        isOpen={Boolean(settlingOccurrence)}
+        onClose={() => setSettlingOccurrence(null)}
+        zIndexClass="z-[85]"
+        containerClassName="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-2xl"
+      >
+        {settlingOccurrence && (
           <form
             onSubmit={handleConfirmSettleOccurrence}
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-2xl space-y-4"
+            className="space-y-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1729,7 +1780,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <button
                 type="button"
                 onClick={() => setSettlingOccurrence(null)}
-                className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                aria-label="Close settle commitment"
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1741,7 +1793,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   key={mode}
                   type="button"
                   onClick={() => setOccAction(mode)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
                     occAction === mode
                       ? 'bg-indigo-600 text-white border-indigo-600'
                       : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700'
@@ -1765,7 +1817,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                       required
                       value={occAmount}
                       onChange={(e) => setOccAmount(e.target.value)}
-                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-mono text-gray-900 dark:text-white"
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-mono tabular-nums text-gray-900 dark:text-white"
                     />
                   </div>
                   <div>
@@ -1828,8 +1880,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               </Button>
             </div>
           </form>
-        </div>
-      )}
+        )}
+      </MotionModal>
 
       <FinancialInsightModal
         type={insightModalType || 'forecast'}

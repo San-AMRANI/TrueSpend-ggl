@@ -21,7 +21,11 @@ import {
   TrendingUp,
   Target,
   Repeat,
+  PanelLeft,
+  LayoutGrid,
+  PanelLeftClose,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   DashboardTab,
   KPI,
@@ -147,7 +151,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const { theme, setTheme } = useTheme();
+  const {
+    theme,
+    setTheme,
+    desktopNavLayout,
+    setDesktopNavLayout,
+    sidebarCollapsed,
+    toggleSidebarCollapsed,
+  } = useTheme();
 
   const mathResult = useMemo(() => evaluateSafeMathExpression(query), [query]);
 
@@ -337,6 +348,55 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           }, 120);
         },
       },
+      {
+        id: 'act-nav-layout-toggle',
+        group: 'Quick Actions',
+        title:
+          desktopNavLayout === 'side'
+            ? 'Switch Desktop Navigation to Top Header Menu'
+            : 'Switch Desktop Navigation to Side Menu Rail',
+        subtitle:
+          desktopNavLayout === 'side'
+            ? 'Move navigation bar horizontally into the top header bar'
+            : 'Move navigation items into a collapsible left sidebar rail',
+        badge: desktopNavLayout === 'side' ? 'Side Active' : 'Top Active',
+        badgeColor: 'text-indigo-600 dark:text-indigo-400',
+        icon: desktopNavLayout === 'side' ? LayoutGrid : PanelLeft,
+        keywords: 'menu layout side top header sidebar navigation rail switch',
+        onSelect: () => {
+          const next = desktopNavLayout === 'side' ? 'top' : 'side';
+          setDesktopNavLayout(next);
+          window.dispatchEvent(
+            new CustomEvent('truespend:toast', {
+              detail: {
+                message: `Desktop navigation switched to ${next === 'side' ? 'Side Menu' : 'Top Menu'}.`,
+                type: 'info',
+              },
+            })
+          );
+          onClose();
+        },
+      },
+      ...(desktopNavLayout === 'side'
+        ? [
+            {
+              id: 'act-sidebar-collapse-toggle',
+              group: 'Quick Actions' as const,
+              title: sidebarCollapsed ? 'Expand Left Navigation Sidebar' : 'Collapse Left Sidebar to Icon Rail',
+              subtitle: sidebarCollapsed
+                ? 'Show full navigation labels and section headings'
+                : 'Maximize horizontal workspace width with icons',
+              badge: sidebarCollapsed ? 'Compact' : 'Expanded',
+              badgeColor: 'text-indigo-600 dark:text-indigo-400',
+              icon: PanelLeftClose,
+              keywords: 'collapse expand compact sidebar icon rail width',
+              onSelect: () => {
+                toggleSidebarCollapsed();
+                onClose();
+              },
+            },
+          ]
+        : []),
       ...THEME_PRESETS.map((preset) => ({
         id: `act-theme-${preset.id}`,
         group: 'Quick Actions' as const,
@@ -493,6 +553,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     subscriptions,
     investmentsData,
     theme,
+    desktopNavLayout,
+    sidebarCollapsed,
     mathResult,
     query,
     onClose,
@@ -502,6 +564,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     setActiveTab,
     openTransaction,
     setTheme,
+    setDesktopNavLayout,
+    toggleSidebarCollapsed,
   ]);
 
   const filteredItems = useMemo(() => {
@@ -552,50 +616,64 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, filteredItems, selectedIndex, onClose]);
 
-  if (!isOpen) return null;
-
   // Group filtered items for clean presentation
   const groups = Array.from(new Set(filteredItems.map((i) => i.group)));
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-start justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-6 pt-12 sm:pt-20 animate-in fade-in duration-150">
-      <div
-        className="fixed inset-0"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-2xl animate-in zoom-in-95 duration-150">
-        {/* Search Input Bar */}
-        <div className="flex items-center gap-3 border-b border-gray-200 dark:border-gray-800 px-4 py-3.5">
-          <Search className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search transactions, wallets, stocks, calculators, or type a command..."
-            className="w-full bg-transparent text-sm sm:text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => setQuery('')}
-              className="rounded-md p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-          <button
-            type="button"
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="command-palette-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.14 }}
+          className="fixed inset-0 z-[120] flex items-start justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-6 pt-12 sm:pt-20"
+        >
+          <div
+            className="fixed inset-0"
             onClick={onClose}
-            className="rounded-md border border-gray-200 dark:border-gray-700 px-2 py-0.5 text-[11px] font-mono text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0"
+            aria-hidden="true"
+          />
+          <motion.div
+            key="command-palette-panel"
+            initial={{ opacity: 0, scale: 0.97, y: -6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.98, y: -4 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-2xl"
           >
-            ESC
-          </button>
-        </div>
+            {/* Search Input Bar */}
+            <div className="flex items-center gap-3 border-b border-gray-200 dark:border-gray-800 px-4 py-3.5">
+              <Search className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search transactions, wallets, stocks, calculators, or type a command..."
+                className="w-full bg-transparent text-sm sm:text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="rounded-md p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md border border-gray-200 dark:border-gray-700 px-2 py-0.5 text-[11px] font-mono text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 cursor-pointer"
+              >
+                ESC
+              </button>
+            </div>
 
-        {/* Results List */}
-        <div ref={listRef} className="max-h-[65vh] overflow-y-auto p-2 divide-y divide-gray-100 dark:divide-gray-800/60">
+            {/* Results List */}
+            <div ref={listRef} className="ts-scrollbar max-h-[65vh] overflow-y-auto p-2 divide-y divide-gray-100 dark:divide-gray-800/60">
           {filteredItems.length === 0 ? (
             <div className="py-12 px-4 text-center">
               <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -676,26 +754,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           )}
         </div>
 
-        {/* Footer Hint Bar */}
-        <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/90 px-4 py-2 text-[11px] text-gray-500 dark:text-gray-400">
-          <div className="flex items-center gap-3">
-            <span>
-              <strong className="font-mono text-gray-700 dark:text-gray-300">↑↓</strong> Navigate
-            </span>
-            <span>·</span>
-            <span>
-              <strong className="font-mono text-gray-700 dark:text-gray-300">↵</strong> Execute
-            </span>
-            <span>·</span>
-            <span>
-              <strong className="font-mono text-gray-700 dark:text-gray-300">ESC</strong> Close
-            </span>
-          </div>
-          <span className="font-mono tabular-nums">
-            Safe to Spend: {(kpis?.safeToSpend ?? 0).toFixed(0)} MAD
-          </span>
-        </div>
-      </div>
-    </div>
+            {/* Footer Hint Bar */}
+            <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/90 px-4 py-2 text-[11px] text-gray-500 dark:text-gray-400">
+              <div className="flex items-center gap-3">
+                <span>
+                  <strong className="font-mono text-gray-700 dark:text-gray-300">↑↓</strong> Navigate
+                </span>
+                <span>·</span>
+                <span>
+                  <strong className="font-mono text-gray-700 dark:text-gray-300">↵</strong> Execute
+                </span>
+                <span>·</span>
+                <span>
+                  <strong className="font-mono text-gray-700 dark:text-gray-300">ESC</strong> Close
+                </span>
+              </div>
+              <span className="font-mono tabular-nums">
+                Safe to Spend: {(kpis?.safeToSpend ?? 0).toFixed(0)} MAD
+              </span>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };

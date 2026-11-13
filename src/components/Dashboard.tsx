@@ -8,6 +8,8 @@ import TransactionForm from './TransactionForm';
 import { CommandPalette } from './CommandPalette';
 import { SpexCompanionPet } from './common/SpexCompanionPet';
 import { SmartNotificationCenter } from './dashboard/SmartNotificationCenter';
+import { PageTransition, MotionModal } from './ui/MotionPrimitives';
+import { AnimatePresence, motion } from 'motion/react';
 import { X, CheckCircle2, AlertCircle, Info, Calculator } from 'lucide-react';
 import type { DashboardTab, WalletsWorkbenchSection } from '../types';
 
@@ -195,6 +197,10 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     const handleOpenNotifications = () => {
       setIsNotificationCenterOpen((prev) => !prev);
     };
+    const handleOpenQuickTransaction = (e: any) => {
+      const txType = e?.detail === 'Income' || e?.detail === 'Transfer' ? e.detail : 'Expense';
+      setQuickTxModalType(txType);
+    };
     const handleToast = (e: any) => {
       if (e.detail?.message) {
         setToast({
@@ -207,6 +213,28 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        setQuickTxModalType(null);
+        setIsSmartCalcModalOpen(false);
+        setIsNotificationCenterOpen(false);
+        setIsWalletsModalOpen(false);
+        return;
+      }
+
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
+
+      if (!isTyping && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        setQuickTxModalType('Expense');
       }
     };
 
@@ -214,6 +242,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     window.addEventListener('truespend:openAccountsSection', handleOpenAccountsSection);
     window.addEventListener('truespend:openCommandPalette', handleOpenCommandPalette);
     window.addEventListener('truespend:openNotifications', handleOpenNotifications);
+    window.addEventListener('truespend:openQuickTransaction', handleOpenQuickTransaction);
     window.addEventListener('truespend:toast', handleToast);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
@@ -221,6 +250,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       window.removeEventListener('truespend:openAccountsSection', handleOpenAccountsSection);
       window.removeEventListener('truespend:openCommandPalette', handleOpenCommandPalette);
       window.removeEventListener('truespend:openNotifications', handleOpenNotifications);
+      window.removeEventListener('truespend:openQuickTransaction', handleOpenQuickTransaction);
       window.removeEventListener('truespend:toast', handleToast);
       window.removeEventListener('keydown', handleKeyDown);
     };
@@ -237,25 +267,35 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       <DashboardNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Global Toast Notification */}
-      {toast && (
-        <div className="fixed bottom-20 md:bottom-6 right-4 z-[90] flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border backdrop-blur-md animate-in slide-in-from-bottom-3 fade-in duration-200 bg-gray-900/95 dark:bg-gray-800/95 text-white border-gray-700/80 max-w-sm">
-          {toast.type === 'success' ? (
-            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-          ) : toast.type === 'error' ? (
-            <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
-          ) : (
-            <Info className="h-4 w-4 text-indigo-400 shrink-0" />
-          )}
-          <span className="text-xs font-medium leading-snug">{toast.message}</span>
-          <button
-            type="button"
-            onClick={() => setToast(null)}
-            className="ml-auto p-1 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700/60 transition-colors"
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key="global-toast"
+            initial={{ opacity: 0, y: 12, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.97 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed bottom-20 md:bottom-6 right-4 z-[90] flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border backdrop-blur-md bg-gray-900/95 dark:bg-gray-800/95 text-white border-gray-700/80 max-w-sm"
           >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
+            {toast.type === 'success' ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            ) : toast.type === 'error' ? (
+              <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+            ) : (
+              <Info className="h-4 w-4 text-indigo-400 shrink-0" />
+            )}
+            <span className="text-xs font-medium leading-snug">{toast.message}</span>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              aria-label="Dismiss notification"
+              className="ml-auto p-1 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700/60 transition-colors cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {loading && !kpis ? (
         <div className="space-y-6 animate-pulse">
@@ -271,7 +311,8 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
         </div>
       ) : (
         <Suspense fallback={<TabLoadingSkeleton />}>
-          {activeTab === 'overview' && (
+          <PageTransition pageKey={activeTab}>
+            {activeTab === 'overview' && (
             <OverviewTab
               kpis={kpis}
               transactions={transactions}
@@ -537,7 +578,8 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
             />
           )}
 
-          {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}
+            {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}
+          </PageTransition>
         </Suspense>
       )}
 
@@ -562,95 +604,87 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       />
 
       {/* Quick Transaction Entry Modal */}
-      {quickTxModalType && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
-          onClick={() => setQuickTxModalType(null)}
-        >
-          <div
-            className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <TransactionForm
-              initialType={quickTxModalType}
-              wallets={kpis?.accounts || []}
-              contexts={contexts}
-              onCancel={() => setQuickTxModalType(null)}
-              onSuccess={() => {
-                setQuickTxModalType(null);
-                fetchData();
-                setToast({ message: `${quickTxModalType} recorded and balances updated.`, type: 'success' });
-              }}
-            />
-          </div>
-        </div>
-      )}
+      <MotionModal
+        isOpen={Boolean(quickTxModalType)}
+        onClose={() => setQuickTxModalType(null)}
+        containerClassName="w-full max-w-lg max-h-[90vh] overflow-y-auto ts-scrollbar rounded-2xl shadow-2xl"
+      >
+        {quickTxModalType && (
+          <TransactionForm
+            initialType={quickTxModalType}
+            wallets={kpis?.accounts || []}
+            contexts={contexts}
+            onCancel={() => setQuickTxModalType(null)}
+            onSuccess={() => {
+              const label = quickTxModalType;
+              setQuickTxModalType(null);
+              fetchData();
+              setToast({ message: `${label} recorded and balances updated.`, type: 'success' });
+            }}
+          />
+        )}
+      </MotionModal>
 
       {/* Quick Tactile Smart Calculator Modal */}
-      {isSmartCalcModalOpen && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-6 animate-in fade-in duration-150"
-          onClick={() => setIsSmartCalcModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-5xl max-h-[92vh] overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl p-4 sm:p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
-                  <Calculator className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-gray-900 dark:text-white">Tactile Smart Calculator</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Evaluate expressions, check Safe-to-Spend impact, and convert numbers directly into transactions or goals.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSmartCalcModalOpen(false);
-                    setActiveTab('calculators');
-                  }}
-                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline px-2.5 py-1.5"
-                >
-                  Open All 7 Simulators →
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsSmartCalcModalOpen(false)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
+      <MotionModal
+        isOpen={isSmartCalcModalOpen}
+        onClose={() => setIsSmartCalcModalOpen(false)}
+        containerClassName="w-full max-w-5xl max-h-[92vh] overflow-y-auto ts-scrollbar bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl p-4 sm:p-6"
+      >
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+              <Calculator className="h-5 w-5" />
             </div>
-            <TactileSmartCalculator
-              kpis={kpis}
-              debts={debts}
-              goals={goals}
-              userSettings={userSettings}
-              onNavigateToTab={(tab) => {
-                setIsSmartCalcModalOpen(false);
-                setActiveTab(tab);
-              }}
-              onSetWhatIfAmount={(amt) => {
-                setWhatIfAmount(amt);
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">Tactile Smart Calculator</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Evaluate expressions, check Safe-to-Spend impact, and convert numbers directly into transactions or goals.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
                 setIsSmartCalcModalOpen(false);
                 setActiveTab('calculators');
               }}
-              onCreateGoal={handleCreateGoal}
-              onTransactionLogged={() => {
-                fetchData();
-                setToast({ message: 'Logged directly from Smart Calculator.', type: 'success' });
-              }}
-            />
+              className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline px-2.5 py-1.5 cursor-pointer"
+            >
+              Open All 7 Simulators →
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSmartCalcModalOpen(false)}
+              aria-label="Close calculator"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
         </div>
-      )}
+        <TactileSmartCalculator
+          kpis={kpis}
+          debts={debts}
+          goals={goals}
+          userSettings={userSettings}
+          onNavigateToTab={(tab) => {
+            setIsSmartCalcModalOpen(false);
+            setActiveTab(tab);
+          }}
+          onSetWhatIfAmount={(amt) => {
+            setWhatIfAmount(amt);
+            setIsSmartCalcModalOpen(false);
+            setActiveTab('calculators');
+          }}
+          onCreateGoal={handleCreateGoal}
+          onTransactionLogged={() => {
+            fetchData();
+            setToast({ message: 'Logged directly from Smart Calculator.', type: 'success' });
+          }}
+        />
+      </MotionModal>
 
       {/* Optional Quick Wallets Modal */}
       {isWalletsModalOpen && (

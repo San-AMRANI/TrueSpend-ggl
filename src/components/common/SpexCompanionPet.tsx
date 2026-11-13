@@ -15,6 +15,7 @@ import {
   type SpexAnimationState,
   type LookDirectionSpec,
 } from './SpexSprite';
+import { useTheme } from '../../context/ThemeContext';
 import type { DashboardTab, KPI } from '../../types';
 
 const PET_STORAGE_KEY = 'truespend_spex_companion_mode_v1';
@@ -78,6 +79,23 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
   const [speechBubble, setSpeechBubble] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [lookSpec, setLookSpec] = useState<LookDirectionSpec | null>(null);
+  const { desktopNavLayout, sidebarCollapsed } = useTheme();
+  const [isDesktopViewport, setIsDesktopViewport] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 768 : false,
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 768px)');
+    const sync = () => setIsDesktopViewport(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  const sidebarSideOffsetPx =
+    isDesktopViewport && desktopNavLayout === 'side' ? (sidebarCollapsed ? 92 : 272) : 16;
+  const roamMinVw = isDesktopViewport && desktopNavLayout === 'side' ? (sidebarCollapsed ? 8 : 20) : 4;
 
   // Horizontal roaming state (percentage of viewport width: 4% to 78%)
   const [roamX, setRoamX] = useState<number>(6);
@@ -193,8 +211,8 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
           next = 76;
           roamDirRef.current = -1;
           setAnimState('running-left');
-        } else if (next <= 4) {
-          next = 4;
+        } else if (next <= roamMinVw) {
+          next = roamMinVw;
           roamDirRef.current = 1;
           setAnimState('running-right');
         } else if (Math.random() < 0.008) {
@@ -213,7 +231,7 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
     }, 50);
 
     return () => window.clearInterval(stepInterval);
-  }, [mode, isMenuOpen]);
+  }, [mode, isMenuOpen, roamMinVw]);
 
   // Hide on mobile when chat overlay takes full viewport
   if (activeTab === 'chat') {
@@ -229,7 +247,8 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
           updateMode('perched');
           triggerReaction('waving', 'Hey! Ready to track your finances!', 2400);
         }}
-        className="fixed bottom-20 md:bottom-4 left-3 z-40 inline-flex items-center gap-1.5 rounded-full bg-white/95 dark:bg-gray-900/95 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 shadow-lg backdrop-blur-md hover:scale-105 transition-all group"
+        style={{ left: `${sidebarSideOffsetPx}px` }}
+        className="fixed bottom-20 md:bottom-4 z-40 inline-flex items-center gap-1.5 rounded-full bg-white/95 dark:bg-gray-900/95 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 shadow-lg backdrop-blur-md hover:scale-105 transition-all group cursor-pointer"
         title="Summon SPEX Interactive Companion Pet"
       >
         <SpexSprite state="idle" className="w-6 h-6" />
@@ -251,9 +270,9 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
 
   return (
     <div
-      className="fixed bottom-20 md:bottom-4 z-40 select-none transition-all duration-150"
+      className="fixed bottom-20 md:bottom-4 z-40 select-none transition-[left] duration-200"
       style={{
-        left: mode === 'roaming' ? `${roamX}vw` : '1rem',
+        left: mode === 'roaming' ? `${Math.max(roamMinVw, roamX)}vw` : `${sidebarSideOffsetPx}px`,
       }}
     >
       {/* Interactive Action Popover Menu */}

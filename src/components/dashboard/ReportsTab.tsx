@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { Transaction, KPI, CategoryBudget, DashboardTab, FinancialPositionSnapshot, NetWorthChangeBridge } from '../../types';
 import { FileBarChart, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Award, Sparkles, Database, TrendingUp, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
@@ -343,54 +344,40 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
         </div>
 
         {/* Tab Pills */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 self-start sm:self-auto">
-          <button
-            onClick={() => setActiveSubTab('retrospective')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeSubTab === 'retrospective'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <Award className="w-3.5 h-3.5" />
-            <span>AI Cycle Wrap-Up & Report Card</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('position')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeSubTab === 'position'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Net Worth History &amp; Bridge</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('export')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeSubTab === 'export'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export & Backup</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('import')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeSubTab === 'import'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span>Import CSV</span>
-          </button>
+        <div className="ts-scrollbar flex items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 max-w-full overflow-x-auto self-start sm:self-auto">
+          {(
+            [
+              { id: 'retrospective', label: 'AI Cycle Wrap-Up & Report Card', icon: Award },
+              { id: 'position', label: 'Net Worth History & Bridge', icon: TrendingUp },
+              { id: 'export', label: 'Export & Backup', icon: Download },
+              { id: 'import', label: 'Import CSV', icon: Upload },
+            ] as const
+          ).map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeSubTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveSubTab(tab.id)}
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  isActive
+                    ? 'text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="reports-subtab-pill"
+                    transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                    className="absolute inset-0 rounded-lg bg-white dark:bg-gray-900 shadow-sm"
+                  />
+                )}
+                <Icon className="relative z-10 w-3.5 h-3.5 shrink-0" />
+                <span className="relative z-10">{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

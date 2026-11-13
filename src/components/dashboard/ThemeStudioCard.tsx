@@ -30,6 +30,10 @@ import {
   Leaf,
   Gem,
   Waves,
+  PanelLeft,
+  PanelTop,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 
 const THEME_ICONS: Record<string, React.FC<{ className?: string }>> = {
@@ -76,10 +80,14 @@ export const ThemeStudioCard: React.FC = () => {
     radiusStyle,
     fontStyle,
     surfaceStyle,
+    desktopNavLayout,
+    sidebarCollapsed,
     setTheme,
     setRadiusStyle,
     setFontStyle,
     setSurfaceStyle,
+    setDesktopNavLayout,
+    setSidebarCollapsed,
     resetStyleOverrides,
   } = useTheme();
 
@@ -139,6 +147,110 @@ export const ThemeStudioCard: React.FC = () => {
       </CardHeader>
 
       <CardContent className="pt-6 space-y-8">
+        {/* 0. Desktop Workspace Navigation Architecture */}
+        <div className="space-y-3 pb-6 border-b border-gray-200 dark:border-gray-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Desktop Navigation Layout
+              </h4>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Choose between a collapsible left Side Menu Rail or a streamlined Top Header Bar. Mobile uses the bottom sheet navigation automatically.
+              </p>
+            </div>
+            <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
+              Active: {desktopNavLayout === 'side' ? 'Side Menu Rail' : 'Top Header Bar'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <button
+              type="button"
+              onClick={() => setDesktopNavLayout('side')}
+              className={`flex items-start gap-3 p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                desktopNavLayout === 'side'
+                  ? 'border-indigo-600 dark:border-indigo-400 bg-indigo-50/40 dark:bg-indigo-950/30 ring-1 ring-indigo-600 dark:ring-indigo-400'
+                  : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/60 hover:border-gray-300 dark:hover:border-gray-700'
+              }`}
+            >
+              <div className="p-2 rounded-lg bg-indigo-100/80 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shrink-0">
+                <PanelLeft className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                    Side Menu Rail
+                  </span>
+                  {desktopNavLayout === 'side' && (
+                    <Check className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                  Grouped domain sidebar with zero header crowding and instant collapse.
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDesktopNavLayout('top')}
+              className={`flex items-start gap-3 p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                desktopNavLayout === 'top'
+                  ? 'border-indigo-600 dark:border-indigo-400 bg-indigo-50/40 dark:bg-indigo-950/30 ring-1 ring-indigo-600 dark:ring-indigo-400'
+                  : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/60 hover:border-gray-300 dark:hover:border-gray-700'
+              }`}
+            >
+              <div className="p-2 rounded-lg bg-indigo-100/80 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shrink-0">
+                <PanelTop className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                    Top Header Menu
+                  </span>
+                  {desktopNavLayout === 'top' && (
+                    <Check className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                  Spacious horizontal bar with 5 core hubs + grouped All Pages popover.
+                </p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              disabled={desktopNavLayout !== 'side'}
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className={`flex items-start gap-3 p-3.5 rounded-xl border text-left transition-all ${
+                desktopNavLayout !== 'side'
+                  ? 'opacity-45 cursor-not-allowed border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/30'
+                  : 'cursor-pointer border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/60 hover:border-indigo-400'
+              }`}
+            >
+              <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 shrink-0">
+                {sidebarCollapsed ? (
+                  <PanelLeftOpen className="h-4 w-4" />
+                ) : (
+                  <PanelLeftClose className="h-4 w-4" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 block">
+                  {sidebarCollapsed ? 'Compact Icon Rail' : 'Expanded Sidebar'}
+                </span>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                  {desktopNavLayout !== 'side'
+                    ? 'Switch to Side Menu to configure density.'
+                    : sidebarCollapsed
+                    ? 'Click to expand full labels (256px).'
+                    : 'Click to collapse into slim 74px icon rail.'}
+                </p>
+              </div>
+            </button>
+          </div>
+        </div>
+
         {/* 1. 12 Signature Themes Grid with Segmented Filter */}
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">

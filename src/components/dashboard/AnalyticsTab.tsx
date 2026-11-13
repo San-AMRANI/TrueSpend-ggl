@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { motion } from 'motion/react';
 import { Debt, Payroll, Transaction, Wallet, CategoryBudget, Goal, Subscription, DashboardTab, InvestmentsData, KPI } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Select } from '../ui/Select';
@@ -966,115 +967,56 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       </div>
 
       {/* Sub-view Navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-gray-200 dark:border-gray-800 text-sm">
-        <button
-          type="button"
-          onClick={() => {
-            setSubView('overview');
-            setSelectedCategory(null);
-          }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'overview'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <Sparkles className="w-4 h-4" />
-          <span>Overview &amp; Cash Flow</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setSubView('pillars');
-            setSelectedCategory(null);
-          }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'pillars'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <UserCheck className="w-4 h-4" />
-          <span>Myself vs. Obligations &amp; Wealth</span>
-          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 font-bold border border-emerald-500/20">
-            4 Pillars
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setSubView('categories')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'categories'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <PieChartIcon className="w-4 h-4" />
-          <span>Categories &amp; Budget Variance</span>
-          {budgetSummary.overBudgetCount > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500 text-white font-bold">
-              {budgetSummary.overBudgetCount}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setSubView('recurring');
-            setSelectedCategory(null);
-          }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'recurring'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <Repeat className="w-4 h-4" />
-          <span>Recurring vs Discretionary</span>
-          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold border border-indigo-500/20">
-            {recurringAnalysis.activeSubs.length} subs
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setSubView('merchants');
-            setSelectedCategory(null);
-          }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'merchants'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <Store className="w-4 h-4" />
-          <span>Payees &amp; Spikes</span>
-          {spendingSpikes.length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-bold">
-              {spendingSpikes.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setSubView('debts_goals');
-            setSelectedCategory(null);
-          }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'debts_goals'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <Target className="w-4 h-4" />
-          <span>Debt &amp; Goals Velocity</span>
-        </button>
+      <div className="ts-scrollbar flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-gray-200 dark:border-gray-800 text-sm">
+        {(
+          [
+            { id: 'overview', label: 'Overview & Cash Flow', icon: Sparkles },
+            { id: 'pillars', label: 'Myself vs. Obligations & Wealth', icon: UserCheck, badge: '4 Pillars', badgeStyle: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/20' },
+            { id: 'categories', label: 'Categories & Budget Variance', icon: PieChartIcon, badge: budgetSummary.overBudgetCount > 0 ? String(budgetSummary.overBudgetCount) : undefined, badgeStyle: 'bg-rose-500 text-white border-transparent' },
+            { id: 'recurring', label: 'Recurring vs Discretionary', icon: Repeat, badge: `${recurringAnalysis.activeSubs.length} subs`, badgeStyle: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' },
+            { id: 'merchants', label: 'Payees & Spikes', icon: Store, badge: spendingSpikes.length > 0 ? String(spendingSpikes.length) : undefined, badgeStyle: 'bg-amber-500 text-white border-transparent' },
+            { id: 'debts_goals', label: 'Debt & Goals Velocity', icon: Target },
+          ] as Array<{ id: AnalyticsSubView; label: string; icon: any; badge?: string; badgeStyle?: string }>
+        ).map((tab) => {
+          const Icon = tab.icon;
+          const isActive = subView === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setSubView(tab.id);
+                if (tab.id !== 'categories') setSelectedCategory(null);
+              }}
+              className={`relative flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                isActive
+                  ? 'text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="analytics-subtab-pill"
+                  transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                  className="absolute inset-0 rounded-lg bg-indigo-600 shadow-sm"
+                />
+              )}
+              <Icon className="relative z-10 w-4 h-4 shrink-0" />
+              <span className="relative z-10">{tab.label}</span>
+              {tab.badge && (
+                <span
+                  className={`relative z-10 px-1.5 py-0.2 rounded-md text-[10px] font-bold border ${
+                    isActive
+                      ? 'bg-white/20 text-white border-white/25'
+                      : tab.badgeStyle
+                  }`}
+                >
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Macro Key Metrics Row */}

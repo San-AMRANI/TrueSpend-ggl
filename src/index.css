@@ -753,3 +753,35 @@ html[data-surface="flat"] .ts-card {
 html[data-surface="elevated"] .ts-card {
   box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.06);
 }
+
+/* Custom Sleek Scrollbar */
+.ts-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+.ts-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.ts-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ts-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+.ts-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(100, 116, 139, 0.55);
+}
+
+/* Reduced-Motion Accessibility Guard */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

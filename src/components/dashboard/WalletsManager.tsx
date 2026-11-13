@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { motion } from 'motion/react';
 import {
   Landmark,
   Banknote,
@@ -600,7 +601,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
               </button>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="ts-scrollbar flex items-center gap-1.5 overflow-x-auto max-w-full pb-0.5">
             {(
               [
                 { id: 'wallets', label: 'Accounts & Balances', icon: WalletIcon },
@@ -619,14 +620,21 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                   key={btn.id}
                   type="button"
                   onClick={() => selectSection(btn.id)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                  className={`relative inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     isActive
-                      ? 'bg-indigo-600 text-white shadow-xs'
+                      ? 'text-white'
                       : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-indigo-400'
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
-                  <span>{btn.label}</span>
+                  {isActive && (
+                    <motion.div
+                      layoutId="wallets-section-pill"
+                      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                      className="absolute inset-0 rounded-lg bg-indigo-600 shadow-xs"
+                    />
+                  )}
+                  <Icon className="relative z-10 h-3.5 w-3.5 shrink-0" />
+                  <span className="relative z-10">{btn.label}</span>
                 </button>
               );
             })}

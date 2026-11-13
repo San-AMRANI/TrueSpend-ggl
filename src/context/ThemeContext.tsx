@@ -20,6 +20,7 @@ export type ResolvedThemeId = Exclude<ThemeId, 'system'>;
 export type RadiusStyle = 'theme-default' | 'sharp' | 'balanced' | 'soft';
 export type FontStyle = 'theme-default' | 'sans' | 'editorial' | 'technical';
 export type SurfaceStyle = 'theme-default' | 'flat' | 'elevated' | 'textured';
+export type DesktopNavLayout = 'side' | 'top';
 
 export interface ThemePresetMeta {
   id: ResolvedThemeId;
@@ -288,10 +289,15 @@ type ThemeProviderState = {
   radiusStyle: RadiusStyle;
   fontStyle: FontStyle;
   surfaceStyle: SurfaceStyle;
+  desktopNavLayout: DesktopNavLayout;
+  sidebarCollapsed: boolean;
   setTheme: (theme: ThemeId) => void;
   setRadiusStyle: (radius: RadiusStyle) => void;
   setFontStyle: (font: FontStyle) => void;
   setSurfaceStyle: (surface: SurfaceStyle) => void;
+  setDesktopNavLayout: (layout: DesktopNavLayout) => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebarCollapsed: () => void;
   resetStyleOverrides: () => void;
   cycleTheme: () => void;
 };
@@ -304,10 +310,15 @@ const initialState: ThemeProviderState = {
   radiusStyle: 'theme-default',
   fontStyle: 'theme-default',
   surfaceStyle: 'theme-default',
+  desktopNavLayout: 'side',
+  sidebarCollapsed: false,
   setTheme: () => null,
   setRadiusStyle: () => null,
   setFontStyle: () => null,
   setSurfaceStyle: () => null,
+  setDesktopNavLayout: () => null,
+  setSidebarCollapsed: () => null,
+  toggleSidebarCollapsed: () => null,
   resetStyleOverrides: () => null,
   cycleTheme: () => null,
 };
@@ -351,6 +362,15 @@ export function ThemeProvider({
 
   const [surfaceStyle, setSurfaceStyleState] = useState<SurfaceStyle>(() => {
     return (localStorage.getItem(`${storageKey}-surface`) as SurfaceStyle) || 'theme-default';
+  });
+
+  const [desktopNavLayout, setDesktopNavLayoutState] = useState<DesktopNavLayout>(() => {
+    const saved = localStorage.getItem(`${storageKey}-nav-layout`);
+    return saved === 'top' || saved === 'side' ? saved : 'side';
+  });
+
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(() => {
+    return localStorage.getItem(`${storageKey}-sidebar-collapsed`) === 'true';
   });
 
   const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => {
@@ -414,6 +434,20 @@ export function ThemeProvider({
     setSurfaceStyleState(nextSurface);
   };
 
+  const setDesktopNavLayout = (nextLayout: DesktopNavLayout) => {
+    localStorage.setItem(`${storageKey}-nav-layout`, nextLayout);
+    setDesktopNavLayoutState(nextLayout);
+  };
+
+  const setSidebarCollapsed = (collapsed: boolean) => {
+    localStorage.setItem(`${storageKey}-sidebar-collapsed`, String(collapsed));
+    setSidebarCollapsedState(collapsed);
+  };
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed(!sidebarCollapsed);
+  };
+
   const resetStyleOverrides = () => {
     setRadiusStyle('theme-default');
     setFontStyle('theme-default');
@@ -448,10 +482,15 @@ export function ThemeProvider({
     radiusStyle,
     fontStyle,
     surfaceStyle,
+    desktopNavLayout,
+    sidebarCollapsed,
     setTheme,
     setRadiusStyle,
     setFontStyle,
     setSurfaceStyle,
+    setDesktopNavLayout,
+    setSidebarCollapsed,
+    toggleSidebarCollapsed,
     resetStyleOverrides,
     cycleTheme,
   };

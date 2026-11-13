@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { ChevronLeft, ChevronRight, Landmark, Trash2, WalletCards, CalendarDays, TrendingUp, Repeat, Zap, CheckCircle2, ExternalLink, X } from 'lucide-react';
 import { Debt, Payroll, Transaction, Subscription, KPI, Wallet, InvestmentsData, CommitmentOccurrence } from '../../types';
 import { Button } from '../ui/Button';
@@ -373,30 +374,38 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
         </div>
 
         {/* View Toggle */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700/60 self-start sm:self-auto">
-          <button
-            onClick={() => setActiveSubTab('calendar')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeSubTab === 'calendar'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <CalendarDays className="w-3.5 h-3.5" />
-            <span>Calendar & Payday</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('cashflow')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeSubTab === 'cashflow'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Cash Flow Timeline</span>
-          </button>
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700/60 self-start sm:self-auto">
+          {(
+            [
+              { id: 'calendar', label: 'Calendar & Payday', icon: CalendarDays },
+              { id: 'cashflow', label: 'Cash Flow Timeline', icon: TrendingUp },
+            ] as const
+          ).map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeSubTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveSubTab(tab.id)}
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+                  isActive
+                    ? 'text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="calendar-subtab-pill"
+                    transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                    className="absolute inset-0 rounded-lg bg-white dark:bg-gray-900 shadow-sm"
+                  />
+                )}
+                <Icon className="relative z-10 w-3.5 h-3.5 shrink-0" />
+                <span className="relative z-10">{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
