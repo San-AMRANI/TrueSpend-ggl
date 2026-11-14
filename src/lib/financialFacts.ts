@@ -1905,3 +1905,25 @@ export function selectFacts(facts: FinancialFact[], maxCount = 32): FinancialFac
 
   return selected;
 }
+
+/**
+ * Picks a random FinancialFact from the generated signal list while avoiding
+ * repeating recently displayed fact IDs when multiple facts are available.
+ */
+export function pickRandomFact(
+  facts: FinancialFact[],
+  recentIds: string[] = [],
+): FinancialFact | null {
+  if (!Array.isArray(facts) || facts.length === 0) return null;
+  if (facts.length === 1) return facts[0];
+
+  const recentSet = new Set(recentIds);
+  const unseen = facts.filter((f) => !recentSet.has(f.id));
+  const pool =
+    unseen.length > 0
+      ? unseen
+      : facts.filter((f) => f.id !== recentIds[recentIds.length - 1]);
+  const candidates = pool.length > 0 ? pool : facts;
+
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}

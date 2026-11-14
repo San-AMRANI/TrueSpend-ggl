@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { DashboardNav } from './dashboard/DashboardNav';
@@ -11,6 +11,7 @@ import { SmartNotificationCenter } from './dashboard/SmartNotificationCenter';
 import { PageTransition, MotionModal } from './ui/MotionPrimitives';
 import { AnimatePresence, motion } from 'motion/react';
 import { X, CheckCircle2, AlertCircle, Info, Calculator } from 'lucide-react';
+import { generateFacts, selectFacts } from '../lib/financialFacts';
 import type { DashboardTab, WalletsWorkbenchSection } from '../types';
 
 const TransactionsTab = lazy(() =>
@@ -155,6 +156,11 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     userSettings,
     notifications,
   } = useDashboardData(token);
+
+  const financialFacts = useMemo(
+    () => selectFacts(generateFacts(kpis, transactions, debts, budgets, payrolls, investmentsData)),
+    [kpis, transactions, debts, budgets, payrolls, investmentsData],
+  );
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
@@ -733,6 +739,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       <SpexCompanionPet
         activeTab={activeTab}
         kpis={kpis}
+        facts={financialFacts}
         onOpenChat={() => setActiveTab('chat')}
       />
     </div>
