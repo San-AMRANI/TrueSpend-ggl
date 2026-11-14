@@ -203,6 +203,9 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       const txType = e?.detail === 'Income' || e?.detail === 'Transfer' ? e.detail : 'Expense';
       setQuickTxModalType(txType);
     };
+    const handleOpenSmartCalculator = () => {
+      setIsSmartCalcModalOpen(true);
+    };
     const handleToast = (e: any) => {
       if (e.detail?.message) {
         setToast({
@@ -245,6 +248,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     window.addEventListener('truespend:openCommandPalette', handleOpenCommandPalette);
     window.addEventListener('truespend:openNotifications', handleOpenNotifications);
     window.addEventListener('truespend:openQuickTransaction', handleOpenQuickTransaction);
+    window.addEventListener('truespend:openSmartCalculator', handleOpenSmartCalculator);
     window.addEventListener('truespend:toast', handleToast);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
@@ -253,6 +257,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       window.removeEventListener('truespend:openCommandPalette', handleOpenCommandPalette);
       window.removeEventListener('truespend:openNotifications', handleOpenNotifications);
       window.removeEventListener('truespend:openQuickTransaction', handleOpenQuickTransaction);
+      window.removeEventListener('truespend:openSmartCalculator', handleOpenSmartCalculator);
       window.removeEventListener('truespend:toast', handleToast);
       window.removeEventListener('keydown', handleKeyDown);
     };

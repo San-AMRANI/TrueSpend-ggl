@@ -9,7 +9,10 @@ import type {
   WalletsWorkbenchSection,
 } from '../types';
 import { dashboardService } from '../services/api/dashboardService';
-import { normalizeStatementImportResult } from '../lib/auditContracts';
+import {
+  normalizeJournalAuditSummary,
+  normalizeStatementImportResult,
+} from '../lib/auditContracts';
 
 export function useAccountAuditWorkbench(
   token: string | null,
@@ -37,7 +40,7 @@ export function useAccountAuditWorkbench(
       try {
         if (section === 'journal_audit') {
           const summary = await dashboardService.getJournalAuditSummary(token);
-          setJournalSummary(summary);
+          setJournalSummary(normalizeJournalAuditSummary(summary));
         } else if (section === 'statement_import') {
           const batches = await dashboardService.getStatementBatches(token);
           setStatementBatches(Array.isArray(batches) ? batches : []);
@@ -125,7 +128,7 @@ export function useAccountAuditWorkbench(
     setError(null);
     try {
       const res = await dashboardService.backfillJournalEntries(token);
-      if (res?.summary) setJournalSummary(res.summary);
+      if (res?.summary) setJournalSummary(normalizeJournalAuditSummary(res.summary));
       return res;
     } catch (err: any) {
       setError(err?.message || 'Journal backfill failed');

@@ -46,6 +46,14 @@ import { useReviewInbox } from '../../hooks/useReviewInbox';
 import { useAccountAuditWorkbench } from '../../hooks/useAccountAuditWorkbench';
 import { expenseCategories } from '../../lib/categories';
 
+const toSafeNum = (value: unknown, fallback = 0): number => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const fmtFixed = (value: unknown, decimals = 2): string =>
+  toSafeNum(value, 0).toFixed(decimals);
+
 interface WalletsManagerProps {
   wallets: Wallet[];
   subscriptions?: Subscription[];
@@ -833,10 +841,10 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                                     }`}
                                   >
                                     {signedAmt >= 0 ? '+' : ''}
-                                    {signedAmt.toFixed(2)} {row.currency}
+                                    {fmtFixed(signedAmt, 2)} {row.currency || 'MAD'}
                                   </span>
                                   <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 dark:bg-gray-800 capitalize">
-                                    {row.matchStatus.replace(/_/g, ' ')}
+                                    {(row.matchStatus || 'unmatched').replace(/_/g, ' ')}
                                   </span>
                                   {canResolve && (
                                     <>
@@ -849,7 +857,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                                           <option value="">Link existing tx...</option>
                                           {transactions.slice(0, 30).map((t) => (
                                             <option key={t.id} value={t.id}>
-                                              {t.createdAt.slice(0, 10)} · {(t.notes || t.category || t.type).slice(0, 18)} ({Number(t.amount).toFixed(0)})
+                                              {(t.createdAt || '').slice(0, 10)} · {(t.notes || t.category || t.type).slice(0, 18)} ({fmtFixed(t.amount, 0)})
                                             </option>
                                           ))}
                                         </select>
@@ -1096,7 +1104,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                                   <option value="">Link to existing transaction...</option>
                                   {transactions.slice(0, 40).map((tx) => (
                                     <option key={tx.id} value={tx.id}>
-                                      {tx.createdAt.slice(0, 10)} · {(tx.notes || tx.category || tx.type).slice(0, 22)} ({Number(tx.amount).toFixed(0)} MAD)
+                                      {(tx.createdAt || '').slice(0, 10)} · {(tx.notes || tx.category || tx.type).slice(0, 22)} ({fmtFixed(tx.amount, 0)} MAD)
                                     </option>
                                   ))}
                                 </select>
@@ -1218,45 +1226,52 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
                     <span className="text-gray-500">Journal Entries</span>
-                    <p className="text-base font-bold font-mono text-gray-900 dark:text-white">
-                      {workbench.journalSummary.totalEntries} ({workbench.journalSummary.totalLines} lines)
+                    <p className="text-base font-bold font-mono text-gray-900 dark:text-white tabular-nums">
+                      {toSafeNum(workbench.journalSummary.totalEntries)} ({toSafeNum(workbench.journalSummary.totalLines)} lines)
                     </p>
                   </div>
                   <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
                     <span className="text-gray-500">Total Debits</span>
-                    <p className="text-base font-bold font-mono text-gray-900 dark:text-white">
-                      {workbench.journalSummary.totalDebitsMad.toFixed(2)} MAD
+                    <p className="text-base font-bold font-mono text-gray-900 dark:text-white tabular-nums">
+                      {fmtFixed(workbench.journalSummary.totalDebitsMad, 2)} MAD
                     </p>
                   </div>
                   <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
                     <span className="text-gray-500">Total Credits</span>
-                    <p className="text-base font-bold font-mono text-gray-900 dark:text-white">
-                      {workbench.journalSummary.totalCreditsMad.toFixed(2)} MAD
+                    <p className="text-base font-bold font-mono text-gray-900 dark:text-white tabular-nums">
+                      {fmtFixed(workbench.journalSummary.totalCreditsMad, 2)} MAD
                     </p>
                   </div>
                   <div className="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
                     <span className="text-gray-500">Trial Balance Integrity</span>
                     <p className={`text-base font-bold ${workbench.journalSummary.isSystemBalanced ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {workbench.journalSummary.isSystemBalanced ? '100% Balanced' : `${workbench.journalSummary.imbalancedEntriesCount} Imbalanced`}
+                      {workbench.journalSummary.isSystemBalanced
+                        ? '100% Balanced'
+                        : `${toSafeNum(workbench.journalSummary.imbalancedEntriesCount)} Imbalanced`}
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                  {workbench.journalSummary.walletComparison.map((wc) => (
-                    <div key={wc.walletId} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-gray-50/70 dark:bg-gray-800/40">
-                      <span className="font-semibold text-gray-800 dark:text-gray-200">
-                        {wc.walletName} ({wc.accountSubtype})
-                      </span>
-                      <div className="flex items-center gap-3 font-mono">
-                        <span>Legacy: {wc.legacyBalanceMad.toFixed(2)} MAD</span>
-                        <span>Journal: {wc.journalComputedBalanceMad.toFixed(2)} MAD</span>
-                        <span className={Math.abs(wc.discrepancyMad) < 0.01 ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
-                          Δ {wc.discrepancyMad.toFixed(2)} MAD
+                  {(workbench.journalSummary.walletComparison || []).map((wc: any) => {
+                    const legacyBal = toSafeNum(wc?.legacyBalanceMad ?? wc?.legacyBalance, 0);
+                    const journalBal = toSafeNum(wc?.journalComputedBalanceMad ?? wc?.journalBalance, 0);
+                    const discrepancy = toSafeNum(wc?.discrepancyMad ?? wc?.variance, journalBal - legacyBal);
+                    return (
+                      <div key={wc.walletId} className="flex flex-wrap items-center justify-between gap-2 text-xs py-1.5 px-2 rounded bg-gray-50/70 dark:bg-gray-800/40">
+                        <span className="font-semibold text-gray-800 dark:text-gray-200">
+                          {wc.walletName} ({wc.accountSubtype || 'Checking'})
                         </span>
+                        <div className="flex items-center gap-3 font-mono tabular-nums">
+                          <span>Legacy: {fmtFixed(legacyBal, 2)} {wc.currency || 'MAD'}</span>
+                          <span>Journal: {fmtFixed(journalBal, 2)} {wc.currency || 'MAD'}</span>
+                          <span className={Math.abs(discrepancy) < 0.01 ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'}>
+                            Δ {fmtFixed(discrepancy, 2)} {wc.currency || 'MAD'}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             )}
@@ -1442,8 +1457,8 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 <div className="space-y-1 max-h-40 overflow-y-auto">
                   {workbench.fxRates.map((r) => (
                     <div key={r.id} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-gray-50 dark:bg-gray-800">
-                      <span className="font-mono font-semibold">
-                        1 {r.baseCurrency} = {Number(r.rate).toFixed(4)} {r.quoteCurrency}
+                      <span className="font-mono font-semibold tabular-nums">
+                        1 {r.baseCurrency} = {fmtFixed(r.rate, 4)} {r.quoteCurrency}
                       </span>
                       <span className="text-[11px] text-gray-500">
                         {r.effectiveDate} · {r.source}
@@ -1592,13 +1607,17 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                         <p className="text-[11px] text-gray-500 truncate">Aliases: {cp.aliases.join(', ')}</p>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 font-mono text-[11px] shrink-0">
-                      <span>{cp.transactionCount} tx</span>
-                      {cp.totalSpendMad > 0 && <span className="text-rose-600 font-bold">-{cp.totalSpendMad.toFixed(0)} MAD</span>}
-                      {cp.totalIncomeMad > 0 && <span className="text-emerald-600 font-bold">+{cp.totalIncomeMad.toFixed(0)} MAD</span>}
-                      {(cp.outstandingReceivablesMad > 0 || cp.outstandingPayablesMad > 0) && (
+                    <div className="flex items-center gap-3 font-mono tabular-nums text-[11px] shrink-0">
+                      <span>{toSafeNum(cp.transactionCount)} tx</span>
+                      {toSafeNum(cp.totalSpendMad) > 0 && (
+                        <span className="text-rose-600 font-bold">-{fmtFixed(cp.totalSpendMad, 0)} MAD</span>
+                      )}
+                      {toSafeNum(cp.totalIncomeMad) > 0 && (
+                        <span className="text-emerald-600 font-bold">+{fmtFixed(cp.totalIncomeMad, 0)} MAD</span>
+                      )}
+                      {(toSafeNum(cp.outstandingReceivablesMad) > 0 || toSafeNum(cp.outstandingPayablesMad) > 0) && (
                         <span className="text-amber-600">
-                          Debt: +{(cp.outstandingReceivablesMad - cp.outstandingPayablesMad).toFixed(0)} MAD
+                          Debt: +{fmtFixed(toSafeNum(cp.outstandingReceivablesMad) - toSafeNum(cp.outstandingPayablesMad), 0)} MAD
                         </span>
                       )}
                     </div>
@@ -1978,7 +1997,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                                 );
                                 await onUpdateWallet(wallet.id, { name: wallet.name });
                                 setReconcileNotice(
-                                  `Synced ${wallet.name} with Binance Spot Stablecoin Reserve (${res.syncedBalanceMad.toFixed(2)} MAD).`
+                                  `Synced ${wallet.name} with Binance Spot Stablecoin Reserve (${fmtFixed(res?.syncedBalanceMad, 2)} MAD).`
                                 );
                                 setTimeout(() => setReconcileNotice(null), 5000);
                               } catch (err: any) {
@@ -2015,9 +2034,9 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
 
                 const isCreditCard = wallet.accountSubtype === 'CreditCard' || wallet.accountSubtype === 'Overdraft';
                 if (isCreditCard) {
-                  const limit = parseFloat(String(wallet.creditLimit || '0')) || 0;
-                  const rawBal = wallet.balance ?? 0;
-                  const owedLiability = rawBal < 0 ? Math.abs(rawBal) : parseFloat(String(wallet.liabilityBalance || '0')) || 0;
+                  const limit = toSafeNum(wallet.creditLimit, 0);
+                  const rawBal = toSafeNum(wallet.balance, 0);
+                  const owedLiability = rawBal < 0 ? Math.abs(rawBal) : toSafeNum(wallet.liabilityBalance, 0);
                   const availableCredit = Math.max(0, limit - owedLiability);
                   const utilPct = limit > 0 ? Math.min(100, (owedLiability / limit) * 100) : 0;
 
@@ -2026,14 +2045,14 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                       <div className="flex items-baseline justify-between">
                         <div>
                           <p className="text-[11px] text-gray-500 dark:text-gray-400">Statement Liability Owed</p>
-                          <div className="text-xl font-bold font-mono text-rose-600 dark:text-rose-400">
-                            {owedLiability.toFixed(2)} <span className="text-xs font-medium text-gray-500">{wallet.currency || 'MAD'}</span>
+                          <div className="text-xl font-bold font-mono tabular-nums text-rose-600 dark:text-rose-400">
+                            {fmtFixed(owedLiability, 2)} <span className="text-xs font-medium text-gray-500">{wallet.currency || 'MAD'}</span>
                           </div>
                         </div>
                         <div className="text-right">
                           <p className="text-[11px] text-gray-500 dark:text-gray-400">Available Credit</p>
-                          <div className="text-base font-bold font-mono text-gray-900 dark:text-gray-100">
-                            {availableCredit.toFixed(0)} / {limit.toFixed(0)} <span className="text-[10px] text-gray-400">MAD</span>
+                          <div className="text-base font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
+                            {fmtFixed(availableCredit, 0)} / {fmtFixed(limit, 0)} <span className="text-[10px] text-gray-400">MAD</span>
                           </div>
                         </div>
                       </div>
@@ -2044,7 +2063,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                         />
                       </div>
                       <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
-                        <span>Utilization: {utilPct.toFixed(1)}% (Excluded from cash liquidity)</span>
+                        <span>Utilization: {fmtFixed(utilPct, 1)}% (Excluded from cash liquidity)</span>
                         {wallet.paymentDueDay && <span>Due: Day {wallet.paymentDueDay}</span>}
                       </div>
                     </div>
@@ -2054,8 +2073,9 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 const assignedSubs = (subscriptions || []).filter(
                   (s) => s.status === 'active' && (s.walletId === wallet.id || (!s.walletId && wallet.isMain))
                 );
-                const committedBills = assignedSubs.reduce((acc, s) => acc + (parseFloat(s.amount) || 0), 0);
-                const safeToSpend = (wallet.balance ?? 0) - committedBills;
+                const committedBills = assignedSubs.reduce((acc, s) => acc + toSafeNum(s.amount, 0), 0);
+                const walletBal = toSafeNum(wallet.balance, 0);
+                const safeToSpend = walletBal - committedBills;
                 const isOverdraftRisk = safeToSpend < 0;
                 const isExpanded = Boolean(expandedWalletBills[wallet.id]);
 
@@ -2064,15 +2084,15 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                     <div className="flex items-baseline justify-between">
                       <div>
                         <p className="text-[11px] text-gray-500 dark:text-gray-400">Total Balance</p>
-                        <div className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                          {(wallet.balance ?? 0).toFixed(2)}{' '}
+                        <div className="text-xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
+                          {fmtFixed(walletBal, 2)}{' '}
                           <span className="text-xs font-medium text-gray-500">MAD</span>
                         </div>
                       </div>
                       <div className="text-right">
                         <p className="text-[11px] text-gray-500 dark:text-gray-400">Safe-to-Spend</p>
-                        <div className={`text-base font-bold tabular-nums ${isOverdraftRisk ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                          {safeToSpend.toFixed(2)}{' '}
+                        <div className={`text-base font-bold font-mono tabular-nums ${isOverdraftRisk ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                          {fmtFixed(safeToSpend, 2)}{' '}
                           <span className="text-[10px] font-medium text-gray-400">MAD</span>
                         </div>
                       </div>
@@ -2084,8 +2104,8 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                         <Repeat className="h-3.5 w-3.5 text-indigo-500" />
                         <span>Committed Bills:</span>
                       </div>
-                      <span className="font-semibold text-gray-900 dark:text-gray-100">
-                        {committedBills.toFixed(2)} MAD ({assignedSubs.length} bill{assignedSubs.length === 1 ? '' : 's'})
+                      <span className="font-semibold font-mono tabular-nums text-gray-900 dark:text-gray-100">
+                        {fmtFixed(committedBills, 2)} MAD ({assignedSubs.length} bill{assignedSubs.length === 1 ? '' : 's'})
                       </span>
                     </div>
 
@@ -2093,7 +2113,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                     {isOverdraftRisk && (
                       <div className="rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 p-2 text-[11px] font-bold text-rose-700 dark:text-rose-300 flex items-start gap-1.5 animate-pulse">
                         <ShieldAlert className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
-                        <span>⚠️ Overdraft Alert: Upcoming bills exceed balance by {Math.abs(safeToSpend).toFixed(2)} MAD!</span>
+                        <span>⚠️ Overdraft Alert: Upcoming bills exceed balance by {fmtFixed(Math.abs(safeToSpend), 2)} MAD!</span>
                       </div>
                     )}
 
@@ -2121,7 +2141,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                                   <span className="font-medium truncate max-w-[100px] text-gray-800 dark:text-gray-200">{sub.name}</span>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
-                                  <span className="font-bold text-gray-900 dark:text-gray-100">{parseFloat(sub.amount).toFixed(0)} MAD</span>
+                                  <span className="font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">{fmtFixed(sub.amount, 0)} MAD</span>
                                   {onPaySubscription && (
                                     <Button
                                       size="sm"

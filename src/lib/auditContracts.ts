@@ -1,6 +1,7 @@
 import type {
   FinancialReviewItem,
   FinancialRuleItem,
+  JournalAuditSummary,
   SavedWhatIfScenario,
   StatementBatchWithRows,
   StatementImportRowRecord,
@@ -207,5 +208,67 @@ export function buildPayrollConfirmPayload(input: {
     ...(input.confirmedDate ? { confirmedDate: input.confirmedDate } : {}),
     ...(input.walletId ? { walletId: input.walletId } : {}),
     ...(input.varianceNotes ? { varianceNotes: input.varianceNotes.trim() } : {}),
+  };
+}
+
+const toFiniteNumber = (value: unknown, fallback = 0): number => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+export function normalizeJournalAuditSummary(raw: any): JournalAuditSummary {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const recentEntries = Array.isArray(src.recentEntries) ? src.recentEntries : [];
+  const rawComparison = Array.isArray(src.walletComparison) ? src.walletComparison : [];
+
+  const computedTotalLines = recentEntries.reduce(
+    (sum: number, entry: any) => sum + (Array.isArray(entry?.lines) ? entry.lines.length : 0),
+    0
+  );
+  const totalDebitsMad = toFiniteNumber(src.totalDebitsMad, 0);
+  const totalCreditsMad = toFiniteNumber(src.totalCreditsMad, 0);
+  const imbalancedEntriesCount = toFiniteNumber(src.imbalancedEntriesCount, 0);
+  const isSystemBalanced =
+    typeof src.isSystemBalanced === 'boolean'
+      ? src.isSystemBalanced
+      : typeof src.isLedgerBalanced === 'boolean'
+      ? src.isLedgerBalanced
+      : Math.abs(totalDebitsMad - totalCreditsMad) < 0.02 && imbalancedEntriesCount === 0;
+
+  return {
+    totalEntries: toFiniteNumber(src.totalEntries, 0),
+    totalLines: toFiniteNumber(src.totalLines, computedTotalLines),
+    totalDebitsMad,
+    totalCreditsMad,
+    isSystemBalanced,
+    imbalancedEntriesCount,
+    backfilledEntriesCount: toFiniteNumber(
+      src.backfilledEntriesCount ?? src.estimatedBackfillCount,
+      0
+    ),
+    reversedEntriesCount: toFiniteNumber(src.reversedEntriesCount ?? src.reversalCount, 0),
+    walletComparison: rawComparison.map((wc: any) => {
+      const legacyBalanceMad = toFiniteNumber(wc?.legacyBalanceMad ?? wc?.legacyBalance, 0);
+      const journalComputedBalanceMad = toFiniteNumber(
+        wc?.journalComputedBalanceMad ?? wc?.journalBalance,
+        0
+      );
+      const discrepancyMad = toFiniteNumber(
+        wc?.discrepancyMad ?? wc?.variance,
+        Number((journalComputedBalanceMad - legacyBalanceMad).toFixed(2))
+      );
+      return {
+        walletId: String(wc?.walletId || ''),
+        walletName: String(wc?.walletName || 'Wallet'),
+        walletType: String(wc?.walletType || 'Bank'),
+        accountSubtype: String(wc?.accountSubtype || 'Checking'),
+        currency: String(wc?.currency || 'MAD'),
+        legacyBalanceMad,
+        journalDeltaMad: toFiniteNumber(wc?.journalDeltaMad, 0),
+        journalComputedBalanceMad,
+        discrepancyMad,
+      };
+    }),
+    recentEntries,
   };
 }

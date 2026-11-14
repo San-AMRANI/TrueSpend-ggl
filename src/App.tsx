@@ -24,6 +24,13 @@ import {
   PanelLeft,
   PanelTop,
   Plus,
+  ChevronDown,
+  ArrowUpRight,
+  ArrowDownRight,
+  RefreshCw,
+  Calculator,
+  Calendar,
+  Scale,
 } from 'lucide-react';
 
 import { getApiUrl } from './lib/capacitorBridge';
@@ -47,6 +54,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [outboxCount, setOutboxCount] = useState(() => {
     try {
@@ -56,6 +64,7 @@ function AppContent() {
     }
   });
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const quickMenuRef = useRef<HTMLDivElement>(null);
 
   const activeNavMeta = NAV_ITEMS.find((item) => item.id === activeTab);
 
@@ -81,10 +90,14 @@ function AppContent() {
       if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
         setIsThemeMenuOpen(false);
       }
+      if (quickMenuRef.current && !quickMenuRef.current.contains(e.target as Node)) {
+        setIsQuickMenuOpen(false);
+      }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsThemeMenuOpen(false);
+        setIsQuickMenuOpen(false);
         setIsSidebarOpen(false);
       }
     };
@@ -315,21 +328,166 @@ function AppContent() {
 
             {/* Zone 3: Right Utility Controls (Always shrink-0, spaced cleanly so never overridden) */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              {/* Quick Log Action (Side Menu Desktop Comfort Action) */}
+              {/* Quick Log & Financial Utilities Split Menu (Works in both Side and Top nav modes) */}
+              <div className="relative flex items-center" ref={quickMenuRef}>
+                <div className="inline-flex items-center rounded-lg bg-indigo-600 shadow-2xs overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsQuickMenuOpen(false);
+                      window.dispatchEvent(
+                        new CustomEvent('truespend:openQuickTransaction', { detail: 'Expense' }),
+                      );
+                    }}
+                    title="Quick Log Expense (N)"
+                    className="inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1.5 text-white text-xs font-semibold hover:bg-indigo-700 transition-colors shrink-0 whitespace-nowrap cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5 shrink-0" />
+                    <span className={desktopNavLayout === 'top' ? 'hidden xl:inline' : 'hidden sm:inline'}>
+                      Quick Log
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Open quick actions menu"
+                    aria-expanded={isQuickMenuOpen}
+                    onClick={() => setIsQuickMenuOpen((prev) => !prev)}
+                    className="px-1.5 py-1.5 text-white/90 hover:text-white hover:bg-indigo-700 border-l border-indigo-500/70 transition-colors cursor-pointer"
+                    title="Log Income, Transfer, Smart Calculator & Calendar"
+                  >
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform duration-150 ${
+                        isQuickMenuOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <AnimatePresence>
+                  {isQuickMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 4, scale: 0.97 }}
+                      transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
+                      className="absolute right-0 top-full mt-1.5 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-xl py-1.5 z-50"
+                    >
+                      <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                        Quick Record
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsQuickMenuOpen(false);
+                          window.dispatchEvent(
+                            new CustomEvent('truespend:openQuickTransaction', { detail: 'Expense' }),
+                          );
+                        }}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
+                          <ArrowUpRight className="h-3.5 w-3.5 text-rose-500" />
+                          <span>Log Expense</span>
+                        </span>
+                        <kbd className="text-[10px] font-mono text-gray-400">N</kbd>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsQuickMenuOpen(false);
+                          window.dispatchEvent(
+                            new CustomEvent('truespend:openQuickTransaction', { detail: 'Income' }),
+                          );
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                      >
+                        <ArrowDownRight className="h-3.5 w-3.5 text-emerald-500" />
+                        <span>Log Income</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsQuickMenuOpen(false);
+                          window.dispatchEvent(
+                            new CustomEvent('truespend:openQuickTransaction', { detail: 'Transfer' }),
+                          );
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 text-blue-500" />
+                        <span>Transfer Between Wallets</span>
+                      </button>
+
+                      <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+                      <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                        Tools &amp; Schedule
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsQuickMenuOpen(false);
+                          window.dispatchEvent(new CustomEvent('truespend:openSmartCalculator'));
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                      >
+                        <Calculator className="h-3.5 w-3.5 text-indigo-500" />
+                        <span>Smart Calculator</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsQuickMenuOpen(false);
+                          handleSelectTab('calculators');
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                      >
+                        <Scale className="h-3.5 w-3.5 text-amber-500" />
+                        <span>What-If &amp; Tax Simulators</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsQuickMenuOpen(false);
+                          handleSelectTab('calendar');
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                      >
+                        <Calendar className="h-3.5 w-3.5 text-teal-500" />
+                        <span>Financial Calendar</span>
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Extra 1-click Smart Calculator & Calendar shortcuts when Side Menu gives generous header space */}
               {desktopNavLayout === 'side' && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    window.dispatchEvent(
-                      new CustomEvent('truespend:openQuickTransaction', { detail: 'Expense' })
-                    )
-                  }
-                  title="Quick Log Transaction"
-                  className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors shrink-0 whitespace-nowrap cursor-pointer shadow-2xs"
-                >
-                  <Plus className="h-3.5 w-3.5 shrink-0" />
-                  <span>Quick Log</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      window.dispatchEvent(new CustomEvent('truespend:openSmartCalculator'))
+                    }
+                    title="Tactile Smart Calculator"
+                    className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs font-medium transition-colors shrink-0 whitespace-nowrap cursor-pointer"
+                  >
+                    <Calculator className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span className="hidden xl:inline">Calculator</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectTab('calendar')}
+                    title="Financial Calendar & Payday Schedule"
+                    className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors shrink-0 whitespace-nowrap cursor-pointer ${
+                      activeTab === 'calendar'
+                        ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300'
+                        : 'border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    <Calendar className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                    <span className="hidden xl:inline">Calendar</span>
+                  </button>
+                </>
               )}
 
               {/* Desktop Menu Layout Quick Toggle (Side <-> Top) */}

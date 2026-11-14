@@ -25,11 +25,10 @@ import {
   netExpenseOf,
   reimbursedAmountOf,
 } from '../../lib/finance';
-import { financialPeriodLabel, getCurrentFinancialMonth } from '../../lib/financialMonth';
+import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 import { generateFacts, selectFacts } from '../../lib/financialFacts';
 import { FinancialFactsCarousel } from './FinancialFactsCarousel';
 import { FinancialInsightModal } from './FinancialInsightModal';
-import { SpexAiPulseBanner } from './SpexAiPulseBanner';
 import {
   CycleDailyBurnChart,
   MultiCycleCashflowChart,
@@ -61,13 +60,11 @@ import {
   RefreshCw,
   Repeat,
   Scale,
-  Search,
   Shield,
   Target,
   TrendingUp,
   User,
   WalletCards,
-  Calculator,
   X,
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -134,9 +131,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   openTransaction,
   handleSettle,
   onDataChange,
-  onOpenQuickTransaction,
-  onOpenSmartCalculator,
-  onOpenCommandPalette,
 }) => {
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
   const { token } = useAuth();
@@ -553,119 +547,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </Button>
         </div>
       )}
-
-      {/* Top Pulse Banner (clean, scannable, theme-native) */}
-      <SpexAiPulseBanner
-        kpis={kpis}
-        setActiveTab={setActiveTab}
-        isPrivacyMode={isPrivacyMode}
-      />
-
-      {/* Command Action Strip & Cycle Context */}
-      <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3.5 py-2.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              onOpenQuickTransaction ? onOpenQuickTransaction('Expense') : setActiveTab('transactions')
-            }
-            className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-white px-3 py-1.5 text-xs font-semibold text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Log Expense</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              onOpenQuickTransaction ? onOpenQuickTransaction('Income') : setActiveTab('transactions')
-            }
-            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/30 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <ArrowDownRight className="h-3.5 w-3.5" />
-            <span>Log Income</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              onOpenQuickTransaction ? onOpenQuickTransaction('Transfer') : setActiveTab('transactions')
-            }
-            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 dark:border-blue-900/60 bg-blue-50/70 dark:bg-blue-950/30 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/50 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            <span>Transfer</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              onOpenSmartCalculator ? onOpenSmartCalculator() : setActiveTab('calculators')
-            }
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/80 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <Calculator className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-            <span>Calculator</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('calculators')}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/80 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <Scale className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-            <span>Simulators</span>
-          </button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 ml-auto">
-          {currentFm && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('calendar')}
-              className="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-800/60 px-2.5 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              title="Open Financial Calendar"
-            >
-              <Calendar className="h-3.5 w-3.5 text-indigo-500" />
-              <span className="font-medium">{financialPeriodLabel(currentFm)}</span>
-              {kpis?.forecast?.totalDays ? (
-                <span className="font-mono tabular-nums text-gray-400 dark:text-gray-500">
-                  · Day {kpis.forecast.elapsedDays}/{kpis.forecast.totalDays}
-                </span>
-              ) : null}
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={togglePrivacyMode}
-            title={isPrivacyMode ? 'Show Balances' : 'Hide Balances'}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              isPrivacyMode
-                ? 'border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'
-                : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/80 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800'
-            }`}
-          >
-            {isPrivacyMode ? (
-              <EyeOff className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-            ) : (
-              <Eye className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
-            )}
-            <span className="hidden sm:inline">{isPrivacyMode ? 'Masked' : 'Privacy'}</span>
-          </button>
-
-          {onOpenCommandPalette && (
-            <button
-              type="button"
-              onClick={onOpenCommandPalette}
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Search className="h-3.5 w-3.5" />
-              <kbd className="font-mono text-[10px]">⌘K</kbd>
-            </button>
-          )}
-        </div>
-      </div>
 
       {/* ═════════════════════════════════════════════════════════════════════
           BAND 1 — ASYMMETRIC HERO COCKPIT

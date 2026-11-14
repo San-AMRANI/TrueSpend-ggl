@@ -10,6 +10,7 @@ import {
   buildPayrollCreatePayload,
   buildPayrollUpdatePayload,
   buildPayrollConfirmPayload,
+  normalizeJournalAuditSummary,
 } from '../src/lib/auditContracts.js';
 import {
   getCycleMeta,
@@ -258,6 +259,45 @@ function runFrontendContractTests() {
     assert.ok(payrollSvcSrc.includes('updatePayroll'));
     assert.ok(payrollSvcSrc.includes('resolveTargetWallet'));
     console.log('✓ Test 8 passed: Payroll destination bank/wallet setup, update, and confirmation contracts verified.');
+  }
+
+  // 9. normalizeJournalAuditSummary prevents undefined.toFixed() crashes across canonical, legacy, & partial payloads
+  {
+    const legacyShape = normalizeJournalAuditSummary({
+      totalEntries: 12,
+      totalDebitsMad: 4500,
+      totalCreditsMad: 4500,
+      isLedgerBalanced: true,
+      estimatedBackfillCount: 4,
+      reversalCount: 1,
+      walletComparison: [
+        {
+          walletId: 'w-1',
+          walletName: 'CIH Checking',
+          accountSubtype: 'Checking',
+          currency: 'MAD',
+          legacyBalance: 12500.5,
+          journalBalance: 12500.5,
+          variance: 0,
+        },
+        {
+          walletId: 'w-2',
+          walletName: 'Empty Partial Wallet',
+        },
+      ],
+      recentEntries: [{ id: 'je-1', lines: [{ id: 'jl-1' }, { id: 'jl-2' }] }],
+    });
+
+    assert.equal(legacyShape.isSystemBalanced, true);
+    assert.equal(legacyShape.totalLines, 2);
+    assert.equal(legacyShape.backfilledEntriesCount, 4);
+    assert.equal(legacyShape.reversedEntriesCount, 1);
+    assert.equal(legacyShape.walletComparison[0].legacyBalanceMad.toFixed(2), '12500.50');
+    assert.equal(legacyShape.walletComparison[0].journalComputedBalanceMad.toFixed(2), '12500.50');
+    assert.equal(legacyShape.walletComparison[0].discrepancyMad.toFixed(2), '0.00');
+    assert.equal(legacyShape.walletComparison[1].legacyBalanceMad.toFixed(2), '0.00');
+    assert.equal(legacyShape.walletComparison[1].discrepancyMad.toFixed(2), '0.00');
+    console.log('✓ Test 9 passed: normalizeJournalAuditSummary coerces legacy and partial shapes with safe numeric guarantees.');
   }
 
   console.log('\nAll Frontend Audit Contract tests passed!');

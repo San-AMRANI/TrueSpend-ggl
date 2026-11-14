@@ -590,6 +590,16 @@ export class CoreAuditService {
       };
     });
 
+    let imbalancedEntriesCount = 0;
+    for (const e of entries) {
+      const entryLines = linesByEntry.get(e.id) || [];
+      const debitSum = entryLines.reduce((s, l) => s + Number(l.debitMad || 0), 0);
+      const creditSum = entryLines.reduce((s, l) => s + Number(l.creditMad || 0), 0);
+      if (Math.abs(debitSum - creditSum) >= 0.01) {
+        imbalancedEntriesCount++;
+      }
+    }
+
     // Side-by-side wallet balance comparison (Legacy vs Double-Entry Journal)
     const walletComparison = userWallets.map((w) => {
       const initBal = Number(w.initialBalance || 0);
@@ -622,25 +632,46 @@ export class CoreAuditService {
       }
       const legacyBalance = isCredit ? Math.abs(legacyDelta) : initBal + legacyDelta;
 
+      const legacyBalanceMad = Number(legacyBalance.toFixed(2));
+      const journalDeltaMad = Number(netJournalDelta.toFixed(2));
+      const journalComputedBalanceMad = Number(journalBalance.toFixed(2));
+      const discrepancyMad = Number((journalBalance - legacyBalance).toFixed(2));
+
       return {
         walletId: w.id,
         walletName: w.name,
+        walletType: w.type || 'Bank',
         accountSubtype: w.accountSubtype || 'Checking',
         currency: w.currency || 'MAD',
-        legacyBalance: Number(legacyBalance.toFixed(2)),
-        journalBalance: Number(journalBalance.toFixed(2)),
-        variance: Number((journalBalance - legacyBalance).toFixed(2)),
+        legacyBalanceMad,
+        journalDeltaMad,
+        journalComputedBalanceMad,
+        discrepancyMad,
+        // Compatibility aliases
+        legacyBalance: legacyBalanceMad,
+        journalBalance: journalComputedBalanceMad,
+        variance: discrepancyMad,
         reconciled: Math.abs(journalBalance - legacyBalance) < 0.05,
       };
     });
 
+    const isSystemBalanced = Math.abs(totalDebitsMad - totalCreditsMad) < 0.02 && imbalancedEntriesCount === 0;
+    const backfilledEntriesCount = entries.filter((e) => e.isEstimatedBackfill).length;
+    const reversedEntriesCount = entries.filter((e) => e.entryType === 'reversal').length;
+
     return {
       totalEntries: entries.length,
+      totalLines: lines.length,
       totalDebitsMad: Number(totalDebitsMad.toFixed(2)),
       totalCreditsMad: Number(totalCreditsMad.toFixed(2)),
-      isLedgerBalanced: Math.abs(totalDebitsMad - totalCreditsMad) < 0.02,
-      estimatedBackfillCount: entries.filter((e) => e.isEstimatedBackfill).length,
-      reversalCount: entries.filter((e) => e.entryType === 'reversal').length,
+      isSystemBalanced,
+      imbalancedEntriesCount,
+      backfilledEntriesCount,
+      reversedEntriesCount,
+      // Compatibility aliases
+      isLedgerBalanced: isSystemBalanced,
+      estimatedBackfillCount: backfilledEntriesCount,
+      reversalCount: reversedEntriesCount,
       walletComparison,
       recentEntries: enrichedEntries,
     };
