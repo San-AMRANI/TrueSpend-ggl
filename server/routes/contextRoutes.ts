@@ -4,8 +4,7 @@ import { contextController } from '../controllers/ContextController.js';
 
 const router = Router();
 
-router.use(requireAuth);
-router.use(requireFeature('contexts.advanced'));
+router.use('/contexts', requireAuth, requireFeature('contexts.advanced'));
 
 router.get('/contexts', (req, res) => contextController.getContexts(req as any, res));
 router.post('/contexts', (req, res) => contextController.createContext(req as any, res));

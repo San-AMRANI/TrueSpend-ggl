@@ -55,6 +55,22 @@ function clearRefreshCookie(req: Request, res: Response) {
   });
 }
 
+function isDatabaseOrInfraError(error: any): boolean {
+  const msg = String(error?.message || '');
+  const causeMsg = String(error?.cause?.message || '');
+  const code = String(error?.cause?.code || error?.code || '');
+  return (
+    msg.startsWith('Failed query:') ||
+    code === 'ECONNREFUSED' ||
+    code === 'ENOTFOUND' ||
+    code === 'ETIMEDOUT' ||
+    /^(08|42|53|57|58)/.test(code) ||
+    /ECONNREFUSED|ENOTFOUND|relation .* does not exist|column .* does not exist/i.test(
+      `${msg} ${causeMsg}`
+    )
+  );
+}
+
 function handleAuthError(res: Response, error: any, fallbackStatus = 400) {
   if (error instanceof AuthError) {
     return res.status(error.status).json({
@@ -63,8 +79,20 @@ function handleAuthError(res: Response, error: any, fallbackStatus = 400) {
       ...(error.extra || {}),
     });
   }
-  return res.status(fallbackStatus).json({
-    error: error?.message || 'Authentication error',
+
+  const rootCause = error?.cause?.message || error?.message || 'Unexpected authentication failure';
+  console.error('[AuthController] Internal/database error:', rootCause);
+
+  if (isDatabaseOrInfraError(error)) {
+    return res.status(503).json({
+      error: 'Authentication service is temporarily unavailable. Please verify your database connection and try again.',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+
+  const safeStatus = fallbackStatus === 401 ? 500 : fallbackStatus;
+  return res.status(safeStatus).json({
+    error: 'Authentication request could not be completed. Please try again.',
     code: 'AUTH_ERROR',
   });
 }

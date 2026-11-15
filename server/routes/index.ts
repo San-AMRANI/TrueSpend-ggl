@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { ensureDatabaseSchema } from '../../src/db/index.js';
 import authRoutes from './authRoutes.js';
 import onboardingRoutes from './onboardingRoutes.js';
 import kpiRoutes from './kpiRoutes.js';
@@ -24,8 +25,31 @@ import { requireAuth } from '../../src/middleware/auth.js';
 const apiRouter = Router();
 const notificationController = new NotificationController();
 
-apiRouter.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+apiRouter.get('/health', async (_req, res) => {
+  try {
+    await ensureDatabaseSchema();
+    res.json({ status: 'ok', database: 'ready' });
+  } catch (err: any) {
+    console.error('[Health] Database readiness check failed:', err?.cause?.message || err?.message || err);
+    res.status(503).json({
+      status: 'degraded',
+      error: 'Database service unavailable.',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+});
+
+apiRouter.use(async (_req, res, next) => {
+  try {
+    await ensureDatabaseSchema();
+    next();
+  } catch (err: any) {
+    console.error('[DB Schema] Initialization failed:', err?.cause?.message || err?.message || err);
+    res.status(503).json({
+      error: 'Database service is initializing or temporarily unavailable. Please try again shortly.',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
 });
 
 apiRouter.use('/', authRoutes);

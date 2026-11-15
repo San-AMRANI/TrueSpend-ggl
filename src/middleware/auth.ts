@@ -217,8 +217,16 @@ export const requireAuth = async (
     }
 
     next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Unauthorized: Invalid or expired token', code: 'UNAUTHORIZED' });
+  } catch (error: any) {
+    const errName = String(error?.name || '');
+    if (errName === 'TokenExpiredError' || errName === 'JsonWebTokenError' || errName === 'NotBeforeError') {
+      return res.status(401).json({ error: 'Unauthorized: Invalid or expired token', code: 'UNAUTHORIZED' });
+    }
+    console.error('[Auth Middleware] Lookup failed:', error?.cause?.message || error?.message || error);
+    return res.status(503).json({
+      error: 'Authentication service is temporarily unavailable. Please try again shortly.',
+      code: 'SERVICE_UNAVAILABLE',
+    });
   }
 };
 

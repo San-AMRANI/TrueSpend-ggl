@@ -5,6 +5,7 @@ import path from 'path';
 import cookieParser from 'cookie-parser';
 import { createServer as createViteServer } from 'vite';
 import apiRouter from './server/routes/index.js';
+import { ensureDatabaseSchema } from './src/db/index.js';
 import { NotificationScheduler } from './server/services/NotificationScheduler.js';
 import {
   validateAuthConfig,
@@ -15,6 +16,12 @@ import {
 async function startServer() {
   // Fail fast in production if required security secrets are missing or weak
   validateAuthConfig();
+
+  try {
+    await ensureDatabaseSchema();
+  } catch (err: any) {
+    console.error('[Server Startup] Deferred database schema initialization notice:', err?.message || err);
+  }
 
   const app = express();
   const PORT = 3000;

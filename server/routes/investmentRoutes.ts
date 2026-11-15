@@ -4,12 +4,11 @@ import { requireAuth, requireFeature } from '../../src/middleware/auth.js';
 
 const router = Router();
 
-// Enforce authentication + server-side tier & RBAC on all investment & Binance routes
-router.use(requireAuth);
-router.use(requireFeature('investments'));
+// Enforce authentication + server-side tier & RBAC strictly on /investments routes
+router.use('/investments', requireAuth, requireFeature('investments'));
 
 // Prevent shared or public caching of private financial responses
-router.use((_req, res, next) => {
+router.use('/investments', (_req, res, next) => {
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
