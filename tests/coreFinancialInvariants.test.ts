@@ -299,7 +299,7 @@ async function runTests() {
 
   // 8. Versioned Database Migration & Index Catalog Verification (DB-01 / DB-07 / PERF-07)
   {
-    assert.ok(SCHEMA_MIGRATIONS.length >= 6, 'Expected at least 6 versioned database migrations');
+    assert.ok(SCHEMA_MIGRATIONS.length >= 7, 'Expected at least 7 versioned database migrations');
     assert.ok(REQUIRED_INDEX_CATALOG.length >= 35, `Expected at least 35 cataloged indexes, found ${REQUIRED_INDEX_CATALOG.length}`);
     const indexNames = new Set<string>(REQUIRED_INDEX_CATALOG);
     const criticalIndexes = [

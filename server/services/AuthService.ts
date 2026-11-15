@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { eq, ne, or, sql } from 'drizzle-orm';
-import { db } from '../../src/db/index.js';
+import { db, ensureUsersColumnsExist } from '../../src/db/index.js';
 import { users } from '../../src/db/schema.js';
 import {
   PRIMARY_OWNER_EMAIL,
@@ -93,15 +93,33 @@ export class AuthService {
     }
 
     // 2. Check managed users in the database by username or email
-    const matchedRows = await db
-      .select()
-      .from(users)
-      .where(
-        or(
-          sql`LOWER(${users.username}) = ${identifier.toLowerCase()}`,
-          sql`LOWER(${users.email}) = ${identifier.toLowerCase()}`
-        )
-      );
+    let matchedRows: (typeof users.$inferSelect)[] = [];
+    try {
+      matchedRows = await db
+        .select()
+        .from(users)
+        .where(
+          or(
+            sql`LOWER(${users.username}) = ${identifier.toLowerCase()}`,
+            sql`LOWER(${users.email}) = ${identifier.toLowerCase()}`
+          )
+        );
+    } catch (err: any) {
+      if (err?.message?.includes('notification_enabled') || err?.code === '42703') {
+        await ensureUsersColumnsExist();
+        matchedRows = await db
+          .select()
+          .from(users)
+          .where(
+            or(
+              sql`LOWER(${users.username}) = ${identifier.toLowerCase()}`,
+              sql`LOWER(${users.email}) = ${identifier.toLowerCase()}`
+            )
+          );
+      } else {
+        throw err;
+      }
+    }
 
     const activeRow = matchedRows.find((u) => u.status !== 'legacy_hidden');
     if (!activeRow) {

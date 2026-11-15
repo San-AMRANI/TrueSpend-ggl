@@ -11,6 +11,14 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Ensure DB schema migrations and column self-healing complete before accepting traffic
+  try {
+    const { ensureDatabaseMigrated } = await import("./src/db/index.js");
+    await ensureDatabaseMigrated();
+  } catch (err: any) {
+    console.warn("[Server Boot] Database migration startup notice:", err?.message || err);
+  }
+
   app.use(express.json({ limit: '10mb' }));
   app.use(cookieParser());
 

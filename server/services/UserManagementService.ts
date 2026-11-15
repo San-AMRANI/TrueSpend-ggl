@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { eq, ne, desc, or, sql } from 'drizzle-orm';
-import { db, createPool } from '../../src/db/index.js';
+import { db, createPool, ensureUsersColumnsExist } from '../../src/db/index.js';
 import { users, userAuditLogs, wallets } from '../../src/db/schema.js';
 import type {
   UserRole,
@@ -220,7 +220,17 @@ export class UserManagementService {
     if (hit && hit.expiresAt > now) {
       return hit.record;
     }
-    const foundRows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    let foundRows: (typeof users.$inferSelect)[] = [];
+    try {
+      foundRows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    } catch (err: any) {
+      if (err?.message?.includes('notification_enabled') || err?.code === '42703') {
+        await ensureUsersColumnsExist();
+        foundRows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+      } else {
+        throw err;
+      }
+    }
     if (foundRows.length === 0) {
       return null;
     }
@@ -236,11 +246,25 @@ export class UserManagementService {
     }
 
     const adminUsername = process.env.ADMIN_USERNAME || 'SanSpend';
-    const existingOwner = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, PRIMARY_OWNER_EMAIL))
-      .limit(1);
+    let existingOwner: (typeof users.$inferSelect)[] = [];
+    try {
+      existingOwner = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, PRIMARY_OWNER_EMAIL))
+        .limit(1);
+    } catch (err: any) {
+      if (err?.message?.includes('notification_enabled') || err?.code === '42703') {
+        await ensureUsersColumnsExist();
+        existingOwner = await db
+          .select()
+          .from(users)
+          .where(eq(users.email, PRIMARY_OWNER_EMAIL))
+          .limit(1);
+      } else {
+        throw err;
+      }
+    }
 
     if (existingOwner.length > 0) {
       const owner = existingOwner[0];

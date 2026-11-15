@@ -113,9 +113,23 @@ export const createPool = () => {
   return global._postgresPool;
 };
 
+export async function ensureUsersColumnsExist(pool: Pool = createPool()): Promise<void> {
+  try {
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_enabled integer DEFAULT 1;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_time text DEFAULT '09:00';
+    `);
+  } catch (_e) {
+    // Ignore if database is unreachable or users table not created yet
+  }
+}
+
 export function ensureDatabaseMigrated(pool: Pool = createPool()) {
   if (!global._postgresMigrationPromise) {
-    global._postgresMigrationPromise = runDatabaseMigrations(pool).catch((err) => {
+    global._postgresMigrationPromise = (async () => {
+      await ensureUsersColumnsExist(pool);
+      return runDatabaseMigrations(pool);
+    })().catch((err) => {
       global._postgresMigrationPromise = undefined;
       throw err;
     });

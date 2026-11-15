@@ -195,6 +195,8 @@ export const SCHEMA_MIGRATIONS: MigrationDefinition[] = [
       ALTER TABLE users ADD COLUMN IF NOT EXISTS notes text;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at timestamp;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by uuid;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_enabled integer DEFAULT 1;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_time text DEFAULT '09:00';
 
       CREATE TABLE IF NOT EXISTS user_audit_logs (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -907,6 +909,14 @@ export const SCHEMA_MIGRATIONS: MigrationDefinition[] = [
 
       CREATE UNIQUE INDEX IF NOT EXISTS uq_financial_rule_logs_idempotency
         ON financial_rule_logs (user_id, idempotency_key);
+    `,
+  },
+  {
+    id: '007_users_notification_fields',
+    description: 'Ensure notification_enabled and notification_time columns exist on users table for notification scheduling',
+    sql: `
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_enabled integer DEFAULT 1;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_time text DEFAULT '09:00';
     `,
   },
 ];
