@@ -51,7 +51,32 @@ import {
   FinancialIntegrityReport,
 } from '../../types';
 
+export interface DashboardBootstrapPayload {
+  kpis: KPI;
+  transactions: Transaction[];
+  debts: Debt[];
+  payrolls: Payroll[];
+  budgets: CategoryBudget[];
+  contexts: FinancialContext[];
+  goals: Goal[];
+  subscriptions: Subscription[];
+  settings: UserSettings;
+  investmentsData: InvestmentsData | null;
+}
+
 export const dashboardService = {
+  getDashboardBootstrap: (
+    token: string | null,
+    options?: { includeInvestments?: boolean }
+  ) =>
+    apiClient.get<DashboardBootstrapPayload>(
+      `/api/dashboard/bootstrap${
+        options?.includeInvestments === false ? '?includeInvestments=false' : ''
+      }`,
+      token
+    ),
+  getPerformanceReport: (token: string | null) =>
+    apiClient.get<Record<string, unknown>>('/api/audit/performance', token),
   getSubscriptions: (token: string | null) => apiClient.get<Subscription[]>('/api/subscriptions', token),
   createSubscription: (payload: Partial<Subscription>, token: string | null) =>
     apiClient.post<Subscription>('/api/subscriptions', payload, token),

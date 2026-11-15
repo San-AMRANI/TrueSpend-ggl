@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { userRepository } from '../repositories/UserRepository.js';
+import { userManagementService } from './UserManagementService.js';
 import { createPool, db } from '../../src/db/index.js';
 import {
   categoryBudgets,
@@ -321,6 +322,7 @@ export class SettingsService {
 
     if (Object.keys(updateData).length > 0) {
       await userRepository.updateSettings(userId, updateData);
+      userManagementService.invalidateUserAuthCache(userId);
     }
 
     return { success: true, ...updateData };
@@ -1066,6 +1068,7 @@ export class SettingsService {
       }
 
       await client.query('COMMIT');
+      userManagementService.invalidateUserAuthCache();
       return Object.fromEntries(
         restoreOrder.map((table) => [table, rowsByTable.get(table)!.length])
       );

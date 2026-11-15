@@ -1,13 +1,11 @@
-import { eq } from 'drizzle-orm';
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
 import {
   PRIMARY_OWNER_EMAIL,
   resolveUserPermissions,
   userManagementService,
 } from '../../server/services/UserManagementService.js';
+import { perfMonitor } from '../lib/perfMonitor.js';
 import type { UserPermissions, UserRole } from '../types/index.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_fallback_key';
@@ -24,8 +22,10 @@ export const requireAuth = async (
   res: Response,
   next: NextFunction
 ) => {
+  const authStart = performance.now();
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    perfMonitor.recordAuthDuration(performance.now() - authStart);
     return res.status(401).json({ error: 'Unauthorized: Missing token' });
   }
 
@@ -37,16 +37,13 @@ export const requireAuth = async (
     const ownerRecord = await userManagementService.ensureOwnerConfigured();
     let authenticatedUser = ownerRecord;
 
-    if (decodedToken.userId) {
-      const foundRows = await db
-        .select()
-        .from(users)
-        .where(eq(users.id, decodedToken.userId))
-        .limit(1);
-      if (foundRows.length > 0) {
-        authenticatedUser = foundRows[0];
+    if (decodedToken.userId && decodedToken.userId !== ownerRecord.id) {
+      const foundUser = await userManagementService.getUserByIdCached(decodedToken.userId);
+      if (foundUser) {
+        authenticatedUser = foundUser;
       }
     }
+    perfMonitor.recordAuthDuration(performance.now() - authStart);
 
     const isOwner =
       authenticatedUser.role === 'owner' ||

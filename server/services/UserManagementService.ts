@@ -196,8 +196,45 @@ export function verifyPassword(password: string, storedHash?: string | null): bo
   }
 }
 
+const AUTH_CACHE_TTL_MS = 30_000;
+
 export class UserManagementService {
+  private cachedOwner: { record: typeof users.$inferSelect; expiresAt: number } | null = null;
+  private cachedUsersById = new Map<
+    string,
+    { record: typeof users.$inferSelect; expiresAt: number }
+  >();
+
+  invalidateUserAuthCache(userId?: string) {
+    this.cachedOwner = null;
+    if (userId) {
+      this.cachedUsersById.delete(userId);
+    } else {
+      this.cachedUsersById.clear();
+    }
+  }
+
+  async getUserByIdCached(userId: string): Promise<typeof users.$inferSelect | null> {
+    const now = Date.now();
+    const hit = this.cachedUsersById.get(userId);
+    if (hit && hit.expiresAt > now) {
+      return hit.record;
+    }
+    const foundRows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (foundRows.length === 0) {
+      return null;
+    }
+    const record = foundRows[0];
+    this.cachedUsersById.set(userId, { record, expiresAt: now + AUTH_CACHE_TTL_MS });
+    return record;
+  }
+
   async ensureOwnerConfigured() {
+    const now = Date.now();
+    if (this.cachedOwner && this.cachedOwner.expiresAt > now) {
+      return this.cachedOwner.record;
+    }
+
     const adminUsername = process.env.ADMIN_USERNAME || 'SanSpend';
     const existingOwner = await db
       .select()
@@ -220,8 +257,12 @@ export class UserManagementService {
           })
           .where(eq(users.id, owner.id))
           .returning();
+        this.cachedOwner = { record: updated, expiresAt: now + AUTH_CACHE_TTL_MS };
+        this.cachedUsersById.set(updated.id, { record: updated, expiresAt: now + AUTH_CACHE_TTL_MS });
         return updated;
       }
+      this.cachedOwner = { record: owner, expiresAt: now + AUTH_CACHE_TTL_MS };
+      this.cachedUsersById.set(owner.id, { record: owner, expiresAt: now + AUTH_CACHE_TTL_MS });
       return owner;
     }
 
@@ -239,6 +280,8 @@ export class UserManagementService {
         avatarColor: 'indigo',
       })
       .returning();
+    this.cachedOwner = { record: created, expiresAt: now + AUTH_CACHE_TTL_MS };
+    this.cachedUsersById.set(created.id, { record: created, expiresAt: now + AUTH_CACHE_TTL_MS });
     return created;
   }
 
@@ -500,6 +543,7 @@ export class UserManagementService {
       details: `Created user with role "${assignedRole.toUpperCase()}" in ${workspaceMode === 'shared' ? 'Shared Ledger' : 'Isolated Workspace'} mode.`,
     });
 
+    this.invalidateUserAuthCache(created.id);
     const owner = await this.ensureOwnerConfigured();
     return this.formatManagedUser(
       created,
@@ -635,6 +679,7 @@ export class UserManagementService {
           : 'Updated user profile details.',
     });
 
+    this.invalidateUserAuthCache(targetId);
     const owner = await this.ensureOwnerConfigured();
     return this.formatManagedUser(updated, undefined, owner.id);
   }
@@ -662,6 +707,7 @@ export class UserManagementService {
     await pool.query('DELETE FROM financial_contexts WHERE user_id = $1', [targetId]);
     await pool.query('DELETE FROM wallets WHERE user_id = $1', [targetId]);
     await db.delete(users).where(eq(users.id, targetId));
+    this.invalidateUserAuthCache(targetId);
 
     await this.logAuditEvent({
       actorId: actor.id,

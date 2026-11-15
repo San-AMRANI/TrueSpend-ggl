@@ -15,6 +15,7 @@ import { KpiService } from './KpiService.js';
 import { settingsService } from './SettingsService.js';
 import { investmentService } from './InvestmentService.js';
 import { coreAuditService } from './CoreAuditService.js';
+import { payrollService } from './PayrollService.js';
 
 const pushService = new PushService();
 const kpiService = new KpiService();
@@ -71,6 +72,9 @@ function projectNextBillingDate(
 }
 
 export class NotificationScheduler {
+  private isProcessingNotifications = false;
+  private isProcessingBackups = false;
+
   start() {
     // Notification delivery run every minute
     cron.schedule('* * * * *', async () => {
@@ -92,6 +96,8 @@ export class NotificationScheduler {
   }
 
   async processAutomatedBackups() {
+    if (this.isProcessingBackups) return;
+    this.isProcessingBackups = true;
     try {
       const backupUsers = await db
         .select()
@@ -136,10 +142,22 @@ export class NotificationScheduler {
       }
     } catch (err) {
       console.error('[BackupScheduler] Failed to query automated backup users:', err);
+    } finally {
+      this.isProcessingBackups = false;
     }
   }
 
   async processNotifications() {
+    if (this.isProcessingNotifications) return;
+    this.isProcessingNotifications = true;
+    try {
+      await this.runNotificationsTick();
+    } finally {
+      this.isProcessingNotifications = false;
+    }
+  }
+
+  private async runNotificationsTick() {
     const allPrefs = await db
       .select({
         prefs: notificationPreferences,
@@ -182,14 +200,20 @@ export class NotificationScheduler {
         payload: { title: string; body: string; url: string };
       }> = [];
 
-      const [userSubs, userTx, userDebts, userGoals, userPayrolls, kpis] = await Promise.all([
+      await payrollService.reconcileDuePayrolls(user.id, now).catch(() => undefined);
+
+      const [userSubs, userTx, userDebts, userGoals, userPayrolls] = await Promise.all([
         db.select().from(subscriptions).where(eq(subscriptions.userId, user.id)),
         db.select().from(transactions).where(eq(transactions.userId, user.id)),
         db.select().from(debts).where(eq(debts.userId, user.id)),
         db.select().from(goals).where(eq(goals.userId, user.id)),
         db.select().from(payrolls).where(eq(payrolls.userId, user.id)),
-        kpiService.getKpisForUser(user),
       ]);
+
+      const kpis = await kpiService.getKpisForUser(user, {
+        debts: userDebts,
+        payrolls: userPayrolls,
+      });
 
       await coreAuditService.evaluateUpcomingCommitmentRules(user.id).catch(() => undefined);
       await coreAuditService.processPendingOutboxEvents(user.id).catch(() => undefined);
@@ -291,7 +315,12 @@ export class NotificationScheduler {
       // 2. STOCKS & PORTFOLIO STATUS PULSE (Movers, Breakeven & Cash Reserve)
       if (prefs.anomalyEnabled) {
         try {
-          const invData: any = await investmentService.getInvestmentsData(user.id);
+          const invData: any = await investmentService.getInvestmentsData(user.id, {
+            preloadedKpis: kpis,
+            preloadedTransactions: userTx,
+            preloadedUser: user,
+            preloadedSubscriptions: userSubs,
+          });
           const stockPositions = (invData.positions || []).filter(
             (p: any) => p.market !== 'CRYPTO' && !p.isWatchlistOnly
           );

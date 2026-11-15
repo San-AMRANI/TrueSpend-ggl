@@ -1,6 +1,6 @@
 import { db } from '../../src/db/index.js';
 import { debts, splits, userAuditLogs } from '../../src/db/schema.js';
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 
 export type DbExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -31,6 +31,15 @@ export class DebtRepository {
       .from(debts)
       .where(and(eq(debts.id, id), eq(debts.userId, userId)));
     return result[0] || null;
+  }
+
+  async findByIdsAndUserId(ids: string[], userId: string, exec: DbExecutor = db) {
+    const cleanIds = Array.from(new Set(ids.filter(Boolean)));
+    if (cleanIds.length === 0) return [];
+    return await exec
+      .select()
+      .from(debts)
+      .where(and(eq(debts.userId, userId), inArray(debts.id, cleanIds)));
   }
 
   async create(data: CreateDebtParams, exec: DbExecutor = db) {

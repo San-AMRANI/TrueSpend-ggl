@@ -322,4 +322,14 @@ router.get('/audit/integrity-report', requireAuth, async (req: any, res) => {
   }
 });
 
+// Item 8: Database & Backend Performance Observability Report (PERF-00 / DB-00)
+router.get('/audit/performance', requireAuth, async (_req: any, res) => {
+  try {
+    const report = await coreAuditService.getDatabasePerformanceReport();
+    res.json(report);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Failed to compute database performance report' });
+  }
+});
+
 export default router;

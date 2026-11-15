@@ -41,10 +41,10 @@ export class PayrollService {
     );
   }
 
-  async getPayrollsForUser(userId: string) {
+  async getPayrollsForUser(userId: string, preloadedWallets?: any[]) {
     const [list, userWallets] = await Promise.all([
       payrollRepository.findAllByUserId(userId),
-      walletService.getWallets(userId),
+      preloadedWallets ? Promise.resolve(preloadedWallets) : walletService.getWallets(userId),
     ]);
     const walletMap = new Map(userWallets.map((w) => [w.id, w]));
     const defaultWallet =
@@ -54,9 +54,19 @@ export class PayrollService {
       userWallets[0] ||
       null;
 
-    const enriched = [];
-    for (const p of list) {
-      const linkedTx = await transactionRepository.findByPayrollId(p.id);
+    const linkedTxs =
+      list.length > 0
+        ? await transactionRepository.findByPayrollIds(list.map((p) => p.id))
+        : [];
+    const txByPayrollId = new Map<string, (typeof linkedTxs)[number]>();
+    for (const tx of linkedTxs) {
+      if (tx.payrollId && !txByPayrollId.has(tx.payrollId)) {
+        txByPayrollId.set(tx.payrollId, tx);
+      }
+    }
+
+    return list.map((p) => {
+      const linkedTx = txByPayrollId.get(p.id);
       const effectiveStatus = linkedTx
         ? (p as any).status === 'matched'
           ? 'matched'
@@ -64,16 +74,15 @@ export class PayrollService {
         : (p as any).status || 'expected';
       const resolvedWalletId = (p as any).walletId || linkedTx?.walletId || defaultWallet?.id || null;
       const resolvedWallet = resolvedWalletId ? walletMap.get(resolvedWalletId) || null : null;
-      enriched.push({
+      return {
         ...p,
         status: effectiveStatus,
         walletId: resolvedWalletId,
         walletName: resolvedWallet?.name || null,
         walletType: resolvedWallet?.type || null,
         linkedTransactionId: linkedTx?.id || null,
-      });
-    }
-    return enriched;
+      };
+    });
   }
 
   async createPayroll(userId: string, dto: { scheduledFor?: string; amount?: number; walletId?: string | null }) {
@@ -169,10 +178,19 @@ export class PayrollService {
    */
   async reconcileDuePayrolls(userId: string, _now = new Date()) {
     const userPayrolls = await payrollRepository.findAllByUserId(userId);
-    let synced = 0;
+    if (userPayrolls.length === 0) return 0;
 
+    const linkedTxs = await transactionRepository.findByPayrollIds(userPayrolls.map((p) => p.id));
+    const txByPayrollId = new Map<string, (typeof linkedTxs)[number]>();
+    for (const tx of linkedTxs) {
+      if (tx.payrollId && !txByPayrollId.has(tx.payrollId)) {
+        txByPayrollId.set(tx.payrollId, tx);
+      }
+    }
+
+    let synced = 0;
     for (const payroll of userPayrolls) {
-      const existingTx = await transactionRepository.findByPayrollId(payroll.id);
+      const existingTx = txByPayrollId.get(payroll.id);
       if (existingTx && (payroll as any).status === 'expected') {
         await db
           .update(payrolls)

@@ -48,16 +48,41 @@ export interface UpdateDebtDTO {
 }
 
 export class DebtService {
-  async getDebtsWithSettlements(userId: string) {
-    const [allDebts, allSplits, allTxs, forgivenessLogs] = await Promise.all([
-      debtRepository.findAllByUserId(userId),
-      debtRepository.findAllLinkedSplits(),
-      transactionRepository.findAllByUserId(userId),
+  async getDebtsWithSettlements(
+    userId: string,
+    preloaded?: { debts?: any[]; transactions?: any[] }
+  ) {
+    const allDebts = preloaded?.debts || (await debtRepository.findAllByUserId(userId));
+    if (allDebts.length === 0) return [];
+
+    const debtIds = allDebts.map((d: any) => d.id);
+    const [allSplits, allTxs, forgivenessLogs] = await Promise.all([
+      transactionRepository.findSplitsByDebtIds(debtIds),
+      preloaded?.transactions
+        ? Promise.resolve(preloaded.transactions)
+        : transactionRepository.findAllByUserId(userId),
       debtRepository.findForgivenessLogsByUserId(userId),
     ]);
 
-    return allDebts.map((debt) => {
-      const debtSplits = allSplits.filter((s) => s.linkedContactId === debt.id);
+    const txById = new Map<string, any>(allTxs.map((t: any) => [t.id, t]));
+    const splitsByDebtId = new Map<string, typeof allSplits>();
+    for (const s of allSplits) {
+      if (!s.linkedContactId) continue;
+      const list = splitsByDebtId.get(s.linkedContactId) || [];
+      list.push(s);
+      splitsByDebtId.set(s.linkedContactId, list);
+    }
+
+    const forgivenessByDebtId = new Map<string, typeof forgivenessLogs>();
+    for (const log of forgivenessLogs) {
+      if (!log.targetUserName) continue;
+      const list = forgivenessByDebtId.get(log.targetUserName) || [];
+      list.push(log);
+      forgivenessByDebtId.set(log.targetUserName, list);
+    }
+
+    return allDebts.map((debt: any) => {
+      const debtSplits = splitsByDebtId.get(debt.id) || [];
 
       // Separate origin transaction split from settlement splits:
       // - For Receivable debts: origin is Expense, settlement is Income.
@@ -68,7 +93,7 @@ export class DebtService {
 
       const cashSettlements = debtSplits
         .map((s) => {
-          const tx = allTxs.find((t) => t.id === s.transactionId);
+          const tx = txById.get(s.transactionId);
           if (!tx) return null;
           const splitAmountNum = parseFloat(s.reimbursableAmount || '0');
 
@@ -99,22 +124,20 @@ export class DebtService {
         .filter((item): item is NonNullable<typeof item> => item !== null);
 
       // Parse forgiveness logs for this debt
-      const forgivenEntries = forgivenessLogs
-        .filter((log) => log.targetUserName === debt.id)
-        .map((log) => {
-          let parsed: { amount?: number; reason?: string; note?: string } = {};
-          try {
-            parsed = JSON.parse(log.details || '{}');
-          } catch {}
-          return {
-            id: log.id,
-            amount: String(Number(parsed.amount || 0).toFixed(2)),
-            createdAt: log.createdAt,
-            isForgiven: true,
-            reason: parsed.reason || 'Forgiven / Waived',
-            note: parsed.note || '',
-          };
-        });
+      const forgivenEntries = (forgivenessByDebtId.get(debt.id) || []).map((log) => {
+        let parsed: { amount?: number; reason?: string; note?: string } = {};
+        try {
+          parsed = JSON.parse(log.details || '{}');
+        } catch {}
+        return {
+          id: log.id,
+          amount: String(Number(parsed.amount || 0).toFixed(2)),
+          createdAt: log.createdAt,
+          isForgiven: true,
+          reason: parsed.reason || 'Forgiven / Waived',
+          note: parsed.note || '',
+        };
+      });
 
       const originalNum = parseFloat(debt.originalAmount as unknown as string) || 0;
       const remainingNum = parseFloat(debt.remainingBalance as unknown as string) || 0;

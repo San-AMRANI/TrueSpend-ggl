@@ -917,14 +917,29 @@ export class InvestmentService {
   /**
    * Complete, deeply integrated Binance Spot/Funding/Earn + Stock Intelligence + Capital Reconciliation payload
    */
-  async getInvestmentsData(userId: string, options?: { forceRefresh?: boolean }) {
+  async getInvestmentsData(
+    userId: string,
+    options?: {
+      forceRefresh?: boolean;
+      preloadedKpis?: any;
+      preloadedTransactions?: any[];
+      preloadedUser?: any;
+      preloadedSubscriptions?: any[];
+    }
+  ) {
     const [rawPositions, rawOrders, rates, dbUser, subscriptions, allTransactions] = await Promise.all([
       investmentRepository.findAllPositionsByUserId(userId),
       investmentRepository.findAllOrdersByUserId(userId),
       this.getExchangeRates(),
-      userRepository.findById(userId),
-      subscriptionRepository.findAllByUserId(userId),
-      transactionRepository.findAllByUserId(userId),
+      options?.preloadedUser
+        ? Promise.resolve(options.preloadedUser)
+        : userRepository.findById(userId),
+      options?.preloadedSubscriptions
+        ? Promise.resolve(options.preloadedSubscriptions)
+        : subscriptionRepository.findAllByUserId(userId),
+      options?.preloadedTransactions
+        ? Promise.resolve(options.preloadedTransactions)
+        : transactionRepository.findAllByUserId(userId),
     ]);
 
     // Fetch live quotes for manual user positions AND common Binance tokenized stocks in parallel
@@ -949,7 +964,9 @@ export class InvestmentService {
 
     if (dbUser) {
       try {
-        const kpis = await kpiService.getKpisForUser(dbUser);
+        const kpis =
+          options?.preloadedKpis ||
+          (await kpiService.getKpisForUser(dbUser));
         kpiAccounts = kpis.accounts || [];
         safeToSpendMad = Math.max(0, Math.round((kpis.safeToSpend || 0) * 100) / 100);
         investmentWalletBalanceMad = Math.max(0, Math.round((kpis.investmentReserve || 0) * 100) / 100);

@@ -1,40 +1,52 @@
-import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { transactionService } from './TransactionService.js';
 import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
 import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
-import { walletRepository } from '../repositories/WalletRepository.js';
 import { walletService } from './WalletService.js';
-import { payrollService } from './PayrollService.js';
 import { computeFinancialState } from '../../src/lib/financialEngine.js';
 
+export interface PreloadedKpiInputs {
+  wallets?: any[];
+  transactions?: any[];
+  payrolls?: any[];
+  debts?: any[];
+  budgets?: any[];
+}
+
 export class KpiService {
-  async getKpisForUser(dbUser: any) {
+  async getKpisForUser(dbUser: any, preloaded?: PreloadedKpiInputs) {
     const userId = dbUser.id;
 
-    // Auto-seed default wallets if none exist
-    const userWallets = await walletService.getWallets(userId);
-
-    await payrollService.reconcileDuePayrolls(userId);
+    // Auto-seed default wallets if none exist (or reuse preloaded wallets)
+    const userWallets = preloaded?.wallets || (await walletService.getWallets(userId));
 
     // Assign orphaned transactions to default Bank wallet
-    const mainBank = userWallets.find(w => w.type === 'Bank' && w.isMain) || userWallets.find(w => w.type === 'Bank') || userWallets[0];
-    const defaultCash = userWallets.find(w => w.type === 'Cash') || mainBank;
+    const mainBank =
+      userWallets.find((w: any) => w.type === 'Bank' && w.isMain) ||
+      userWallets.find((w: any) => w.type === 'Bank') ||
+      userWallets[0];
+    const defaultCash = userWallets.find((w: any) => w.type === 'Cash') || mainBank;
 
-    const [allTx, payrolls, allDebts, allBudgets] = await Promise.all([
-      transactionService.getTransactionsForUser(userId),
-      payrollRepository.findAllByUserId(userId),
-      debtRepository.findAllByUserId(userId),
-      categoryBudgetRepository.findAllByUserId(userId),
+    const allDebts = preloaded?.debts || (await debtRepository.findAllByUserId(userId));
+    const [allTx, payrolls, allBudgets] = await Promise.all([
+      preloaded?.transactions
+        ? Promise.resolve(preloaded.transactions)
+        : transactionService.getTransactionsForUser(userId, allDebts),
+      preloaded?.payrolls
+        ? Promise.resolve(preloaded.payrolls)
+        : payrollRepository.findAllByUserId(userId),
+      preloaded?.budgets
+        ? Promise.resolve(preloaded.budgets)
+        : categoryBudgetRepository.findAllByUserId(userId),
     ]);
-    
+
     // Fix legacy transactions without walletId or with text 'Bank'/'Cash'
-    const transactions = allTx.map(tx => {
+    const transactions = allTx.map((tx: any) => {
       let wid = tx.walletId as any;
       if (!wid || wid === 'Bank') {
-        wid = (tx as any).sourceWallet === 'Cash' ? defaultCash.id : mainBank.id;
+        wid = (tx as any).sourceWallet === 'Cash' ? defaultCash?.id : mainBank?.id;
       } else if (wid === 'Cash') {
-        wid = defaultCash.id;
+        wid = defaultCash?.id;
       }
       return { ...tx, walletId: wid };
     });
@@ -44,7 +56,7 @@ export class KpiService {
       payrolls: payrolls as any,
       debts: allDebts as any,
       budgets: allBudgets as any,
-      wallets: userWallets.map(w => ({
+      wallets: userWallets.map((w: any) => ({
         id: w.id,
         name: w.name,
         type: w.type,
@@ -55,20 +67,23 @@ export class KpiService {
         emergencyBuffer: parseFloat(dbUser.emergencyBuffer as unknown as string) || 0,
         salary: parseFloat(dbUser.salary as unknown as string) || 0,
         payday: dbUser.payday ? Number(dbUser.payday) : undefined,
-      }
+      },
     };
-    
+
     const kpis = computeFinancialState(engineInput);
-    
+
     // Aggregate balances into wallets
-    const accounts = userWallets.map(w => ({
+    const accounts = userWallets.map((w: any) => ({
       ...w,
-      balance: kpis.walletBalances[w.id] !== undefined ? kpis.walletBalances[w.id] : parseFloat(w.initialBalance as string || '0')
+      balance:
+        kpis.walletBalances[w.id] !== undefined
+          ? kpis.walletBalances[w.id]
+          : parseFloat((w.initialBalance as string) || '0'),
     }));
 
     return {
       accounts,
-      ...kpis
+      ...kpis,
     };
   }
 }

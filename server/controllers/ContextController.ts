@@ -45,6 +45,40 @@ export function resolveContextStatusFromDates(
   return fallbackStatus || 'Planned';
 }
 
+export async function getContextsForUser(userId: string) {
+  const userContexts = await db
+    .select()
+    .from(financialContexts)
+    .where(eq(financialContexts.userId, userId))
+    .orderBy(desc(financialContexts.createdAt));
+
+  const now = new Date();
+  return Promise.all(
+    userContexts.map(async (ctx) => {
+      if (!ctx.startDate && !ctx.endDate) return ctx;
+      const computedStatus = resolveContextStatusFromDates(
+        ctx.startDate,
+        ctx.endDate,
+        (ctx.status as any) || 'Planned',
+        now
+      );
+      if (computedStatus !== ctx.status) {
+        try {
+          const [updated] = await db
+            .update(financialContexts)
+            .set({ status: computedStatus, updatedAt: now })
+            .where(and(eq(financialContexts.id, ctx.id), eq(financialContexts.userId, userId)))
+            .returning();
+          return updated || { ...ctx, status: computedStatus };
+        } catch {
+          return { ...ctx, status: computedStatus };
+        }
+      }
+      return ctx;
+    })
+  );
+}
+
 export const contextController = {
   async getContexts(req: AuthRequest, res: Response) {
     try {
@@ -52,39 +86,7 @@ export const contextController = {
       if (!userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-
-      const userContexts = await db
-        .select()
-        .from(financialContexts)
-        .where(eq(financialContexts.userId, userId))
-        .orderBy(desc(financialContexts.createdAt));
-
-      const now = new Date();
-      const syncedContexts = await Promise.all(
-        userContexts.map(async (ctx) => {
-          if (!ctx.startDate && !ctx.endDate) return ctx;
-          const computedStatus = resolveContextStatusFromDates(
-            ctx.startDate,
-            ctx.endDate,
-            (ctx.status as any) || 'Planned',
-            now
-          );
-          if (computedStatus !== ctx.status) {
-            try {
-              const [updated] = await db
-                .update(financialContexts)
-                .set({ status: computedStatus, updatedAt: now })
-                .where(and(eq(financialContexts.id, ctx.id), eq(financialContexts.userId, userId)))
-                .returning();
-              return updated || { ...ctx, status: computedStatus };
-            } catch {
-              return { ...ctx, status: computedStatus };
-            }
-          }
-          return ctx;
-        })
-      );
-
+      const syncedContexts = await getContextsForUser(userId);
       res.json(syncedContexts);
     } catch (error) {
       console.error('Error fetching contexts:', error);

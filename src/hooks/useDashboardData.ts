@@ -41,39 +41,49 @@ export function useDashboardData(token: string | null) {
 
   const notifications = useNotifications();
 
-  const fetchData = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData, invData] = await Promise.all([
-        dashboardService.getKpis(token),
-        dashboardService.getTransactions(token),
-        dashboardService.getDebts(token),
-        dashboardService.getSettings(token),
-        dashboardService.getCategoryBudgets(token),
-        dashboardService.getPayrolls(token),
-        dashboardService.getContexts(token),
-        dashboardService.getGoals(token),
-        dashboardService.getSubscriptions(token),
-        dashboardService.getInvestmentsData(token).catch(() => null),
-      ]);
+  const fetchData = useCallback(
+    async (options?: { includeInvestments?: boolean; silent?: boolean }) => {
+      if (!token) return;
+      const includeInvestments = options?.includeInvestments ?? true;
+      if (!options?.silent) {
+        setLoading(true);
+      }
+      try {
+        const bootstrap = await dashboardService.getDashboardBootstrap(token, {
+          includeInvestments: false,
+        });
+        setKpis(bootstrap.kpis || null);
+        setTransactions(bootstrap.transactions || []);
+        setDebts(bootstrap.debts || []);
+        setUserSettings(bootstrap.settings);
+        setBudgets(bootstrap.budgets || []);
+        setPayrolls(bootstrap.payrolls || []);
+        setContexts(bootstrap.contexts || []);
+        setGoals(bootstrap.goals || []);
+        setSubscriptions(bootstrap.subscriptions || []);
 
-      setKpis(kpiData || null);
-      setTransactions(txData || []);
-      setDebts(debtData || []);
-      setUserSettings(settingsData);
-      setBudgets(budgetData || []);
-      setPayrolls(payrollData || []);
-      setContexts(contextData || []);
-      setGoals(goalData || []);
-      setSubscriptions(subData || []);
-      setInvestmentsData(invData || null);
-    } catch (e) {
-      console.error('Error fetching dashboard data:', e);
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+        if (includeInvestments) {
+          dashboardService
+            .getInvestmentsData(token)
+            .then((invData) => {
+              if (invData) setInvestmentsData(invData);
+            })
+            .catch(() => undefined);
+        }
+      } catch (e) {
+        console.error('Error fetching dashboard data:', e);
+      } finally {
+        if (!options?.silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [token]
+  );
+
+  const refreshCoreLedger = useCallback(async () => {
+    await fetchData({ includeInvestments: false, silent: true });
+  }, [fetchData]);
 
   // When fresh data arrives, schedule (or re-schedule) the smart notification stream
   useEffect(() => {
@@ -163,7 +173,7 @@ export function useDashboardData(token: string | null) {
   const handleSettleDebt = async (debtId: string, amount: number, category?: string, walletId?: string) => {
     try {
       await dashboardService.settleDebt(debtId, amount, token, category, walletId);
-      await fetchData();
+      await refreshCoreLedger();
       window.dispatchEvent(
         new CustomEvent('truespend:toast', {
           detail: { message: `Settled ${amount.toFixed(2)} MAD in wallet.`, type: 'success' },
@@ -182,7 +192,7 @@ export function useDashboardData(token: string | null) {
   ) => {
     try {
       await dashboardService.forgiveDebt(debtId, { amount, reason, note }, token);
-      await fetchData();
+      await refreshCoreLedger();
       window.dispatchEvent(
         new CustomEvent('truespend:toast', {
           detail: {
@@ -205,7 +215,7 @@ export function useDashboardData(token: string | null) {
   const handleDeleteDebt = async (debtId: string) => {
     try {
       await dashboardService.deleteDebt(debtId, token);
-      await fetchData();
+      await refreshCoreLedger();
     } catch (e: any) {
       console.error('Error deleting debt:', e);
       throw e;
@@ -223,7 +233,7 @@ export function useDashboardData(token: string | null) {
         },
         token
       );
-      await fetchData();
+      await refreshCoreLedger();
       window.dispatchEvent(new CustomEvent('truespend:toast', { detail: { message: 'Debt record updated successfully.', type: 'success' } }));
     } catch (e: any) {
       console.error('Error updating debt:', e);
@@ -235,7 +245,7 @@ export function useDashboardData(token: string | null) {
   const handleDeleteTransaction = async (txId: string) => {
     try {
       await dashboardService.deleteTransaction(txId, token);
-      await fetchData();
+      await refreshCoreLedger();
     } catch (e: any) {
       console.error('Error deleting transaction:', e);
       throw e;
@@ -244,30 +254,30 @@ export function useDashboardData(token: string | null) {
 
   const handleSaveCategoryBudget = async (category: string, year: number, month: number, amount: number) => {
     await dashboardService.saveCategoryBudget({ category, year, month, amount }, token);
-    await fetchData();
+    await refreshCoreLedger();
   };
 
   const handleSaveCategoryBudgetsBatch = async (budgets: { category: string; year: number; month: number; amount: number }[]) => {
     await dashboardService.saveCategoryBudgetsBatch(budgets, token);
-    await fetchData();
+    await refreshCoreLedger();
   };
 
 
   const handleCopyPreviousMonthBudgets = async (year: number, month: number) => {
     const result = await dashboardService.copyPreviousMonthBudgets(year, month, token);
-    await fetchData();
+    await refreshCoreLedger();
     return result.copied;
   };
 
   const handleClearCategoryBudgetsMonth = async (year: number, month: number) => {
     const result = await dashboardService.clearCategoryBudgetsMonth(year, month, token);
-    await fetchData();
+    await refreshCoreLedger();
     return result.count;
   };
 
   const handleDeleteCategoryBudget = async (id: string) => {
     await dashboardService.deleteCategoryBudget(id, token);
-    await fetchData();
+    await refreshCoreLedger();
   };
 
   const openTransaction = (transactionId: string) => {
@@ -295,7 +305,7 @@ export function useDashboardData(token: string | null) {
     }));
     try {
       await dashboardService.updateSettings(payload, token);
-      await fetchData();
+      await refreshCoreLedger();
       if (notifyUser) {
         window.dispatchEvent(new CustomEvent('truespend:toast', { detail: { message: 'Settings saved successfully!', type: 'success' } }));
       }
@@ -314,7 +324,7 @@ export function useDashboardData(token: string | null) {
       { scheduledFor, amount, ...(walletId ? { walletId } : {}) },
       token
     );
-    await fetchData();
+    await refreshCoreLedger();
   };
 
   const handleUpdatePayroll = async (
@@ -322,12 +332,12 @@ export function useDashboardData(token: string | null) {
     payload: { scheduledFor?: string; amount?: number; walletId?: string | null }
   ) => {
     await dashboardService.updatePayroll(payrollId, payload, token);
-    await fetchData();
+    await refreshCoreLedger();
   };
 
   const handleDeletePayroll = async (payrollId: string) => {
     await dashboardService.deletePayroll(payrollId, token);
-    await fetchData();
+    await refreshCoreLedger();
   };
 
   const handleSeedData = async () => {
@@ -417,7 +427,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const created = await dashboardService.createWallet(payload, token);
-      await fetchData();
+      await refreshCoreLedger();
       return created;
     } finally {
       setIsSaving(false);
@@ -429,7 +439,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const updated = await dashboardService.updateWallet(id, payload, token);
-      await fetchData();
+      await refreshCoreLedger();
       return updated;
     } finally {
       setIsSaving(false);
@@ -441,7 +451,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.deleteWallet(id, reassignToWalletId, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } finally {
       setIsSaving(false);
@@ -473,7 +483,7 @@ export function useDashboardData(token: string | null) {
       await dashboardService.deleteContext(id, token);
       setContexts((prev) => prev.filter((c) => c.id !== id));
       // Re-fetch transactions because some might have had contextId nullified
-      fetchData();
+      await refreshCoreLedger();
     } catch (error) {
       console.error('Error deleting context', error);
       throw error;
@@ -485,7 +495,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.linkTransactionsToContext(transactionIds, contextId, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } catch (error) {
       console.error('Error linking transactions to context:', error);
@@ -500,7 +510,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.createGoal(payload, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } catch (error) {
       console.error('Error creating goal:', error);
@@ -515,7 +525,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.updateGoal(id, payload, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } catch (error) {
       console.error('Error updating goal:', error);
@@ -530,7 +540,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.contributeToGoal(id, payload, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } catch (error) {
       console.error('Error contributing to goal:', error);
@@ -545,7 +555,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.withdrawFromGoal(id, payload, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } catch (error) {
       console.error('Error withdrawing from goal:', error);
@@ -560,7 +570,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.deleteGoal(id, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } catch (error) {
       console.error('Error deleting goal:', error);
@@ -575,7 +585,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.createSubscription(payload, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } catch (error) {
       console.error('Error creating subscription:', error);
@@ -590,7 +600,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.updateSubscription(id, payload, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } catch (error) {
       console.error('Error updating subscription:', error);
@@ -605,7 +615,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.deleteSubscription(id, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } catch (error) {
       console.error('Error deleting subscription:', error);
@@ -620,7 +630,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.paySubscription(id, payload, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } catch (error) {
       console.error('Error paying subscription:', error);
@@ -638,7 +648,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.changeSubscriptionPlan(id, payload, token);
-      await fetchData();
+      await refreshCoreLedger();
       return res;
     } catch (error) {
       console.error('Error changing subscription plan:', error);
@@ -900,6 +910,7 @@ export function useDashboardData(token: string | null) {
     selectedTransactionId,
     setSelectedTransactionId,
     fetchData,
+    refreshCoreLedger,
     handleSettleDebt,
     handleForgiveDebt,
     handleDeleteDebt,
