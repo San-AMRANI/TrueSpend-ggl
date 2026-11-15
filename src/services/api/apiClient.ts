@@ -71,8 +71,10 @@ export async function refreshAccessSession(): Promise<{ token: string; user: any
       });
 
       if (!response.ok) {
-        setApiAccessToken(null);
-        setStoredNativeRefreshToken(null);
+        if (response.status === 401 || response.status === 403) {
+          setApiAccessToken(null);
+          setStoredNativeRefreshToken(null);
+        }
         return null;
       }
 

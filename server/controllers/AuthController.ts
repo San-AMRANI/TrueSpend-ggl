@@ -26,33 +26,35 @@ function getClientContext(req: Request): RequestClientContext {
   };
 }
 
-function setRefreshCookie(req: Request, res: Response, cookieValue: string) {
+function getRefreshCookieOptions(req: Request) {
   const origin = req.headers.origin || '';
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
   const isCrossOriginCapacitor =
     origin === 'https://localhost' || origin === 'capacitor://localhost' || origin === 'ionic://localhost';
-  const secure = isProductionEnv() || Boolean(req.secure) || isCrossOriginCapacitor;
+  const isHttps = isProductionEnv() || Boolean(req.secure) || forwardedProto === 'https';
+  const isCrossSiteContext = req.headers['sec-fetch-site'] === 'cross-site' || Boolean(isCrossOriginCapacitor);
+  const useSameSiteNone = isCrossOriginCapacitor || (isHttps && isCrossSiteContext);
 
-  res.cookie(REFRESH_COOKIE_NAME, cookieValue, {
+  return {
     httpOnly: true,
-    secure,
-    sameSite: isCrossOriginCapacitor ? 'none' : 'lax',
+    secure: isHttps || isCrossOriginCapacitor,
+    sameSite: (useSameSiteNone ? 'none' : 'lax') as 'none' | 'lax',
     path: '/api/auth',
+  };
+}
+
+function setRefreshCookie(req: Request, res: Response, cookieValue: string) {
+  res.cookie(REFRESH_COOKIE_NAME, cookieValue, {
+    ...getRefreshCookieOptions(req),
     maxAge: REFRESH_SESSION_TTL_MS,
   });
 }
 
 function clearRefreshCookie(req: Request, res: Response) {
-  const origin = req.headers.origin || '';
-  const isCrossOriginCapacitor =
-    origin === 'https://localhost' || origin === 'capacitor://localhost' || origin === 'ionic://localhost';
-  const secure = isProductionEnv() || Boolean(req.secure) || isCrossOriginCapacitor;
-
-  res.clearCookie(REFRESH_COOKIE_NAME, {
-    httpOnly: true,
-    secure,
-    sameSite: isCrossOriginCapacitor ? 'none' : 'lax',
-    path: '/api/auth',
-  });
+  res.clearCookie(REFRESH_COOKIE_NAME, getRefreshCookieOptions(req));
 }
 
 function isDatabaseOrInfraError(error: any): boolean {

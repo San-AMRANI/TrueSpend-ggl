@@ -874,7 +874,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Everyday tracking: Overview, Transactions, simple Wallets, Budgets, Calendar, Debts, Goals, Subscriptions, Core Reports &amp; Conversational Spex AI.
+                  Simple, calm everyday tracking: Overview, Transactions, Wallets, Monthly Budgets, Calendar, Debts, Goals, Bills, Core Analytics &amp; Spex AI with direct action proposals.
                 </p>
               </div>
               <Button
@@ -909,7 +909,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Full suite: AI Forecast, Calculators Hub, Equities &amp; Binance sync, Statement CSV Import, Review Inbox, Contexts, Rules Engine, Spex AI Actions &amp; Drive/SQL Backups.
+                  Full suite: AI Forecast, Calculators Hub, Equities &amp; Binance sync, Statement CSV Import, Review Inbox, Contexts, Rules Engine, 360° Portfolio AI &amp; Drive/SQL Backups.
                 </p>
               </div>
               <Button

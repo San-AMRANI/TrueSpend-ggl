@@ -25,6 +25,9 @@ export const chatWithAi = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Messages array is required' });
     }
 
+    const experienceTier: 'basic' | 'advanced' =
+      (req as any).experienceTier === 'basic' ? 'basic' : 'advanced';
+
     const completion = await getChatCompletion(
       messages,
       contextData,
@@ -34,18 +37,19 @@ export const chatWithAi = async (req: Request, res: Response) => {
       allowFallback !== false,
       Array.isArray(focusScopes) ? focusScopes : undefined,
       responseDepth,
+      experienceTier,
     );
     const content = completion.choices?.[0]?.message?.content || '';
     const parsed = parseStructuredAiResponse(content);
-    const experienceTier = (req as any).experienceTier || 'advanced';
+    const rawActions = Array.isArray(parsed.actions) ? parsed.actions : [];
+    const actions =
+      experienceTier === 'basic'
+        ? rawActions.filter((a: any) => a?.type !== 'buy_stock' && a?.type !== 'record_dividend')
+        : rawActions;
+
     res.json({
       reply: String(parsed.reply || ''),
-      actions:
-        experienceTier === 'basic'
-          ? []
-          : Array.isArray(parsed.actions)
-          ? parsed.actions
-          : [],
+      actions,
       suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 4).map(String) : [],
       modelUsed: completion.modelUsed,
       requestedModel: completion.requestedModel,
@@ -55,14 +59,21 @@ export const chatWithAi = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Chat error in controller:', error);
+    const isBasic = (req as any).experienceTier === 'basic';
     res.status(200).json({
       reply: '⚠️ Spex is currently experiencing temporary high demand on cloud AI servers. Please try again in a moment, or tap a quick action below:',
       actions: [],
-      suggestions: [
-        '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
-        '📊 Run a complete financial health audit',
-        '💰 What can I safely spend today?',
-      ],
+      suggestions: isBasic
+        ? [
+            '💰 How much can I safely spend today?',
+            '📊 Give me a simple checkup of my spending',
+            '🎯 How are my budgets and savings goals doing?',
+          ]
+        : [
+            '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
+            '📊 Run a complete financial health audit',
+            '💰 What can I safely spend today?',
+          ],
       modelUsed: 'TrueSpend Emergency Fallback',
       quotaFallback: true,
       fallbackReason: error.message || 'Temporary upstream congestion',

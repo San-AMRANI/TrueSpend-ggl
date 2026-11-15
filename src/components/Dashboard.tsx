@@ -16,6 +16,7 @@ import { X, CheckCircle2, AlertCircle, Info, Calculator } from 'lucide-react';
 import {
   FEATURE_METADATA,
   getTabRequiredFeature,
+  hasFeatureAccess,
   isTabAvailableForUser,
 } from '../lib/entitlements';
 import type { DashboardTab, WalletsWorkbenchSection } from '../types';
@@ -704,16 +705,18 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setIsSmartCalcModalOpen(false);
-                setActiveTab('calculators');
-              }}
-              className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline px-2.5 py-1.5 cursor-pointer"
-            >
-              Open All 7 Simulators →
-            </button>
+            {hasFeatureAccess(tier, 'simulator') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSmartCalcModalOpen(false);
+                  setActiveTab('calculators');
+                }}
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline px-2.5 py-1.5 cursor-pointer"
+              >
+                Open All 7 Simulators →
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setIsSmartCalcModalOpen(false)}
@@ -755,10 +758,14 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
             debts={debts}
             transactions={transactions}
             investmentsData={investmentsData}
-            onOpenInvestments={() => {
-              setIsWalletsModalOpen(false);
-              setActiveTab('investments');
-            }}
+            onOpenInvestments={
+              hasFeatureAccess(tier, 'investments')
+                ? () => {
+                    setIsWalletsModalOpen(false);
+                    setActiveTab('investments');
+                  }
+                : undefined
+            }
             onClose={() => setIsWalletsModalOpen(false)}
             isModal={true}
             onCreateWallet={handleCreateWallet}

@@ -122,8 +122,8 @@ export const FEATURE_METADATA: Record<FeatureKey, FeatureMetadata> = {
   },
   'ai.basic': {
     key: 'ai.basic',
-    title: 'Spex AI Explanations',
-    description: 'Clear explanations and help understanding your own records.',
+    title: 'Spex AI Assistant & Proposed Actions',
+    description: 'Conversational insights, receipt scanning, action proposals & impact preview.',
   },
   'forecast.advanced': {
     key: 'forecast.advanced',
@@ -197,8 +197,8 @@ export const FEATURE_METADATA: Record<FeatureKey, FeatureMetadata> = {
   },
   'ai.advanced': {
     key: 'ai.advanced',
-    title: 'Spex AI Actions & Impact Simulation',
-    description: 'Simulate and execute AI-proposed financial ledger actions.',
+    title: 'Spex 360° Portfolio & Deep CFO Intelligence',
+    description: 'Binance & equity forensics, stock action proposals, deep context scopes & model routing.',
   },
   'backups.advanced': {
     key: 'backups.advanced',

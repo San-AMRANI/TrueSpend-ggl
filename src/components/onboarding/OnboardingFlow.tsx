@@ -323,7 +323,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                     <li>• Overview, Accounts &amp; Transactions</li>
                     <li>• Monthly Budgets &amp; Starter Templates</li>
                     <li>• Recurring Bills, Debts &amp; Savings Goals</li>
-                    <li>• Clean Analytics Charts &amp; Spex AI Q&amp;A</li>
+                    <li>• Clean Analytics &amp; Spex AI Action Proposals</li>
                   </ul>
                 </button>
 

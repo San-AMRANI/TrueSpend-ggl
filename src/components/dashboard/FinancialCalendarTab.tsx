@@ -63,7 +63,8 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   onPaySubscription,
   onDataChange,
 }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
   const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'cashflow'>('calendar');
   const [payingSubId, setPayingSubId] = useState<string | null>(null);
   const today = dateKey(new Date());
@@ -1089,7 +1090,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                             ? openTransaction(event.transactionId)
                             : event.debtId
                             ? setActiveTab('debts')
-                            : event.kind === 'dca' || event.kind === 'investment'
+                            : isAdvanced && (event.kind === 'dca' || event.kind === 'investment')
                             ? setActiveTab('investments')
                             : undefined
                         }
@@ -1098,7 +1099,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                         <div className="min-w-0">
                           <p className="font-medium text-gray-900 dark:text-gray-100">{event.title}</p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {event.kind === 'dca' ? 'Recommended 15% Payday Stock Allocation • Click to open Stocks' : event.kind}
+                            {event.kind === 'dca' && isAdvanced ? 'Recommended 15% Payday Stock Allocation • Click to open Stocks' : event.kind}
                           </p>
                         </div>
                         <span className="shrink-0 font-semibold text-gray-900 dark:text-gray-100">

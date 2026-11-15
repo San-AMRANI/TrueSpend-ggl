@@ -19,7 +19,21 @@ export interface EnqueueEmailParams {
   payload: Record<string, any>;
 }
 
+export type EmailDeliveryStatus = 'sent' | 'not_configured' | 'failed' | 'skipped';
+
+export interface EmailSendResult {
+  outboxId: string;
+  status: EmailDeliveryStatus;
+  delivered: boolean;
+  configured: boolean;
+  error?: string;
+}
+
 export class EmailService {
+  isEmailDeliveryConfigured(): boolean {
+    return Boolean((process.env.RESEND_API_KEY || '').trim());
+  }
+
   private getAppBaseUrl(): string {
     return (process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:3000').replace(
       /\/$/,
@@ -94,7 +108,8 @@ export class EmailService {
    * Transactional outbox write + asynchronous delivery attempt.
    * Email delivery failure never rolls back database state and remains retryable.
    */
-  async enqueueAndSend(params: EnqueueEmailParams): Promise<{ outboxId: string; status: string }> {
+  async enqueueAndSend(params: EnqueueEmailParams): Promise<EmailSendResult> {
+    const configured = this.isEmailDeliveryConfigured();
     let outboxId = '';
     try {
       const [inserted] = await db
@@ -112,7 +127,7 @@ export class EmailService {
       outboxId = inserted.id;
     } catch (err) {
       console.warn('[EmailService] Failed to insert outbox row:', (err as any)?.message || err);
-      return { outboxId: '', status: 'skipped' };
+      return { outboxId: '', status: 'skipped', delivered: false, configured };
     }
 
     return await this.deliverOutboxEntry(
@@ -130,36 +145,53 @@ export class EmailService {
     subject: string,
     templateName: EmailTemplateName,
     payload: Record<string, any>
-  ): Promise<{ outboxId: string; status: string }> {
+  ): Promise<EmailSendResult> {
     const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
     const emailFrom = (process.env.EMAIL_FROM || 'TrueSpend Security <no-reply@truespend.app>').trim();
     const html = this.renderHtml(templateName, payload);
 
-    try {
-      if (resendApiKey) {
-        const res = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: emailFrom,
-            to: [recipientEmail],
-            subject,
-            html,
-          }),
-        });
+    if (!resendApiKey) {
+      console.info(
+        `[EmailService] Outbox queued (${templateName}) -> ${recipientEmail} (RESEND_API_KEY is not configured; email was not transmitted).`
+      );
+      if (outboxId) {
+        await db
+          .update(emailOutbox)
+          .set({
+            status: 'not_configured',
+            attempts: 0,
+            lastError: 'RESEND_API_KEY is not configured on the server.',
+          })
+          .where(eq(emailOutbox.id, outboxId))
+          .catch(() => undefined);
+      }
+      return {
+        outboxId,
+        status: 'not_configured',
+        delivered: false,
+        configured: false,
+        error: 'RESEND_API_KEY is not configured on the server.',
+      };
+    }
 
-        if (!res.ok) {
-          const text = await res.text().catch(() => '');
-          throw new Error(`Email provider error (${res.status}): ${text.slice(0, 120)}`);
-        }
-      } else {
-        // Without external email credentials configured (local/dev preview), outbox records remain persisted and inspectable
-        console.info(
-          `[EmailService] Outbox queued (${templateName}) -> ${recipientEmail} (no RESEND_API_KEY configured).`
-        );
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: emailFrom,
+          to: [recipientEmail],
+          subject,
+          html,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Resend API error (${res.status}): ${text.slice(0, 180)}`);
       }
 
       if (outboxId) {
@@ -173,22 +205,31 @@ export class EmailService {
           })
           .where(eq(emailOutbox.id, outboxId));
       }
-      return { outboxId, status: 'sent' };
+      return { outboxId, status: 'sent', delivered: true, configured: true };
     } catch (err: any) {
+      const errMsg = String(err?.message || 'Send failed').slice(0, 240);
+      console.error(`[EmailService] Failed sending ${templateName} to ${recipientEmail}:`, errMsg);
       if (outboxId) {
         await db
           .update(emailOutbox)
           .set({
             status: 'failed',
             attempts: 1,
-            lastError: String(err?.message || 'Send failed').slice(0, 240),
+            lastError: errMsg,
           })
           .where(eq(emailOutbox.id, outboxId))
           .catch(() => undefined);
       }
-      return { outboxId, status: 'failed' };
+      return {
+        outboxId,
+        status: 'failed',
+        delivered: false,
+        configured: true,
+        error: errMsg,
+      };
     }
   }
 }
 
 export const emailService = new EmailService();
+

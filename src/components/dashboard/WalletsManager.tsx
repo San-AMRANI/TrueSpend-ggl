@@ -462,7 +462,9 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 <option value="Bank">Bank Account</option>
                 <option value="Cash">Physical Cash</option>
                 <option value="Savings">Savings / Emergency</option>
-                <option value="Investment">Brokerage / Investment / Crypto</option>
+                {isAdvanced && (
+                  <option value="Investment">Brokerage / Investment / Crypto</option>
+                )}
               </Select>
             </div>
 
@@ -476,9 +478,13 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 <option value="Checking">Checking / Current Account</option>
                 <option value="Savings">Savings / Emergency Vault</option>
                 <option value="Cash">Physical Cash</option>
-                <option value="Brokerage">Brokerage / Crypto Account</option>
-                <option value="CreditCard">Credit Card (Liability Account)</option>
-                <option value="Overdraft">Overdraft Line (Liability Account)</option>
+                {isAdvanced && (
+                  <>
+                    <option value="Brokerage">Brokerage / Crypto Account</option>
+                    <option value="CreditCard">Credit Card (Liability Account)</option>
+                    <option value="Overdraft">Overdraft Line (Liability Account)</option>
+                  </>
+                )}
               </Select>
             </div>
 
@@ -600,6 +606,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
       )}
 
       {/* Core Audit & Reconciliation Workbench Navigation */}
+      {isAdvanced && (
       <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/60 p-3 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -1709,6 +1716,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {reconcileNotice && (
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/30 p-3.5 text-xs font-medium text-emerald-800 dark:text-emerald-200 flex items-center justify-between gap-2">

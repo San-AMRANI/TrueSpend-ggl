@@ -28,6 +28,8 @@ import {
 } from '../src/middleware/auth.js';
 import { userManagementController } from '../server/controllers/UserManagementController.js';
 import { settingsService } from '../server/services/SettingsService.js';
+import { ACCESS_TOKEN_TTL_SECONDS } from '../server/services/AuthService.js';
+import { emailService } from '../server/services/EmailService.js';
 
 function createMockRes() {
   const headers: Record<string, string> = {};
@@ -249,6 +251,17 @@ async function runTests() {
       () => settingsService.validateBackupPreview('user-1', '-- Random SQL file\nDROP TABLE users;'),
       /Please select a SQL backup exported by TrueSpend/
     );
+  }
+
+  // 11. Access token TTL is 1 week (604,800 seconds) and EmailService reflects configuration state
+  {
+    assert.equal(ACCESS_TOKEN_TTL_SECONDS, 7 * 24 * 60 * 60);
+    const prevResend = process.env.RESEND_API_KEY;
+    process.env.RESEND_API_KEY = '';
+    assert.equal(emailService.isEmailDeliveryConfigured(), false);
+    process.env.RESEND_API_KEY = 're_test_dummy_key';
+    assert.equal(emailService.isEmailDeliveryConfigured(), true);
+    process.env.RESEND_API_KEY = prevResend;
   }
 
   console.log('✓ All security isolation, crypto, rate-limit, and auth guard tests passed');

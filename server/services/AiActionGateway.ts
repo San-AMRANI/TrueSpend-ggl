@@ -57,6 +57,17 @@ const permitted = new Set<AiAction['type']>([
   'confirm_payroll',
 ]);
 
+export const BASIC_PERMITTED_ACTIONS = new Set<AiAction['type']>([
+  'create_transaction',
+  'create_debt',
+  'update_settings',
+  'upsert_budget',
+  'settle_debt',
+  'create_goal',
+  'contribute_goal',
+  'confirm_payroll',
+]);
+
 export const sanitizeAiActions = (value: unknown): AiAction[] => {
   if (!Array.isArray(value)) return [];
   return value
@@ -82,7 +93,8 @@ export const sanitizeAiActions = (value: unknown): AiAction[] => {
  */
 export async function simulateAiActionsImpact(
   userId: string,
-  actions: AiAction[]
+  actions: AiAction[],
+  options?: { experienceTier?: 'basic' | 'advanced' }
 ): Promise<{
   baselineSafeToSpendMad: number;
   projectedSafeToSpendMad: number;
@@ -91,7 +103,9 @@ export async function simulateAiActionsImpact(
   emergencyBufferMad: number;
   simulations: AiActionSimulationResult[];
 }> {
-  const safe = sanitizeAiActions(actions);
+  const safe = sanitizeAiActions(actions).filter((action) =>
+    options?.experienceTier === 'basic' ? BASIC_PERMITTED_ACTIONS.has(action.type) : true
+  );
   const [userRow] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!userRow) {
     throw new Error('User not found for action simulation');
@@ -191,13 +205,22 @@ export async function simulateAiActionsImpact(
   };
 }
 
-export async function executeApprovedAiActions(userId: string, actions: AiAction[]) {
+export async function executeApprovedAiActions(
+  userId: string,
+  actions: AiAction[],
+  options?: { experienceTier?: 'basic' | 'advanced' }
+) {
   const safe = sanitizeAiActions(actions);
   if (!safe.length) throw new Error('No valid actions to approve');
 
   const results: unknown[] = [];
 
   for (const action of safe) {
+    if (options?.experienceTier === 'basic' && !BASIC_PERMITTED_ACTIONS.has(action.type)) {
+      throw new Error(
+        `Action "${action.type}" requires Investments in Advanced mode. Switch to Advanced mode in Settings to run stock actions.`
+      );
+    }
     const p: any = action.parameters;
 
     if (action.type === 'create_transaction') {

@@ -4,6 +4,7 @@ import { Debt, Payroll, Transaction, Wallet, CategoryBudget, Goal, Subscription,
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
+import { useAuth } from '../../context/AuthContext';
 import {
   PieChart,
   Pie,
@@ -120,6 +121,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   investmentsData = null,
   setActiveTab,
 }) => {
+  const { user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
   const [subView, setSubView] = useState<AnalyticsSubView>('overview');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -933,6 +936,252 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       },
     ];
   }, [selectedPeriodEntry, lastCompletedPeriodEntry, totalIncome, totalGrossOutflow, adjustedTrueSpendData, currentTotalLiquidity]);
+
+  if (!isAdvanced) {
+    const basicNetSaved = totalIncome - totalExpense;
+    const totalCategorySpent = categoryData.reduce((s, c) => s + c.value, 0);
+    const totalWalletSpent = walletData.reduce((s, w) => s + w.value, 0);
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              Spending Analytics
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Clear overview of your income, expenses, and category breakdown.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <Calendar className="h-4 w-4 text-gray-400" />
+            <Select
+              value={analyticsMonth}
+              onChange={(e) => setAnalyticsMonth(e.target.value)}
+              className="text-sm font-medium rounded-lg border-gray-200 dark:border-gray-700"
+            >
+              {availableMonths.map((month) => (
+                <option key={month} value={month}>
+                  {month}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+
+        {/* 3 Clean Summary KPIs */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="p-4 sm:p-5">
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Total Income
+              </span>
+              <p className="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
+                +{totalIncome.toFixed(2)} MAD
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 sm:p-5">
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Total Expenses
+              </span>
+              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white font-mono tabular-nums">
+                {totalExpense.toFixed(2)} MAD
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 sm:p-5">
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Net Saved
+              </span>
+              <p
+                className={`mt-2 text-2xl font-bold font-mono tabular-nums ${
+                  basicNetSaved >= 0
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-rose-600 dark:text-rose-400'
+                }`}
+              >
+                {basicNetSaved >= 0 ? '+' : ''}
+                {basicNetSaved.toFixed(2)} MAD
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Category Breakdown & Period/Account Comparison */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <PieChartIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                Spending by Category
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {categoryData.length > 0 ? (
+                <>
+                  <div className="h-[240px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={categoryData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={55}
+                          outerRadius={90}
+                          paddingAngle={2}
+                          dataKey="value"
+                          onClick={(entry: any) =>
+                            setSelectedCategory(entry?.name === selectedCategory ? null : entry?.name)
+                          }
+                        >
+                          {categoryData.map((_, index) => (
+                            <Cell key={`basic-cat-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(val: any) => [`${Number(val).toFixed(2)} MAD`, 'Spent']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {categoryData.map((cat, idx) => {
+                      const pct = totalCategorySpent > 0 ? (cat.value / totalCategorySpent) * 100 : 0;
+                      const active = selectedCategory === cat.name;
+                      return (
+                        <button
+                          key={cat.name}
+                          type="button"
+                          onClick={() => setSelectedCategory(active ? null : cat.name)}
+                          className={`w-full flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-xs transition-colors cursor-pointer ${
+                            active
+                              ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/30'
+                              : 'border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="h-2.5 w-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                            />
+                            <span className="truncate font-medium text-gray-800 dark:text-gray-200">
+                              {cat.name}
+                            </span>
+                          </span>
+                          <span className="font-mono tabular-nums font-semibold text-gray-900 dark:text-white shrink-0">
+                            {cat.value.toFixed(0)} MAD ({pct.toFixed(0)}%)
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                  No expenses recorded for this period yet.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="space-y-6">
+            {/* Period Comparison */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Period Comparison</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">{comparisonLabel}</p>
+                <p className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-white">
+                  {spendingChange.current.toFixed(2)} MAD
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {spendingChange.percentage === null
+                    ? `Previous period: ${spendingChange.previous.toFixed(2)} MAD`
+                    : `${spendingChange.percentage > 0 ? '+' : ''}${spendingChange.percentage.toFixed(1)}% vs previous (${spendingChange.previous.toFixed(0)} MAD)`}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Account Breakdown */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Spending by Account</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {walletData.length > 0 ? (
+                  walletData.map((w) => {
+                    const pct = totalWalletSpent > 0 ? (w.value / totalWalletSpent) * 100 : 0;
+                    return (
+                      <div key={w.name} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-medium text-gray-800 dark:text-gray-200">{w.name}</span>
+                          <span className="font-mono tabular-nums font-semibold text-gray-900 dark:text-white">
+                            {w.value.toFixed(0)} MAD ({pct.toFixed(0)}%)
+                          </span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                          <div className="h-full rounded-full bg-indigo-500" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                    No account spending recorded in this period.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Drill-down when category clicked */}
+        {activeCategory && (
+          <Card className="border-indigo-200 dark:border-indigo-850 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-base">{activeCategory}</CardTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {selectedCategoryTransactions.length} transactions · {selectedCategoryTotal.toFixed(2)} MAD
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Close category details"
+                onClick={() => setSelectedCategory(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="divide-y divide-gray-100 dark:divide-gray-800 max-h-80 overflow-y-auto">
+              {selectedCategoryTransactions.map((tx) => (
+                <div key={tx.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-gray-900 dark:text-gray-100">
+                      {tx.notes || activeCategory}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {format(new Date(tx.createdAt), 'MMM d, yyyy')}
+                    </p>
+                  </div>
+                  <span className="font-mono font-semibold text-gray-900 dark:text-gray-100 shrink-0">
+                    {(tx.type === 'Expense' ? netExpenseOf(tx) : parseFloat(tx.amount)).toFixed(2)} MAD
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

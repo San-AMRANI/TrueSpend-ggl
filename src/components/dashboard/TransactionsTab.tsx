@@ -94,7 +94,8 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   selectedTransactionId,
   onSelectionHandled,
 }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
   const [filters, setFilters] = useState<TransactionFilters>(initialFilters);
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
@@ -765,7 +766,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
               })()}
 
               {/* Connected Stock Order / Equity Trade Card */}
-              {(() => {
+              {isAdvanced && (() => {
                 const matchedOrder = getMatchedStockOrder(inspectingTx);
                 const isInvTransfer =
                   inspectingTx.type === 'Transfer' &&
@@ -1245,9 +1246,11 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         <CardHeader className="flex flex-col gap-4 border-b border-gray-100 dark:border-gray-800 pb-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <CardTitle className="text-xl">Transactions Ledger</CardTitle>
+              <CardTitle className="text-xl">{isAdvanced ? 'Transactions Ledger' : 'Transactions'}</CardTitle>
               <p className="mt-1 text-sm font-normal text-gray-500 dark:text-gray-400">
-                Search, filter, batch-edit, export, and inspect interconnected financial records.
+                {isAdvanced
+                  ? 'Search, filter, batch-edit, export, and inspect interconnected financial records.'
+                  : 'Search, filter, and manage your expenses, income, and transfers.'}
               </p>
             </div>
 
@@ -1405,6 +1408,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
             >
               🔄 Transfers
             </button>
+            {isAdvanced && (
             <button
               onClick={() => setQuickPreset(quickPreset === 'stocks' ? 'all' : 'stocks')}
               className={`rounded-full px-3 py-1 font-medium transition-all whitespace-nowrap ${
@@ -1415,6 +1419,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
             >
               📈 Stock Orders &amp; Reserve
             </button>
+            )}
             <button
               onClick={() => setQuickPreset(quickPreset === 'split' ? 'all' : 'split')}
               className={`rounded-full px-3 py-1 font-medium transition-all whitespace-nowrap ${

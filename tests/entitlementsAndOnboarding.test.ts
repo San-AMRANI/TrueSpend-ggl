@@ -10,6 +10,7 @@ import {
   normalizeExperienceTier,
 } from '../src/lib/entitlements.js';
 import { STARTER_TEMPLATES } from '../server/services/TemplateService.js';
+import { BASIC_PERMITTED_ACTIONS } from '../server/services/AiActionGateway.js';
 import type { DashboardTab, FeatureKey } from '../src/types/index.js';
 
 async function runTests() {
@@ -142,6 +143,20 @@ async function runTests() {
         assert.equal(hasInvWallet, false, `Basic template ${tpl.id} must not seed Investment wallet`);
       }
     }
+  }
+
+  // 5. Basic mode permits core AI action proposals while blocking Advanced-only stock actions
+  {
+    assert.equal(BASIC_PERMITTED_ACTIONS.has('create_transaction'), true);
+    assert.equal(BASIC_PERMITTED_ACTIONS.has('upsert_budget'), true);
+    assert.equal(BASIC_PERMITTED_ACTIONS.has('create_debt'), true);
+    assert.equal(BASIC_PERMITTED_ACTIONS.has('settle_debt'), true);
+    assert.equal(BASIC_PERMITTED_ACTIONS.has('create_goal'), true);
+    assert.equal(BASIC_PERMITTED_ACTIONS.has('contribute_goal'), true);
+    assert.equal(BASIC_PERMITTED_ACTIONS.has('confirm_payroll'), true);
+    assert.equal(BASIC_PERMITTED_ACTIONS.has('update_settings'), true);
+    assert.equal(BASIC_PERMITTED_ACTIONS.has('buy_stock'), false);
+    assert.equal(BASIC_PERMITTED_ACTIONS.has('record_dividend'), false);
   }
 
   console.log('✓ All entitlements, tier gating, and starter template catalog tests passed');

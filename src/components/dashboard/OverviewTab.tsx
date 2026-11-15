@@ -132,6 +132,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   openTransaction,
   handleSettle,
   onDataChange,
+  onOpenQuickTransaction,
 }) => {
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
   const { token, user } = useAuth();
@@ -542,6 +543,497 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
   const maskMoney = (amount: number, decimals = 0, suffix = ' MAD') =>
     isPrivacyMode ? `••••${suffix ? suffix : ''}` : `${amount.toFixed(decimals)}${suffix}`;
+
+  if (!isAdvanced) {
+    const basicAccounts = (kpis?.accounts || []).filter((acc) => acc.type !== 'Investment');
+    const netThisMonth = cycleIncome - monthlyActual;
+    const pendingReceivableDebts = debts.filter(
+      (debt) => debt.type === 'Receivable' && debt.status === 'Pending',
+    );
+    const pendingPayableDebts = debts.filter(
+      (debt) => debt.type === 'Payable' && debt.status === 'Pending',
+    );
+    const topBasicDebts = [...pendingReceivableDebts, ...pendingPayableDebts].slice(0, 3);
+
+    return (
+      <div className="min-w-0 overflow-x-hidden space-y-4">
+        <GettingStartedChecklist
+          onNavigateTab={setActiveTab}
+          onRelaunchWizard={() => window.dispatchEvent(new CustomEvent('truespend:openOnboarding'))}
+        />
+
+        {!currentFm && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 flex flex-wrap items-center justify-between gap-2">
+            <span>
+              Set your payday cycle in Calendar to align monthly budgets and daily allowance.
+            </span>
+            <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab('calendar')}>
+              Open Calendar
+            </Button>
+          </div>
+        )}
+
+        {/* Top Row: Safe to Spend + Daily Allowance + This Month */}
+        <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-12 items-stretch">
+          {/* Available Balance / Safe to Spend */}
+          <Card className="lg:col-span-5 min-w-0 border-transparent bg-gradient-to-br from-gray-900 via-gray-900 to-indigo-950 text-white flex flex-col justify-between">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium text-gray-300">
+                <Shield className="h-4 w-4 text-indigo-400" />
+                <span>Safe to Spend</span>
+                <button
+                  type="button"
+                  onClick={togglePrivacyMode}
+                  title={isPrivacyMode ? 'Show balances' : 'Hide balances'}
+                  className="ml-1 p-1 rounded-md text-gray-400 hover:text-white hover:bg-gray-800/80 transition-colors cursor-pointer"
+                >
+                  {isPrivacyMode ? (
+                    <EyeOff className="h-4 w-4 text-amber-400" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-gray-400 hover:text-white" />
+                  )}
+                </button>
+              </CardTitle>
+              <button
+                type="button"
+                onClick={() => setActiveTab('accounts')}
+                className="text-xs font-medium text-indigo-300 hover:text-white bg-indigo-900/40 hover:bg-indigo-900/80 border border-indigo-700/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <WalletCards className="h-3.5 w-3.5" /> Accounts
+              </button>
+            </CardHeader>
+
+            <CardContent className="pt-1 space-y-4">
+              <div>
+                <div className="text-3xl font-bold sm:text-4xl font-mono tabular-nums tracking-tight">
+                  <AnimatedMetricValue
+                    value={kpis?.safeToSpend ?? 0}
+                    masked={isPrivacyMode}
+                    maskText="******"
+                  />{' '}
+                  <span className="text-lg text-gray-400 font-normal">MAD</span>
+                </div>
+                <p className="mt-1 text-xs text-gray-400 font-mono tabular-nums">
+                  Total cash &amp; bank:{' '}
+                  {isPrivacyMode ? '****' : `${nonInvestmentLiquidity.toFixed(2)} MAD`}
+                  {(kpis?.emergencyBuffer ?? 0) > 0 && (
+                    <> · Buffer: {isPrivacyMode ? '****' : `${(kpis?.emergencyBuffer ?? 0).toFixed(0)} MAD`}</>
+                  )}
+                </p>
+              </div>
+
+              {basicAccounts.length > 0 && (
+                <div className="space-y-1.5 rounded-xl bg-gray-950/45 p-3 border border-gray-800/70">
+                  {basicAccounts.slice(0, 4).map((acc) => (
+                    <div
+                      key={acc.id}
+                      className="flex items-center justify-between gap-2 text-xs font-mono tabular-nums"
+                    >
+                      <span className="flex items-center gap-1.5 min-w-0 text-gray-300 font-sans">
+                        {acc.type === 'Bank' ? (
+                          <Landmark className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
+                        ) : acc.type === 'Cash' ? (
+                          <Banknote className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                        ) : (
+                          <WalletCards className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+                        )}
+                        <span className="truncate">{acc.name}</span>
+                      </span>
+                      <span className="font-semibold text-white shrink-0">
+                        {isPrivacyMode ? '****' : `${acc.balance.toFixed(2)} MAD`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {onOpenQuickTransaction && (
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => onOpenQuickTransaction('Expense')}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-2 px-3 transition-colors cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add Expense
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenQuickTransaction('Income')}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-100 border border-gray-700 text-xs font-semibold py-2 px-3 transition-colors cursor-pointer"
+                  >
+                    <ArrowDownRight className="h-3.5 w-3.5 text-emerald-400" /> Add Income
+                  </button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Right Column: Daily Allowance + This Month + Top Categories */}
+          <div className="lg:col-span-7 flex flex-col gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Daily Allowance */}
+              <Card className="min-w-0">
+                <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full">
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                        Daily Allowance
+                      </span>
+                      <span className="text-[11px] font-mono tabular-nums text-gray-400">
+                        {kpis?.daysUntilPayday ?? 0}d to payday
+                      </span>
+                    </div>
+                    <div
+                      className={`mt-1.5 text-2xl sm:text-3xl font-bold font-mono tabular-nums ${
+                        dailyStatusStyles[kpis?.dailyStatus || 'on_track']
+                      }`}
+                    >
+                      <AnimatedMetricValue
+                        value={kpis?.dailyRemaining ?? 0}
+                        masked={isPrivacyMode}
+                        maskText="******"
+                      />{' '}
+                      <span className="text-sm font-normal text-gray-400">MAD</span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+                      {isPrivacyMode
+                        ? '•••• spent today'
+                        : `${(kpis?.dailySpent ?? 0).toFixed(0)} / ${(kpis?.dailyAllowance ?? 0).toFixed(0)} MAD limit`}
+                    </p>
+                  </div>
+                  <AnimatedProgressBar
+                    className="mt-3"
+                    trackClassName="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
+                    percent={kpis?.dailyUsagePercent ?? 0}
+                    barClassName={
+                      (kpis?.dailyUsagePercent ?? 0) > 100
+                        ? 'bg-rose-500'
+                        : (kpis?.dailyUsagePercent ?? 0) > 80
+                        ? 'bg-amber-500'
+                        : 'bg-indigo-600'
+                    }
+                  />
+                </CardContent>
+              </Card>
+
+              {/* This Month Summary */}
+              <Card className="min-w-0">
+                <CardContent className="p-4 sm:p-5 flex flex-col justify-between h-full">
+                  <div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                        This Month
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('analytics')}
+                        className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        Analytics →
+                      </button>
+                    </div>
+                    <div className="mt-2 space-y-2 text-sm font-mono tabular-nums">
+                      <div className="flex items-center justify-between">
+                        <span className="font-sans text-xs text-gray-500 dark:text-gray-400">Income</span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          +{maskMoney(cycleIncome, 0)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-sans text-xs text-gray-500 dark:text-gray-400">Expenses</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          −{maskMoney(monthlyActual, 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-2.5 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-xs font-mono tabular-nums">
+                    <span className="font-sans text-gray-500 dark:text-gray-400">Net</span>
+                    <span
+                      className={`font-bold ${
+                        netThisMonth >= 0
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-rose-600 dark:text-rose-400'
+                      }`}
+                    >
+                      {netThisMonth >= 0 ? '+' : ''}
+                      {maskMoney(netThisMonth, 0)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Top Monthly Spending & Budgets */}
+            <Card className="flex-1">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-sm sm:text-base">Monthly Spending</CardTitle>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('budgets')}
+                  className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                >
+                  Budgets →
+                </button>
+              </CardHeader>
+              <CardContent className="space-y-2.5">
+                {topCategories.length > 0 ? (
+                  topCategories.slice(0, 4).map((cat) => {
+                    const pct =
+                      cat.budgeted > 0
+                        ? Math.min(100, (cat.spent / cat.budgeted) * 100)
+                        : cat.spent > 0
+                        ? 100
+                        : 0;
+                    const over = cat.budgeted > 0 && cat.spent > cat.budgeted;
+                    return (
+                      <div key={cat.category} className="space-y-1">
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="font-medium text-gray-800 dark:text-gray-200 truncate">
+                            {cat.category}
+                          </span>
+                          <span className="font-mono tabular-nums text-[11px] shrink-0">
+                            <span
+                              className={`font-semibold ${
+                                over ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white'
+                              }`}
+                            >
+                              {isPrivacyMode ? '••••' : cat.spent.toFixed(0)}
+                            </span>
+                            <span className="text-gray-400">
+                              {cat.budgeted > 0
+                                ? ` / ${isPrivacyMode ? '••••' : cat.budgeted.toFixed(0)} MAD`
+                                : ' MAD'}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                          <div
+                            className={`h-full rounded-full ${
+                              over ? 'bg-rose-500' : cat.budgeted > 0 ? 'bg-indigo-500' : 'bg-gray-400 dark:bg-gray-600'
+                            }`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                    No category expenses recorded yet this month.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Bottom Row: Recent Transactions + Goals / Bills / Debts */}
+        <div className="grid min-w-0 gap-4 lg:grid-cols-12 items-stretch">
+          <Card className="min-w-0 lg:col-span-7 flex flex-col justify-between">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+              <CardTitle className="text-sm sm:text-base">Recent Transactions</CardTitle>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setActiveTab('transactions')}>
+                View all →
+              </Button>
+            </CardHeader>
+            <CardContent className="min-w-0 flex-1">
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {transactions.slice(0, 6).map((transaction) => {
+                  const gross = Number.parseFloat(transaction.amount) || 0;
+                  return (
+                    <button
+                      key={transaction.id}
+                      type="button"
+                      onClick={() => openTransaction(transaction.id)}
+                      className="flex w-full min-w-0 items-center justify-between gap-2.5 py-2.5 text-left first:pt-0 last:pb-0 hover:bg-gray-50 dark:hover:bg-gray-800/40 rounded-lg px-1.5 -mx-1.5 transition-colors cursor-pointer"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                            transaction.type === 'Income'
+                              ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400'
+                              : transaction.type === 'Transfer'
+                              ? 'bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400'
+                              : 'bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {transaction.type === 'Income' ? (
+                            <ArrowDownRight className="h-4 w-4" />
+                          ) : transaction.type === 'Transfer' ? (
+                            <RefreshCw className="h-4 w-4" />
+                          ) : (
+                            <ArrowUpRight className="h-4 w-4" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {transaction.notes || transaction.category || transaction.type}
+                          </p>
+                          <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                            {format(new Date(transaction.createdAt), 'MMM d')} ·{' '}
+                            {kpis?.accounts?.find((w) => w.id === transaction.walletId)?.name || 'Wallet'}
+                          </p>
+                        </div>
+                      </div>
+                      <span
+                        className={`shrink-0 whitespace-nowrap text-sm font-semibold font-mono tabular-nums ${
+                          transaction.type === 'Income'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-gray-900 dark:text-gray-100'
+                        }`}
+                      >
+                        {transaction.type === 'Expense' ? '−' : transaction.type === 'Income' ? '+' : ''}
+                        {isPrivacyMode ? '••••' : `${gross.toFixed(2)} MAD`}
+                      </span>
+                    </button>
+                  );
+                })}
+                {transactions.length === 0 && (
+                  <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    No transactions yet.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="lg:col-span-5 flex flex-col gap-4">
+            {/* Savings Goals */}
+            <Card className="min-w-0">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
+                  <Target className="h-4 w-4 text-indigo-500" />
+                  <span>Savings Goals</span>
+                </CardTitle>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('goals')}
+                  className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                >
+                  Manage →
+                </button>
+              </CardHeader>
+              <CardContent className="space-y-2.5">
+                {goals.slice(0, 2).map((g) => {
+                  const target = parseFloat(g.targetAmount) || 0;
+                  const current = parseFloat(g.currentAmount) || 0;
+                  const progress = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+                  return (
+                    <div
+                      key={g.id}
+                      onClick={() => setActiveTab('goals')}
+                      className="cursor-pointer rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/40 p-2.5 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-gray-900 dark:text-white truncate">{g.name}</span>
+                        <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {progress.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                        <div
+                          className="h-full rounded-full bg-indigo-500"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+                {goals.length === 0 && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">No savings goals yet.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Bills & Recurring */}
+            <Card className="min-w-0">
+              <CardContent className="p-4 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                    <Repeat className="h-3.5 w-3.5 text-indigo-500" />
+                    Recurring Bills
+                  </p>
+                  <p className="text-lg font-bold font-mono tabular-nums text-gray-900 dark:text-white mt-0.5">
+                    {maskMoney(monthlySubBurn, 0)}
+                    <span className="text-xs font-normal text-gray-400">
+                      {' '}/mo ({activeSubs.length} active)
+                    </span>
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setActiveTab('subscriptions')}
+                  className="text-xs shrink-0"
+                >
+                  Manage →
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Pending Debts & Splits */}
+            <Card className="min-w-0 flex-1">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
+                <CardTitle className="text-sm sm:text-base">Pending Debts &amp; Splits</CardTitle>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('debts')}
+                  className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                >
+                  View all →
+                </button>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {topBasicDebts.map((debt) => (
+                  <div
+                    key={debt.id}
+                    className="flex items-center justify-between gap-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/40 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">
+                        {debt.contactName}{' '}
+                        <span className="font-normal text-gray-400">
+                          ({debt.type === 'Receivable' ? 'owes you' : 'you owe'})
+                        </span>
+                      </p>
+                      <p className="text-[11px] font-mono tabular-nums text-gray-500 dark:text-gray-400">
+                        {maskMoney(Number.parseFloat(debt.remainingBalance), 2)}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2.5 text-xs shrink-0"
+                      onClick={() => setSettlingDebt(debt)}
+                    >
+                      Settle
+                    </Button>
+                  </div>
+                ))}
+                {topBasicDebts.length === 0 && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    No pending debts or splits.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        <SettleDebtModal
+          debt={settlingDebt}
+          wallets={kpis?.accounts}
+          onClose={() => setSettlingDebt(null)}
+          onConfirm={async (debtId, amount, category, walletId) => {
+            await handleSettle(debtId, amount, category, walletId);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-w-0 overflow-x-hidden space-y-4 sm:space-y-5">

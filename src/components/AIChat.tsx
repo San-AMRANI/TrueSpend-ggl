@@ -338,6 +338,13 @@ const FALLBACK_SUGGESTIONS = [
   '💳 Analyze all my transactions and spending categories',
 ];
 
+const BASIC_STARTER_SUGGESTIONS = [
+  '💰 How much can I safely spend today?',
+  '📊 Give me a simple checkup of my spending',
+  '☕ Log coffee 30 MAD cash',
+  '🎯 How are my budgets and savings goals doing?',
+];
+
 export interface ModelOption {
   id: string;
   name: string;
@@ -468,7 +475,19 @@ export interface ChatConversation {
 const CONVERSATIONS_STORAGE_KEY = 'truespend_chat_conversations_v1';
 const ACTIVE_CONVERSATION_STORAGE_KEY = 'truespend_active_conversation_id';
 
-function createDefaultWelcomeMessage(focusScopes: AiDataFocusScope[] = ['all']): Message {
+function createDefaultWelcomeMessage(
+  focusScopes: AiDataFocusScope[] = ['all'],
+  isBasic = false,
+): Message {
+  if (isBasic) {
+    return {
+      role: 'assistant',
+      content:
+        "Hi! 👋 I'm **Spex**, your everyday TrueSpend assistant.\n\nAsk me how much you can safely spend, check your budgets and savings goals, scan a receipt photo, or tell me an expense (like *\"coffee 30 MAD cash\"*) and I'll prepare the action for you to approve.",
+      timestamp: Date.now(),
+      suggestions: BASIC_STARTER_SUGGESTIONS,
+    };
+  }
   const primaryScope =
     DATA_FOCUS_SCOPES.find((s) => s.id === focusScopes[0]) || DATA_FOCUS_SCOPES[0];
   return {
@@ -714,7 +733,7 @@ function MessageBubble({
             state={idx === 0 ? 'waving' : 'idle'}
           />
           <span className="text-[11px] text-gray-700 dark:text-gray-200 font-semibold">Spex</span>
-          {msg.modelUsed ? (
+          {user?.experienceTier === 'advanced' && msg.modelUsed ? (
             <span
               className={cn(
                 'text-[9px] font-mono px-1.5 py-0.5 rounded-md border flex items-center gap-1 shadow-2xs',
@@ -728,7 +747,7 @@ function MessageBubble({
               {msg.modelUsed.replace('gemini-', '')}
             </span>
           ) : null}
-          {msg.focusScopesUsed && msg.focusScopesUsed.length > 0 && (
+          {user?.experienceTier === 'advanced' && msg.focusScopesUsed && msg.focusScopesUsed.length > 0 && (
             <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 truncate max-w-[140px] sm:max-w-none">
               🎯{' '}
               {msg.focusScopesUsed.includes('all')
@@ -738,12 +757,12 @@ function MessageBubble({
                     .join(' + ')}
             </span>
           )}
-          {msg.responseTimeMs ? (
+          {user?.experienceTier === 'advanced' && msg.responseTimeMs ? (
             <span className="hidden sm:inline text-[9px] text-gray-400 dark:text-gray-500 font-mono">
               {(msg.responseTimeMs / 1000).toFixed(1)}s
             </span>
           ) : null}
-          {msg.quotaFallback && (
+          {user?.experienceTier === 'advanced' && msg.quotaFallback && (
             <span
               className="hidden sm:inline text-[8px] font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-1 py-0.2 rounded"
               title={msg.fallbackReason}
@@ -840,7 +859,7 @@ function MessageBubble({
                 ? 'Proposed Financial Action'
                 : `${msg.actions.length} Proposed Actions`}
             </span>
-            {msg.actions.length > 1 && !msg.actionStatus && user?.experienceTier === 'advanced' && (
+            {msg.actions.length > 1 && !msg.actionStatus && (
               <button
                 type="button"
                 onClick={() => onAction(idx, true)}
@@ -970,38 +989,32 @@ function MessageBubble({
           )}
 
           {!msg.actionStatus ? (
-            user?.experienceTier === 'advanced' ? (
-              <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  disabled={msg.simulatingActions}
-                  onClick={() => onAction(idx, 'simulate')}
-                  className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 px-3 py-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors flex items-center gap-1 disabled:opacity-50"
-                >
-                  <Zap className="w-3 h-3" />
-                  {msg.simulatingActions ? 'Simulating...' : msg.impactSimulation ? 'Re-simulate' : 'Simulate Impact'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onAction(idx, true)}
-                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 transition-colors shadow-xs flex items-center gap-1"
-                >
-                  <Check className="w-3 h-3" />
-                  Approve
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onAction(idx, false)}
-                  className="rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-indigo-950 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 transition-colors"
-                >
-                  ✕ Reject
-                </button>
-              </div>
-            ) : (
-              <p className="mt-2.5 text-[11px] text-gray-600 dark:text-gray-300">
-                Conversational guidance only in Basic Mode — switch to Advanced (Free) in Settings to simulate or execute ledger actions.
-              </p>
-            )
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={msg.simulatingActions}
+                onClick={() => onAction(idx, 'simulate')}
+                className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 px-3 py-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors flex items-center gap-1 disabled:opacity-50"
+              >
+                <Zap className="w-3 h-3" />
+                {msg.simulatingActions ? 'Simulating...' : msg.impactSimulation ? 'Re-simulate' : 'Simulate Impact'}
+              </button>
+              <button
+                type="button"
+                onClick={() => onAction(idx, true)}
+                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 transition-colors shadow-xs flex items-center gap-1"
+              >
+                <Check className="w-3 h-3" />
+                Approve
+              </button>
+              <button
+                type="button"
+                onClick={() => onAction(idx, false)}
+                className="rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-indigo-950 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 transition-colors"
+              >
+                ✕ Reject
+              </button>
+            </div>
           ) : (
             <p
               className={cn(
@@ -1033,6 +1046,9 @@ function MessageBubble({
 }
 
 export function AIChat({ onDataChange }: AIChatProps = {}) {
+  const { token, user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
+
   // Data Context Focus Selection (supports 'all' or multi-selecting specific scopes)
   const [focusScopes, setFocusScopes] = useState<AiDataFocusScope[]>(() => {
     try {
@@ -1221,7 +1237,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         focusScopes: scopesToUse,
         responseDepth,
         pinned: false,
-        messages: [createDefaultWelcomeMessage(scopesToUse)],
+        messages: [createDefaultWelcomeMessage(scopesToUse, !isAdvanced)],
       };
 
       setConversations((prev) => [newConv, ...prev]);
@@ -1233,7 +1249,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         setShowMobileControlsSheet(false);
       }
     },
-    [focusScopes, responseDepth],
+    [focusScopes, responseDepth, isAdvanced],
   );
 
   const handleSelectConversation = useCallback((conv: ChatConversation) => {
@@ -1264,7 +1280,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             focusScopes,
             responseDepth,
             pinned: false,
-            messages: [createDefaultWelcomeMessage(focusScopes)],
+            messages: [createDefaultWelcomeMessage(focusScopes, !isAdvanced)],
           };
           setActiveConversationId(fresh.id);
           return [fresh];
@@ -1275,7 +1291,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         return remaining;
       });
     },
-    [activeConversationId, focusScopes, responseDepth],
+    [activeConversationId, focusScopes, responseDepth, isAdvanced],
   );
 
   const handleTogglePinConversation = useCallback((convId: string, e?: React.MouseEvent) => {
@@ -1378,7 +1394,6 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const [voiceSupported] = useState(
     () => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window,
   );
-  const { token, user } = useAuth();
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -1459,9 +1474,10 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         goals,
         subscriptions,
         contexts,
-        investmentsData,
-        focusScopes,
-        responseDepth,
+        investmentsData: isAdvanced ? investmentsData : null,
+        focusScopes: isAdvanced ? focusScopes : ['all'],
+        responseDepth: isAdvanced ? responseDepth : 'concise',
+        experienceTier: isAdvanced ? 'advanced' : 'basic',
       }),
     [
       kpis,
@@ -1475,6 +1491,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       investmentsData,
       focusScopes,
       responseDepth,
+      isAdvanced,
     ],
   );
 
@@ -1541,17 +1558,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         currentAudioRef.current = null;
       }
       setPlayingAudioIndex(null);
-      const primaryScope =
-        DATA_FOCUS_SCOPES.find((s) => s.id === focusScopes[0]) || DATA_FOCUS_SCOPES[0];
-      setMessages([
-        {
-          role: 'assistant',
-          content:
-            'Fresh session started! 👋 Select any **Data Focus** scope above (or keep **All at Once**) and ask me anything about your stocks, Binance positions, transactions, budgets, or wallets.',
-          timestamp: Date.now(),
-          suggestions: primaryScope.prompts,
-        },
-      ]);
+      setMessages([createDefaultWelcomeMessage(focusScopes, !isAdvanced)]);
     }
   };
 
@@ -1724,10 +1731,10 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             image: currentImage
               ? { data: currentImage.data, mimeType: currentImage.mimeType }
               : undefined,
-            selectedModel: selectedModel === 'auto' ? 'auto' : selectedModel,
+            selectedModel: !isAdvanced || selectedModel === 'auto' ? 'auto' : selectedModel,
             allowFallback,
-            focusScopes,
-            responseDepth,
+            focusScopes: isAdvanced ? focusScopes : ['all'],
+            responseDepth: isAdvanced ? responseDepth : 'concise',
           }),
         });
 
@@ -1756,14 +1763,16 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 actions: unwrapped.actions,
                 suggestions: unwrapped.suggestions?.length
                   ? unwrapped.suggestions
-                  : FALLBACK_SUGGESTIONS,
+                  : isAdvanced
+                  ? FALLBACK_SUGGESTIONS
+                  : BASIC_STARTER_SUGGESTIONS,
                 modelUsed: data.modelUsed,
                 requestedModel: data.requestedModel,
                 responseTimeMs: data.responseTimeMs,
                 quotaFallback: data.quotaFallback,
                 fallbackReason: data.fallbackReason,
-                focusScopesUsed: focusScopes,
-                responseDepthUsed: responseDepth,
+                focusScopesUsed: (isAdvanced ? focusScopes : ['all']) as AiDataFocusScope[],
+                responseDepthUsed: (isAdvanced ? responseDepth : 'concise') as AiResponseDepth,
                 timestamp: Date.now(),
               },
             ];
@@ -1809,11 +1818,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             role: 'assistant',
             content: errorMessage,
             timestamp: Date.now(),
-            suggestions: [
-              '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
-              '📊 Run a complete financial health audit',
-              '💰 What can I safely spend today?',
-            ],
+            suggestions: isAdvanced ? FALLBACK_SUGGESTIONS : BASIC_STARTER_SUGGESTIONS,
           },
         ]);
       } finally {
@@ -1832,6 +1837,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       allowFallback,
       focusScopes,
       responseDepth,
+      isAdvanced,
       fetchModelStatuses,
       isVoiceMode,
       handleSpeak,
@@ -1991,6 +1997,14 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const lastAssistantMsg = [...messages].reverse().find((m) => m.role === 'assistant');
 
   const activeSuggestions = useMemo(() => {
+    if (!isAdvanced) {
+      if (messages.length <= 1) {
+        return BASIC_STARTER_SUGGESTIONS;
+      }
+      return lastAssistantMsg?.suggestions?.length
+        ? lastAssistantMsg.suggestions
+        : BASIC_STARTER_SUGGESTIONS;
+    }
     if (!focusScopes.includes('all')) {
       return primaryFocusScopeObj.prompts;
     }
@@ -2000,7 +2014,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     return lastAssistantMsg?.suggestions?.length
       ? lastAssistantMsg.suggestions
       : currentTopicData.prompts;
-  }, [focusScopes, primaryFocusScopeObj, messages.length, currentTopicData, lastAssistantMsg]);
+  }, [isAdvanced, focusScopes, primaryFocusScopeObj, messages.length, currentTopicData, lastAssistantMsg]);
 
   const charLimit = 4000;
   const charsLeft = charLimit - input.length;
@@ -2080,14 +2094,17 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate leading-tight">
-                  Spex •{' '}
-                  {focusScopes.includes('all')
-                    ? '360° All Data'
-                    : focusScopes
-                        .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
-                        .join(' + ')}{' '}
-                  •{' '}
-                  {RESPONSE_DEPTH_OPTIONS.find((r) => r.id === responseDepth)?.shortLabel || 'Deep'}
+                  {isAdvanced
+                    ? `Spex • ${
+                        focusScopes.includes('all')
+                          ? '360° All Data'
+                          : focusScopes
+                              .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
+                              .join(' + ')
+                      } • ${
+                        RESPONSE_DEPTH_OPTIONS.find((r) => r.id === responseDepth)?.shortLabel || 'Deep'
+                      }`
+                    : 'Spex • Everyday Assistant'}
                 </p>
               </div>
             </button>
@@ -2152,7 +2169,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           </div>
         </div>
 
-        {/* ─── Mobile Slim Status & Quick-Access Bar ─────────────── */}
+        {/* ─── Mobile Slim Status & Quick-Access Bar (Advanced Only) ─── */}
+        {isAdvanced && (
         <div className="sm:hidden flex items-center justify-between gap-1.5 px-3 py-1.5 bg-gray-50/95 dark:bg-gray-900/95 border-b border-gray-200/70 dark:border-gray-800/80 flex-shrink-0 z-20">
           <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto no-scrollbar">
             <button
@@ -2212,6 +2230,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             />
           </button>
         </div>
+        )}
 
         {/* ─── Mobile Ordered Controls & Focus Sheet ─────────────── */}
         {showMobileControlsSheet && (
@@ -2245,6 +2264,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               </div>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                {isAdvanced && (
+                <>
                 {/* 1. Data Context Focus Grid */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -2378,13 +2399,16 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                     })}
                   </div>
                 </div>
+                </>
+                )}
 
                 {/* 4. Model Routing & Thread Utilities */}
                 <div>
                   <span className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-                    4. AI Model &amp; Thread Tools
+                    {isAdvanced ? '4. AI Model & Thread Tools' : 'Thread Tools'}
                   </span>
                   <div className="grid grid-cols-2 gap-2">
+                    {isAdvanced && (
                     <button
                       type="button"
                       onClick={() => {
@@ -2407,6 +2431,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                         <p className="text-[10px] text-gray-400 truncate">Model &amp; Quotas</p>
                       </div>
                     </button>
+                    )}
 
                     <button
                       type="button"
@@ -2484,15 +2509,17 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             <div>
               <div className="flex items-center gap-2">
                 <p className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
-                  Spex 360° Financial &amp; Portfolio Intelligence
+                  {isAdvanced ? 'Spex 360° Financial & Portfolio Intelligence' : 'Spex Money Assistant'}
                 </p>
                 <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200/70 dark:border-indigo-800/60 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
                   <Sparkles className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
-                  Google Gemini AI
+                  {isAdvanced ? 'Google Gemini AI' : 'AI Actions'}
                 </span>
               </div>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-tight">
-                Live Binance &amp; Stocks Forensics • Full Transaction &amp; Wallet Context • Expansive Output Mode
+                {isAdvanced
+                  ? 'Live Binance & Stocks Forensics • Full Transaction & Wallet Context • Expansive Output Mode'
+                  : 'Ask simple questions, scan receipts, or propose expenses, budgets & goals'}
               </p>
             </div>
           </div>
@@ -2535,7 +2562,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               <span>New Chat</span>
             </button>
 
-            {/* Response Depth / Size Selector */}
+            {/* Response Depth / Size Selector (Advanced Only) */}
+            {isAdvanced && (
             <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-0.5 text-[11px]">
               {RESPONSE_DEPTH_OPTIONS.map((opt) => {
                 const isSelected = responseDepth === opt.id;
@@ -2557,8 +2585,10 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 );
               })}
             </div>
+            )}
 
-            {/* Model Selector Dropdown */}
+            {/* Model Selector Dropdown (Advanced Only) */}
+            {isAdvanced && (
             <div className="relative" ref={modelDropdownRef}>
               <button
                 type="button"
@@ -2683,6 +2713,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                 </div>
               )}
             </div>
+            )}
 
             <button
               type="button"
@@ -2727,7 +2758,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           </div>
         </div>
 
-        {/* ─── Desktop Interactive Data Context Focus Selector Bar ───────────── */}
+        {/* ─── Desktop Interactive Data Context Focus Selector Bar (Advanced Only) ─── */}
+        {isAdvanced && (
         <div className="hidden sm:flex flex-col gap-1.5 px-5 py-2 bg-gray-50/95 dark:bg-gray-900/95 border-b border-gray-200/80 dark:border-gray-800 flex-shrink-0">
           <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
             <div className="flex items-center gap-1.5">
@@ -2798,6 +2830,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             })}
           </div>
         </div>
+        )}
 
         {/* ─── Main Body: Optional Conversations Sidebar + Messages Area ─── */}
         <div className="relative flex-1 overflow-hidden flex">
@@ -3031,13 +3064,15 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
                   <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-[2px] border border-gray-200/80 dark:border-gray-700/70 rounded-2xl rounded-bl-none px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-sm flex items-center gap-2.5">
                     <TypingDots />
                     <span className="text-xs text-gray-500 dark:text-gray-400">
-                      Analyzing{' '}
-                      {focusScopes.includes('all')
-                        ? '360° financial data'
-                        : focusScopes
-                            .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
-                            .join(' + ')}
-                      …
+                      {isAdvanced
+                        ? `Analyzing ${
+                            focusScopes.includes('all')
+                              ? '360° financial data'
+                              : focusScopes
+                                  .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
+                                  .join(' + ')
+                          }…`
+                        : 'Thinking…'}
                     </span>
                   </div>
                 </div>
@@ -3114,13 +3149,15 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
               placeholder={
                 selectedImage
                   ? 'Add a note about this receipt…'
-                  : `Ask Spex (${
+                  : isAdvanced
+                  ? `Ask Spex (${
                       focusScopes.includes('all')
                         ? '360° Data'
                         : focusScopes
                             .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
                             .join(' + ')
                     })…`
+                  : 'Ask Spex or log an expense (e.g. "lunch 65 MAD")…'
               }
               maxLength={charLimit}
               className="flex-1 resize-none bg-transparent pl-3.5 pr-1.5 py-2.5 sm:pl-4 sm:py-3 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none leading-relaxed"
@@ -3208,14 +3245,17 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             </div>
           </div>
           <p className="hidden sm:block text-center text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 select-none">
-            Powered by Google Gemini • Focus:{' '}
-            {focusScopes.includes('all')
-              ? 'All 360° Data'
-              : focusScopes
-                  .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
-                  .join(' + ')}{' '}
-            • Output:{' '}
-            {RESPONSE_DEPTH_OPTIONS.find((r) => r.id === responseDepth)?.label || 'Deep & Creative'}
+            {isAdvanced
+              ? `Powered by Google Gemini • Focus: ${
+                  focusScopes.includes('all')
+                    ? 'All 360° Data'
+                    : focusScopes
+                        .map((s) => DATA_FOCUS_SCOPES.find((d) => d.id === s)?.shortLabel || s)
+                        .join(' + ')
+                } • Output: ${
+                  RESPONSE_DEPTH_OPTIONS.find((r) => r.id === responseDepth)?.label || 'Deep & Creative'
+                }`
+              : 'Spex AI • Ask questions, scan receipts, or approve proposed actions'}
           </p>
         </div>
       </div>

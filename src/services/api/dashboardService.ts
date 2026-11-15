@@ -686,6 +686,8 @@ export const dashboardService = {
     apiClient.post<{
       registrationAccepted: boolean;
       requiresVerification: boolean;
+      emailDeliveryConfigured?: boolean;
+      emailDeliveryStatus?: string;
       message: string;
       invitationAccepted?: boolean;
       invitationWarning?: string;
@@ -709,12 +711,24 @@ export const dashboardService = {
       user: User;
     }>('/api/auth/verify-email', { token }),
   resendVerificationEmail: (email: string) =>
-    apiClient.post<{ sent: boolean; message: string; devVerificationToken?: string }>(
+    apiClient.post<{
+      sent: boolean;
+      emailDeliveryConfigured?: boolean;
+      emailDeliveryStatus?: string;
+      message: string;
+      devVerificationToken?: string;
+    }>(
       '/api/auth/resend-verification',
       { email }
     ),
   forgotPasswordRequest: (email: string) =>
-    apiClient.post<{ sent: boolean; message: string; devResetToken?: string }>(
+    apiClient.post<{
+      sent: boolean;
+      emailDeliveryConfigured?: boolean;
+      emailDeliveryStatus?: string;
+      message: string;
+      devResetToken?: string;
+    }>(
       '/api/auth/forgot-password',
       { email }
     ),

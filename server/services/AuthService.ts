@@ -38,7 +38,7 @@ import type {
   AccountSecurityEventInfo,
 } from '../../src/types/index.js';
 
-export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
+export const ACCESS_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 1 week (7 days)
 export const REFRESH_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 export const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000; // 30 minutes
@@ -440,7 +440,7 @@ export class AuthService {
       },
     });
 
-    await emailService.enqueueAndSend({
+    const emailRes = await emailService.enqueueAndSend({
       userId: createdUser.id,
       recipientEmail: cleanEmail,
       templateName: 'email_verification',
@@ -451,13 +451,21 @@ export class AuthService {
       },
     });
 
-    const isDevPreview = process.env.NODE_ENV !== 'production' && !process.env.RESEND_API_KEY;
+    const isDevPreview = process.env.NODE_ENV !== 'production' && !emailService.isEmailDeliveryConfigured();
+    const deliveryConfigured = emailService.isEmailDeliveryConfigured();
+    const message =
+      emailRes.status === 'sent'
+        ? 'Account created. Please check your email for your verification link and code.'
+        : !deliveryConfigured
+        ? 'Account created. Outbound email (RESEND_API_KEY) is not configured in this environment, so no email was sent to your inbox.'
+        : 'Account created, but we could not send the verification email yet. Please check your email configuration or tap Resend.';
 
     return {
       registrationAccepted: true,
       requiresVerification: true,
-      message:
-        'Account setup initiated. Please check your email for verification instructions.',
+      emailDeliveryConfigured: deliveryConfigured,
+      emailDeliveryStatus: emailRes.status,
+      message,
       invitationAccepted,
       ...(invitationWarning ? { invitationWarning } : {}),
       ...(isDevPreview ? { devVerificationToken: rawVerifyToken } : {}),
@@ -932,7 +940,7 @@ export class AuthService {
       });
     });
 
-    await emailService.enqueueAndSend({
+    const emailRes = await emailService.enqueueAndSend({
       userId: userRow.id,
       recipientEmail: cleanEmail,
       templateName: isPendingChange ? 'email_change_verification' : 'email_verification',
@@ -953,17 +961,32 @@ export class AuthService {
       deviceSummary: ctx.deviceLabel,
     });
 
-    const isDevPreview = process.env.NODE_ENV !== 'production' && !process.env.RESEND_API_KEY;
+    const deliveryConfigured = emailService.isEmailDeliveryConfigured();
+    const isDevPreview = process.env.NODE_ENV !== 'production' && !deliveryConfigured;
+    const message =
+      emailRes.status === 'sent'
+        ? genericResponse.message
+        : !deliveryConfigured
+        ? 'Outbound email (RESEND_API_KEY) is not configured on this server, so no email was delivered.'
+        : 'Verification email provider returned an error. Check server RESEND_API_KEY / verified EMAIL_FROM settings.';
+
     return {
       ...genericResponse,
+      sent: emailRes.status === 'sent',
+      emailDeliveryConfigured: deliveryConfigured,
+      emailDeliveryStatus: emailRes.status,
+      message,
       ...(isDevPreview ? { devVerificationToken: rawToken } : {}),
     };
   }
 
   async forgotPassword(email: string, ctx: RequestClientContext) {
     const cleanEmail = (email || '').trim().toLowerCase();
+    const deliveryConfigured = emailService.isEmailDeliveryConfigured();
     const genericResponse = {
       sent: true,
+      emailDeliveryConfigured: deliveryConfigured,
+      emailDeliveryStatus: deliveryConfigured ? 'sent' : 'not_configured',
       message: 'If an account exists for that email address, a password reset link has been sent.',
     };
 
@@ -1004,7 +1027,7 @@ export class AuthService {
       });
     });
 
-    await emailService.enqueueAndSend({
+    const emailRes = await emailService.enqueueAndSend({
       userId: userRow.id,
       recipientEmail: userRow.email,
       templateName: 'password_reset',
@@ -1023,9 +1046,17 @@ export class AuthService {
       deviceSummary: ctx.deviceLabel,
     });
 
-    const isDevPreview = process.env.NODE_ENV !== 'production' && !process.env.RESEND_API_KEY;
+    const isDevPreview = process.env.NODE_ENV !== 'production' && !deliveryConfigured;
     return {
       ...genericResponse,
+      sent: emailRes.status === 'sent',
+      emailDeliveryStatus: emailRes.status,
+      message:
+        emailRes.status === 'sent'
+          ? genericResponse.message
+          : !deliveryConfigured
+          ? 'Outbound email (RESEND_API_KEY) is not configured on this server, so no reset email was sent.'
+          : 'Password reset email failed to send. Verify RESEND_API_KEY and EMAIL_FROM domain settings.',
       ...(isDevPreview ? { devResetToken: rawToken } : {}),
     };
   }
@@ -1265,7 +1296,7 @@ export class AuthService {
       });
     });
 
-    await Promise.all([
+    const [verifyEmailResult] = await Promise.all([
       emailService.enqueueAndSend({
         userId: user.id,
         recipientEmail: cleanNewEmail,
@@ -1297,10 +1328,17 @@ export class AuthService {
       metadata: { pendingEmail: cleanNewEmail },
     });
 
-    const isDevPreview = process.env.NODE_ENV !== 'production' && !process.env.RESEND_API_KEY;
+    const emailDeliveryConfigured = emailService.isEmailDeliveryConfigured();
+    const isDevPreview = process.env.NODE_ENV !== 'production' && !emailDeliveryConfigured;
     return {
       pendingEmail: cleanNewEmail,
-      message: 'Confirmation link sent to your new email address. Your current email stays active until confirmed.',
+      emailDeliveryConfigured,
+      emailDeliveryStatus: verifyEmailResult.status,
+      message: !emailDeliveryConfigured
+        ? 'Confirmation recorded, but email sending is not configured on this server (RESEND_API_KEY is missing).'
+        : verifyEmailResult.status === 'failed'
+        ? `Confirmation token created, but email delivery failed: ${verifyEmailResult.error || 'provider error'}`
+        : 'Confirmation link sent to your new email address. Your current email stays active until confirmed.',
       ...(isDevPreview ? { devVerificationToken: rawToken } : {}),
     };
   }

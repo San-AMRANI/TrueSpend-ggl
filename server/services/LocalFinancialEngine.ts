@@ -21,9 +21,11 @@ function formatMad(amount: number | null | undefined): string {
 export function generateLocalFinancialResponse(
   messages: Array<{ role: string; content: string }>,
   contextData: any,
+  experienceTier: 'basic' | 'advanced' = 'advanced',
 ): LocalAiResponse {
   const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')?.content?.toLowerCase() || '';
   const ctx = contextData || {};
+  const isBasic = experienceTier === 'basic' || ctx.mode === 'basic';
   const kpis = ctx.kpis || {};
   const summary = ctx.financialPeriodSummary || {};
   const forecast = ctx.predictiveForecast || {};
@@ -32,19 +34,19 @@ export function generateLocalFinancialResponse(
   const debts = Array.isArray(ctx.debts) ? ctx.debts : [];
   const goals = Array.isArray(ctx.goals) ? ctx.goals : [];
   const categories = Array.isArray(forecast.categoryRadar) ? forecast.categoryRadar : [];
-  const transactions = Array.isArray(ctx.currentPeriodTransactions) ? ctx.currentPeriodTransactions : [];
 
-  const totalLiquidity = Number(kpis.totalLiquidity) || 0;
-  const bankBalance = Number(kpis.bankBalance) || 0;
-  const cashOnHand = Number(kpis.cashOnHand) || 0;
-  const emergencyBuffer = Number(ctx.emergencyBuffer) || 0;
-  const dailyAllowance = Number(kpis.dailyAllowance) || 0;
-  const dailySpent = Number(kpis.dailySpent) || 0;
-  const dailyRemaining = Number(kpis.dailyRemaining) || 0;
+  const safeToSpend = Number(kpis.safeToSpendMad ?? kpis.safeToSpend ?? kpis.totalLiquidityMad ?? kpis.totalLiquidity) || 0;
+  const totalLiquidity = Number(kpis.totalLiquidityMad ?? kpis.totalLiquidity ?? safeToSpend) || 0;
+  const bankBalance = Number(kpis.bankBalanceMad ?? kpis.bankBalance) || 0;
+  const cashOnHand = Number(kpis.cashOnHandMad ?? kpis.cashOnHand) || 0;
+  const emergencyBuffer = Number(kpis.emergencyBufferMad ?? ctx.emergencyBuffer) || 0;
+  const dailyAllowance = Number(kpis.dailyAllowanceMad ?? kpis.dailyAllowance) || 0;
+  const dailySpent = Number(kpis.dailySpentMad ?? kpis.dailySpent) || 0;
+  const dailyRemaining = Number(kpis.dailyRemainingMad ?? kpis.dailyRemaining) || 0;
   const daysUntilPayroll = Number(kpis.daysUntilPayroll) || 0;
-  const monthlyIncome = Number(kpis.monthlyIncome) || Number(summary.income) || 0;
-  const monthlyExpenses = Number(kpis.monthlyExpenses) || Number(summary.expenses) || 0;
-  const survivalRunwayDays = Number(forecast.survivalRunwayDays) || (dailyAllowance > 0 ? Math.round(totalLiquidity / dailyAllowance) : 30);
+  const monthlyIncome = Number(kpis.monthlyIncomeMad ?? kpis.monthlyIncome) || Number(summary.income) || 0;
+  const monthlyExpenses = Number(kpis.monthlyExpensesMad ?? kpis.monthlyExpenses) || Number(summary.expenses) || 0;
+  const survivalRunwayDays = Number(forecast.survivalRunwayDays) || (dailyAllowance > 0 ? Math.round(Math.max(0, safeToSpend) / dailyAllowance) : 30);
 
   const historicalPeriods = Array.isArray(ctx.historicalFinancialPeriods)
     ? ctx.historicalFinancialPeriods
@@ -55,18 +57,19 @@ export function generateLocalFinancialResponse(
   // SCENARIO 0: Financial Periods Ending Liquidity / Net Money Saved / Net Worth
   // ───────────────────────────────────────────────────────────────────────────
   if (
-    lastUserMsg.includes('period') ||
-    lastUserMsg.includes('ended') ||
-    lastUserMsg.includes('end with') ||
-    lastUserMsg.includes('ending') ||
-    lastUserMsg.includes('closing') ||
-    lastUserMsg.includes('net money saved') ||
-    lastUserMsg.includes('net worth') ||
-    lastUserMsg.includes('unified net worth') ||
-    lastUserMsg.includes('each month') ||
-    lastUserMsg.includes('sept') ||
-    lastUserMsg.includes('oct') ||
-    lastUserMsg.includes('aug')
+    !isBasic &&
+    (lastUserMsg.includes('period') ||
+      lastUserMsg.includes('ended') ||
+      lastUserMsg.includes('end with') ||
+      lastUserMsg.includes('ending') ||
+      lastUserMsg.includes('closing') ||
+      lastUserMsg.includes('net money saved') ||
+      lastUserMsg.includes('net worth') ||
+      lastUserMsg.includes('unified net worth') ||
+      lastUserMsg.includes('each month') ||
+      lastUserMsg.includes('sept') ||
+      lastUserMsg.includes('oct') ||
+      lastUserMsg.includes('aug'))
   ) {
     const periodRows = historicalPeriods
       .map(
@@ -426,11 +429,17 @@ ${
       return {
         reply: `I've prepared the transaction for **${formatMad(amount)}** under **${inferredCat}**. Review and confirm below to add it directly to your live balances:`,
         actions,
-        suggestions: [
-          '💰 What can I safely spend today?',
-          '📊 Run a complete financial health audit',
-          '📈 Deep audit of my Binance & Stock positions',
-        ],
+        suggestions: isBasic
+          ? [
+              '💰 How much can I safely spend today?',
+              '📊 Give me a simple checkup of my spending',
+              '🎯 How are my budgets and goals doing?',
+            ]
+          : [
+              '💰 What can I safely spend today?',
+              '📊 Run a complete financial health audit',
+              '📈 Deep audit of my Binance & Stock positions',
+            ],
       };
     }
   }
@@ -511,6 +520,28 @@ ${
         '📊 Run a complete financial health audit',
         '💰 What can I safely spend today?',
         '🔮 What if I invest 500 MAD more into my top stock?',
+      ],
+    };
+  }
+
+  if (isBasic) {
+    const activeBudgets = Array.isArray(ctx.budgets) ? ctx.budgets.length : 0;
+    const reply = `### 👋 Your Everyday Money Snapshot
+
+- **Safe to Spend**: **${formatMad(safeToSpend)}** (Bank: ${formatMad(bankBalance)} • Cash: ${formatMad(cashOnHand)})
+- **Daily Allowance**: **${formatMad(dailyAllowance)} / day** (${dailySpent > 0 ? `${formatMad(dailySpent)} spent today` : 'nothing spent today'}, ${daysUntilPayroll}d until payday)
+- **This Month**: Income **${formatMad(monthlyIncome)}** • Expenses **${formatMad(monthlyExpenses)}**
+- **Emergency Buffer**: **${formatMad(emergencyBuffer)}** protected • **${activeBudgets}** budgets & **${goals.length}** savings goals
+
+Ask me any question about your spending or tell me an expense to log (for example: *"I spent 45 MAD on coffee"*).`;
+
+    return {
+      reply,
+      actions: [],
+      suggestions: [
+        '💰 How much can I safely spend today?',
+        '☕ Log coffee 30 MAD cash',
+        '🎯 How are my budgets and goals doing?',
       ],
     };
   }

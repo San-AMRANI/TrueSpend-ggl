@@ -67,6 +67,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
   const [resetTokenInput, setResetTokenInput] = useState('');
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState('');
   const [devPreviewToken, setDevPreviewToken] = useState<string | null>(null);
+  const [emailDeliveryStatus, setEmailDeliveryStatus] = useState<string | null>(null);
 
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -188,11 +189,15 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
       });
 
       setPendingVerifyEmail(email.trim().toLowerCase());
-      setNotice(
-        res.invitationWarning
-          ? `${res.message} ${res.invitationWarning}`
-          : res.message
-      );
+      setEmailDeliveryStatus(res.emailDeliveryStatus || null);
+      const fullMessage = res.invitationWarning
+        ? `${res.message} ${res.invitationWarning}`
+        : res.message;
+      if (res.emailDeliveryStatus === 'failed') {
+        setError(fullMessage);
+      } else {
+        setNotice(fullMessage);
+      }
       setDevPreviewToken(res.devVerificationToken || null);
       setVerifyTokenInput(res.devVerificationToken || '');
       setPassword('');
@@ -237,7 +242,12 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
     setIsSubmitting(true);
     try {
       const res = await dashboardService.resendVerificationEmail(targetEmail);
-      setNotice(res.message);
+      setEmailDeliveryStatus(res.emailDeliveryStatus || null);
+      if (res.emailDeliveryStatus === 'failed') {
+        setError(res.message);
+      } else {
+        setNotice(res.message);
+      }
       if (res.devVerificationToken) {
         setDevPreviewToken(res.devVerificationToken);
         setVerifyTokenInput(res.devVerificationToken);
@@ -255,7 +265,12 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
     setIsSubmitting(true);
     try {
       const res = await dashboardService.forgotPasswordRequest(email.trim());
-      setNotice(res.message);
+      setEmailDeliveryStatus(res.emailDeliveryStatus || null);
+      if (res.emailDeliveryStatus === 'failed') {
+        setError(res.message);
+      } else {
+        setNotice(res.message);
+      }
       if (res.devResetToken) {
         setDevPreviewToken(res.devResetToken);
         setResetTokenInput(res.devResetToken);
@@ -502,7 +517,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
                     </span>
                   </div>
                   <p className="mt-1 text-[11px] text-gray-600 dark:text-gray-400">
-                    Clean accounts, budgets, bills, goals, and everyday tracking.
+                    Simple accounts, budgets, bills, goals, and Spex AI actions.
                   </p>
                 </button>
 
@@ -643,18 +658,23 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
 
         {mode === 'verify' && (
           <div className="space-y-4">
-            <div className="rounded-xl border border-indigo-200/70 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/30 p-3.5 text-xs text-gray-700 dark:text-gray-300 space-y-1">
+            <div className="rounded-xl border border-indigo-200/70 dark:border-indigo-800/60 bg-indigo-50/50 dark:bg-indigo-950/30 p-3.5 text-xs text-gray-700 dark:text-gray-300 space-y-1.5">
               <div className="flex items-center gap-2 font-semibold text-indigo-700 dark:text-indigo-300">
                 <ShieldCheck className="h-4 w-4" />
-                <span>Check your inbox{pendingVerifyEmail ? `: ${pendingVerifyEmail}` : ''}</span>
+                <span>
+                  {emailDeliveryStatus === 'not_configured'
+                    ? `Email delivery not configured${pendingVerifyEmail ? ` (${pendingVerifyEmail})` : ''}`
+                    : `Check your inbox${pendingVerifyEmail ? `: ${pendingVerifyEmail}` : ''}`}
+                </span>
               </div>
               <p>
-                Open the verification link sent to your email or paste the verification code below to
-                activate your account.
+                {emailDeliveryStatus === 'not_configured'
+                  ? 'Outbound email (RESEND_API_KEY) is not configured on this server, so no message was delivered to your inbox.'
+                  : 'Open the verification link sent to your email or paste the verification code below to activate your account.'}
               </p>
               {devPreviewToken && (
                 <div className="mt-2 rounded bg-white dark:bg-gray-900 border border-indigo-200 dark:border-indigo-800 px-2.5 py-1.5 font-mono text-[11px] break-all">
-                  Local dev code: <strong>{devPreviewToken}</strong>
+                  Local preview verification code: <strong>{devPreviewToken}</strong>
                 </div>
               )}
             </div>

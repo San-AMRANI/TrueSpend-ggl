@@ -28,6 +28,7 @@ import {
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import { AnimatedMetricValue, MotionModal } from '../ui/MotionPrimitives';
+import { useAuth } from '../../context/AuthContext';
 
 interface DebtsTabProps {
   debts: Debt[];
@@ -56,6 +57,8 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
   setActiveTab: setDashboardTab,
   openTransaction,
 }) => {
+  const { user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
   const [settleModalMode, setSettleModalMode] = useState<'settle' | 'forgive'>('settle');
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null);
@@ -301,7 +304,7 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
         )}
       </AnimatePresence>
 
-      {totalPayable > 0 && (
+      {isAdvanced && totalPayable > 0 && (
         <Card
           className={`border overflow-hidden shadow-xs transition-all ${
             isBudgetReserved
@@ -389,7 +392,7 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
       )}
 
       {/* ── Payoff Strategy Simulator (Avalanche vs Snowball) ── */}
-      {strategyComparison && pendingPayables.length > 0 && (
+      {isAdvanced && strategyComparison && pendingPayables.length > 0 && (
         <Card className="border-gray-200 dark:border-gray-800">
           <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-800">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -531,7 +534,8 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
             transition={{ duration: 0.14 }}
           >
             <Button onClick={() => setShowAddForm(true)} className="w-full sm:w-auto shadow-sm">
-              <Plus className="h-4 w-4 mr-1.5" /> Add New Debt, Split, or Amortized Loan
+              <Plus className="h-4 w-4 mr-1.5" />{' '}
+              {isAdvanced ? 'Add New Debt, Split, or Amortized Loan' : 'Add Debt or Split'}
             </Button>
           </motion.div>
         ) : (
