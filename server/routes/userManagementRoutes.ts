@@ -4,18 +4,23 @@ import { userManagementController } from '../controllers/UserManagementControlle
 
 const router = Router();
 
-router.get('/users', requireAuth, (req, res) => userManagementController.listUsers(req, res));
+router.get('/users', requireAuth, requireUserManager, (req, res) =>
+  userManagementController.listUsers(req as any, res)
+);
+router.get('/users/ownership-inventory', requireAuth, requireUserManager, (req, res) =>
+  userManagementController.getOwnershipInventory(req as any, res)
+);
 router.post('/users', requireAuth, requireUserManager, (req, res) =>
-  userManagementController.createUser(req, res)
+  userManagementController.createUser(req as any, res)
 );
 router.put('/users/:id', requireAuth, requireUserManager, (req, res) =>
-  userManagementController.updateUser(req, res)
+  userManagementController.updateUser(req as any, res)
 );
 router.delete('/users/:id', requireAuth, requireUserManager, (req, res) =>
-  userManagementController.deleteUser(req, res)
+  userManagementController.deleteUser(req as any, res)
 );
 router.post('/users/:id/impersonate', requireAuth, requireUserManager, (req, res) =>
-  userManagementController.impersonateUser(req, res)
+  userManagementController.impersonateUser(req as any, res)
 );
 
 export default router;

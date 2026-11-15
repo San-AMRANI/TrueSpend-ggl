@@ -1,7 +1,18 @@
 import crypto from 'crypto';
-import { eq, ne, desc, or, sql } from 'drizzle-orm';
+import { eq, ne, desc, or, sql, and, notInArray } from 'drizzle-orm';
 import { db, createPool } from '../../src/db/index.js';
-import { users, userAuditLogs, wallets } from '../../src/db/schema.js';
+import {
+  users,
+  userAuditLogs,
+  wallets,
+  authSessions,
+} from '../../src/db/schema.js';
+import {
+  hashPasswordAsync,
+  verifyPasswordAsync,
+  validatePasswordStrength,
+} from './SecurityCrypto.js';
+import { normalizeExperienceTier } from '../../src/lib/entitlements.js';
 import type {
   UserRole,
   UserStatus,
@@ -18,10 +29,10 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     role: 'owner',
     label: 'Owner (Super Admin)',
-    shortDesc: 'Full system authority & root ledger owner',
+    shortDesc: 'Internal application administrator & support lead',
     description:
-      'Unrestricted control over the primary financial ledger, user accounts, role assignments, security audit logs, and full PostgreSQL database backups.',
-    defaultWorkspaceMode: 'shared',
+      'Administrative oversight of internal operational tools, user status management, and security audit logs within isolated workspaces.',
+    defaultWorkspaceMode: 'isolated',
     defaultPermissions: {
       canWriteTransactions: true,
       canManageWallets: true,
@@ -35,10 +46,10 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     role: 'admin',
     label: 'Administrator',
-    shortDesc: 'User management & full financial operations',
+    shortDesc: 'User management & administrative operations',
     description:
-      'Can manage non-owner users, configure budgets, wallets, investments, and export backups. Ideal for trusted co-administrators.',
-    defaultWorkspaceMode: 'shared',
+      'Can manage non-owner accounts, review security events, and access administrative tools in an isolated personal workspace.',
+    defaultWorkspaceMode: 'isolated',
     defaultPermissions: {
       canWriteTransactions: true,
       canManageWallets: true,
@@ -51,11 +62,11 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
   },
   {
     role: 'manager',
-    label: 'Finance Manager / Partner',
-    shortDesc: 'Full day-to-day financial read/write access',
+    label: 'Finance Manager',
+    shortDesc: 'Full personal workspace read/write access',
     description:
-      'Can record transactions, manage wallets, adjust category budgets, track investments, and consult Spex AI, without user administration or system backup access.',
-    defaultWorkspaceMode: 'shared',
+      'Full control over their own private financial workspace, budgets, goals, and Spex AI without administrative privileges.',
+    defaultWorkspaceMode: 'isolated',
     defaultPermissions: {
       canWriteTransactions: true,
       canManageWallets: true,
@@ -69,9 +80,9 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     role: 'member',
     label: 'Standard Member',
-    shortDesc: 'Dedicated personal workspace or contributor',
+    shortDesc: 'Dedicated private financial workspace',
     description:
-      'Standard user account with full control over their own isolated financial workspace (or shared ledger if enabled), budgets, goals, and Spex AI co-pilot.',
+      'Standard user account with full control over their own isolated private workspace, budgets, goals, and Spex AI.',
     defaultWorkspaceMode: 'isolated',
     defaultPermissions: {
       canWriteTransactions: true,
@@ -86,10 +97,10 @@ export const ROLE_DEFINITIONS: RoleDefinition[] = [
   {
     role: 'viewer',
     label: 'Viewer / Auditor',
-    shortDesc: 'Strict read-only inspection & analytics',
+    shortDesc: 'Strict read-only inspection of own workspace',
     description:
-      'Read-only access to dashboards, cash flow calendars, analytics, cycle retrospectives, and portfolios. Cannot create, edit, or delete any financial records.',
-    defaultWorkspaceMode: 'shared',
+      'Read-only access to dashboards, cash flow calendars, analytics, and reports inside their own account.',
+    defaultWorkspaceMode: 'isolated',
     defaultPermissions: {
       canWriteTransactions: false,
       canManageWallets: false,
@@ -173,73 +184,37 @@ export function resolveUserPermissions(
   }
 }
 
-export function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const derivedKey = crypto.scryptSync(password, salt, 64).toString('hex');
-  return `scrypt$${salt}$${derivedKey}`;
+export async function hashPassword(password: string): Promise<string> {
+  return hashPasswordAsync(password);
 }
 
-export function verifyPassword(password: string, storedHash?: string | null): boolean {
-  if (!storedHash) return false;
-  try {
-    const parts = storedHash.split('$');
-    if (parts.length !== 3 || parts[0] !== 'scrypt') {
-      return false;
-    }
-    const [, salt, keyHex] = parts;
-    const keyBuffer = Buffer.from(keyHex, 'hex');
-    const derivedBuffer = crypto.scryptSync(password, salt, 64);
-    if (keyBuffer.length !== derivedBuffer.length) return false;
-    return crypto.timingSafeEqual(keyBuffer, derivedBuffer);
-  } catch {
-    return false;
-  }
+export async function verifyPassword(password: string, storedHash?: string | null): Promise<boolean> {
+  return verifyPasswordAsync(password, storedHash);
 }
 
 export class UserManagementService {
-  async ensureOwnerConfigured() {
-    const adminUsername = process.env.ADMIN_USERNAME || 'SanSpend';
-    const existingOwner = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, PRIMARY_OWNER_EMAIL))
-      .limit(1);
-
-    if (existingOwner.length > 0) {
-      const owner = existingOwner[0];
-      if (owner.role !== 'owner' || !owner.username || !owner.displayName) {
-        const [updated] = await db
-          .update(users)
-          .set({
-            role: 'owner',
-            status: 'active',
-            workspaceMode: 'shared',
-            username: owner.username || adminUsername,
-            displayName: owner.displayName || 'Hassan Amrani (Owner)',
-            avatarColor: owner.avatarColor || 'indigo',
-          })
-          .where(eq(users.id, owner.id))
-          .returning();
-        return updated;
-      }
-      return owner;
-    }
-
-    // Fallback if database had no owner record yet
-    const [created] = await db
-      .insert(users)
-      .values({
-        uid: PRIMARY_OWNER_EMAIL,
-        username: adminUsername,
-        displayName: 'Hassan Amrani (Owner)',
-        email: PRIMARY_OWNER_EMAIL,
-        role: 'owner',
-        status: 'active',
-        workspaceMode: 'shared',
-        avatarColor: 'indigo',
+  /**
+   * Read-only inventory report of any legacy workspace_mode='shared' rows for migration review.
+   * Does not auto-create any users or bypass isolation.
+   */
+  async getLegacyOwnershipInventoryReport() {
+    const legacySharedUsers = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        username: users.username,
+        role: users.role,
+        status: users.status,
+        workspaceMode: users.workspaceMode,
       })
-      .returning();
-    return created;
+      .from(users)
+      .where(ne(users.status, 'deleted'));
+
+    return {
+      totalUsers: legacySharedUsers.length,
+      nonIsolatedRemainingCount: legacySharedUsers.filter((u) => u.workspaceMode !== 'isolated').length,
+      users: legacySharedUsers,
+    };
   }
 
   async logAuditEvent(params: {
@@ -260,20 +235,17 @@ export class UserManagementService {
         details: params.details,
       });
     } catch (err) {
-      console.warn('[UserManagement] Failed to write audit log:', err);
+      console.warn('[UserManagement] Failed to write audit log:', (err as any)?.message || err);
     }
   }
 
   formatManagedUser(
     row: typeof users.$inferSelect,
-    statsMap?: Record<string, { transactionCount: number; walletCount: number; holdingCount: number }>,
-    ownerId?: string
+    statsMap?: Record<string, { transactionCount: number; walletCount: number; holdingCount: number }>
   ): ManagedUser {
-    const isOwner = row.role === 'owner' || row.email === PRIMARY_OWNER_EMAIL;
-    const role = (isOwner ? 'owner' : row.role || 'member') as UserRole;
-    const workspaceMode = (isOwner ? 'shared' : row.workspaceMode || 'isolated') as WorkspaceMode;
-    const effectiveStatsUserId = workspaceMode === 'shared' && ownerId ? ownerId : row.id;
-    const stats = statsMap?.[effectiveStatsUserId] || {
+    const isOwner = row.role === 'owner';
+    const role = (row.role || 'member') as UserRole;
+    const stats = statsMap?.[row.id] || {
       transactionCount: 0,
       walletCount: 0,
       holdingCount: 0,
@@ -287,7 +259,10 @@ export class UserManagementService {
       email: row.email,
       role,
       status: (row.status || 'active') as UserStatus,
-      workspaceMode,
+      workspaceMode: 'isolated',
+      experienceTier: normalizeExperienceTier(row.experienceTier),
+      emailVerified: Boolean(row.emailVerifiedAt),
+      emailVerifiedAt: row.emailVerifiedAt ? new Date(row.emailVerifiedAt).toISOString() : null,
       permissions: resolveUserPermissions(role, row.permissions),
       avatarColor: row.avatarColor || 'indigo',
       notes: row.notes || null,
@@ -306,20 +281,20 @@ export class UserManagementService {
     roles: RoleDefinition[];
     auditLogs: UserAuditLog[];
   }> {
-    const owner = await this.ensureOwnerConfigured();
     const pool = createPool();
 
     const allRows = await db
       .select()
       .from(users)
-      .where(ne(users.status, 'legacy_hidden'))
+      .where(notInArray(users.status, ['legacy_hidden', 'deleted']))
       .orderBy(users.createdAt);
 
-    // Gather live counts per user_id
     const [txCountsRes, walletCountsRes, holdingCountsRes] = await Promise.all([
       pool.query('SELECT user_id, COUNT(*)::int AS cnt FROM transactions GROUP BY user_id'),
       pool.query('SELECT user_id, COUNT(*)::int AS cnt FROM wallets GROUP BY user_id'),
-      pool.query('SELECT user_id, COUNT(*)::int AS cnt FROM stock_positions WHERE is_watchlist_only = false GROUP BY user_id'),
+      pool.query(
+        'SELECT user_id, COUNT(*)::int AS cnt FROM stock_positions WHERE is_watchlist_only = false GROUP BY user_id'
+      ),
     ]);
 
     const statsMap: Record<
@@ -347,7 +322,7 @@ export class UserManagementService {
     }
 
     const formattedUsers = allRows
-      .map((row) => this.formatManagedUser(row, statsMap, owner.id))
+      .map((row) => this.formatManagedUser(row, statsMap))
       .sort((a, b) => {
         if (a.isOwnerAccount && !b.isOwnerAccount) return -1;
         if (!a.isOwnerAccount && b.isOwnerAccount) return 1;
@@ -386,6 +361,7 @@ export class UserManagementService {
       email: string;
       password: string;
       role?: UserRole;
+      experienceTier?: 'basic' | 'advanced';
       workspaceMode?: WorkspaceMode;
       permissions?: Partial<UserPermissions>;
       avatarColor?: string;
@@ -404,18 +380,20 @@ export class UserManagementService {
     if (!cleanUsername || cleanUsername.length < 2) {
       throw new Error('Username must be at least 2 characters.');
     }
-    if (!cleanEmail || !cleanEmail.includes('@')) {
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       throw new Error('Please provide a valid email address.');
     }
-    if (!password || password.length < 4) {
-      throw new Error('Password must be at least 4 characters.');
+
+    const pwCheck = validatePasswordStrength(password, {
+      email: cleanEmail,
+      username: cleanUsername,
+    });
+    if (!pwCheck.valid) {
+      throw new Error(pwCheck.error || 'Password does not meet security requirements.');
     }
 
-    // Prevent creating another 'owner' role unless normalized to 'admin'
-    const assignedRole: UserRole =
-      payload.role === 'owner' ? 'admin' : payload.role || 'member';
+    const assignedRole: UserRole = payload.role === 'owner' ? 'admin' : payload.role || 'member';
 
-    // Check uniqueness among active/suspended users
     const existing = await db
       .select()
       .from(users)
@@ -426,7 +404,9 @@ export class UserManagementService {
         )
       );
 
-    const activeConflict = existing.find((u) => u.status !== 'legacy_hidden');
+    const activeConflict = existing.find(
+      (u) => u.status !== 'legacy_hidden' && u.status !== 'deleted'
+    );
     if (activeConflict) {
       throw new Error('A user with this username or email already exists.');
     }
@@ -437,12 +417,9 @@ export class UserManagementService {
       ...(payload.permissions || {}),
     };
 
-    const workspaceMode: WorkspaceMode =
-      payload.workspaceMode ||
-      ROLE_DEFINITIONS.find((r) => r.role === assignedRole)?.defaultWorkspaceMode ||
-      'isolated';
-
-    const passwordHash = hashPassword(password);
+    const passwordHash = await hashPasswordAsync(password);
+    const now = new Date();
+    const experienceTier = normalizeExperienceTier(payload.experienceTier);
 
     const [created] = await db
       .insert(users)
@@ -451,10 +428,15 @@ export class UserManagementService {
         username: cleanUsername,
         displayName: cleanDisplayName,
         email: cleanEmail,
+        emailVerifiedAt: now,
         passwordHash,
+        passwordUpdatedAt: now,
         role: assignedRole,
         status: 'active',
-        workspaceMode,
+        workspaceMode: 'isolated',
+        experienceTier,
+        onboardingVersion: 1,
+        onboardingCompletedAt: now,
         permissions: JSON.stringify(mergedPermissions),
         avatarColor: payload.avatarColor || 'indigo',
         notes: payload.notes || null,
@@ -465,8 +447,7 @@ export class UserManagementService {
       })
       .returning();
 
-    // If isolated workspace, seed default Bank & Cash wallets so their dashboard works immediately
-    if (workspaceMode === 'isolated' && payload.seedDefaultWallets !== false) {
+    if (payload.seedDefaultWallets !== false) {
       try {
         await db.insert(wallets).values([
           {
@@ -487,7 +468,7 @@ export class UserManagementService {
           },
         ]);
       } catch (wErr) {
-        console.warn('[UserManagement] Default wallet seed notice:', wErr);
+        console.warn('[UserManagement] Default wallet notice:', (wErr as any)?.message || wErr);
       }
     }
 
@@ -497,21 +478,16 @@ export class UserManagementService {
       targetUserId: created.id,
       targetUserName: `${cleanDisplayName} (@${cleanUsername})`,
       action: 'USER_CREATED',
-      details: `Created user with role "${assignedRole.toUpperCase()}" in ${workspaceMode === 'shared' ? 'Shared Ledger' : 'Isolated Workspace'} mode.`,
+      details: `Created isolated user with role "${assignedRole.toUpperCase()}" (${experienceTier} tier).`,
     });
 
-    const owner = await this.ensureOwnerConfigured();
-    return this.formatManagedUser(
-      created,
-      {
-        [created.id]: {
-          transactionCount: 0,
-          walletCount: workspaceMode === 'isolated' && payload.seedDefaultWallets !== false ? 2 : 0,
-          holdingCount: 0,
-        },
+    return this.formatManagedUser(created, {
+      [created.id]: {
+        transactionCount: 0,
+        walletCount: payload.seedDefaultWallets !== false ? 2 : 0,
+        holdingCount: 0,
       },
-      owner.id
-    );
+    });
   }
 
   async updateUser(
@@ -523,6 +499,7 @@ export class UserManagementService {
       email?: string;
       role?: UserRole;
       status?: UserStatus;
+      experienceTier?: 'basic' | 'advanced';
       workspaceMode?: WorkspaceMode;
       permissions?: Partial<UserPermissions>;
       avatarColor?: string;
@@ -535,14 +512,12 @@ export class UserManagementService {
       throw new Error('User not found.');
     }
     const target = existingRows[0];
-    const isTargetOwner = target.role === 'owner' || target.email === PRIMARY_OWNER_EMAIL;
+    const isTargetOwner = target.role === 'owner';
 
-    // Only the owner can edit the owner's profile
     if (isTargetOwner && actor.id !== target.id && actor.role !== 'owner') {
-      throw new Error('Only the Workspace Owner can modify the Owner profile.');
+      throw new Error('Only the Owner can modify the Owner profile.');
     }
 
-    // Protect Owner from losing owner role, shared workspace mode, or active status
     const nextRole: UserRole = isTargetOwner
       ? 'owner'
       : payload.role === 'owner'
@@ -552,10 +527,6 @@ export class UserManagementService {
     const nextStatus: UserStatus = isTargetOwner
       ? 'active'
       : ((payload.status || target.status || 'active') as UserStatus);
-
-    const nextWorkspaceMode: WorkspaceMode = isTargetOwner
-      ? 'shared'
-      : ((payload.workspaceMode || target.workspaceMode || 'isolated') as WorkspaceMode);
 
     let nextPermissionsJson = target.permissions;
     if (isTargetOwner) {
@@ -567,28 +538,27 @@ export class UserManagementService {
         ...payload.permissions,
       });
     } else if (payload.role && payload.role !== target.role) {
-      // Role changed without explicit custom permissions -> apply new role defaults
       nextPermissionsJson = JSON.stringify(getDefaultPermissionsForRole(nextRole));
     }
 
     const updateData: Record<string, any> = {
       role: nextRole,
       status: nextStatus,
-      workspaceMode: nextWorkspaceMode,
+      workspaceMode: 'isolated',
       permissions: nextPermissionsJson,
     };
 
+    if (payload.experienceTier !== undefined) {
+      updateData.experienceTier = normalizeExperienceTier(payload.experienceTier);
+    }
     if (payload.username !== undefined && payload.username.trim()) {
       updateData.username = payload.username.trim();
     }
     if (payload.displayName !== undefined && payload.displayName.trim()) {
       updateData.displayName = payload.displayName.trim();
     }
-    if (payload.email !== undefined && payload.email.trim()) {
-      // Keep PRIMARY_OWNER_EMAIL intact if owner, or allow updating if valid
-      if (!isTargetOwner) {
-        updateData.email = payload.email.trim().toLowerCase();
-      }
+    if (payload.email !== undefined && payload.email.trim() && !isTargetOwner) {
+      updateData.email = payload.email.trim().toLowerCase();
     }
     if (payload.avatarColor !== undefined) {
       updateData.avatarColor = payload.avatarColor;
@@ -596,8 +566,16 @@ export class UserManagementService {
     if (payload.notes !== undefined) {
       updateData.notes = payload.notes;
     }
-    if (payload.password && payload.password.trim().length >= 4) {
-      updateData.passwordHash = hashPassword(payload.password.trim());
+    if (payload.password !== undefined && payload.password.trim().length > 0) {
+      const pwCheck = validatePasswordStrength(payload.password.trim(), {
+        email: updateData.email || target.email,
+        username: updateData.username || target.username || undefined,
+      });
+      if (!pwCheck.valid) {
+        throw new Error(pwCheck.error || 'Password does not meet security requirements.');
+      }
+      updateData.passwordHash = await hashPasswordAsync(payload.password.trim());
+      updateData.passwordUpdatedAt = new Date();
     }
 
     const [updated] = await db
@@ -606,22 +584,21 @@ export class UserManagementService {
       .where(eq(users.id, targetId))
       .returning();
 
+    if (nextStatus === 'suspended' || payload.password) {
+      await db
+        .update(authSessions)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(authSessions.userId, targetId), sql`${authSessions.revokedAt} IS NULL`));
+    }
+
     const changes: string[] = [];
-    if (payload.role && payload.role !== target.role) {
-      changes.push(`role → ${nextRole.toUpperCase()}`);
+    if (payload.role && payload.role !== target.role) changes.push(`role -> ${nextRole.toUpperCase()}`);
+    if (payload.status && payload.status !== target.status) changes.push(`status -> ${nextStatus.toUpperCase()}`);
+    if (payload.experienceTier && payload.experienceTier !== target.experienceTier) {
+      changes.push(`tier -> ${updateData.experienceTier}`);
     }
-    if (payload.status && payload.status !== target.status) {
-      changes.push(`status → ${nextStatus.toUpperCase()}`);
-    }
-    if (payload.workspaceMode && payload.workspaceMode !== target.workspaceMode) {
-      changes.push(`workspace → ${nextWorkspaceMode}`);
-    }
-    if (payload.password && payload.password.trim().length >= 4) {
-      changes.push('password updated');
-    }
-    if (payload.permissions) {
-      changes.push('permissions customized');
-    }
+    if (payload.password) changes.push('password updated');
+    if (payload.permissions) changes.push('permissions customized');
 
     await this.logAuditEvent({
       actorId: actor.id,
@@ -635,8 +612,7 @@ export class UserManagementService {
           : 'Updated user profile details.',
     });
 
-    const owner = await this.ensureOwnerConfigured();
-    return this.formatManagedUser(updated, undefined, owner.id);
+    return this.formatManagedUser(updated);
   }
 
   async deleteUser(actor: typeof users.$inferSelect, targetId: string): Promise<{ deletedId: string }> {
@@ -646,15 +622,14 @@ export class UserManagementService {
     }
     const target = existingRows[0];
 
-    if (target.role === 'owner' || target.email === PRIMARY_OWNER_EMAIL) {
-      throw new Error('The primary Workspace Owner account cannot be deleted.');
+    if (target.role === 'owner') {
+      throw new Error('The primary Owner account cannot be deleted from user management.');
     }
     if (target.id === actor.id) {
-      throw new Error('You cannot delete your own active account.');
+      throw new Error('Use Account Deletion in Settings -> Privacy & Data Rights to delete your own account.');
     }
 
     const pool = createPool();
-    // Clean up dependent records if any exist for this non-owner user
     await pool.query('DELETE FROM transactions WHERE user_id = $1', [targetId]);
     await pool.query('DELETE FROM category_budgets WHERE user_id = $1', [targetId]);
     await pool.query('DELETE FROM payrolls WHERE user_id = $1', [targetId]);

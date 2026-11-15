@@ -676,6 +676,7 @@ function MessageBubble({
   isPlayingAudio?: boolean;
   isAudioLoading?: boolean;
 }) {
+  const { user } = useAuth();
   const msg = useMemo(() => sanitizeStoredMessage(rawMsg), [rawMsg]);
   const [copied, setCopied] = useState(false);
   const [relTime, setRelTime] = useState(() => formatRelativeTime(msg.timestamp));
@@ -839,7 +840,7 @@ function MessageBubble({
                 ? 'Proposed Financial Action'
                 : `${msg.actions.length} Proposed Actions`}
             </span>
-            {msg.actions.length > 1 && !msg.actionStatus && (
+            {msg.actions.length > 1 && !msg.actionStatus && user?.experienceTier === 'advanced' && (
               <button
                 type="button"
                 onClick={() => onAction(idx, true)}
@@ -969,32 +970,38 @@ function MessageBubble({
           )}
 
           {!msg.actionStatus ? (
-            <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={msg.simulatingActions}
-                onClick={() => onAction(idx, 'simulate')}
-                className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 px-3 py-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors flex items-center gap-1 disabled:opacity-50"
-              >
-                <Zap className="w-3 h-3" />
-                {msg.simulatingActions ? 'Simulating...' : msg.impactSimulation ? 'Re-simulate' : 'Simulate Impact'}
-              </button>
-              <button
-                type="button"
-                onClick={() => onAction(idx, true)}
-                className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 transition-colors shadow-xs flex items-center gap-1"
-              >
-                <Check className="w-3 h-3" />
-                Approve
-              </button>
-              <button
-                type="button"
-                onClick={() => onAction(idx, false)}
-                className="rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-indigo-950 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 transition-colors"
-              >
-                ✕ Reject
-              </button>
-            </div>
+            user?.experienceTier === 'advanced' ? (
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={msg.simulatingActions}
+                  onClick={() => onAction(idx, 'simulate')}
+                  className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 px-3 py-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors flex items-center gap-1 disabled:opacity-50"
+                >
+                  <Zap className="w-3 h-3" />
+                  {msg.simulatingActions ? 'Simulating...' : msg.impactSimulation ? 'Re-simulate' : 'Simulate Impact'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAction(idx, true)}
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-indigo-700 transition-colors shadow-xs flex items-center gap-1"
+                >
+                  <Check className="w-3 h-3" />
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onAction(idx, false)}
+                  className="rounded-lg border border-indigo-200 dark:border-indigo-700 bg-white dark:bg-indigo-950 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 transition-colors"
+                >
+                  ✕ Reject
+                </button>
+              </div>
+            ) : (
+              <p className="mt-2.5 text-[11px] text-gray-600 dark:text-gray-300">
+                Conversational guidance only in Basic Mode — switch to Advanced (Free) in Settings to simulate or execute ledger actions.
+              </p>
+            )
           ) : (
             <p
               className={cn(
@@ -1371,7 +1378,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const [voiceSupported] = useState(
     () => 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window,
   );
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {

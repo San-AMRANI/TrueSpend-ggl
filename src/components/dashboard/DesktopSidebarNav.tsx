@@ -3,6 +3,8 @@ import { motion } from 'motion/react';
 import { DashboardTab } from '../../types';
 import { NAV_GROUP_ORDER, NAV_ITEMS } from '../../config/navigation';
 import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { isTabAvailableForUser } from '../../lib/entitlements';
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -24,6 +26,10 @@ export const DesktopSidebarNav: React.FC<DesktopSidebarNavProps> = ({
   outboxCount = 0,
 }) => {
   const { sidebarCollapsed, toggleSidebarCollapsed, setDesktopNavLayout } = useTheme();
+  const { user } = useAuth();
+  const visibleNavItems = NAV_ITEMS.filter((item) =>
+    isTabAvailableForUser(item.id, user?.experienceTier, user?.role)
+  );
 
   return (
     <aside
@@ -69,7 +75,7 @@ export const DesktopSidebarNav: React.FC<DesktopSidebarNavProps> = ({
       {/* Scrollable Navigation Groups */}
       <div className="flex-1 overflow-y-auto ts-scrollbar py-3 px-2.5 space-y-4">
         {NAV_GROUP_ORDER.map((group) => {
-          const groupTabs = NAV_ITEMS.filter((item) => item.group === group.id);
+          const groupTabs = visibleNavItems.filter((item) => item.group === group.id);
           if (groupTabs.length === 0) return null;
 
           return (

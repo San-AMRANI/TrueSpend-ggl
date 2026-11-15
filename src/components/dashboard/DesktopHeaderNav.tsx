@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { DashboardTab } from '../../types';
 import { ChevronDown, LayoutGrid, Check } from 'lucide-react';
 import { NAV_GROUP_ORDER, NAV_ITEMS } from '../../config/navigation';
+import { useAuth } from '../../context/AuthContext';
+import { isTabAvailableForUser } from '../../lib/entitlements';
 
 interface DesktopHeaderNavProps {
   activeTab: DashboardTab;
@@ -27,11 +29,19 @@ export const DesktopHeaderNav: React.FC<DesktopHeaderNavProps> = ({
   activeTab,
   onSelectTab,
 }) => {
+  const { user } = useAuth();
   const [isExploreOpen, setIsExploreOpen] = useState(false);
   const exploreMenuRef = useRef<HTMLDivElement>(null);
 
-  const activePrimaryLg = primaryTopTabs.some((t) => t.id === activeTab);
-  const activeTabMeta = NAV_ITEMS.find((t) => t.id === activeTab);
+  const visibleNavItems = NAV_ITEMS.filter((item) =>
+    isTabAvailableForUser(item.id, user?.experienceTier, user?.role)
+  );
+  const visiblePrimaryTopTabs = primaryTopTabs.filter((item) =>
+    isTabAvailableForUser(item.id, user?.experienceTier, user?.role)
+  );
+
+  const activePrimaryLg = visiblePrimaryTopTabs.some((t) => t.id === activeTab);
+  const activeTabMeta = visibleNavItems.find((t) => t.id === activeTab);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -55,7 +65,7 @@ export const DesktopHeaderNav: React.FC<DesktopHeaderNavProps> = ({
       aria-label="Desktop Top Navigation"
       className="hidden md:flex items-center gap-1 min-w-0"
     >
-      {primaryTopTabs.map((tab) => {
+      {visiblePrimaryTopTabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;
         const showOnMd = COMPACT_MD_IDS.has(tab.id);
@@ -143,7 +153,7 @@ export const DesktopHeaderNav: React.FC<DesktopHeaderNavProps> = ({
             >
               <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-950/50 flex items-center justify-between text-xs">
                 <span className="font-semibold text-gray-700 dark:text-gray-200">
-                  TrueSpend Workspace ({NAV_ITEMS.length} Modules)
+                  TrueSpend Workspace ({visibleNavItems.length} Modules)
                 </span>
                 <span className="text-[11px] text-gray-400 dark:text-gray-500 font-mono">
                   Press ⌘K to search anything
@@ -152,7 +162,7 @@ export const DesktopHeaderNav: React.FC<DesktopHeaderNavProps> = ({
 
               <div className="p-3 grid grid-cols-2 lg:grid-cols-3 gap-3 max-h-[70vh] overflow-y-auto ts-scrollbar">
                 {NAV_GROUP_ORDER.map((group) => {
-                  const groupItems = NAV_ITEMS.filter((t) => t.group === group.id);
+                  const groupItems = visibleNavItems.filter((t) => t.group === group.id);
                   if (groupItems.length === 0) return null;
 
                   return (

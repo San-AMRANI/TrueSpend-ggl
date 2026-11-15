@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { requireAuth, AuthRequest } from '../../src/middleware/auth.js';
+import { requireAuth, requireFeature, AuthRequest } from '../../src/middleware/auth.js';
 import { coreAuditService } from '../services/CoreAuditService.js';
 
 const router = Router();
 
-// Item A: Double-Entry Accounting & Journal Audit
-router.get('/audit/journal', requireAuth, async (req: any, res) => {
+// Item A: Double-Entry Accounting & Journal Audit (Advanced Analytics)
+router.get('/audit/journal', requireAuth, requireFeature('analytics.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const summary = await coreAuditService.getJournalAuditSummary(authReq.dbUser.id);
@@ -15,7 +15,7 @@ router.get('/audit/journal', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/journal/backfill', requireAuth, async (req: any, res) => {
+router.post('/audit/journal/backfill', requireAuth, requireFeature('analytics.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const result = await coreAuditService.backfillJournalFromTransactions(authReq.dbUser.id);
@@ -26,8 +26,8 @@ router.post('/audit/journal/backfill', requireAuth, async (req: any, res) => {
   }
 });
 
-// Item C: Multi-Currency Historical Exchange Rates
-router.get('/audit/fx-rates', requireAuth, async (req: any, res) => {
+// Item C: Multi-Currency Historical Exchange Rates (Advanced Analytics)
+router.get('/audit/fx-rates', requireAuth, requireFeature('analytics.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const rates = await coreAuditService.getExchangeRates(authReq.dbUser.id);
@@ -37,7 +37,7 @@ router.get('/audit/fx-rates', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/fx-rates', requireAuth, async (req: any, res) => {
+router.post('/audit/fx-rates', requireAuth, requireFeature('analytics.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const rate = await coreAuditService.upsertExchangeRate(authReq.dbUser.id, req.body);
@@ -48,7 +48,7 @@ router.post('/audit/fx-rates', requireAuth, async (req: any, res) => {
 });
 
 // Item D: Statement CSV/XLSX/TSV Import & Transaction Matching
-router.get('/audit/statements', requireAuth, async (req: any, res) => {
+router.get('/audit/statements', requireAuth, requireFeature('statements.import'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const batches = await coreAuditService.getStatementBatches(authReq.dbUser.id);
@@ -58,7 +58,7 @@ router.get('/audit/statements', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/statements/import', requireAuth, async (req: any, res) => {
+router.post('/audit/statements/import', requireAuth, requireFeature('statements.import'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const result = await coreAuditService.importStatementBatch(authReq.dbUser.id, req.body);
@@ -68,7 +68,7 @@ router.post('/audit/statements/import', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/statements/rows/:id/resolve', requireAuth, async (req: any, res) => {
+router.post('/audit/statements/rows/:id/resolve', requireAuth, requireFeature('statements.import'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const result = await coreAuditService.resolveStatementRow(authReq.dbUser.id, req.params.id, req.body);
@@ -79,7 +79,7 @@ router.post('/audit/statements/rows/:id/resolve', requireAuth, async (req: any, 
 });
 
 // Item E: Persistent Financial Review Inbox
-router.get('/audit/review-inbox', requireAuth, async (req: any, res) => {
+router.get('/audit/review-inbox', requireAuth, requireFeature('review.inbox'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const status = typeof req.query.status === 'string' ? req.query.status : undefined;
@@ -91,7 +91,7 @@ router.get('/audit/review-inbox', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/review-inbox', requireAuth, async (req: any, res) => {
+router.post('/audit/review-inbox', requireAuth, requireFeature('review.inbox'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const item = await coreAuditService.createReviewItem(authReq.dbUser.id, req.body);
@@ -101,7 +101,7 @@ router.post('/audit/review-inbox', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/review-inbox/:id/decide', requireAuth, async (req: any, res) => {
+router.post('/audit/review-inbox/:id/decide', requireAuth, requireFeature('review.inbox'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const result = await coreAuditService.decideReviewItem(authReq.dbUser.id, req.params.id, req.body);
@@ -111,8 +111,8 @@ router.post('/audit/review-inbox/:id/decide', requireAuth, async (req: any, res)
   }
 });
 
-// Item F: Commitment Occurrences (Subscriptions, Debt Installments, Payrolls, Planned Bills)
-router.get('/audit/occurrences', requireAuth, async (req: any, res) => {
+// Item F: Commitment Occurrences
+router.get('/audit/occurrences', requireAuth, requireFeature('commitments.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const occurrences = await coreAuditService.syncAndGetCommitmentOccurrences(authReq.dbUser.id);
@@ -122,7 +122,7 @@ router.get('/audit/occurrences', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/occurrences/:id/settle', requireAuth, async (req: any, res) => {
+router.post('/audit/occurrences/:id/settle', requireAuth, requireFeature('commitments.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const result = await coreAuditService.settleCommitmentOccurrence(authReq.dbUser.id, req.params.id, req.body);
@@ -132,8 +132,18 @@ router.post('/audit/occurrences/:id/settle', requireAuth, async (req: any, res) 
   }
 });
 
+router.post('/audit/occurrences/income', requireAuth, requireFeature('commitments.advanced'), async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const created = await coreAuditService.createRecurringIncomeCommitment(authReq.dbUser.id, req.body);
+    res.status(201).json(created);
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Failed to create recurring income commitment' });
+  }
+});
+
 // Item I: Goal Contribution Events
-router.get('/audit/goal-events', requireAuth, async (req: any, res) => {
+router.get('/audit/goal-events', requireAuth, requireFeature('goals.contributions'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const goalId = typeof req.query.goalId === 'string' ? req.query.goalId : undefined;
@@ -145,7 +155,7 @@ router.get('/audit/goal-events', requireAuth, async (req: any, res) => {
 });
 
 // Item J: Saved & Comparable What-If Scenarios
-router.get('/audit/scenarios', requireAuth, async (req: any, res) => {
+router.get('/audit/scenarios', requireAuth, requireFeature('simulator'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const scenarios = await coreAuditService.getSavedScenarios(authReq.dbUser.id);
@@ -155,7 +165,7 @@ router.get('/audit/scenarios', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/scenarios', requireAuth, async (req: any, res) => {
+router.post('/audit/scenarios', requireAuth, requireFeature('simulator'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const scenario = await coreAuditService.saveScenario(authReq.dbUser.id, req.body);
@@ -165,7 +175,7 @@ router.post('/audit/scenarios', requireAuth, async (req: any, res) => {
   }
 });
 
-router.delete('/audit/scenarios/:id', requireAuth, async (req: any, res) => {
+router.delete('/audit/scenarios/:id', requireAuth, requireFeature('simulator'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const result = await coreAuditService.deleteScenario(authReq.dbUser.id, req.params.id);
@@ -175,8 +185,8 @@ router.delete('/audit/scenarios/:id', requireAuth, async (req: any, res) => {
   }
 });
 
-// Item K: User-Configurable Constrained Financial Rules Engine
-router.get('/audit/rules', requireAuth, async (req: any, res) => {
+// Item K: Financial Rules Engine
+router.get('/audit/rules', requireAuth, requireFeature('rules.automation'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const data = await coreAuditService.getFinancialRules(authReq.dbUser.id);
@@ -186,7 +196,7 @@ router.get('/audit/rules', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/rules', requireAuth, async (req: any, res) => {
+router.post('/audit/rules', requireAuth, requireFeature('rules.automation'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const rule = await coreAuditService.upsertFinancialRule(authReq.dbUser.id, req.body);
@@ -196,7 +206,7 @@ router.post('/audit/rules', requireAuth, async (req: any, res) => {
   }
 });
 
-router.delete('/audit/rules/:id', requireAuth, async (req: any, res) => {
+router.delete('/audit/rules/:id', requireAuth, requireFeature('rules.automation'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const result = await coreAuditService.deleteFinancialRule(authReq.dbUser.id, req.params.id);
@@ -206,50 +216,7 @@ router.delete('/audit/rules/:id', requireAuth, async (req: any, res) => {
   }
 });
 
-// Item L: External Wealth Items (Unified Net Worth)
-router.get('/audit/external-wealth', requireAuth, async (req: any, res) => {
-  try {
-    const authReq = req as AuthRequest;
-    const items = await coreAuditService.getExternalWealthItems(authReq.dbUser.id);
-    res.json(items);
-  } catch (error: any) {
-    res.status(500).json({ error: error?.message || 'Failed to load external wealth items' });
-  }
-});
-
-router.post('/audit/external-wealth', requireAuth, async (req: any, res) => {
-  try {
-    const authReq = req as AuthRequest;
-    const item = await coreAuditService.upsertExternalWealthItem(authReq.dbUser.id, req.body);
-    res.status(201).json(item);
-  } catch (error: any) {
-    res.status(400).json({ error: error?.message || 'Failed to save external wealth item' });
-  }
-});
-
-router.delete('/audit/external-wealth/:id', requireAuth, async (req: any, res) => {
-  try {
-    const authReq = req as AuthRequest;
-    const result = await coreAuditService.deleteExternalWealthItem(authReq.dbUser.id, req.params.id);
-    res.json(result);
-  } catch (error: any) {
-    res.status(400).json({ error: error?.message || 'Failed to delete external wealth item' });
-  }
-});
-
-// Item F extension: Recurring non-payroll income commitments
-router.post('/audit/occurrences/income', requireAuth, async (req: any, res) => {
-  try {
-    const authReq = req as AuthRequest;
-    const created = await coreAuditService.createRecurringIncomeCommitment(authReq.dbUser.id, req.body);
-    res.status(201).json(created);
-  } catch (error: any) {
-    res.status(400).json({ error: error?.message || 'Failed to create recurring income commitment' });
-  }
-});
-
-// Item K extension: Dry-run rule preview without side effects
-router.post('/audit/rules/dry-run', requireAuth, async (req: any, res) => {
+router.post('/audit/rules/dry-run', requireAuth, requireFeature('rules.automation'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const result = await coreAuditService.dryRunFinancialRule(authReq.dbUser.id, req.body);
@@ -259,8 +226,39 @@ router.post('/audit/rules/dry-run', requireAuth, async (req: any, res) => {
   }
 });
 
-// Item 3: Whole Financial Position History & Net Worth Change Bridge
-router.get('/audit/position-history', requireAuth, async (req: any, res) => {
+// Item L: External Wealth Items (Unified Net Worth)
+router.get('/audit/external-wealth', requireAuth, requireFeature('investments'), async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const items = await coreAuditService.getExternalWealthItems(authReq.dbUser.id);
+    res.json(items);
+  } catch (error: any) {
+    res.status(500).json({ error: error?.message || 'Failed to load external wealth items' });
+  }
+});
+
+router.post('/audit/external-wealth', requireAuth, requireFeature('investments'), async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const item = await coreAuditService.upsertExternalWealthItem(authReq.dbUser.id, req.body);
+    res.status(201).json(item);
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Failed to save external wealth item' });
+  }
+});
+
+router.delete('/audit/external-wealth/:id', requireAuth, requireFeature('investments'), async (req: any, res) => {
+  try {
+    const authReq = req as AuthRequest;
+    const result = await coreAuditService.deleteExternalWealthItem(authReq.dbUser.id, req.params.id);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Failed to delete external wealth item' });
+  }
+});
+
+// Item 3: Financial Position History
+router.get('/audit/position-history', requireAuth, requireFeature('analytics.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const data = await coreAuditService.getFinancialPositionHistory(authReq.dbUser.id);
@@ -270,7 +268,7 @@ router.get('/audit/position-history', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/position-snapshot', requireAuth, async (req: any, res) => {
+router.post('/audit/position-snapshot', requireAuth, requireFeature('analytics.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const snapshot = await coreAuditService.captureFinancialPositionSnapshot(authReq.dbUser.id, 'manual');
@@ -280,8 +278,8 @@ router.post('/audit/position-snapshot', requireAuth, async (req: any, res) => {
   }
 });
 
-// Item 4: Counterparty & Merchant Identity Layer
-router.get('/audit/counterparties', requireAuth, async (req: any, res) => {
+// Item 4: Counterparties
+router.get('/audit/counterparties', requireAuth, requireFeature('analytics.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const list = await coreAuditService.getCounterparties(authReq.dbUser.id);
@@ -291,7 +289,7 @@ router.get('/audit/counterparties', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/counterparties', requireAuth, async (req: any, res) => {
+router.post('/audit/counterparties', requireAuth, requireFeature('analytics.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const item = await coreAuditService.upsertCounterparty(authReq.dbUser.id, req.body);
@@ -301,7 +299,7 @@ router.post('/audit/counterparties', requireAuth, async (req: any, res) => {
   }
 });
 
-router.post('/audit/counterparties/merge', requireAuth, async (req: any, res) => {
+router.post('/audit/counterparties/merge', requireAuth, requireFeature('analytics.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const result = await coreAuditService.mergeCounterparties(authReq.dbUser.id, req.body.sourceId, req.body.targetId);
@@ -312,7 +310,7 @@ router.post('/audit/counterparties/merge', requireAuth, async (req: any, res) =>
 });
 
 // Item 7: Operational Diagnostics & Financial Integrity Report
-router.get('/audit/integrity-report', requireAuth, async (req: any, res) => {
+router.get('/audit/integrity-report', requireAuth, requireFeature('reports.advanced'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const report = await coreAuditService.getFinancialIntegrityReport(authReq.dbUser.id);

@@ -1,5 +1,5 @@
-import { relations } from 'drizzle-orm';
-import { pgTable, uuid, text, timestamp, decimal, pgEnum, integer, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
+import { relations, sql } from 'drizzle-orm';
+import { pgTable, uuid, text, timestamp, decimal, pgEnum, integer, boolean, uniqueIndex, index } from 'drizzle-orm/pg-core';
 
 export const transactionTypeEnum = pgEnum('transaction_type', ['Income', 'Expense', 'Transfer', 'Debt Repayment']);
 export const walletTypeEnum = pgEnum('wallet_type', ['Bank', 'Cash', 'Savings', 'Investment']);
@@ -205,14 +205,28 @@ export const investmentSettings = pgTable('investment_settings', {
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
-  uid: text('uid').notNull().unique(), // Firebase Auth UID or unique user identifier
+  uid: text('uid').notNull().unique(),
   username: text('username'),
   displayName: text('display_name'),
   email: text('email').notNull(),
+  pendingEmail: text('pending_email'),
+  emailVerifiedAt: timestamp('email_verified_at'),
   passwordHash: text('password_hash'),
+  passwordUpdatedAt: timestamp('password_updated_at'),
   role: text('role').default('member').notNull(), // 'owner' | 'admin' | 'manager' | 'member' | 'viewer'
-  status: text('status').default('active').notNull(), // 'active' | 'suspended' | 'pending' | 'legacy_hidden'
-  workspaceMode: text('workspace_mode').default('isolated').notNull(), // 'shared' | 'isolated'
+  status: text('status').default('active').notNull(), // 'pending_verification' | 'active' | 'suspended' | 'deletion_pending' | 'deleted' | 'legacy_hidden'
+  workspaceMode: text('workspace_mode').default('isolated').notNull(), // Deprecated legacy field; isolated private workspaces only
+  experienceTier: text('experience_tier').default('advanced').notNull(), // 'basic' | 'advanced'
+  onboardingVersion: integer('onboarding_version').default(1).notNull(),
+  onboardingStartedAt: timestamp('onboarding_started_at'),
+  onboardingCompletedAt: timestamp('onboarding_completed_at'),
+  onboardingDismissedAt: timestamp('onboarding_dismissed_at'),
+  onboardingStepsJson: text('onboarding_steps_json').default('[]').notNull(),
+  locale: text('locale').default('en').notNull(),
+  countryCode: text('country_code').default('MA').notNull(),
+  timezone: text('timezone').default('Africa/Casablanca').notNull(),
+  deletionRequestedAt: timestamp('deletion_requested_at'),
+  deletedAt: timestamp('deleted_at'),
   permissions: text('permissions'), // JSON string of UserPermissions
   avatarColor: text('avatar_color').default('indigo'),
   notes: text('notes'),
@@ -230,6 +244,107 @@ export const users = pgTable('users', {
   googleDriveTokenExpiry: timestamp('google_drive_token_expiry'),
   notificationEnabled: integer('notification_enabled').default(0),
   notificationTime: text('notification_time').default('09:00'),
+}, (table) => [
+  uniqueIndex('users_email_lower_active_unique').on(sql`LOWER(${table.email})`).where(sql`${table.status} NOT IN ('legacy_hidden', 'deleted')`),
+  uniqueIndex('users_username_lower_active_unique').on(sql`LOWER(${table.username})`).where(sql`${table.username} IS NOT NULL AND ${table.status} NOT IN ('legacy_hidden', 'deleted')`),
+]);
+
+export const authSessions = pgTable('auth_sessions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  refreshTokenHash: text('refresh_token_hash').notNull().unique(),
+  familyId: uuid('family_id').notNull(),
+  deviceLabel: text('device_label').default('Web Browser').notNull(),
+  userAgent: text('user_agent'),
+  ipAddress: text('ip_address'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  lastUsedAt: timestamp('last_used_at').defaultNow().notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  revokedAt: timestamp('revoked_at'),
+  replacedBySessionId: uuid('replaced_by_session_id'),
+}, (table) => [
+  index('auth_sessions_user_expires_idx').on(table.userId, table.expiresAt),
+  index('auth_sessions_family_idx').on(table.familyId),
+]);
+
+export const emailVerificationTokens = pgTable('email_verification_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  targetEmail: text('target_email').notNull(),
+  tokenHash: text('token_hash').notNull().unique(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  usedAt: timestamp('used_at'),
+}, (table) => [
+  index('email_verification_tokens_user_expires_idx').on(table.userId, table.expiresAt),
+]);
+
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  tokenHash: text('token_hash').notNull().unique(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  usedAt: timestamp('used_at'),
+}, (table) => [
+  index('password_reset_tokens_user_expires_idx').on(table.userId, table.expiresAt),
+]);
+
+export const accountSecurityEvents = pgTable('account_security_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  eventType: text('event_type').notNull(),
+  outcome: text('outcome').default('success').notNull(), // 'success' | 'failure' | 'blocked'
+  ipAddress: text('ip_address'),
+  deviceSummary: text('device_summary'),
+  metadataJson: text('metadata_json'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('account_security_events_user_created_idx').on(table.userId, table.createdAt),
+]);
+
+export const invitations = pgTable('invitations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tokenHash: text('token_hash').notNull().unique(),
+  createdByUserId: uuid('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  campaign: text('campaign').default('beta_invite').notNull(),
+  expiresAt: timestamp('expires_at'),
+  maxUses: integer('max_uses').default(1).notNull(),
+  useCount: integer('use_count').default(0).notNull(),
+  revokedAt: timestamp('revoked_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const invitationRedemptions = pgTable('invitation_redemptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  invitationId: uuid('invitation_id').references(() => invitations.id, { onDelete: 'cascade' }).notNull(),
+  redeemedByUserId: uuid('redeemed_by_user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+  redeemedAt: timestamp('redeemed_at').defaultNow().notNull(),
+});
+
+export const templateApplications = pgTable('template_applications', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  templateId: text('template_id').notNull(),
+  templateVersion: integer('template_version').default(1).notNull(),
+  createdResourceIdsJson: text('created_resource_ids_json').default('[]').notNull(),
+  appliedAt: timestamp('applied_at').defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('template_applications_user_template_unique').on(table.userId, table.templateId),
+]);
+
+export const emailOutbox = pgTable('email_outbox', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  recipientEmail: text('recipient_email').notNull(),
+  templateName: text('template_name').notNull(),
+  subject: text('subject').notNull(),
+  payloadJson: text('payload_json').notNull(),
+  status: text('status').default('pending').notNull(), // 'pending' | 'sent' | 'failed'
+  attempts: integer('attempts').default(0).notNull(),
+  lastError: text('last_error'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  sentAt: timestamp('sent_at'),
 });
 
 export const userAuditLogs = pgTable('user_audit_logs', {

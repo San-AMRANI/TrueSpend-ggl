@@ -51,7 +51,7 @@ export class DebtService {
   async getDebtsWithSettlements(userId: string) {
     const [allDebts, allSplits, allTxs, forgivenessLogs] = await Promise.all([
       debtRepository.findAllByUserId(userId),
-      debtRepository.findAllLinkedSplits(),
+      debtRepository.findAllLinkedSplits(userId),
       transactionRepository.findAllByUserId(userId),
       debtRepository.findForgivenessLogsByUserId(userId),
     ]);

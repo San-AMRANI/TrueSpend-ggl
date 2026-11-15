@@ -27,10 +27,13 @@ interface ParsedTransactionRow {
 }
 
 export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budgets, onDataChange, onNavigateTab }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'retrospective' | 'position' | 'export' | 'import'>('retrospective');
+  const [activeSubTab, setActiveSubTab] = useState<'retrospective' | 'position' | 'export' | 'import'>(
+    isAdvanced ? 'retrospective' : 'export'
+  );
   const [snapshots, setSnapshots] = useState<FinancialPositionSnapshot[]>([]);
   const [bridge, setBridge] = useState<NetWorthChangeBridge | null>(null);
   const [loadingPosition, setLoadingPosition] = useState(false);
@@ -38,8 +41,14 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  useEffect(() => {
+    if (!isAdvanced && (activeSubTab === 'retrospective' || activeSubTab === 'position')) {
+      setActiveSubTab('export');
+    }
+  }, [isAdvanced, activeSubTab]);
+
   const loadPositionHistory = async () => {
-    if (!token) return;
+    if (!token || !isAdvanced) return;
     setLoadingPosition(true);
     try {
       const res = await dashboardService.getFinancialPositionHistory(token);
@@ -53,10 +62,10 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
   };
 
   useEffect(() => {
-    if (activeSubTab === 'position') {
+    if (activeSubTab === 'position' && isAdvanced) {
       loadPositionHistory();
     }
-  }, [activeSubTab, token]);
+  }, [activeSubTab, token, isAdvanced]);
 
   const handleExportCSV = () => {
     if (!transactions.length) {
@@ -347,11 +356,15 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
         <div className="ts-scrollbar flex items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 max-w-full overflow-x-auto self-start sm:self-auto">
           {(
             [
-              { id: 'retrospective', label: 'AI Cycle Wrap-Up & Report Card', icon: Award },
-              { id: 'position', label: 'Net Worth History & Bridge', icon: TrendingUp },
-              { id: 'export', label: 'Export & Backup', icon: Download },
-              { id: 'import', label: 'Import CSV', icon: Upload },
-            ] as const
+              ...(isAdvanced
+                ? [
+                    { id: 'retrospective' as const, label: 'AI Cycle Wrap-Up & Report Card', icon: Award },
+                    { id: 'position' as const, label: 'Net Worth History & Bridge', icon: TrendingUp },
+                  ]
+                : []),
+              { id: 'export' as const, label: 'Export & Backup', icon: Download },
+              { id: 'import' as const, label: 'Import CSV', icon: Upload },
+            ]
           ).map((tab) => {
             const Icon = tab.icon;
             const isActive = activeSubTab === tab.id;

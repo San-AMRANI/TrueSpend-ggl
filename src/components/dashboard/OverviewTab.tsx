@@ -37,6 +37,7 @@ import {
 import { computeHolisticForecast } from '../../lib/predictiveEngine';
 import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
+import { GettingStartedChecklist } from '../onboarding/GettingStartedChecklist';
 import {
   AlertCircle,
   ArrowDownRight,
@@ -133,7 +134,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   onDataChange,
 }) => {
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
   const [settlingDebt, setSettlingDebt] = useState<Debt | null>(null);
   const [showWaterfall, setShowWaterfall] = useState(false);
   const [insightModalType, setInsightModalType] = useState<'forecast' | 'health' | null>(null);
@@ -165,7 +167,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   };
 
   const loadOperationalRadar = useCallback(async () => {
-    if (!token) return;
+    if (!token || !isAdvanced) {
+      setUpcomingCommitments([]);
+      setPendingReviews([]);
+      setIntegritySummary(null);
+      setExternalWealthSummary(null);
+      return;
+    }
     try {
       const todayIso = new Date().toISOString().slice(0, 10);
       const twoWeeksIso = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
@@ -203,7 +211,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     } catch {
       // Non-blocking operational radar load
     }
-  }, [token]);
+  }, [token, isAdvanced]);
 
   useEffect(() => {
     loadOperationalRadar();
@@ -537,6 +545,11 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
   return (
     <div className="min-w-0 overflow-x-hidden space-y-4 sm:space-y-5">
+      <GettingStartedChecklist
+        onNavigateTab={setActiveTab}
+        onRelaunchWizard={() => window.dispatchEvent(new CustomEvent('truespend:openOnboarding'))}
+      />
+
       {!currentFm && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 flex flex-wrap items-center justify-between gap-2">
           <span>
@@ -745,18 +758,20 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                         />
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('investments')}
-                      className="text-xs font-medium text-emerald-300 hover:text-white bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-800/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
-                    >
-                      <TrendingUp className="h-3.5 w-3.5" />
-                      <span>
-                        {activeStockPositions.length > 0
-                          ? `${activeStockPositions.length} Positions`
-                          : 'Investments'}
-                      </span>
-                    </button>
+                    {isAdvanced && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('investments')}
+                        className="text-xs font-medium text-emerald-300 hover:text-white bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-800/60 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        <TrendingUp className="h-3.5 w-3.5" />
+                        <span>
+                          {activeStockPositions.length > 0
+                            ? `${activeStockPositions.length} Positions`
+                            : 'Investments'}
+                        </span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-mono tabular-nums text-gray-400 bg-gray-950/50 rounded-lg px-2.5 py-1.5 border border-gray-800/80">
@@ -777,7 +792,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                     )}
                   </div>
 
-                  {externalWealthSummary && externalWealthSummary.items.length > 0 && (
+                  {isAdvanced && externalWealthSummary && externalWealthSummary.items.length > 0 && (
                     <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono tabular-nums text-gray-300 bg-gray-950/60 rounded-lg px-2.5 py-1.5 border border-gray-800">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                         <span className="text-indigo-300 font-semibold">
@@ -1466,8 +1481,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       </div>
 
       {/* ═════════════════════════════════════════════════════════════════════
-          BAND 4 — LIVE OPERATIONS, REVIEW INBOX & INTEGRITY/ANOMALY RADAR
+          BAND 4 — LIVE OPERATIONS, REVIEW INBOX & INTEGRITY/ANOMALY RADAR (Advanced)
           ═════════════════════════════════════════════════════════════════════ */}
+      {isAdvanced && (
       <StaggerList className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-3">
         {/* 1. Upcoming 14-Day Commitment Occurrences */}
         <StaggerItem className="min-w-0">
@@ -1667,6 +1683,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </Card>
         </StaggerItem>
       </StaggerList>
+      )}
 
       {/* ═════════════════════════════════════════════════════════════════════
           BAND 5 — ACTIVITY STREAM + RECEIVABLES / RECURRING / BINANCE

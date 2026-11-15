@@ -15,11 +15,12 @@ import {
   InvestmentsData,
   StockMarketType,
   StockOrderAction,
+  ExperienceTier,
 } from '../types';
 import { useNotifications } from './useNotifications';
 import { netExpenseOf } from '../lib/finance';
 
-export function useDashboardData(token: string | null) {
+export function useDashboardData(token: string | null, experienceTier?: ExperienceTier) {
   const [kpis, setKpis] = useState<KPI | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
@@ -40,22 +41,23 @@ export function useDashboardData(token: string | null) {
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
 
   const notifications = useNotifications();
+  const isAdvancedTier = experienceTier === 'advanced';
 
   const fetchData = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData, invData] = await Promise.all([
+      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, goalData, subData, contextData, invData] = await Promise.all([
         dashboardService.getKpis(token),
         dashboardService.getTransactions(token),
         dashboardService.getDebts(token),
         dashboardService.getSettings(token),
         dashboardService.getCategoryBudgets(token),
         dashboardService.getPayrolls(token),
-        dashboardService.getContexts(token),
         dashboardService.getGoals(token),
         dashboardService.getSubscriptions(token),
-        dashboardService.getInvestmentsData(token).catch(() => null),
+        isAdvancedTier ? dashboardService.getContexts(token).catch(() => []) : Promise.resolve([]),
+        isAdvancedTier ? dashboardService.getInvestmentsData(token).catch(() => null) : Promise.resolve(null),
       ]);
 
       setKpis(kpiData || null);
@@ -64,16 +66,16 @@ export function useDashboardData(token: string | null) {
       setUserSettings(settingsData);
       setBudgets(budgetData || []);
       setPayrolls(payrollData || []);
-      setContexts(contextData || []);
       setGoals(goalData || []);
       setSubscriptions(subData || []);
+      setContexts(contextData || []);
       setInvestmentsData(invData || null);
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, isAdvancedTier]);
 
   // When fresh data arrives, schedule (or re-schedule) the smart notification stream
   useEffect(() => {

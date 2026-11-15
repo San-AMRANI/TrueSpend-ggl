@@ -278,21 +278,151 @@ export const createPool = () => {
         );
         CREATE INDEX IF NOT EXISTS "user_audit_logs_created_at_idx" ON "user_audit_logs"("created_at" DESC);
 
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "pending_email" text;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "email_verified_at" timestamp;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password_updated_at" timestamp;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "experience_tier" text NOT NULL DEFAULT 'advanced';
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "onboarding_version" integer NOT NULL DEFAULT 1;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "onboarding_started_at" timestamp;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "onboarding_completed_at" timestamp;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "onboarding_dismissed_at" timestamp;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "onboarding_steps_json" text NOT NULL DEFAULT '[]';
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "locale" text NOT NULL DEFAULT 'en';
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "country_code" text NOT NULL DEFAULT 'MA';
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "timezone" text NOT NULL DEFAULT 'Africa/Casablanca';
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "deletion_requested_at" timestamp;
+        ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "deleted_at" timestamp;
+
+        -- Migrate legacy shared workspace mode to strictly isolated private accounts
+        -- Grandfather existing active accounts so they keep Advanced access and verified status
         UPDATE "users"
         SET
-          "role" = 'owner',
-          "status" = 'active',
-          "workspace_mode" = 'shared',
-          "username" = COALESCE("username", '${process.env.ADMIN_USERNAME || 'SanSpend'}'),
-          "display_name" = COALESCE("display_name", 'Hassan Amrani (Owner)'),
-          "avatar_color" = COALESCE("avatar_color", 'indigo')
-        WHERE "email" = 'amranihassan.am@gmail.com';
+          "workspace_mode" = 'isolated',
+          "email_verified_at" = COALESCE("email_verified_at", "created_at", now()),
+          "experience_tier" = COALESCE(NULLIF("experience_tier", ''), 'advanced'),
+          "onboarding_completed_at" = COALESCE("onboarding_completed_at", "created_at", now())
+        WHERE "status" = 'active' AND "email_verified_at" IS NULL;
 
         UPDATE "users"
-        SET "status" = 'legacy_hidden'
-        WHERE "email" IN ('amranihassan2003@gmail.com', 'SanSpend@local.host')
-          AND "role" = 'member'
-          AND "password_hash" IS NULL;
+        SET "workspace_mode" = 'isolated'
+        WHERE "workspace_mode" = 'shared';
+
+        CREATE TABLE IF NOT EXISTS "auth_sessions" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "refresh_token_hash" text NOT NULL UNIQUE,
+          "family_id" uuid NOT NULL,
+          "device_label" text NOT NULL DEFAULT 'Web Browser',
+          "user_agent" text,
+          "ip_address" text,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "last_used_at" timestamp NOT NULL DEFAULT now(),
+          "expires_at" timestamp NOT NULL,
+          "revoked_at" timestamp,
+          "replaced_by_session_id" uuid
+        );
+        CREATE INDEX IF NOT EXISTS "auth_sessions_user_expires_idx" ON "auth_sessions"("user_id", "expires_at");
+        CREATE INDEX IF NOT EXISTS "auth_sessions_family_idx" ON "auth_sessions"("family_id");
+
+        CREATE TABLE IF NOT EXISTS "email_verification_tokens" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "target_email" text NOT NULL,
+          "token_hash" text NOT NULL UNIQUE,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "expires_at" timestamp NOT NULL,
+          "used_at" timestamp
+        );
+        CREATE INDEX IF NOT EXISTS "email_verification_tokens_user_expires_idx" ON "email_verification_tokens"("user_id", "expires_at");
+
+        CREATE TABLE IF NOT EXISTS "password_reset_tokens" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "token_hash" text NOT NULL UNIQUE,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "expires_at" timestamp NOT NULL,
+          "used_at" timestamp
+        );
+        CREATE INDEX IF NOT EXISTS "password_reset_tokens_user_expires_idx" ON "password_reset_tokens"("user_id", "expires_at");
+
+        CREATE TABLE IF NOT EXISTS "account_security_events" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "event_type" text NOT NULL,
+          "outcome" text NOT NULL DEFAULT 'success',
+          "ip_address" text,
+          "device_summary" text,
+          "metadata_json" text,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS "account_security_events_user_created_idx" ON "account_security_events"("user_id", "created_at" DESC);
+
+        CREATE TABLE IF NOT EXISTS "invitations" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "token_hash" text NOT NULL UNIQUE,
+          "created_by_user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+          "campaign" text NOT NULL DEFAULT 'beta_invite',
+          "expires_at" timestamp,
+          "max_uses" integer NOT NULL DEFAULT 1,
+          "use_count" integer NOT NULL DEFAULT 0,
+          "revoked_at" timestamp,
+          "created_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "invitation_redemptions" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "invitation_id" uuid NOT NULL REFERENCES "invitations"("id") ON DELETE CASCADE,
+          "redeemed_by_user_id" uuid NOT NULL UNIQUE REFERENCES "users"("id") ON DELETE CASCADE,
+          "redeemed_at" timestamp NOT NULL DEFAULT now()
+        );
+
+        CREATE TABLE IF NOT EXISTS "template_applications" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+          "template_id" text NOT NULL,
+          "template_version" integer NOT NULL DEFAULT 1,
+          "created_resource_ids_json" text NOT NULL DEFAULT '[]',
+          "applied_at" timestamp NOT NULL DEFAULT now()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS "template_applications_user_template_unique" ON "template_applications"("user_id", "template_id");
+
+        CREATE TABLE IF NOT EXISTS "email_outbox" (
+          "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          "user_id" uuid REFERENCES "users"("id") ON DELETE SET NULL,
+          "recipient_email" text NOT NULL,
+          "template_name" text NOT NULL,
+          "subject" text NOT NULL,
+          "payload_json" text NOT NULL,
+          "status" text NOT NULL DEFAULT 'pending',
+          "attempts" integer NOT NULL DEFAULT 0,
+          "last_error" text,
+          "created_at" timestamp NOT NULL DEFAULT now(),
+          "sent_at" timestamp
+        );
+
+        DO $$ BEGIN
+          CREATE UNIQUE INDEX IF NOT EXISTS "users_email_lower_active_unique"
+            ON "users"(LOWER("email"))
+            WHERE "status" NOT IN ('legacy_hidden', 'deleted');
+        EXCEPTION WHEN unique_violation THEN
+          RAISE NOTICE 'Skipped users_email_lower_active_unique due to existing duplicate active emails';
+        END $$;
+
+        DO $$ BEGIN
+          CREATE UNIQUE INDEX IF NOT EXISTS "users_username_lower_active_unique"
+            ON "users"(LOWER("username"))
+            WHERE "username" IS NOT NULL AND "status" NOT IN ('legacy_hidden', 'deleted');
+        EXCEPTION WHEN unique_violation THEN
+          RAISE NOTICE 'Skipped users_username_lower_active_unique due to existing duplicate active usernames';
+        END $$;
+
+        -- Composite (user_id, id) defense-in-depth unique indexes for tenant-owned tables
+        CREATE UNIQUE INDEX IF NOT EXISTS "wallets_user_id_id_unique" ON "wallets"("user_id", "id");
+        CREATE UNIQUE INDEX IF NOT EXISTS "debts_user_id_id_unique" ON "debts"("user_id", "id");
+        CREATE UNIQUE INDEX IF NOT EXISTS "payrolls_user_id_id_unique" ON "payrolls"("user_id", "id");
+        CREATE UNIQUE INDEX IF NOT EXISTS "financial_contexts_user_id_id_unique" ON "financial_contexts"("user_id", "id");
+        CREATE UNIQUE INDEX IF NOT EXISTS "goals_user_id_id_unique" ON "goals"("user_id", "id");
+        CREATE UNIQUE INDEX IF NOT EXISTS "transactions_user_id_id_unique" ON "transactions"("user_id", "id");
 
         -- Core Audit Schema Migrations (Items A through P)
         ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "base_currency" text NOT NULL DEFAULT 'MAD';

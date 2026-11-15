@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../src/db/index.js';
-import { counterparties, transactions } from '../../src/db/schema.js';
+import { counterparties, financialContexts, transactions } from '../../src/db/schema.js';
 import { transactionRepository, DbExecutor } from '../repositories/TransactionRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
 import { payrollRepository } from '../repositories/PayrollRepository.js';
@@ -146,55 +146,84 @@ export class TransactionService {
 
   async resolveWalletId(userId: string, requestedWalletId?: string | null, fallbackType: 'Bank' | 'Cash' = 'Bank'): Promise<string> {
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    try {
-      const wallets = await walletService.getWallets(userId);
-      if (requestedWalletId && uuidPattern.test(requestedWalletId)) {
-        const match = wallets.find((w) => w.id === requestedWalletId);
-        if (match) return match.id;
+    const wallets = await walletService.getWallets(userId);
+    if (requestedWalletId && uuidPattern.test(requestedWalletId)) {
+      const match = wallets.find((w) => w.id === requestedWalletId);
+      if (!match) {
+        throw new Error('Selected wallet does not belong to your account.');
       }
-
-      if (requestedWalletId === 'Cash' || fallbackType === 'Cash') {
-        const cashWallet = wallets.find((w) => w.type === 'Cash') || wallets[0];
-        if (cashWallet) return cashWallet.id;
-      }
-
-      const mainBank =
-        wallets.find((w) => w.type === 'Bank' && w.isMain) ||
-        wallets.find((w) => w.type === 'Bank') ||
-        wallets[0];
-      return mainBank?.id || requestedWalletId || '';
-    } catch {
-      return requestedWalletId || '';
+      return match.id;
     }
+
+    if (requestedWalletId === 'Cash' || fallbackType === 'Cash') {
+      const cashWallet = wallets.find((w) => w.type === 'Cash') || wallets[0];
+      if (cashWallet) return cashWallet.id;
+    }
+
+    const mainBank =
+      wallets.find((w) => w.type === 'Bank' && w.isMain) ||
+      wallets.find((w) => w.type === 'Bank') ||
+      wallets[0];
+    if (!mainBank) {
+      throw new Error('No wallet found for your account.');
+    }
+    return mainBank.id;
   }
 
   async resolveOptionalWalletId(userId: string, requestedWalletId?: string | null): Promise<string | null> {
     if (!requestedWalletId) return null;
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const wallets = await walletService.getWallets(userId);
     if (uuidPattern.test(requestedWalletId)) {
-      return requestedWalletId;
+      const match = wallets.find((w) => w.id === requestedWalletId);
+      if (!match) {
+        throw new Error('Destination wallet does not belong to your account.');
+      }
+      return match.id;
     }
-    try {
-      const wallets = await walletService.getWallets(userId);
-      if (requestedWalletId === 'Cash') {
-        const cashWallet = wallets.find((w) => w.type === 'Cash') || wallets[0];
-        return cashWallet ? cashWallet.id : null;
-      }
-      if (requestedWalletId === 'Bank') {
-        const bankWallet =
-          wallets.find((w) => w.type === 'Bank' && w.isMain) ||
-          wallets.find((w) => w.type === 'Bank') ||
-          wallets[0];
-        return bankWallet ? bankWallet.id : null;
-      }
-    } catch {
-      return null;
+    if (requestedWalletId === 'Cash') {
+      const cashWallet = wallets.find((w) => w.type === 'Cash') || wallets[0];
+      return cashWallet ? cashWallet.id : null;
+    }
+    if (requestedWalletId === 'Bank') {
+      const bankWallet =
+        wallets.find((w) => w.type === 'Bank' && w.isMain) ||
+        wallets.find((w) => w.type === 'Bank') ||
+        wallets[0];
+      return bankWallet ? bankWallet.id : null;
     }
     return null;
   }
 
+  private async validateOptionalContextOwnership(
+    userId: string,
+    contextId?: string | null,
+    exec: DbExecutor = db
+  ): Promise<string | null> {
+    if (!contextId) return null;
+    const rows = await exec
+      .select({ id: financialContexts.id })
+      .from(financialContexts)
+      .where(and(eq(financialContexts.id, contextId), eq(financialContexts.userId, userId)))
+      .limit(1);
+    if (rows.length === 0) {
+      throw new Error('Selected financial context does not belong to your account.');
+    }
+    return rows[0].id;
+  }
+
   private async resolveMatchingCounterpartyId(userId: string, text?: string | null, explicitId?: string | null, exec: DbExecutor = db): Promise<string | null> {
-    if (explicitId) return explicitId;
+    if (explicitId) {
+      const owned = await exec
+        .select({ id: counterparties.id })
+        .from(counterparties)
+        .where(and(eq(counterparties.id, explicitId), eq(counterparties.userId, userId)))
+        .limit(1);
+      if (owned.length === 0) {
+        throw new Error('Selected counterparty does not belong to your account.');
+      }
+      return owned[0].id;
+    }
     if (!text || !text.trim()) return null;
     const normNotes = coreAuditService.normalizeCounterpartyName(text);
     if (!normNotes) return null;
@@ -344,6 +373,12 @@ export class TransactionService {
           txDb
         );
 
+        const validatedContextId = await this.validateOptionalContextOwnership(
+          userId,
+          dto.contextId,
+          txDb
+        );
+
         const newTx = await transactionRepository.create(
           {
             userId,
@@ -359,7 +394,7 @@ export class TransactionService {
             category: normalizedCat,
             notes: dto.notes,
             createdAt,
-            contextId: dto.contextId || null,
+            contextId: validatedContextId,
             counterpartyId: matchedCpId,
           },
           txDb
@@ -812,15 +847,20 @@ export class TransactionService {
 
       const matchedCpId =
         dto.counterpartyId !== undefined
-          ? dto.counterpartyId
+          ? await this.resolveMatchingCounterpartyId(userId, dto.notes || current.notes || '', dto.counterpartyId, txDb)
           : await this.resolveMatchingCounterpartyId(userId, dto.notes || current.notes || '', current.counterpartyId, txDb);
+
+      const validatedUpdateContextId =
+        dto.contextId !== undefined
+          ? await this.validateOptionalContextOwnership(userId, dto.contextId, txDb)
+          : undefined;
 
       const updatePayload: any = {
         amount: String(dto.amount),
         category: normalizeCategory(assignedCategory),
         notes: dto.notes,
         ...(createdAt ? { createdAt } : {}),
-        ...(dto.contextId !== undefined ? { contextId: dto.contextId || null } : {}),
+        ...(validatedUpdateContextId !== undefined ? { contextId: validatedUpdateContextId } : {}),
         ...(resolvedUpdateWalletId !== undefined ? { walletId: resolvedUpdateWalletId } : {}),
         ...(resolvedUpdateDestId !== undefined ? { destinationWalletId: resolvedUpdateDestId } : {}),
         ...(matchedCpId !== undefined ? { counterpartyId: matchedCpId } : {}),

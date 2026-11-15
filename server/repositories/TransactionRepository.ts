@@ -145,8 +145,15 @@ export class TransactionRepository {
     await db.delete(transactions).where(eq(transactions.userId, userId));
   }
 
-  async deleteAllSplits() {
-    await db.delete(splits);
+  async deleteAllSplitsByUserId(userId: string, exec: DbExecutor = db) {
+    const userTxs = await exec
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(eq(transactions.userId, userId));
+    const txIds = userTxs.map((t) => t.id);
+    if (txIds.length > 0) {
+      await exec.delete(splits).where(inArray(splits.transactionId, txIds));
+    }
   }
 }
 

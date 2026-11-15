@@ -13,6 +13,7 @@ import { eq } from 'drizzle-orm';
 import { PushService } from './PushService.js';
 import { KpiService } from './KpiService.js';
 import { settingsService } from './SettingsService.js';
+import { decryptSecret } from './SecurityCrypto.js';
 import { investmentService } from './InvestmentService.js';
 import { coreAuditService } from './CoreAuditService.js';
 
@@ -99,7 +100,7 @@ export class NotificationScheduler {
         .where(eq(users.automatedDriveBackups, 1));
 
       for (const user of backupUsers) {
-        if (!user.googleDriveToken) continue;
+        if (!user.googleDriveToken || user.status !== 'active' || !user.emailVerifiedAt) continue;
 
         if (
           user.googleDriveTokenExpiry &&
@@ -107,6 +108,9 @@ export class NotificationScheduler {
         ) {
           continue;
         }
+
+        const decryptedToken = decryptSecret(user.googleDriveToken);
+        if (!decryptedToken) continue;
 
         const lastBackup = user.lastDriveBackupDate
           ? new Date(user.lastDriveBackupDate).getTime()
@@ -120,17 +124,13 @@ export class NotificationScheduler {
             : 7 * 24 * 60 * 60 * 1000;
 
         if (Date.now() - lastBackup >= intervalMs) {
-          console.log(
-            `[BackupScheduler] Triggering server backup for ${user.email} (frequency: ${frequency})`
-          );
           try {
-            const result = await settingsService.backupToGoogleDrive(user.googleDriveToken);
+            const result = await settingsService.backupToGoogleDrive(user.id, decryptedToken);
             await settingsService.updateSettings(user.id, {
               lastDriveBackupDate: result.lastDriveBackupDate,
             });
-            console.log(`[BackupScheduler] Backup succeeded for ${user.email}`);
           } catch (err) {
-            console.error(`[BackupScheduler] Error backing up user ${user.email}:`, err);
+            console.error(`[BackupScheduler] Error backing up user ${user.id}:`, err);
           }
         }
       }
@@ -150,6 +150,9 @@ export class NotificationScheduler {
       .where(eq(notificationPreferences.enabled, true));
 
     for (const { prefs, user } of allPrefs) {
+      if (user.status !== 'active' || !user.emailVerifiedAt) {
+        continue;
+      }
       const now = new Date();
       const userTime = new Intl.DateTimeFormat('en-US', {
         timeZone: prefs.timezone || 'Africa/Casablanca',

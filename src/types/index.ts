@@ -1,6 +1,43 @@
 export type UserRole = 'owner' | 'admin' | 'manager' | 'member' | 'viewer';
-export type UserStatus = 'active' | 'suspended' | 'pending' | 'legacy_hidden';
+export type UserStatus =
+  | 'pending_verification'
+  | 'active'
+  | 'suspended'
+  | 'deletion_pending'
+  | 'deleted'
+  | 'pending'
+  | 'legacy_hidden';
 export type WorkspaceMode = 'shared' | 'isolated';
+export type ExperienceTier = 'basic' | 'advanced';
+
+export type FeatureKey =
+  | 'dashboard.core'
+  | 'transactions.core'
+  | 'accounts.core'
+  | 'budgets.core'
+  | 'calendar.core'
+  | 'debts.core'
+  | 'goals.core'
+  | 'subscriptions.core'
+  | 'analytics.basic'
+  | 'reports.basic'
+  | 'ai.basic'
+  | 'forecast.advanced'
+  | 'simulator'
+  | 'investments'
+  | 'binance.integration'
+  | 'statements.import'
+  | 'review.inbox'
+  | 'budgets.advanced'
+  | 'debts.advanced'
+  | 'goals.contributions'
+  | 'contexts.advanced'
+  | 'commitments.advanced'
+  | 'rules.automation'
+  | 'analytics.advanced'
+  | 'reports.advanced'
+  | 'ai.advanced'
+  | 'backups.advanced';
 
 export interface UserPermissions {
   canWriteTransactions: boolean;
@@ -21,6 +58,24 @@ export interface User {
   role?: UserRole;
   status?: UserStatus;
   workspaceMode?: WorkspaceMode;
+  experienceTier?: ExperienceTier;
+  emailVerified?: boolean;
+  emailVerifiedAt?: string | null;
+  pendingEmail?: string | null;
+  locale?: string;
+  countryCode?: string;
+  timezone?: string;
+  baseCurrency?: string;
+  payday?: number | null;
+  salary?: number;
+  emergencyBuffer?: number;
+  onboardingVersion?: number;
+  onboardingStartedAt?: string | null;
+  onboardingCompletedAt?: string | null;
+  onboardingDismissedAt?: string | null;
+  createdAt?: string | null;
+  lastLoginAt?: string | null;
+  deletionRequestedAt?: string | null;
   permissions?: UserPermissions;
   avatarColor?: string;
   impersonatedBy?: {
@@ -29,6 +84,68 @@ export interface User {
     displayName: string;
     role: UserRole;
   } | null;
+}
+
+export interface AuthSessionInfo {
+  id: string;
+  deviceLabel: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
+export interface AccountSecurityEventInfo {
+  id: string;
+  eventType: string;
+  outcome: string;
+  ipAddress: string | null;
+  deviceSummary: string | null;
+  metadata?: Record<string, any> | null;
+  createdAt: string;
+}
+
+export interface OnboardingChecklistItem {
+  id: string;
+  label: string;
+  description: string;
+  completed: boolean;
+  targetTab?: DashboardTab;
+  actionType?: 'verify_email' | 'choose_experience' | 'create_wallet' | 'log_transaction' | 'create_budget' | 'add_subscription' | 'create_goal';
+}
+
+export interface OnboardingState {
+  onboardingVersion: number;
+  onboardingStartedAt: string | null;
+  onboardingCompletedAt: string | null;
+  onboardingDismissedAt: string | null;
+  shouldShowWizard: boolean;
+  shouldShowChecklist: boolean;
+  stepsCompleted: string[];
+  checklist: OnboardingChecklistItem[];
+  completedCount: number;
+  totalCount: number;
+}
+
+export interface StarterTemplateItemPreview {
+  kind: 'wallet' | 'budget' | 'goal' | 'subscription' | 'context' | 'preference';
+  title: string;
+  detail: string;
+}
+
+export interface StarterTemplate {
+  id: string;
+  version: number;
+  tier: ExperienceTier;
+  category: 'budgeting' | 'accounts' | 'goals' | 'bills' | 'planning' | 'investing';
+  name: string;
+  summary: string;
+  whyUseful: string;
+  alreadyApplied: boolean;
+  appliedAt: string | null;
+  previewItems: StarterTemplateItemPreview[];
 }
 
 export interface HealthFactor {
@@ -1243,6 +1360,9 @@ export interface ManagedUser {
   role: UserRole;
   status: UserStatus;
   workspaceMode: WorkspaceMode;
+  experienceTier?: ExperienceTier;
+  emailVerified?: boolean;
+  emailVerifiedAt?: string | null;
   permissions: UserPermissions;
   avatarColor: string;
   notes?: string | null;
@@ -1625,4 +1745,5 @@ export interface AiActionImpactSimulation {
   breachesEmergencyBuffer: boolean;
   warnings: string[];
 }
+
 

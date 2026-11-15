@@ -37,9 +37,15 @@ export const chatWithAi = async (req: Request, res: Response) => {
     );
     const content = completion.choices?.[0]?.message?.content || '';
     const parsed = parseStructuredAiResponse(content);
+    const experienceTier = (req as any).experienceTier || 'advanced';
     res.json({
       reply: String(parsed.reply || ''),
-      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+      actions:
+        experienceTier === 'basic'
+          ? []
+          : Array.isArray(parsed.actions)
+          ? parsed.actions
+          : [],
       suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 4).map(String) : [],
       modelUsed: completion.modelUsed,
       requestedModel: completion.requestedModel,

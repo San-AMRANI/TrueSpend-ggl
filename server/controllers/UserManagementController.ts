@@ -1,10 +1,6 @@
 import { Response } from 'express';
-import { eq } from 'drizzle-orm';
 import { AuthRequest } from '../../src/middleware/auth.js';
 import { userManagementService } from '../services/UserManagementService.js';
-import { authService } from '../services/AuthService.js';
-import { db } from '../../src/db/index.js';
-import { users } from '../../src/db/schema.js';
 
 export class UserManagementController {
   async listUsers(_req: AuthRequest, res: Response) {
@@ -14,6 +10,15 @@ export class UserManagementController {
     } catch (error: any) {
       console.error('[UserManagementController.listUsers]', error);
       res.status(500).json({ error: error.message || 'Failed to load users and roles' });
+    }
+  }
+
+  async getOwnershipInventory(_req: AuthRequest, res: Response) {
+    try {
+      const report = await userManagementService.getLegacyOwnershipInventoryReport();
+      res.json(report);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to build ownership inventory report' });
     }
   }
 
@@ -52,29 +57,11 @@ export class UserManagementController {
     }
   }
 
-  async impersonateUser(req: AuthRequest, res: Response) {
-    try {
-      const targetId = req.params.id;
-      let actorRow = req.authUser || req.dbUser;
-
-      // If the user is currently in an impersonated session and switching back to the original actor
-      if (req.authUser?.impersonatedBy?.id) {
-        const originalActorRows = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, req.authUser.impersonatedBy.id))
-          .limit(1);
-        if (originalActorRows.length > 0) {
-          actorRow = originalActorRows[0];
-        }
-      }
-
-      const result = await authService.createImpersonationSession(actorRow, targetId);
-      res.json(result);
-    } catch (error: any) {
-      console.error('[UserManagementController.impersonateUser]', error);
-      res.status(403).json({ error: error.message || 'Failed to switch user session' });
-    }
+  async impersonateUser(_req: AuthRequest, res: Response) {
+    res.status(403).json({
+      error: 'User impersonation has been disabled to protect private account isolation.',
+      code: 'IMPERSONATION_DISABLED',
+    });
   }
 }
 

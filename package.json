@@ -10,6 +10,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "test:financial": "tsx tests/financialEngine.test.ts && tsx tests/receiptExtraction.test.ts && tsx tests/coreFinancialInvariants.test.ts && tsx tests/frontendAuditContracts.test.ts",
+    "test:security": "tsx tests/securityIsolationAndAuth.test.ts && tsx tests/entitlementsAndOnboarding.test.ts",
+    "test": "npm run test:financial && npm run test:security",
     "cap:sync": "vite build && cap sync android",
     "cap:open": "cap open android",
     "cap:run": "vite build && cap run android",

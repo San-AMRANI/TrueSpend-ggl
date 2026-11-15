@@ -1,6 +1,6 @@
 import { db } from '../../src/db/index.js';
-import { debts, splits, userAuditLogs } from '../../src/db/schema.js';
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { debts, splits, transactions, userAuditLogs } from '../../src/db/schema.js';
+import { eq, desc, and, isNotNull } from 'drizzle-orm';
 
 export type DbExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -53,8 +53,13 @@ export class DebtRepository {
     await db.delete(debts).where(eq(debts.userId, userId));
   }
 
-  async findAllLinkedSplits(exec: DbExecutor = db) {
-    return await exec.select().from(splits).where(sql`${splits.linkedContactId} IS NOT NULL`);
+  async findAllLinkedSplits(userId: string, exec: DbExecutor = db) {
+    const rows = await exec
+      .select({ split: splits })
+      .from(splits)
+      .innerJoin(transactions, eq(splits.transactionId, transactions.id))
+      .where(and(eq(transactions.userId, userId), isNotNull(splits.linkedContactId)));
+    return rows.map((r) => r.split);
   }
 
   async recordDebtForgiveness(params: {

@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { DashboardTab } from '../../types';
 import { ChevronDown, ChevronUp, LayoutGrid, X } from 'lucide-react';
 import { NAV_GROUP_ORDER, NAV_ITEMS } from '../../config/navigation';
+import { useAuth } from '../../context/AuthContext';
+import { isTabAvailableForUser } from '../../lib/entitlements';
 
 interface DashboardNavProps {
   activeTab: DashboardTab;
@@ -12,8 +14,15 @@ const quickTabs = NAV_ITEMS.filter((item) => item.quickMobile);
 const quickTabIds: DashboardTab[] = quickTabs.map((item) => item.id);
 
 export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActiveTab }) => {
+  const { user } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
   const touchStartY = useRef<number | null>(null);
+  const visibleNavItems = NAV_ITEMS.filter((item) =>
+    isTabAvailableForUser(item.id, user?.experienceTier, user?.role)
+  );
+  const visibleQuickTabs = quickTabs.filter((item) =>
+    isTabAvailableForUser(item.id, user?.experienceTier, user?.role)
+  );
 
   const close = () => setIsExpanded(false);
   const open = () => setIsExpanded(true);
@@ -60,8 +69,8 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
     );
   };
 
-  const activeNonQuickTab = !quickTabIds.includes(activeTab)
-    ? NAV_ITEMS.find((t) => t.id === activeTab)
+  const activeNonQuickTab = !visibleQuickTabs.some((t) => t.id === activeTab)
+    ? visibleNavItems.find((t) => t.id === activeTab)
     : undefined;
 
   return (
@@ -87,7 +96,7 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
           <button
             type="button"
             aria-expanded={isExpanded}
-            aria-label={isExpanded ? 'Collapse navigation menu' : `Expand all ${NAV_ITEMS.length} navigation pages`}
+            aria-label={isExpanded ? 'Collapse navigation menu' : `Expand all ${visibleNavItems.length} navigation pages`}
             onClick={() => (isExpanded ? close() : open())}
             className="flex h-5 w-full items-center justify-center gap-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
           >
@@ -99,7 +108,7 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
             <div className="max-h-[72vh] overflow-y-auto overscroll-contain pb-2 pt-1 space-y-3 animate-in slide-in-from-bottom-2 duration-150">
               <div className="flex items-center justify-between px-1.5 pb-2 border-b border-gray-100 dark:border-gray-800">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                  All Pages ({NAV_ITEMS.length})
+                  All Pages ({visibleNavItems.length})
                 </span>
                 <button
                   type="button"
@@ -110,7 +119,7 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
                 </button>
               </div>
               {NAV_GROUP_ORDER.map((group) => {
-                const groupTabs = NAV_ITEMS.filter((item) => item.group === group.id);
+                const groupTabs = visibleNavItems.filter((item) => item.group === group.id);
                 if (groupTabs.length === 0) return null;
                 return (
                   <div key={group.id} className="space-y-1">
@@ -126,7 +135,7 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
             </div>
           ) : (
             <div className="grid grid-cols-5 gap-1">
-              {quickTabs.map((tab) => renderTab(tab, true))}
+              {visibleQuickTabs.map((tab) => renderTab(tab, true))}
 
               <button
                 type="button"

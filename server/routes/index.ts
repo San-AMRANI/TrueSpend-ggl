@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import authRoutes from './authRoutes.js';
+import onboardingRoutes from './onboardingRoutes.js';
 import kpiRoutes from './kpiRoutes.js';
 import transactionRoutes from './transactionRoutes.js';
 import debtRoutes from './debtRoutes.js';
@@ -23,11 +24,12 @@ import { requireAuth } from '../../src/middleware/auth.js';
 const apiRouter = Router();
 const notificationController = new NotificationController();
 
-apiRouter.get('/health', (req, res) => {
+apiRouter.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
 apiRouter.use('/', authRoutes);
+apiRouter.use('/', onboardingRoutes);
 apiRouter.use('/', kpiRoutes);
 apiRouter.use('/', transactionRoutes);
 apiRouter.use('/', debtRoutes);

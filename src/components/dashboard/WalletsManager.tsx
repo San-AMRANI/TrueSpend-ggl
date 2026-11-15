@@ -89,7 +89,8 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   onClose,
   isModal = false,
 }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingWallet, setEditingWallet] = useState<Wallet | null>(null);
   const [reconcilingWallet, setReconcilingWallet] = useState<Wallet | null>(null);
@@ -100,19 +101,25 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   const [expandedWalletBills, setExpandedWalletBills] = useState<Record<string, boolean>>({});
   const [payingSubId, setPayingSubId] = useState<string | null>(null);
 
-  const [activeSection, setActiveSection] = useState<WalletsWorkbenchSection>(initialSection);
+  const [activeSection, setActiveSection] = useState<WalletsWorkbenchSection>(
+    isAdvanced ? initialSection : 'wallets'
+  );
 
   useEffect(() => {
-    setActiveSection(initialSection);
-  }, [initialSection]);
+    setActiveSection(isAdvanced ? initialSection : 'wallets');
+  }, [initialSection, isAdvanced]);
 
   const selectSection = (section: WalletsWorkbenchSection) => {
+    if (!isAdvanced && section !== 'wallets') {
+      setActiveSection('wallets');
+      return;
+    }
     setActiveSection(section);
     onSectionChange?.(section);
   };
 
-  const reviewInbox = useReviewInbox(token, onRefresh);
-  const workbench = useAccountAuditWorkbench(token, onRefresh);
+  const reviewInbox = useReviewInbox(isAdvanced ? token : null, onRefresh);
+  const workbench = useAccountAuditWorkbench(isAdvanced ? token : null, onRefresh);
 
   // Statement import form state
   const [stmtWalletId, setStmtWalletId] = useState<string>('');
@@ -169,21 +176,21 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
 
   const loadWorkbenchData = useCallback(
     async (panel: WalletsWorkbenchSection) => {
-      if (panel === 'wallets') return;
+      if (!isAdvanced || panel === 'wallets') return;
       if (panel === 'review_inbox') {
         await reviewInbox.refresh();
         return;
       }
       await workbench.loadSection(panel);
     },
-    [reviewInbox.refresh, workbench.loadSection]
+    [isAdvanced, reviewInbox.refresh, workbench.loadSection]
   );
 
   useEffect(() => {
-    if (activeSection !== 'wallets') {
+    if (isAdvanced && activeSection !== 'wallets') {
       loadWorkbenchData(activeSection);
     }
-  }, [activeSection, loadWorkbenchData]);
+  }, [isAdvanced, activeSection, loadWorkbenchData]);
 
   useEffect(() => {
     if (workbench.error) setError(workbench.error);
@@ -611,15 +618,17 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
           </div>
           <div className="ts-scrollbar flex items-center gap-1.5 overflow-x-auto max-w-full pb-0.5">
             {(
-              [
-                { id: 'wallets', label: 'Accounts & Balances', icon: WalletIcon },
-                { id: 'statement_import', label: 'Statement CSV Import', icon: FileSpreadsheet },
-                { id: 'review_inbox', label: 'Review Inbox', icon: Inbox },
-                { id: 'journal_audit', label: 'Double-Entry Ledger', icon: BookOpen },
-                { id: 'external_wealth_fx', label: 'External Wealth & FX', icon: Globe },
-                { id: 'counterparties', label: 'Counterparties', icon: Users },
-                { id: 'integrity_diagnostics', label: 'Integrity Diagnostics', icon: Activity },
-              ] as const
+              isAdvanced
+                ? [
+                    { id: 'wallets' as const, label: 'Accounts & Balances', icon: WalletIcon },
+                    { id: 'statement_import' as const, label: 'Statement CSV Import', icon: FileSpreadsheet },
+                    { id: 'review_inbox' as const, label: 'Review Inbox', icon: Inbox },
+                    { id: 'journal_audit' as const, label: 'Double-Entry Ledger', icon: BookOpen },
+                    { id: 'external_wealth_fx' as const, label: 'External Wealth & FX', icon: Globe },
+                    { id: 'counterparties' as const, label: 'Counterparties', icon: Users },
+                    { id: 'integrity_diagnostics' as const, label: 'Integrity Diagnostics', icon: Activity },
+                  ]
+                : [{ id: 'wallets' as const, label: 'Accounts & Balances', icon: WalletIcon }]
             ).map((btn) => {
               const Icon = btn.icon;
               const isActive = activeSection === btn.id;

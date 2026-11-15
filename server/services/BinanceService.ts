@@ -864,6 +864,7 @@ export class BinanceService {
       fromId?: number;
       forceRefresh?: boolean;
       externalStockQuotes?: ExternalStockQuoteMap;
+      allowServerCredentials?: boolean;
     }
   ): Promise<{ trades: BinancePersonalTrade[]; summary: BinanceSymbolTradeSummary }> {
     const symbol = this.validateSymbol(symbolInput);
@@ -871,8 +872,8 @@ export class BinanceService {
     const cacheKey = `${symbol}:${limit}:${options?.startTime || ''}:${options?.endTime || ''}:${options?.fromId || ''}`;
     const now = Date.now();
 
-    const cached = this.symbolTradesCache.get(cacheKey);
-    if (!options?.forceRefresh && cached && now - cached.fetchedAt < 15 * 1000) {
+    const cached = options?.allowServerCredentials ? this.symbolTradesCache.get(cacheKey) : undefined;
+    if (options?.allowServerCredentials && !options?.forceRefresh && cached && now - cached.fetchedAt < 15 * 1000) {
       return { trades: cached.trades, summary: cached.summary };
     }
 
@@ -893,7 +894,7 @@ export class BinanceService {
 
     const tickers = await this.fetchPublicTickers(options?.forceRefresh);
     let rawTrades: any[] = [];
-    if (this.isConfigured()) {
+    if (options?.allowServerCredentials && this.isConfigured()) {
       rawTrades = await this.signedGet<any[]>('/api/v3/myTrades', queryParams).catch(() => [] as any[]);
     }
 
@@ -1296,9 +1297,10 @@ export class BinanceService {
       linkedWallet?: { id: string; name: string; balanceMad: number } | null;
       externalStockQuotes?: ExternalStockQuoteMap;
       initialCapitalMad?: number;
+      allowServerCredentials?: boolean;
     }
   ): Promise<BinanceAccountOverview> {
-    const configured = this.isConfigured();
+    const configured = Boolean(options?.allowServerCredentials) && this.isConfigured();
     const linkedWalletId = options?.linkedWallet?.id || null;
     const linkedWalletName = options?.linkedWallet?.name || null;
     const linkedWalletBalanceMad = Math.round((options?.linkedWallet?.balanceMad || 0) * 100) / 100;
@@ -1307,8 +1309,9 @@ export class BinanceService {
       return {
         isConfigured: false,
         connected: false,
-        statusMessage:
-          'Server-side Binance credentials (BINANCE_API_KEY and BINANCE_ED25519_PRIVATE_KEY_B64) are not set in the environment.',
+        statusMessage: options?.allowServerCredentials
+          ? 'Server-side Binance credentials (BINANCE_API_KEY and BINANCE_ED25519_PRIVATE_KEY_B64) are not set in the environment.'
+          : 'Binance integration is isolated per account and is not connected for this user.',
         errorCode: 'CREDENTIALS_MISSING',
         accountType: 'SPOT',
         permissions: {

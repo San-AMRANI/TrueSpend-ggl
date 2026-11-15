@@ -1,4 +1,6 @@
 // Secure, Encrypted & Recoverable Offline Transaction Outbox with Idempotency Keys
+import { getApiAccessToken } from '../services/api/apiClient';
+
 export interface OfflineOutboxItem {
   idempotencyKey: string;
   userScope: string;
@@ -43,7 +45,7 @@ function getActiveUserScope(explicitScope?: string | null): string {
   if (explicitScope && explicitScope.trim()) return explicitScope.trim();
   if (typeof window === 'undefined') return 'default';
   try {
-    const token = localStorage.getItem('truespend_auth_token');
+    const token = getApiAccessToken();
     if (token && token.includes('.')) {
       const payload = JSON.parse(atob(token.split('.')[1]));
       if (payload?.uid) return String(payload.uid);

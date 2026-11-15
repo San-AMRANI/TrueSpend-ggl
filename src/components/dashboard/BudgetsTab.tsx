@@ -3,6 +3,7 @@ import { CategoryBudget, Payroll, Transaction, Debt, Goal, Subscription, Dashboa
 import { useAuth } from '../../context/AuthContext';
 import { dashboardService } from '../../services/api/dashboardService';
 import { SpexAvatar } from '../common/SpexAvatar';
+import { TemplatesGallery } from '../onboarding/TemplatesGallery';
 import { expenseCategories, normalizeCategory } from '../../lib/categories';
 import {
   budgetFor,
@@ -881,7 +882,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   onFundInvestmentWallet,
   setActiveTab,
 }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [monthRef, setMonthRef] = useState(() => getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [budgetModel, setBudgetModel] = useState<BudgetModel>('category');
   const [pillarFilter, setPillarFilter] = useState<PillarFilter>('all');
@@ -894,12 +895,19 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   const [autoBudgetOpen, setAutoBudgetOpen] = useState(false);
   const [autoBudgetLoading, setAutoBudgetLoading] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<PlanKey>('spex_ai');
+  const isAdvanced = user?.experienceTier === 'advanced';
+  const [selectedPlan, setSelectedPlan] = useState<PlanKey>(isAdvanced ? 'spex_ai' : 'balanced');
   const [spexUserNotes, setSpexUserNotes] = useState('');
   const [spexGenerating, setSpexGenerating] = useState(false);
   const [spexPlanResult, setSpexPlanResult] = useState<Awaited<ReturnType<typeof dashboardService.generateSpexBudgetPlan>> | null>(null);
   const [spexCustomOverrides, setSpexCustomOverrides] = useState<Record<string, number>>({});
   const [showPeriodHistory, setShowPeriodHistory] = useState(false);
+
+  useEffect(() => {
+    if (!isAdvanced && selectedPlan === 'spex_ai') {
+      setSelectedPlan('balanced');
+    }
+  }, [isAdvanced, selectedPlan]);
 
   const currentFM = getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
   const isCurrentMonth = monthRef.year === currentFM.year && monthRef.month === currentFM.month;
@@ -2265,6 +2273,25 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         />
       )}
 
+      {/* ── Starter Budget & Planning Templates ── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-indigo-500" />
+            Starter Templates
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TemplatesGallery
+            compact
+            onApplied={() => {
+              showToast('Starter template applied!');
+              window.dispatchEvent(new CustomEvent('truespend:tier-changed'));
+            }}
+          />
+        </CardContent>
+      </Card>
+
       {/* ── Auto-Budget Modal (Spex AI Personalized Pattern + 3 Fixed Plans) ── */}
       <MotionModal
         isOpen={autoBudgetOpen}
@@ -2344,7 +2371,8 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Choose Budget Plan</p>
                 <div className="grid grid-cols-1 gap-2.5">
-                  {/* Plan 1: Spex AI Personalized Pattern Plan */}
+                  {/* Plan 1: Spex AI Personalized Pattern Plan (Advanced Mode) */}
+                  {isAdvanced && (
                   <label
                     className={`flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition-all ${
                       selectedPlan === 'spex_ai'
@@ -2380,6 +2408,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                       </p>
                     </div>
                   </label>
+                  )}
 
                   {/* 3 Fixed Plans */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
