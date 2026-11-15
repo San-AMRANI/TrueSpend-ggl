@@ -1,17 +1,40 @@
+import { eq } from 'drizzle-orm';
+import { db } from '../../src/db/index.js';
+import { wallets } from '../../src/db/schema.js';
 import { walletRepository } from '../repositories/WalletRepository.js';
 
 export interface CreateWalletDTO {
   name: string;
   type: 'Bank' | 'Cash' | 'Savings' | 'Investment';
+  accountSubtype?: 'Checking' | 'Savings' | 'Cash' | 'Brokerage' | 'CreditCard' | 'Overdraft';
+  institutionName?: string;
+  accountReference?: string;
+  currency?: string;
   isMain?: boolean;
   initialBalance?: number;
+  creditLimit?: number;
+  liabilityBalance?: number;
+  statementClosingDay?: number;
+  paymentDueDay?: number;
+  minimumPayment?: number;
+  valuationStatus?: 'verified' | 'manual' | 'synced' | 'stale';
 }
 
 export interface UpdateWalletDTO {
   name?: string;
   type?: 'Bank' | 'Cash' | 'Savings' | 'Investment';
+  accountSubtype?: 'Checking' | 'Savings' | 'Cash' | 'Brokerage' | 'CreditCard' | 'Overdraft';
+  institutionName?: string;
+  accountReference?: string;
+  currency?: string;
   isMain?: boolean;
   initialBalance?: number;
+  creditLimit?: number;
+  liabilityBalance?: number;
+  statementClosingDay?: number;
+  paymentDueDay?: number;
+  minimumPayment?: number;
+  valuationStatus?: 'verified' | 'manual' | 'synced' | 'stale';
 }
 
 export class WalletService {
@@ -51,7 +74,8 @@ export class WalletService {
 
     const existingWallets = await walletRepository.findAllByUserId(userId);
     const isFirst = existingWallets.length === 0;
-    const isMain = isFirst ? true : Boolean(dto.isMain);
+    const isCredit = dto.accountSubtype === 'CreditCard' || dto.accountSubtype === 'Overdraft';
+    const isMain = isCredit ? false : isFirst ? true : Boolean(dto.isMain);
     const initialBalance = String(dto.initialBalance ?? 0);
 
     const created = await walletRepository.create({
@@ -62,7 +86,34 @@ export class WalletService {
       initialBalance,
     });
 
-    return created;
+    const extraPatch: Record<string, any> = {
+      accountSubtype:
+        dto.accountSubtype ||
+        (type === 'Savings'
+          ? 'Savings'
+          : type === 'Cash'
+          ? 'Cash'
+          : type === 'Investment'
+          ? 'Brokerage'
+          : 'Checking'),
+      institutionName: dto.institutionName?.trim() || null,
+      accountReference: dto.accountReference?.trim() || null,
+      currency: (dto.currency || 'MAD').toUpperCase().trim(),
+      creditLimit: String(dto.creditLimit ?? 0),
+      liabilityBalance: String(dto.liabilityBalance ?? 0),
+      statementClosingDay: dto.statementClosingDay ?? null,
+      paymentDueDay: dto.paymentDueDay ?? null,
+      minimumPayment: String(dto.minimumPayment ?? 0),
+      valuationStatus: dto.valuationStatus || 'verified',
+    };
+
+    const [enriched] = await db
+      .update(wallets)
+      .set(extraPatch)
+      .where(eq(wallets.id, created.id))
+      .returning();
+
+    return enriched || created;
   }
 
   async updateWallet(userId: string, walletId: string, dto: UpdateWalletDTO) {
@@ -94,7 +145,18 @@ export class WalletService {
 
     if (dto.initialBalance !== undefined) {
       updateData.initialBalance = String(dto.initialBalance);
+      updateData.lastReconciledAt = new Date();
     }
+    if (dto.accountSubtype !== undefined) updateData.accountSubtype = dto.accountSubtype;
+    if (dto.institutionName !== undefined) updateData.institutionName = dto.institutionName?.trim() || null;
+    if (dto.accountReference !== undefined) updateData.accountReference = dto.accountReference?.trim() || null;
+    if (dto.currency !== undefined) updateData.currency = dto.currency.toUpperCase().trim();
+    if (dto.creditLimit !== undefined) updateData.creditLimit = String(dto.creditLimit);
+    if (dto.liabilityBalance !== undefined) updateData.liabilityBalance = String(dto.liabilityBalance);
+    if (dto.statementClosingDay !== undefined) updateData.statementClosingDay = dto.statementClosingDay;
+    if (dto.paymentDueDay !== undefined) updateData.paymentDueDay = dto.paymentDueDay;
+    if (dto.minimumPayment !== undefined) updateData.minimumPayment = String(dto.minimumPayment);
+    if (dto.valuationStatus !== undefined) updateData.valuationStatus = dto.valuationStatus;
 
     // Smart Primary Wallet Switching:
     // When promoting a non-main wallet to Primary (isMain: true):

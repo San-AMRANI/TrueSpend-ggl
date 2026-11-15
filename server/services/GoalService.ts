@@ -1,3 +1,6 @@
+import { eq, and } from 'drizzle-orm';
+import { db } from '../../src/db/index.js';
+import { goalContributionEvents } from '../../src/db/schema.js';
 import { goalRepository } from '../repositories/GoalRepository.js';
 import { transactionService } from './TransactionService.js';
 import { walletRepository } from '../repositories/WalletRepository.js';
@@ -8,6 +11,8 @@ export interface CreateGoalDTO {
   currentAmount?: number;
   walletId?: string | null;
   autoSyncBalance?: boolean;
+  fundingCadence?: string;
+  plannedContributionAmount?: number;
   deadline?: string | null;
   category?: string;
   notes?: string;
@@ -19,6 +24,8 @@ export interface UpdateGoalDTO {
   currentAmount?: number;
   walletId?: string | null;
   autoSyncBalance?: boolean;
+  fundingCadence?: string;
+  plannedContributionAmount?: number;
   deadline?: string | null;
   category?: string;
   notes?: string;
@@ -32,9 +39,42 @@ export interface GoalContributionDTO {
   date?: string;
 }
 
+export function buildGoalsWithEvents(goalList: any[], events: any[]) {
+  const eventsByGoalId = new Map<string, any[]>();
+  for (const e of events) {
+    if (!e.goalId) continue;
+    const list = eventsByGoalId.get(e.goalId);
+    if (list) list.push(e);
+    else eventsByGoalId.set(e.goalId, [e]);
+  }
+
+  return goalList.map((g) => {
+    const goalEvents = eventsByGoalId.get(g.id) || [];
+    const auditedNetContributions = goalEvents.reduce(
+      (sum, e) =>
+        sum +
+        (e.eventType === 'withdrawal'
+          ? -Number(e.amount || 0)
+          : Number(e.amount || 0)),
+      0
+    );
+    return {
+      ...g,
+      contributionEventsCount: goalEvents.length,
+      auditedNetContributions: Number(auditedNetContributions.toFixed(2)),
+      contributionHistory: goalEvents.slice(0, 20),
+    };
+  });
+}
+
 export class GoalService {
   async getGoalsForUser(userId: string) {
-    return await goalRepository.findAllByUserId(userId);
+    const [goalList, events] = await Promise.all([
+      goalRepository.findAllByUserId(userId),
+      db.select().from(goalContributionEvents).where(eq(goalContributionEvents.userId, userId)),
+    ]);
+
+    return buildGoalsWithEvents(goalList, events);
   }
 
   async getGoalById(id: string, userId: string) {
@@ -50,7 +90,7 @@ export class GoalService {
     if (!Number.isFinite(target) || target <= 0) {
       throw new Error('Target amount must be greater than zero');
     }
-    const current = Number(dto.currentAmount ?? 0);
+    const current = Math.max(0, Number(dto.currentAmount ?? 0));
     const deadline = dto.deadline ? new Date(dto.deadline) : null;
 
     let walletId = dto.walletId?.trim() || null;
@@ -59,17 +99,33 @@ export class GoalService {
       if (!wallet) walletId = null;
     }
 
-    return await goalRepository.create({
+    const created = await goalRepository.create({
       userId,
       name,
       targetAmount: String(target),
-      currentAmount: String(Math.max(0, Number.isFinite(current) ? current : 0)),
+      currentAmount: String(Number.isFinite(current) ? current : 0),
       walletId,
       autoSyncBalance: Boolean(dto.autoSyncBalance),
       deadline,
       category: dto.category?.trim() || 'General',
       notes: dto.notes?.trim() || '',
     });
+
+    if (current > 0) {
+      await db.insert(goalContributionEvents).values({
+        userId,
+        goalId: created.id,
+        transactionId: null,
+        sourceWalletId: walletId,
+        destinationWalletId: walletId,
+        eventType: 'reconciliation',
+        amount: String(current),
+        eventDate: new Date().toISOString().slice(0, 10),
+        notes: 'Initial opening goal balance',
+      });
+    }
+
+    return created;
   }
 
   async updateGoal(id: string, userId: string, dto: UpdateGoalDTO) {
@@ -108,6 +164,12 @@ export class GoalService {
     if (dto.autoSyncBalance !== undefined) {
       updateData.autoSyncBalance = Boolean(dto.autoSyncBalance);
     }
+    if (dto.fundingCadence !== undefined) {
+      updateData.fundingCadence = dto.fundingCadence;
+    }
+    if (dto.plannedContributionAmount !== undefined) {
+      updateData.plannedContributionAmount = String(Math.max(0, Number(dto.plannedContributionAmount || 0)));
+    }
     if (dto.deadline !== undefined) {
       updateData.deadline = dto.deadline ? new Date(dto.deadline) : null;
     }
@@ -132,9 +194,9 @@ export class GoalService {
 
     let transaction = null;
     const targetWalletId = dto.destinationWalletId || goal.walletId;
+    const eventDate = dto.date || new Date().toISOString().slice(0, 10);
 
     if (dto.walletId && targetWalletId && dto.walletId !== targetWalletId) {
-      // Linked wallet transfer: Move funds from source wallet (e.g. checking/cash) to savings wallet
       transaction = await transactionService.createTransaction(userId, {
         amount,
         type: 'Transfer',
@@ -142,23 +204,34 @@ export class GoalService {
         destinationWalletId: targetWalletId,
         category: '🛟 Emergency & goals Fund',
         notes: dto.note?.trim() || `Deposit to Goal: ${goal.name}`,
-        transaction_date: dto.date || new Date().toISOString().slice(0, 10),
+        transaction_date: eventDate,
       });
     } else if (dto.walletId) {
-      // Regular direct expense contribution
       transaction = await transactionService.createTransaction(userId, {
         amount,
         type: 'Expense',
         walletId: dto.walletId,
         category: '🛟 Emergency & goals Fund',
         notes: dto.note?.trim() || `Contributed to goal: ${goal.name}`,
-        transaction_date: dto.date || new Date().toISOString().slice(0, 10),
+        transaction_date: eventDate,
       });
     }
 
     const newCurrent = (parseFloat(goal.currentAmount as string) || 0) + amount;
     const updated = await goalRepository.update(id, userId, {
       currentAmount: String(newCurrent),
+    });
+
+    await db.insert(goalContributionEvents).values({
+      userId,
+      goalId: id,
+      transactionId: transaction?.id || null,
+      sourceWalletId: dto.walletId || null,
+      destinationWalletId: targetWalletId || null,
+      eventType: 'contribution',
+      amount: String(amount),
+      eventDate,
+      notes: dto.note?.trim() || `Contributed to ${goal.name}`,
     });
 
     return { goal: updated, transaction };
@@ -180,9 +253,9 @@ export class GoalService {
 
     let transaction = null;
     const sourceWalletId = goal.walletId;
+    const eventDate = dto.date || new Date().toISOString().slice(0, 10);
 
     if (sourceWalletId && dto.walletId && sourceWalletId !== dto.walletId) {
-      // Transfer back from the linked savings wallet to the spending/cash wallet
       transaction = await transactionService.createTransaction(userId, {
         amount,
         type: 'Transfer',
@@ -190,7 +263,7 @@ export class GoalService {
         destinationWalletId: dto.walletId,
         category: '🔄 Transfer',
         notes: dto.note?.trim() || `Withdrawal from Goal: ${goal.name}`,
-        transaction_date: dto.date || new Date().toISOString().slice(0, 10),
+        transaction_date: eventDate,
       });
     } else if (dto.walletId) {
       transaction = await transactionService.createTransaction(userId, {
@@ -199,7 +272,7 @@ export class GoalService {
         walletId: dto.walletId,
         category: '💰 Savings & Goals',
         notes: dto.note?.trim() || `Withdrawal from goal: ${goal.name}`,
-        transaction_date: dto.date || new Date().toISOString().slice(0, 10),
+        transaction_date: eventDate,
       });
     }
 
@@ -208,7 +281,41 @@ export class GoalService {
       currentAmount: String(newCurrent),
     });
 
+    await db.insert(goalContributionEvents).values({
+      userId,
+      goalId: id,
+      transactionId: transaction?.id || null,
+      sourceWalletId: sourceWalletId || null,
+      destinationWalletId: dto.walletId || null,
+      eventType: 'withdrawal',
+      amount: String(amount),
+      eventDate,
+      notes: dto.note?.trim() || `Withdrawal from ${goal.name}`,
+    });
+
     return { goal: updated, transaction };
+  }
+
+  async reconcileGoalFromEvents(id: string, userId: string) {
+    const goal = await goalRepository.findByIdAndUserId(id, userId);
+    if (!goal) throw new Error('Goal not found');
+    const events = await db
+      .select()
+      .from(goalContributionEvents)
+      .where(and(eq(goalContributionEvents.goalId, id), eq(goalContributionEvents.userId, userId)));
+    if (events.length === 0) return goal;
+
+    const netTotal = Math.max(
+      0,
+      events.reduce(
+        (sum, e) =>
+          sum + (e.eventType === 'withdrawal' ? -Number(e.amount || 0) : Number(e.amount || 0)),
+        0
+      )
+    );
+    return await goalRepository.update(id, userId, {
+      currentAmount: String(netTotal.toFixed(2)),
+    });
   }
 
   async deleteGoal(id: string, userId: string) {
@@ -220,3 +327,4 @@ export class GoalService {
 }
 
 export const goalService = new GoalService();
+

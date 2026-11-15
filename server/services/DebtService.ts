@@ -1,13 +1,24 @@
+import { eq } from 'drizzle-orm';
+import { db } from '../../src/db/index.js';
+import { debts } from '../../src/db/schema.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
 import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { walletService } from './WalletService.js';
+import { coreAuditService } from './CoreAuditService.js';
 
 export interface SettleDebtDTO {
   amount: number;
   contact?: string;
+  counterpartyType?: 'Person' | 'Institution' | 'Merchant';
   type?: 'Receivable' | 'Payable';
   debt_id?: string;
   due_date?: string;
+  interestRateApr?: number;
+  rateType?: 'none' | 'fixed' | 'variable';
+  installmentAmount?: number;
+  installmentFrequency?: 'one_time' | 'monthly' | 'biweekly' | 'weekly';
+  feesAmount?: number;
+  currency?: string;
   /** Wallet that sends or receives the settlement money. */
   walletId?: string;
   category?: string;
@@ -28,133 +39,189 @@ export interface UpdateDebtDTO {
   contact: string;
   type: 'Receivable' | 'Payable';
   due_date?: string;
+  counterpartyType?: 'Person' | 'Institution' | 'Merchant';
+  interestRateApr?: number;
+  rateType?: 'none' | 'fixed' | 'variable';
+  installmentAmount?: number;
+  installmentFrequency?: 'one_time' | 'monthly' | 'biweekly' | 'weekly';
+  feesAmount?: number;
+}
+
+export function buildDebtsWithSettlements(
+  userId: string,
+  allDebts: any[],
+  allSplits: any[],
+  allTxs: any[],
+  forgivenessLogs: any[]
+) {
+  const txById = new Map(allTxs.map((t) => [t.id, t]));
+  const splitsByDebtId = new Map<string, any[]>();
+  for (const s of allSplits) {
+    if (!s.linkedContactId) continue;
+    const list = splitsByDebtId.get(s.linkedContactId);
+    if (list) list.push(s);
+    else splitsByDebtId.set(s.linkedContactId, [s]);
+  }
+  const forgiveLogsByDebtId = new Map<string, any[]>();
+  for (const log of forgivenessLogs) {
+    if (!log.targetUserName) continue;
+    const list = forgiveLogsByDebtId.get(log.targetUserName);
+    if (list) list.push(log);
+    else forgiveLogsByDebtId.set(log.targetUserName, [log]);
+  }
+
+  return allDebts.map((debt) => {
+    const debtSplits = splitsByDebtId.get(debt.id) || [];
+
+    // Separate origin transaction split from settlement splits:
+    // - For Receivable debts: origin is Expense, settlement is Income.
+    // - For Payable debts: origin is Income (Loan) OR Expense with split.reimbursableAmount > 0 (Uncompleted Bill),
+    //   while settlement is Expense with split.reimbursableAmount == 0.
+    let originTransactionId: string | null = null;
+    let originDescription: string | null = null;
+
+    const cashSettlements = debtSplits
+      .map((s) => {
+        const tx = txById.get(s.transactionId);
+        if (!tx) return null;
+        const splitAmountNum = parseFloat(s.reimbursableAmount || '0');
+
+        const isOrigin =
+          (debt.type === 'Receivable' && tx.type === 'Expense') ||
+          (debt.type === 'Payable' && tx.type === 'Income') ||
+          (debt.type === 'Payable' && tx.type === 'Expense' && splitAmountNum > 0);
+
+        if (isOrigin) {
+          originTransactionId = tx.id;
+          if (debt.type === 'Payable' && tx.type === 'Expense') {
+            const paidNow = parseFloat(tx.amount as unknown as string) || 0;
+            const origDebt = parseFloat(debt.originalAmount as unknown as string) || splitAmountNum;
+            originDescription = `Uncompleted Transaction: ${tx.notes || tx.category || 'Expense'} (Paid ${paidNow.toFixed(2)} / ${(paidNow + origDebt).toFixed(2)} MAD)`;
+          } else {
+            originDescription = `${tx.notes || tx.category || tx.type} (${parseFloat(tx.amount as unknown as string).toFixed(2)} MAD)`;
+          }
+          return null;
+        }
+
+        return {
+          id: s.id,
+          amount: splitAmountNum > 0 ? s.reimbursableAmount : (tx.amount || '0'),
+          createdAt: tx.createdAt || debt.createdAt,
+          isForgiven: false,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    // Parse forgiveness logs for this debt
+    const forgivenEntries = (forgiveLogsByDebtId.get(debt.id) || []).map((log) => {
+      let parsed: { amount?: number; reason?: string; note?: string } = {};
+      try {
+        parsed = JSON.parse(log.details || '{}');
+      } catch {}
+      return {
+        id: log.id,
+        amount: String(Number(parsed.amount || 0).toFixed(2)),
+        createdAt: log.createdAt,
+        isForgiven: true,
+        reason: parsed.reason || 'Forgiven / Waived',
+        note: parsed.note || '',
+      };
+    });
+
+    const originalNum = parseFloat(debt.originalAmount as unknown as string) || 0;
+    const remainingNum = parseFloat(debt.remainingBalance as unknown as string) || 0;
+    const cashSettledSum = cashSettlements.reduce(
+      (sum, s) => sum + (parseFloat(s.amount as unknown as string) || 0),
+      0
+    );
+    const loggedForgivenSum = forgivenEntries.reduce(
+      (sum, f) => sum + (parseFloat(f.amount) || 0),
+      0
+    );
+
+    const totalSettledOrForgiven = Math.max(0, originalNum - remainingNum);
+    const unloggedForgiven = Math.max(
+      0,
+      totalSettledOrForgiven - cashSettledSum - loggedForgivenSum
+    );
+    if (unloggedForgiven > 0.01 && forgivenEntries.length === 0 && cashSettlements.length === 0 && remainingNum <= 0.001) {
+      forgivenEntries.push({
+        id: `forgiven-${debt.id}`,
+        amount: unloggedForgiven.toFixed(2),
+        createdAt: debt.createdAt,
+        isForgiven: true,
+        reason: 'Forgiven / Waived',
+        note: '',
+      });
+    }
+
+    const settlements = [...cashSettlements, ...forgivenEntries].sort(
+      (a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
+    );
+
+    const totalForgivenNum = forgivenEntries.reduce(
+      (sum, f) => sum + (parseFloat(f.amount) || 0),
+      0
+    );
+
+    // Auto-correct any floating point remaining balance artifacts
+    let correctedStatus = debt.status;
+    if (remainingNum <= 0.001 && debt.status === 'Pending') {
+      correctedStatus = 'Cleared';
+      debtRepository
+        .update(debt.id, userId, { status: 'Cleared', remainingBalance: '0' })
+        .catch(() => {});
+    }
+
+    const apr = parseFloat((debt as any).interestRateApr || '0') || 0;
+    const instAmt = parseFloat((debt as any).installmentAmount || '0') || 0;
+    const feesAmt = parseFloat((debt as any).feesAmount || '0') || 0;
+    const monthsRemaining =
+      instAmt > 0 && remainingNum > 0 ? Math.ceil(remainingNum / instAmt) : 0;
+    const projectedRemainingInterest =
+      apr > 0 && remainingNum > 0
+        ? Number(((remainingNum * (apr / 100) * Math.max(1, monthsRemaining)) / 12).toFixed(2))
+        : 0;
+
+    const amortizationSchedule = coreAuditService.generateDebtInstallmentSchedule({
+      id: debt.id,
+      contactName: debt.contactName,
+      type: debt.type,
+      remainingBalance: remainingNum,
+      installmentAmount: instAmt > 0 ? instAmt : null,
+      installmentFrequency: (debt as any).installmentFrequency || 'one_time',
+      interestRateApr: apr,
+      feesAmount: feesAmt,
+      dueDate: debt.dueDate,
+      currency: (debt as any).currency || 'MAD',
+    });
+
+    return {
+      ...debt,
+      remainingBalance: remainingNum <= 0.001 ? '0' : debt.remainingBalance,
+      status: correctedStatus,
+      settlements,
+      forgivenAmount: totalForgivenNum > 0.001 ? totalForgivenNum.toFixed(2) : undefined,
+      originTransactionId,
+      originDescription,
+      earlySettlementSavingsMad: projectedRemainingInterest,
+      estimatedMonthsRemaining: monthsRemaining,
+      totalPayoffWithFeesMad: Number((remainingNum + feesAmt + projectedRemainingInterest).toFixed(2)),
+      amortizationSchedule,
+    };
+  });
 }
 
 export class DebtService {
   async getDebtsWithSettlements(userId: string) {
     const [allDebts, allSplits, allTxs, forgivenessLogs] = await Promise.all([
       debtRepository.findAllByUserId(userId),
-      debtRepository.findAllLinkedSplits(),
+      debtRepository.findAllLinkedSplits(userId),
       transactionRepository.findAllByUserId(userId),
       debtRepository.findForgivenessLogsByUserId(userId),
     ]);
 
-    return allDebts.map((debt) => {
-      const debtSplits = allSplits.filter((s) => s.linkedContactId === debt.id);
-
-      // Separate origin transaction split from settlement splits:
-      // - For Receivable debts: origin is Expense, settlement is Income.
-      // - For Payable debts: origin is Income (Loan) OR Expense with split.reimbursableAmount > 0 (Uncompleted Bill),
-      //   while settlement is Expense with split.reimbursableAmount == 0.
-      let originTransactionId: string | null = null;
-      let originDescription: string | null = null;
-
-      const cashSettlements = debtSplits
-        .map((s) => {
-          const tx = allTxs.find((t) => t.id === s.transactionId);
-          if (!tx) return null;
-          const splitAmountNum = parseFloat(s.reimbursableAmount || '0');
-
-          const isOrigin =
-            (debt.type === 'Receivable' && tx.type === 'Expense') ||
-            (debt.type === 'Payable' && tx.type === 'Income') ||
-            (debt.type === 'Payable' && tx.type === 'Expense' && splitAmountNum > 0);
-
-          if (isOrigin) {
-            originTransactionId = tx.id;
-            if (debt.type === 'Payable' && tx.type === 'Expense') {
-              const paidNow = parseFloat(tx.amount as unknown as string) || 0;
-              const origDebt = parseFloat(debt.originalAmount as unknown as string) || splitAmountNum;
-              originDescription = `Uncompleted Transaction: ${tx.notes || tx.category || 'Expense'} (Paid ${paidNow.toFixed(2)} / ${(paidNow + origDebt).toFixed(2)} MAD)`;
-            } else {
-              originDescription = `${tx.notes || tx.category || tx.type} (${parseFloat(tx.amount as unknown as string).toFixed(2)} MAD)`;
-            }
-            return null;
-          }
-
-          return {
-            id: s.id,
-            amount: splitAmountNum > 0 ? s.reimbursableAmount : (tx.amount || '0'),
-            createdAt: tx.createdAt || debt.createdAt,
-            isForgiven: false,
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null);
-
-      // Parse forgiveness logs for this debt
-      const forgivenEntries = forgivenessLogs
-        .filter((log) => log.targetUserName === debt.id)
-        .map((log) => {
-          let parsed: { amount?: number; reason?: string; note?: string } = {};
-          try {
-            parsed = JSON.parse(log.details || '{}');
-          } catch {}
-          return {
-            id: log.id,
-            amount: String(Number(parsed.amount || 0).toFixed(2)),
-            createdAt: log.createdAt,
-            isForgiven: true,
-            reason: parsed.reason || 'Forgiven / Waived',
-            note: parsed.note || '',
-          };
-        });
-
-      const originalNum = parseFloat(debt.originalAmount as unknown as string) || 0;
-      const remainingNum = parseFloat(debt.remainingBalance as unknown as string) || 0;
-      const cashSettledSum = cashSettlements.reduce(
-        (sum, s) => sum + (parseFloat(s.amount as unknown as string) || 0),
-        0
-      );
-      const loggedForgivenSum = forgivenEntries.reduce(
-        (sum, f) => sum + (parseFloat(f.amount) || 0),
-        0
-      );
-
-      // If a debt was forgiven and there is any unlogged discrepancy between (original - remaining) and cashSettledSum, surface it cleanly
-      const totalSettledOrForgiven = Math.max(0, originalNum - remainingNum);
-      const unloggedForgiven = Math.max(
-        0,
-        totalSettledOrForgiven - cashSettledSum - loggedForgivenSum
-      );
-      if (unloggedForgiven > 0.01 && forgivenEntries.length === 0 && cashSettlements.length === 0 && remainingNum <= 0.001) {
-        forgivenEntries.push({
-          id: `forgiven-${debt.id}`,
-          amount: unloggedForgiven.toFixed(2),
-          createdAt: debt.createdAt,
-          isForgiven: true,
-          reason: 'Forgiven / Waived',
-          note: '',
-        });
-      }
-
-      const settlements = [...cashSettlements, ...forgivenEntries].sort(
-        (a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
-      );
-
-      const totalForgivenNum = forgivenEntries.reduce(
-        (sum, f) => sum + (parseFloat(f.amount) || 0),
-        0
-      );
-
-      // Auto-correct any floating point remaining balance artifacts
-      let correctedStatus = debt.status;
-      if (remainingNum <= 0.001 && debt.status === 'Pending') {
-        correctedStatus = 'Cleared';
-        debtRepository
-          .update(debt.id, userId, { status: 'Cleared', remainingBalance: '0' })
-          .catch(() => {});
-      }
-
-      return {
-        ...debt,
-        remainingBalance: remainingNum <= 0.001 ? '0' : debt.remainingBalance,
-        status: correctedStatus,
-        settlements,
-        forgivenAmount: totalForgivenNum > 0.001 ? totalForgivenNum.toFixed(2) : undefined,
-        originTransactionId,
-        originDescription,
-      };
-    });
+    return buildDebtsWithSettlements(userId, allDebts, allSplits, allTxs, forgivenessLogs);
   }
 
   /**
@@ -239,50 +306,53 @@ export class DebtService {
 
       const currentRemaining = parseFloat(debt.remainingBalance as unknown as string);
       const newRemaining = Math.max(0, Number((currentRemaining - dto.amount).toFixed(2)));
+      const txType: 'Income' | 'Expense' = debt.type === 'Receivable' ? 'Income' : 'Expense';
+      const txCategory = dto.category || (debt.type === 'Receivable' ? '📥 Income' : '💳 Debt & Obligations');
+      const userWallets = await walletService.getWallets(userId);
+      const targetWalletId =
+        dto.walletId || userWallets.find((w) => w.isMain)?.id || userWallets[0]?.id || null;
 
-      await debtRepository.update(dto.debt_id, userId, {
-        remainingBalance: newRemaining <= 0.001 ? '0' : String(newRemaining),
-        status: newRemaining <= 0.001 ? 'Cleared' : 'Pending',
-      });
+      await db.transaction(async (txDb) => {
+        await debtRepository.update(
+          dto.debt_id!,
+          userId,
+          {
+            remainingBalance: newRemaining <= 0.001 ? '0' : String(newRemaining),
+            status: newRemaining <= 0.001 ? 'Cleared' : 'Pending',
+          },
+          txDb
+        );
 
-      const txType = debt.type === 'Receivable' ? 'Income' : 'Expense';
-      const txCategory = dto.category || (debt.type === 'Receivable' ? 'Reimbursement' : 'Debt Repayment');
+        const newTx = await transactionRepository.create(
+          {
+            userId,
+            amount: String(dto.amount),
+            type: txType,
+            walletId: targetWalletId,
+            category: txCategory,
+            notes: `Settlement for ${debt.contactName}`,
+          },
+          txDb
+        );
 
-      let targetWalletId: string;
-      try {
-        const wallets = await walletService.getWallets(userId);
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (dto.walletId && uuidRegex.test(dto.walletId)) {
-          const found = wallets.find((w) => w.id === dto.walletId);
-          targetWalletId = found ? found.id : wallets[0]?.id;
-        } else if (dto.walletId === 'Bank') {
-          const bankWallet =
-            wallets.find((w) => w.type === 'Bank' && w.isMain) ||
-            wallets.find((w) => w.type === 'Bank') ||
-            wallets[0];
-          targetWalletId = bankWallet?.id;
-        } else {
-          const cashWallet = wallets.find((w) => w.type === 'Cash') || wallets[0];
-          targetWalletId = cashWallet?.id;
-        }
-      } catch {
-        targetWalletId = dto.walletId as string;
-      }
+        await transactionRepository.createSplit(
+          {
+            transactionId: newTx.id,
+            reimbursableAmount: debt.type === 'Receivable' ? String(dto.amount) : '0',
+            linkedContactId: dto.debt_id,
+          },
+          txDb
+        );
 
-      const newTx = await transactionRepository.create({
-        userId,
-        amount: String(dto.amount),
-        type: txType,
-        walletId: targetWalletId,
-        category: txCategory,
-        notes: `Settlement for ${debt.contactName}`,
-      });
-
-      await transactionRepository.createSplit({
-        transactionId: newTx.id,
-        // Only Receivable settlements are reimbursable to the user; Payable settlements are bill/debt payments.
-        reimbursableAmount: debt.type === 'Receivable' ? String(dto.amount) : '0',
-        linkedContactId: dto.debt_id,
+        await coreAuditService.postJournalEntryForTransaction(
+          userId,
+          newTx,
+          {
+            idempotencyKey: `debt-settle-${newTx.id}`,
+            memo: `Debt settlement for ${debt.contactName}`,
+          },
+          txDb
+        );
       });
 
       return { message: 'Debt settled' };
@@ -296,6 +366,21 @@ export class DebtService {
         status: 'Pending',
         dueDate: this.parseDueDate(dto.due_date),
       });
+
+      await db
+        .update(debts)
+        .set({
+          counterpartyType: dto.counterpartyType || 'Person',
+          principalBalance: String(dto.amount),
+          interestRateApr: String(dto.interestRateApr ?? 0),
+          rateType: dto.rateType || 'none',
+          installmentAmount: dto.installmentAmount ? String(dto.installmentAmount) : null,
+          installmentFrequency: dto.installmentFrequency || 'one_time',
+          feesAmount: String(dto.feesAmount ?? 0),
+          currency: (dto.currency || 'MAD').toUpperCase(),
+        })
+        .where(eq(debts.id, newDebt.id));
+
       return { message: 'Debt created', id: newDebt.id };
     }
   }

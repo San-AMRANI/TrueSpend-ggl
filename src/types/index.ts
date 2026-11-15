@@ -1,6 +1,43 @@
 export type UserRole = 'owner' | 'admin' | 'manager' | 'member' | 'viewer';
-export type UserStatus = 'active' | 'suspended' | 'pending' | 'legacy_hidden';
+export type UserStatus =
+  | 'pending_verification'
+  | 'active'
+  | 'suspended'
+  | 'deletion_pending'
+  | 'deleted'
+  | 'pending'
+  | 'legacy_hidden';
 export type WorkspaceMode = 'shared' | 'isolated';
+export type ExperienceTier = 'basic' | 'advanced';
+
+export type FeatureKey =
+  | 'dashboard.core'
+  | 'transactions.core'
+  | 'accounts.core'
+  | 'budgets.core'
+  | 'calendar.core'
+  | 'debts.core'
+  | 'goals.core'
+  | 'subscriptions.core'
+  | 'analytics.basic'
+  | 'reports.basic'
+  | 'ai.basic'
+  | 'forecast.advanced'
+  | 'simulator'
+  | 'investments'
+  | 'binance.integration'
+  | 'statements.import'
+  | 'review.inbox'
+  | 'budgets.advanced'
+  | 'debts.advanced'
+  | 'goals.contributions'
+  | 'contexts.advanced'
+  | 'commitments.advanced'
+  | 'rules.automation'
+  | 'analytics.advanced'
+  | 'reports.advanced'
+  | 'ai.advanced'
+  | 'backups.advanced';
 
 export interface UserPermissions {
   canWriteTransactions: boolean;
@@ -21,6 +58,24 @@ export interface User {
   role?: UserRole;
   status?: UserStatus;
   workspaceMode?: WorkspaceMode;
+  experienceTier?: ExperienceTier;
+  emailVerified?: boolean;
+  emailVerifiedAt?: string | null;
+  pendingEmail?: string | null;
+  locale?: string;
+  countryCode?: string;
+  timezone?: string;
+  baseCurrency?: string;
+  payday?: number | null;
+  salary?: number;
+  emergencyBuffer?: number;
+  onboardingVersion?: number;
+  onboardingStartedAt?: string | null;
+  onboardingCompletedAt?: string | null;
+  onboardingDismissedAt?: string | null;
+  createdAt?: string | null;
+  lastLoginAt?: string | null;
+  deletionRequestedAt?: string | null;
   permissions?: UserPermissions;
   avatarColor?: string;
   impersonatedBy?: {
@@ -29,6 +84,68 @@ export interface User {
     displayName: string;
     role: UserRole;
   } | null;
+}
+
+export interface AuthSessionInfo {
+  id: string;
+  deviceLabel: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+}
+
+export interface AccountSecurityEventInfo {
+  id: string;
+  eventType: string;
+  outcome: string;
+  ipAddress: string | null;
+  deviceSummary: string | null;
+  metadata?: Record<string, any> | null;
+  createdAt: string;
+}
+
+export interface OnboardingChecklistItem {
+  id: string;
+  label: string;
+  description: string;
+  completed: boolean;
+  targetTab?: DashboardTab;
+  actionType?: 'verify_email' | 'choose_experience' | 'create_wallet' | 'log_transaction' | 'create_budget' | 'add_subscription' | 'create_goal';
+}
+
+export interface OnboardingState {
+  onboardingVersion: number;
+  onboardingStartedAt: string | null;
+  onboardingCompletedAt: string | null;
+  onboardingDismissedAt: string | null;
+  shouldShowWizard: boolean;
+  shouldShowChecklist: boolean;
+  stepsCompleted: string[];
+  checklist: OnboardingChecklistItem[];
+  completedCount: number;
+  totalCount: number;
+}
+
+export interface StarterTemplateItemPreview {
+  kind: 'wallet' | 'budget' | 'goal' | 'subscription' | 'context' | 'preference';
+  title: string;
+  detail: string;
+}
+
+export interface StarterTemplate {
+  id: string;
+  version: number;
+  tier: ExperienceTier;
+  category: 'budgeting' | 'accounts' | 'goals' | 'bills' | 'planning' | 'investing';
+  name: string;
+  summary: string;
+  whyUseful: string;
+  alreadyApplied: boolean;
+  appliedAt: string | null;
+  previewItems: StarterTemplateItemPreview[];
 }
 
 export interface HealthFactor {
@@ -48,19 +165,35 @@ export interface Forecast {
   spendingPacePercent: number;
 }
 
+export type WalletAccountSubtype = 'Checking' | 'Savings' | 'Cash' | 'Brokerage' | 'CreditCard' | 'Overdraft';
+
 export interface Wallet {
   id: string;
   userId: string;
   name: string;
   type: 'Bank' | 'Cash' | 'Savings' | 'Investment';
+  accountSubtype?: WalletAccountSubtype;
+  institutionName?: string | null;
+  accountReference?: string | null;
+  currency?: string;
   isMain: boolean;
   initialBalance: string;
   balance: number;
+  creditLimit?: string | number | null;
+  liabilityBalance?: string | number | null;
+  statementClosingDay?: number | null;
+  paymentDueDay?: number | null;
+  minimumPayment?: string | number | null;
+  valuationStatus?: 'exact' | 'estimated' | 'stale' | string;
+  lastReconciledAt?: string | null;
 }
 
 export interface KPI {
   accounts: Wallet[];
   totalLiquidity: number;
+  creditCardLiabilityTotal?: number;
+  availableCreditTotal?: number;
+  creditUtilizationPercent?: number;
   bankBalance: number;
   cashOnHand: number;
   monthlyExpenses: number;
@@ -137,6 +270,11 @@ export interface Transaction {
   userId: string;
   createdAt: string;
   amount: string;
+  nativeAmount?: string | null;
+  currency?: string;
+  exchangeRateUsed?: string | null;
+  fxSource?: string | null;
+  idempotencyKey?: string | null;
   type: 'Income' | 'Expense' | 'Transfer' | 'Debt Repayment';
   walletId?: string | null;
   sourceWallet?: string | null;
@@ -169,9 +307,13 @@ export interface Goal {
   targetAmount: string;
   currentAmount: string;
   autoSyncBalance?: boolean;
+  fundingCadence?: 'monthly' | 'per_paycheck' | 'target_date' | string;
+  plannedContributionAmount?: string | null;
   deadline?: string | null;
   category: string;
   notes?: string;
+  contributionEventsCount?: number;
+  contributionHistory?: GoalContributionEvent[];
   createdAt: string;
   updatedAt: string;
 }
@@ -182,6 +324,7 @@ export type SubscriptionBillingCycle =
   | 'every_3_months'
   | 'quarterly'
   | 'every_6_months'
+  | 'every_10_months'
   | 'yearly'
   | 'weekly'
   | 'biweekly'
@@ -207,6 +350,46 @@ export interface Subscription {
   updatedAt: string;
 }
 
+export type SubscriptionPlanChangeDirection = 'upgrade' | 'downgrade' | 'switch';
+export type SubscriptionPlanPaymentMode = 'none' | 'difference' | 'full';
+
+export interface SubscriptionPlanChangePayload {
+  newName?: string;
+  newAmount: number;
+  newCurrency?: string;
+  newBillingCycle: SubscriptionBillingCycle;
+  effectiveDate?: string;
+  nextBillingDate?: string | null;
+  recalculateNextDate?: boolean;
+  walletId?: string | null;
+  paymentMode: SubscriptionPlanPaymentMode;
+  paymentAmount?: number;
+  status?: SubscriptionStatus;
+  notes?: string;
+}
+
+export interface SubscriptionPlanChangeSummary {
+  direction: SubscriptionPlanChangeDirection;
+  oldName: string;
+  newName: string;
+  oldAmount: number;
+  newAmount: number;
+  oldBillingCycle: string;
+  newBillingCycle: string;
+  oldMonthlyEquivalent: number;
+  newMonthlyEquivalent: number;
+  monthlyDelta: number;
+  annualizedDelta: number;
+  chargedAmount: number;
+  nextBillingDate: string | null;
+}
+
+export interface SubscriptionPlanChangeResult {
+  subscription: Subscription;
+  transaction: Transaction | null;
+  summary: SubscriptionPlanChangeSummary;
+}
+
 export interface DetectedSubscription {
   name: string;
   suggestedAmount: number;
@@ -226,6 +409,8 @@ export interface CategoryBudget {
   /** 1-based calendar month. */
   month: number;
   amount: string;
+  rolloverEnabled?: boolean;
+  rolloverAmount?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -233,8 +418,16 @@ export interface CategoryBudget {
 export interface Payroll {
   id: string;
   userId: string;
+  walletId?: string | null;
+  walletName?: string | null;
+  walletType?: string | null;
   scheduledFor: string;
   amount: string;
+  status?: 'expected' | 'confirmed' | 'matched';
+  confirmedAmount?: string | null;
+  confirmedAt?: string | null;
+  varianceAmount?: string | null;
+  varianceNotes?: string | null;
   createdAt: string;
 }
 
@@ -251,9 +444,18 @@ export interface Debt {
   id: string;
   userId: string;
   contactName: string;
+  counterpartyType?: 'person' | 'institution' | 'merchant' | 'split_group' | string;
   type: 'Receivable' | 'Payable';
   originalAmount: string;
   remainingBalance: string;
+  principalBalance?: string | null;
+  accruedInterest?: string | null;
+  feesAmount?: string | null;
+  interestRateApr?: string | null;
+  rateType?: 'zero' | 'fixed' | 'variable' | string;
+  installmentAmount?: string | null;
+  installmentFrequency?: string | null;
+  currency?: string;
   status: 'Pending' | 'Cleared';
   createdAt: string;
   dueDate?: string | null;
@@ -261,6 +463,18 @@ export interface Debt {
   forgivenAmount?: string;
   originTransactionId?: string | null;
   originDescription?: string | null;
+  earlySettlementSavingsMad?: number;
+  estimatedMonthsRemaining?: number;
+  totalPayoffWithFeesMad?: number;
+  amortizationSchedule?: Array<{
+    installmentNumber: number;
+    expectedDate: string;
+    expectedAmount: number;
+    principalComponent: number;
+    interestComponent: number;
+    feeComponent: number;
+    remainingPrincipalAfter: number;
+  }>;
 }
 
 export interface UserSettings {
@@ -275,6 +489,7 @@ export interface UserSettings {
 
 export type DashboardTab =
   | 'overview'
+  | 'accounts'
   | 'investments'
   | 'forecast'
   | 'calculators'
@@ -290,6 +505,15 @@ export type DashboardTab =
   | 'chat'
   | 'reports'
   | 'contexts';
+
+export type WalletsWorkbenchSection =
+  | 'wallets'
+  | 'statement_import'
+  | 'review_inbox'
+  | 'journal_audit'
+  | 'external_wealth_fx'
+  | 'counterparties'
+  | 'integrity_diagnostics';
 
 export type StockMarketType = 'US' | 'BVC' | 'ETF' | 'GLOBAL' | 'BINANCE' | 'CRYPTO';
 export type StockOrderAction = 'BUY' | 'SELL' | 'DIVIDEND';
@@ -1136,6 +1360,9 @@ export interface ManagedUser {
   role: UserRole;
   status: UserStatus;
   workspaceMode: WorkspaceMode;
+  experienceTier?: ExperienceTier;
+  emailVerified?: boolean;
+  emailVerifiedAt?: string | null;
   permissions: UserPermissions;
   avatarColor: string;
   notes?: string | null;
@@ -1171,3 +1398,352 @@ export interface RoleDefinition {
   defaultWorkspaceMode: WorkspaceMode;
   defaultPermissions: UserPermissions;
 }
+
+export interface JournalAuditSummary {
+  totalEntries: number;
+  totalLines: number;
+  totalDebitsMad: number;
+  totalCreditsMad: number;
+  isSystemBalanced: boolean;
+  imbalancedEntriesCount: number;
+  backfilledEntriesCount: number;
+  reversedEntriesCount: number;
+  walletComparison: Array<{
+    walletId: string;
+    walletName: string;
+    walletType: string;
+    accountSubtype: string;
+    currency: string;
+    legacyBalanceMad: number;
+    journalDeltaMad: number;
+    journalComputedBalanceMad: number;
+    discrepancyMad: number;
+  }>;
+  recentEntries: Array<{
+    id: string;
+    entryDate: string;
+    description: string;
+    referenceType: string;
+    referenceId: string | null;
+    isReversal: boolean;
+    isBackfilled: boolean;
+    lines: Array<{
+      id: string;
+      accountCode: string;
+      accountType: string;
+      walletId: string | null;
+      direction: string;
+      amountMad: string;
+      currency: string;
+      memo: string | null;
+    }>;
+  }>;
+}
+
+export interface ExchangeRateRecord {
+  id: string;
+  baseCurrency: string;
+  quoteCurrency: string;
+  rate: string;
+  effectiveDate: string;
+  source: string;
+  isStale: boolean;
+  updatedAt: string;
+}
+
+export interface StatementImportRowRecord {
+  id: string;
+  batchId: string;
+  userId: string;
+  walletId: string | null;
+  rowDate: string;
+  description: string;
+  amount: string;
+  currency: string;
+  externalReference: string | null;
+  rowHash: string;
+  matchStatus:
+    | 'matched'
+    | 'unmatched'
+    | 'ambiguous'
+    | 'duplicate'
+    | 'confirmed_linked'
+    | 'confirmed_created'
+    | 'ignored'
+    | string;
+  matchConfidence: string;
+  suggestedTransactionId: string | null;
+  candidateTransactionIdsJson?: string | null;
+  linkedTransactionId: string | null;
+  createdAt: string;
+}
+
+export interface StatementBatchWithRows {
+  id: string;
+  userId: string;
+  walletId: string | null;
+  fileName: string;
+  fileFormat?: string;
+  statementOpeningBalance?: string | null;
+  statementClosingBalance?: string | null;
+  status?: string;
+  totalRows: number;
+  matchedCount: number;
+  unmatchedCount: number;
+  ambiguousCount: number;
+  duplicateCount: number;
+  reconciledVariance?: string | null;
+  createdAt: string;
+  rows: StatementImportRowRecord[];
+}
+
+export interface FinancialReviewItem {
+  id: string;
+  userId: string;
+  sourceType: 'receipt_ocr' | 'statement_row' | 'voice_capture' | 'subscription_candidate' | 'rule_action' | string;
+  status: 'Captured' | 'Needs Review' | 'Confirmed' | 'Linked' | 'Posted' | 'Rejected' | 'Duplicate' | string;
+  confidenceScore: string;
+  parsedAmount: string;
+  parsedCurrency: string;
+  parsedDate: string;
+  parsedDescription: string;
+  parsedCategory: string;
+  parsedType: 'Income' | 'Expense' | 'Transfer' | string;
+  walletId: string | null;
+  linkedTransactionId: string | null;
+  counterpartyId?: string | null;
+  rawPayloadJson: string | null;
+  decisionNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommitmentOccurrence {
+  id: string;
+  userId: string;
+  sourceType: 'subscription' | 'debt_installment' | 'payroll' | 'recurring_income' | 'planned_bill' | string;
+  sourceId: string;
+  title: string;
+  expectedDate: string;
+  expectedAmount: string;
+  currency: string;
+  status: 'scheduled' | 'completed' | 'partial' | 'skipped' | 'overdue' | 'cancelled' | string;
+  isNonCashEvent?: boolean;
+  paidAmount?: string;
+  principalComponent?: string;
+  interestComponent?: string;
+  feeComponent?: string;
+  installmentNumber?: number | null;
+  actualDate?: string | null;
+  actualAmount?: string | null;
+  varianceAmount: string;
+  linkedTransactionId: string | null;
+  historyJson?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GoalContributionEvent {
+  id: string;
+  userId: string;
+  goalId: string;
+  transactionId: string | null;
+  sourceWalletId: string | null;
+  destinationWalletId: string | null;
+  eventType: 'opening_seed' | 'contribution' | 'withdrawal' | 'reallocation' | 'reconciliation' | string;
+  amount: string;
+  notes: string | null;
+  eventDate: string;
+  createdAt?: string;
+}
+
+export interface SavedWhatIfScenario {
+  id: string;
+  userId: string;
+  name: string;
+  description: string | null;
+  isApprovedPlan: boolean;
+  baselineSnapshotJson: string;
+  eventsJson: string;
+  assumptionsJson: string;
+  projectedSummaryJson: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FinancialRuleItem {
+  id: string;
+  userId: string;
+  name: string;
+  enabled: boolean;
+  triggerType:
+    | 'transaction_posted'
+    | 'salary_confirmed'
+    | 'balance_threshold_crossed'
+    | 'commitment_approaching'
+    | 'budget_pace_crossed'
+    | string;
+  conditionsJson: string;
+  actionType: 'send_notification' | 'create_review_draft' | 'suggest_category' | 'prepare_allocation' | string;
+  actionPayloadJson: string;
+  approvalPolicy: 'notify_only' | 'draft_for_approval' | string;
+  version: number;
+  lastTriggeredAt: string | null;
+  createdAt: string;
+}
+
+export interface FinancialRuleLogItem {
+  id: string;
+  userId: string;
+  ruleId: string;
+  ruleVersion?: number;
+  triggerEventSummary: string;
+  proposedResultSummary: string;
+  outcomeStatus: string;
+  idempotencyKey?: string;
+  createdAt: string;
+}
+
+export interface ExternalWealthValuationRecord {
+  id: string;
+  itemId: string;
+  estimatedValue: string;
+  currency: string;
+  fxRateUsed: string;
+  fxSource: string;
+  valueMad: string;
+  valuationDate: string;
+  valuationSource: string;
+  confidenceLevel: string;
+  notes?: string | null;
+}
+
+export interface ExternalWealthItem {
+  id: string;
+  userId: string;
+  name: string;
+  itemClass: string;
+  isLiability: boolean;
+  isLiquid: boolean;
+  estimatedValue: string;
+  valueMad?: number;
+  fxRateUsed?: number;
+  currency: string;
+  valuationDate: string;
+  valuationSource: string;
+  confidenceLevel?: string;
+  isStaleEstimate?: boolean;
+  ageDays?: number;
+  notes?: string | null;
+  valuationHistory?: ExternalWealthValuationRecord[];
+}
+
+export interface CounterpartyRecord {
+  id: string;
+  userId: string;
+  canonicalName: string;
+  normalizedName: string;
+  counterpartyType: 'merchant' | 'person' | 'employer' | 'financial_institution' | 'service_provider' | string;
+  aliasesJson: string;
+  aliases: string[];
+  defaultCategory: string | null;
+  website?: string | null;
+  contactDetails?: string | null;
+  notes?: string | null;
+  totalSpendMad: number;
+  totalIncomeMad: number;
+  transactionCount: number;
+  outstandingReceivablesMad: number;
+  outstandingPayablesMad: number;
+  subscriptionsCount: number;
+}
+
+export interface FinancialPositionSnapshot {
+  id: string;
+  snapshotDate: string;
+  reportingCurrency: string;
+  bankBalanceMad: string;
+  cashBalanceMad: string;
+  savingsBalanceMad: string;
+  investmentCashMad: string;
+  creditCardLiabilityMad: string;
+  overdraftLiabilityMad: string;
+  receivablesMad: string;
+  payablesMad: string;
+  investmentMarketValueMad: string;
+  externalAssetsMad: string;
+  externalLiabilitiesMad: string;
+  totalNetWorthMad: string;
+  liquidNetWorthMad: string;
+  dataSource: string;
+  confidenceLevel: string;
+  isEstimated: boolean;
+  triggerSource: string;
+}
+
+export interface NetWorthChangeBridge {
+  fromDate: string;
+  toDate: string;
+  deltaLiquidCashMad: number;
+  deltaCreditDebtMad: number;
+  deltaReceivablesMad: number;
+  deltaPayablesMad: number;
+  deltaInvestmentsMad: number;
+  deltaExternalNetMad: number;
+  totalDeltaMad: number;
+}
+
+export interface FinancialIntegrityReport {
+  healthy: boolean;
+  checkedAt: string;
+  totalExceptions: number;
+  walletCount: number;
+  transactionCount: number;
+  journalEntryCount: number;
+  checks: {
+    unjournaledTransactions: Array<{ id: string; type: string; amount: string; notes: string | null }>;
+    duplicateJournalPostings: Array<{ transactionId: string; count: number }>;
+    unbalancedJournalEntries: Array<{ id: string; debits: number; credits: number; lineCount: number }>;
+    orphanedJournalLines: Array<{ id: string; journalEntryId: string }>;
+    orphanedReversals: Array<{ id: string; reversalOfEntryId: string | null }>;
+    completedOccurrencesWithoutTx: Array<{ id: string; title: string; expectedDate: string }>;
+    brokenStatementLinks: Array<{ id: string; description: string; linkedTransactionId: string | null }>;
+    unreconciledGoals: Array<{ id: string; name: string; currentAmount: number; eventNetAmount: number; diff: number }>;
+    staleExternalValuations: Array<{ id: string; name: string; valuationDate: string; ageDays: number }>;
+  };
+}
+
+export interface BackupValidationPreview {
+  valid: boolean;
+  schemaVersion: string;
+  checksumVerified: boolean;
+  totalRows: number;
+  tablesWithData: Array<{ table: string; count: number }>;
+  countsByTable: Record<string, number>;
+  referentialIntegrityOk: boolean;
+  orphanRecordsDetected: number;
+  manifest: Record<string, any> | null;
+}
+
+export interface AiActionImpactSimulation {
+  before: {
+    safeToSpendMad: number;
+    dailyAllowanceMad: number;
+    totalLiquidityMad: number;
+    emergencyBufferMad: number;
+  };
+  after: {
+    safeToSpendMad: number;
+    dailyAllowanceMad: number;
+    totalLiquidityMad: number;
+    emergencyBufferMad: number;
+  };
+  deltaSafeToSpendMad: number;
+  deltaDailyAllowanceMad: number;
+  deltaLiquidityMad: number;
+  breachesEmergencyBuffer: boolean;
+  warnings: string[];
+}
+
+

@@ -71,8 +71,57 @@ function createSystemInstruction(
   contextData?: unknown,
   focusScopes?: string[],
   responseDepth: 'deep_creative' | 'balanced' | 'concise' = 'deep_creative',
+  experienceTier: 'basic' | 'advanced' = 'advanced',
 ): string {
   const context = serializeContext(contextData);
+  const isBasicMode =
+    experienceTier === 'basic' || (contextData as any)?.mode === 'basic';
+
+  if (isBasicMode) {
+    return `You are Spex — TrueSpend's friendly, practical personal finance assistant for everyday money tracking.
+
+## CRITICAL OUTPUT REQUIREMENT
+Return ONLY a valid JSON object matching this exact schema:
+{
+  "reply": "markdown-formatted response string",
+  "actions": [],
+  "suggestions": ["suggested question 1", "suggested question 2", "suggested question 3"]
+}
+- Keep "reply" clear, warm, concise, and easy to scan (use simple bullets or a small table when helpful). Avoid complex jargon.
+- Inside "reply", NEVER use unescaped double quotes ("). Use single quotes ('...') or **bold** instead.
+- "actions": Concrete proposed actions (empty [] if only answering a question).
+- "suggestions": 3 short, practical follow-up questions in everyday language.
+
+## HOW TRUESPEND BASIC WORKS
+- Currency is Moroccan Dirham (**MAD**).
+- **Safe to Spend** = Liquid Accounts (Bank + Cash + Savings) - Emergency Buffer - Pending Debt Payables.
+- **Daily Allowance** = Safe to Spend / Days Left Until Next Payday.
+- Never talk about stocks, crypto, Binance, or complex investment math unless the user asks (in which case note Investments are available in Advanced mode).
+
+## SMART CATEGORY MAPPING
+🍔 Dining & Takeaway | ☕ Coffee & Quick Food | 🛒 Groceries | 🚗 Transportation | 📱 Telecom & Subscriptions | 🩺 Health & Medical | 👕 Personal & Clothing | 🎬 Entertainment | 👥 Social | 👨‍👩‍👦 Family & Gifts | 📚 Education & Development | 🏠 Housing & Utilities | 💳 Debt & Obligations | 💰 Savings & Goals | 🚨 Unexpected | 📥 Income | 🔄 Transfer
+
+## PROPOSABLE ACTIONS IN "actions" ARRAY
+When the user asks to log an expense/income/transfer, record a debt/split, set a budget, create/fund a goal, settle a debt, or update payday/salary/buffer, propose an action in \`"actions"\`:
+1. **create_transaction**:
+   {"type":"create_transaction","summary":"Add 35 MAD coffee in ☕ Coffee & Quick Food via Cash","parameters":{"amount":35,"type":"Expense","walletId":"<wallet-uuid>","category":"☕ Coffee & Quick Food","notes":"Coffee","transaction_date":"YYYY-MM-DD"}}
+2. **create_debt**:
+   {"type":"create_debt","summary":"Record 200 MAD owed by Karim","parameters":{"amount":200,"contact":"Karim","type":"Receivable","due_date":"YYYY-MM-DD","notes":"Dinner split"}}
+3. **update_settings**:
+   {"type":"update_settings","summary":"Update payday to 28th","parameters":{"payday":28}}
+4. **upsert_budget**:
+   {"type":"upsert_budget","summary":"Set Groceries budget to 2,000 MAD","parameters":{"category":"🛒 Groceries","amount":2000,"year":2026,"month":10}}
+5. **create_goal**:
+   {"type":"create_goal","summary":"Create Emergency Fund goal for 5,000 MAD","parameters":{"name":"Emergency Fund","targetAmount":5000,"currentAmount":0,"walletId":"<wallet-uuid>","category":"Savings"}}
+6. **contribute_goal**:
+   {"type":"contribute_goal","summary":"Add 500 MAD to Goal","parameters":{"goalId":"<goal-uuid>","amount":500,"walletId":"<source-wallet-uuid>"}}
+7. **settle_debt**:
+   {"type":"settle_debt","summary":"Settle 200 MAD of debt","parameters":{"debtId":"<debt-uuid>","amount":200,"walletId":"<wallet-uuid>"}}
+
+## USER FINANCIAL DATA SNAPSHOT
+${context}`;
+  }
+
   const scopesList =
     Array.isArray(focusScopes) && focusScopes.length > 0 ? focusScopes.join(', ') : 'all';
 
@@ -369,16 +418,25 @@ function unescapeJsonStringContent(rawSlice: string): string {
     .replace(/\\\\/g, '\\');
 }
 
-export function parseStructuredAiResponse(rawText: string): {
+export function parseStructuredAiResponse(
+  rawText: string,
+  isBasicMode = false
+): {
   reply: string;
   actions: any[];
   suggestions: string[];
 } {
-  const defaultFallbackSuggestions = [
-    '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
-    '💰 Reconcile my 879 MAD Investment Reserve vs live balance',
-    '📊 Full breakdown of all transactions and category burn',
-  ];
+  const defaultFallbackSuggestions = isBasicMode
+    ? [
+        '💰 How much can I safely spend today?',
+        '📊 Give me a simple checkup of my spending',
+        '🎯 How are my budgets and savings goals doing?',
+      ]
+    : [
+        '📈 Deep audit of my Binance & Stock positions, fees & breakeven',
+        '💰 Reconcile my 879 MAD Investment Reserve vs live balance',
+        '📊 Full breakdown of all transactions and category burn',
+      ];
 
   const cleaned = String(rawText || '')
     .trim()
@@ -520,6 +578,7 @@ export async function getChatCompletion(
   allowFallback: boolean = true,
   focusScopes?: string[],
   responseDepth: 'deep_creative' | 'balanced' | 'concise' = 'deep_creative',
+  experienceTier: 'basic' | 'advanced' = 'advanced',
 ): Promise<{
   choices: Array<{ message: { content: string } }>;
   modelUsed: string;
@@ -533,7 +592,15 @@ export async function getChatCompletion(
     throw new Error('At least one chat message or image is required');
   }
 
-  const systemInstruction = createSystemInstruction(contextData, focusScopes, responseDepth);
+  const isBasicMode =
+    experienceTier === 'basic' || (contextData as any)?.mode === 'basic';
+  const effectiveDepth = isBasicMode ? 'concise' : responseDepth;
+  const systemInstruction = createSystemInstruction(
+    contextData,
+    focusScopes,
+    effectiveDepth,
+    isBasicMode ? 'basic' : 'advanced'
+  );
 
   // Build the conversation contents for Gemini
   const contents: any[] = [];
@@ -616,10 +683,20 @@ export async function getChatCompletion(
   let quotaFallbackHappened = false;
   let fallbackReason = '';
 
-  const temperature =
-    responseDepth === 'deep_creative' ? 0.8 : responseDepth === 'concise' ? 0.45 : 0.65;
-  const maxOutputTokens =
-    responseDepth === 'deep_creative' ? 8192 : responseDepth === 'concise' ? 3072 : 6144;
+  const temperature = isBasicMode
+    ? 0.5
+    : responseDepth === 'deep_creative'
+    ? 0.8
+    : responseDepth === 'concise'
+    ? 0.45
+    : 0.65;
+  const maxOutputTokens = isBasicMode
+    ? 2048
+    : responseDepth === 'deep_creative'
+    ? 8192
+    : responseDepth === 'concise'
+    ? 3072
+    : 6144;
 
   function withTimeout<T>(promise: Promise<T>, timeoutMs: number, modelName: string): Promise<T> {
     let timer: any;
@@ -658,7 +735,7 @@ export async function getChatCompletion(
       );
 
       const responseText = response.text || '';
-      const parsed = parseStructuredAiResponse(responseText);
+      const parsed = parseStructuredAiResponse(responseText, isBasicMode);
 
       if (!parsed.reply) {
         parsed.reply = "I've analyzed your financial request. Let me know if you would like me to take any specific actions.";
@@ -667,11 +744,17 @@ export async function getChatCompletion(
         parsed.actions = [];
       }
       if (!Array.isArray(parsed.suggestions) || !parsed.suggestions.length) {
-        parsed.suggestions = [
-          '📈 Analyze my Binance & Stock positions, fee drag & breakeven targets',
-          '💳 Deep-dive into all my transactions & top spending categories',
-          '🏦 Audit my wallets, Safe-to-Spend waterfall & emergency buffer',
-        ];
+        parsed.suggestions = isBasicMode
+          ? [
+              '💰 How much can I safely spend today?',
+              '📊 Give me a simple checkup of my spending',
+              '🎯 How are my budgets and savings goals doing?',
+            ]
+          : [
+              '📈 Analyze my Binance & Stock positions, fee drag & breakeven targets',
+              '💳 Deep-dive into all my transactions & top spending categories',
+              '🏦 Audit my wallets, Safe-to-Spend waterfall & emergency buffer',
+            ];
       }
 
       const isFallback =
@@ -725,7 +808,11 @@ export async function getChatCompletion(
   }
 
   console.warn('[ChatService] All cloud AI models exhausted or in cooldown. Activating Local Financial Engine fallback.');
-  const localResult = generateLocalFinancialResponse(chatMessages, contextData);
+  const localResult = generateLocalFinancialResponse(
+    chatMessages,
+    contextData,
+    isBasicMode ? 'basic' : 'advanced'
+  );
 
   return {
     choices: [

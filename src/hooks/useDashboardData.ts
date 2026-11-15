@@ -1,6 +1,6 @@
 import { googleSignIn, getGoogleAccessToken } from '../lib/googleAuth';
 import { uploadToGoogleDrive } from '../lib/driveUpload';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
 import {
   CategoryBudget,
@@ -15,11 +15,12 @@ import {
   InvestmentsData,
   StockMarketType,
   StockOrderAction,
+  ExperienceTier,
 } from '../types';
 import { useNotifications } from './useNotifications';
 import { netExpenseOf } from '../lib/finance';
 
-export function useDashboardData(token: string | null) {
+export function useDashboardData(token: string | null, experienceTier?: ExperienceTier) {
   const [kpis, setKpis] = useState<KPI | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
@@ -40,71 +41,84 @@ export function useDashboardData(token: string | null) {
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
 
   const notifications = useNotifications();
+  const isAdvancedTier = experienceTier === 'advanced';
+  const hasLoadedRef = useRef<boolean>(false);
 
   const fetchData = useCallback(async () => {
     if (!token) return;
-    setLoading(true);
+    if (!hasLoadedRef.current) {
+      setLoading(true);
+    }
     try {
-      const [kpiData, txData, debtData, settingsData, budgetData, payrollData, contextData, goalData, subData, invData] = await Promise.all([
-        dashboardService.getKpis(token),
-        dashboardService.getTransactions(token),
-        dashboardService.getDebts(token),
-        dashboardService.getSettings(token),
-        dashboardService.getCategoryBudgets(token),
-        dashboardService.getPayrolls(token),
-        dashboardService.getContexts(token),
-        dashboardService.getGoals(token),
-        dashboardService.getSubscriptions(token),
-        dashboardService.getInvestmentsData(token).catch(() => null),
-      ]);
+      const boot = await dashboardService.getBootstrap(token);
 
-      setKpis(kpiData || null);
-      setTransactions(txData || []);
-      setDebts(debtData || []);
-      setUserSettings(settingsData);
-      setBudgets(budgetData || []);
-      setPayrolls(payrollData || []);
-      setContexts(contextData || []);
-      setGoals(goalData || []);
-      setSubscriptions(subData || []);
-      setInvestmentsData(invData || null);
+      setKpis(boot.kpis || null);
+      setTransactions(boot.transactions || []);
+      setDebts(boot.debts || []);
+      setUserSettings(boot.settings || null);
+      setBudgets(boot.categoryBudgets || []);
+      setPayrolls(boot.payrolls || []);
+      setGoals(boot.goals || []);
+      setSubscriptions(boot.subscriptions || []);
+      setContexts(boot.contexts || []);
+
+      if (isAdvancedTier) {
+        dashboardService
+          .getInvestmentsData(token, false, true)
+          .then((inv) => setInvestmentsData(inv || null))
+          .catch(() => {});
+      }
     } catch (e) {
-      console.error('Error fetching dashboard data:', e);
+      console.error('Error fetching dashboard bootstrap data:', e);
     } finally {
+      hasLoadedRef.current = true;
       setLoading(false);
     }
-  }, [token]);
+  }, [token, isAdvancedTier]);
+
+  // Background refresh of live investment quotes when navigating to the investments tab
+  useEffect(() => {
+    if (activeTab === 'investments' && isAdvancedTier && token) {
+      dashboardService
+        .getInvestmentsData(token, false, false)
+        .then((inv) => {
+          if (inv) setInvestmentsData(inv);
+        })
+        .catch(() => {});
+    }
+  }, [activeTab, isAdvancedTier, token]);
 
   // When fresh data arrives, schedule (or re-schedule) the smart notification stream
   useEffect(() => {
     if (!kpis) return;
     const now = new Date();
+    const curYear = now.getUTCFullYear();
+    const curMonth = now.getUTCMonth() + 1;
+
     const monthlyBudgets = budgets.filter(
-      b => b.year === now.getUTCFullYear() && b.month === now.getUTCMonth() + 1,
+      (b) => b.year === curYear && b.month === curMonth
     );
     const totalBudget = monthlyBudgets.reduce((s, b) => s + parseFloat(b.amount as any), 0);
-    const totalSpent = transactions
-      .filter(tx => {
-        if (tx.type !== 'Expense') return false;
-        const d = new Date(tx.createdAt);
-        return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() + 1 === now.getUTCMonth() + 1;
-      })
-      .reduce((s, tx) => s + netExpenseOf(tx), 0);
+
+    let totalSpent = 0;
+    const spentByCatMap = new Map<string, number>();
+    for (const tx of transactions) {
+      if (tx.type !== 'Expense') continue;
+      const d = new Date(tx.createdAt);
+      if (d.getUTCFullYear() === curYear && d.getUTCMonth() + 1 === curMonth) {
+        const cost = netExpenseOf(tx);
+        totalSpent += cost;
+        const cat = tx.category || 'General';
+        spentByCatMap.set(cat, (spentByCatMap.get(cat) || 0) + cost);
+      }
+    }
+
     const monthlyIncome = parseFloat((kpis as any).monthlyIncome ?? 0);
     const monthlyExpenses = parseFloat((kpis as any).monthlyExpenses ?? 0);
 
     const overspentCategories = monthlyBudgets
-      .filter(b => {
-        const spent = transactions
-          .filter(tx => {
-            const d = new Date(tx.createdAt);
-            return tx.type === 'Expense' && tx.category === b.category &&
-              d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() + 1 === now.getUTCMonth() + 1;
-          })
-          .reduce((s, tx) => s + netExpenseOf(tx), 0);
-        return spent > parseFloat(b.amount as any);
-      })
-      .map(b => b.category);
+      .filter((b) => (spentByCatMap.get(b.category) || 0) > parseFloat(b.amount as any))
+      .map((b) => b.category);
 
     const topCategory =
       [...monthlyBudgets].sort((a, b) => parseFloat(b.amount as any) - parseFloat(a.amount as any))[0]
@@ -114,27 +128,31 @@ export function useDashboardData(token: string | null) {
       .filter((a: any) => a.type !== 'Investment')
       .reduce((s: number, a: any) => s + Number(a.balance || 0), 0);
 
-    notifications.scheduleDaily({
-      monthlyExpenses,
-      monthlyIncome,
-      totalBudget,
-      totalSpent,
-      daysUntilPayday: (kpis as any).daysUntilPayday ?? 0,
-      dailyAllowance: (kpis as any).dailyAllowance ?? 0,
-      dailyRemaining: (kpis as any).dailyRemaining ?? 0,
-      overspentCategories,
-      topCategory,
-      savings: Math.max(0, monthlyIncome - monthlyExpenses),
-      transactions,
-      subscriptions,
-      investmentsData,
-      debts,
-      goals,
-      payrolls,
-      budgets,
-      emergencyBuffer: Number(userSettings?.emergencyBuffer || 0),
-      totalLiquidBalance,
-    });
+    const timer = setTimeout(() => {
+      notifications.scheduleDaily({
+        monthlyExpenses,
+        monthlyIncome,
+        totalBudget,
+        totalSpent,
+        daysUntilPayday: (kpis as any).daysUntilPayday ?? 0,
+        dailyAllowance: (kpis as any).dailyAllowance ?? 0,
+        dailyRemaining: (kpis as any).dailyRemaining ?? 0,
+        overspentCategories,
+        topCategory,
+        savings: Math.max(0, monthlyIncome - monthlyExpenses),
+        transactions,
+        subscriptions,
+        investmentsData,
+        debts,
+        goals,
+        payrolls,
+        budgets,
+        emergencyBuffer: Number(userSettings?.emergencyBuffer || 0),
+        totalLiquidBalance,
+      });
+    }, 0);
+
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kpis, budgets, transactions, subscriptions, investmentsData, debts, goals, payrolls, userSettings]);
 
@@ -309,8 +327,19 @@ export function useDashboardData(token: string | null) {
     }
   };
 
-  const handleCreatePayroll = async (scheduledFor: string, amount: number) => {
-    await dashboardService.createPayroll({ scheduledFor, amount }, token);
+  const handleCreatePayroll = async (scheduledFor: string, amount: number, walletId?: string | null) => {
+    await dashboardService.createPayroll(
+      { scheduledFor, amount, ...(walletId ? { walletId } : {}) },
+      token
+    );
+    await fetchData();
+  };
+
+  const handleUpdatePayroll = async (
+    payrollId: string,
+    payload: { scheduledFor?: string; amount?: number; walletId?: string | null }
+  ) => {
+    await dashboardService.updatePayroll(payrollId, payload, token);
     await fetchData();
   };
 
@@ -619,6 +648,24 @@ export function useDashboardData(token: string | null) {
     }
   };
 
+  const handleChangeSubscriptionPlan = async (
+    id: string,
+    payload: import('../types').SubscriptionPlanChangePayload
+  ) => {
+    if (!token) return;
+    setIsSaving(true);
+    try {
+      const res = await dashboardService.changeSubscriptionPlan(id, payload, token);
+      await fetchData();
+      return res;
+    } catch (error) {
+      console.error('Error changing subscription plan:', error);
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDetectSubscriptions = async (): Promise<DetectedSubscription[]> => {
     if (!token) return [];
     try {
@@ -884,6 +931,7 @@ export function useDashboardData(token: string | null) {
     openTransaction,
     handleSaveSettings,
     handleCreatePayroll,
+    handleUpdatePayroll,
     handleDeletePayroll,
     handleSeedData,
     handleExportSql,
@@ -904,6 +952,7 @@ export function useDashboardData(token: string | null) {
     handleUpdateSubscription,
     handleDeleteSubscription,
     handlePaySubscription,
+    handleChangeSubscriptionPlan,
     handleDetectSubscriptions,
     handleUpsertStockPosition,
     handleUpdateStockPosition,

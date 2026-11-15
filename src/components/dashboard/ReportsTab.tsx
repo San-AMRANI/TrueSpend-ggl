@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
-import { Transaction, KPI, CategoryBudget, DashboardTab } from '../../types';
-import { FileBarChart, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Award, Sparkles, Database } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion } from 'motion/react';
+import { Transaction, KPI, CategoryBudget, DashboardTab, FinancialPositionSnapshot, NetWorthChangeBridge } from '../../types';
+import { FileBarChart, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Award, Sparkles, Database, TrendingUp, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { dashboardService } from '../../services/api/dashboardService';
@@ -26,17 +27,53 @@ interface ParsedTransactionRow {
 }
 
 export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budgets, onDataChange, onNavigateTab }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'retrospective' | 'export' | 'import'>('retrospective');
+  const [activeSubTab, setActiveSubTab] = useState<'retrospective' | 'position' | 'export' | 'import'>(
+    isAdvanced ? 'retrospective' : 'export'
+  );
+  const [snapshots, setSnapshots] = useState<FinancialPositionSnapshot[]>([]);
+  const [bridge, setBridge] = useState<NetWorthChangeBridge | null>(null);
+  const [loadingPosition, setLoadingPosition] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  useEffect(() => {
+    if (!isAdvanced && (activeSubTab === 'retrospective' || activeSubTab === 'position')) {
+      setActiveSubTab('export');
+    }
+  }, [isAdvanced, activeSubTab]);
+
+  const loadPositionHistory = async () => {
+    if (!token || !isAdvanced) return;
+    setLoadingPosition(true);
+    try {
+      const res = await dashboardService.getFinancialPositionHistory(token);
+      setSnapshots(res.snapshots || []);
+      setBridge(res.bridge || null);
+    } catch {
+      // handled gracefully in empty state
+    } finally {
+      setLoadingPosition(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSubTab === 'position' && isAdvanced) {
+      loadPositionHistory();
+    }
+  }, [activeSubTab, token, isAdvanced]);
+
   const handleExportCSV = () => {
     if (!transactions.length) {
-      alert('No transactions to export.');
+      window.dispatchEvent(
+        new CustomEvent('truespend:toast', {
+          detail: { type: 'info', message: 'No transactions to export.' },
+        })
+      );
       return;
     }
     
@@ -316,42 +353,44 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
         </div>
 
         {/* Tab Pills */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 self-start sm:self-auto">
-          <button
-            onClick={() => setActiveSubTab('retrospective')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeSubTab === 'retrospective'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <Award className="w-3.5 h-3.5" />
-            <span>AI Cycle Wrap-Up & Report Card</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('export')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeSubTab === 'export'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export & Backup</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('import')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeSubTab === 'import'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span>Import CSV</span>
-          </button>
+        <div className="ts-scrollbar flex items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 max-w-full overflow-x-auto self-start sm:self-auto">
+          {(
+            [
+              ...(isAdvanced
+                ? [
+                    { id: 'retrospective' as const, label: 'AI Cycle Wrap-Up & Report Card', icon: Award },
+                    { id: 'position' as const, label: 'Net Worth History & Bridge', icon: TrendingUp },
+                  ]
+                : []),
+              { id: 'export' as const, label: 'Export & Backup', icon: Download },
+              { id: 'import' as const, label: 'Import CSV', icon: Upload },
+            ]
+          ).map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeSubTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveSubTab(tab.id)}
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  isActive
+                    ? 'text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="reports-subtab-pill"
+                    transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                    className="absolute inset-0 rounded-lg bg-white dark:bg-gray-900 shadow-sm"
+                  />
+                )}
+                <Icon className="relative z-10 w-3.5 h-3.5 shrink-0" />
+                <span className="relative z-10">{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -360,9 +399,152 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
         <CycleRetrospectiveView onNavigateTab={onNavigateTab} />
       )}
 
+      {/* Whole Financial Position History & Change Bridge */}
+      {activeSubTab === 'position' && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-indigo-500" />
+                  Whole-Financial-Position History &amp; Net Worth Bridge
+                </CardTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Attributed daily snapshots across liquid cash, credit/overdraft debt, receivables, payables, stock/crypto positions, and external valuations.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                disabled={loadingPosition}
+                onClick={async () => {
+                  setLoadingPosition(true);
+                  try {
+                    await dashboardService.captureFinancialPositionSnapshot(token);
+                    await loadPositionHistory();
+                  } finally {
+                    setLoadingPosition(false);
+                  }
+                }}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loadingPosition ? 'animate-spin' : ''}`} />
+                Capture Snapshot Now
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {bridge && (
+                <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                      Net Worth Change Bridge ({bridge.fromDate} → {bridge.toDate})
+                    </span>
+                    <span className={`font-mono font-extrabold text-base ${bridge.totalDeltaMad >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {bridge.totalDeltaMad >= 0 ? '+' : ''}{bridge.totalDeltaMad.toFixed(2)} MAD
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
+                    {[
+                      { label: 'Liquid Cash', val: bridge.deltaLiquidCashMad },
+                      { label: 'Credit / Overdraft', val: bridge.deltaCreditDebtMad },
+                      { label: 'Receivables', val: bridge.deltaReceivablesMad },
+                      { label: 'Payables', val: bridge.deltaPayablesMad },
+                      { label: 'Investments', val: bridge.deltaInvestmentsMad },
+                      { label: 'External Net', val: bridge.deltaExternalNetMad },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-2">
+                        <span className="text-[11px] text-gray-500">{item.label}</span>
+                        <p className={`font-mono font-bold mt-0.5 ${item.val >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {item.val >= 0 ? '+' : ''}{item.val.toFixed(2)} MAD
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {snapshots.length === 0 ? (
+                <p className="text-xs text-gray-500 py-4 text-center">
+                  No snapshots captured yet. Click &ldquo;Capture Snapshot Now&rdquo; to record today&apos;s verified whole-financial position.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead className="border-b border-gray-200 dark:border-gray-800 text-gray-500 uppercase">
+                      <tr>
+                        <th className="py-2 pr-3">Date</th>
+                        <th className="py-2 px-3">Total Net Worth</th>
+                        <th className="py-2 px-3">Liquid Net Worth</th>
+                        <th className="py-2 px-3">Investments</th>
+                        <th className="py-2 px-3">External Net</th>
+                        <th className="py-2 pl-3">Provenance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {snapshots.slice(0, 20).map((s) => {
+                        const extNet = Number(s.externalAssetsMad || 0) - Number(s.externalLiabilitiesMad || 0);
+                        return (
+                          <tr key={s.id}>
+                            <td className="py-2 pr-3 font-mono font-semibold">{s.snapshotDate}</td>
+                            <td className="py-2 px-3 font-mono font-bold text-gray-900 dark:text-white">
+                              {Number(s.totalNetWorthMad).toFixed(2)} MAD
+                            </td>
+                            <td className="py-2 px-3 font-mono text-gray-700 dark:text-gray-300">
+                              {Number(s.liquidNetWorthMad).toFixed(2)} MAD
+                            </td>
+                            <td className="py-2 px-3 font-mono text-indigo-600 dark:text-indigo-400">
+                              {Number(s.investmentMarketValueMad).toFixed(2)} MAD
+                            </td>
+                            <td className="py-2 px-3 font-mono text-gray-700 dark:text-gray-300">
+                              {extNet.toFixed(2)} MAD
+                            </td>
+                            <td className="py-2 pl-3">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                s.isEstimated
+                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                              }`}>
+                                {s.dataSource} · {s.confidenceLevel}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Export & Backup Sub-Tab */}
       {activeSubTab === 'export' && (
         <div className="space-y-6">
+          <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/20 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-indigo-900 dark:text-indigo-200 space-y-0.5">
+              <p className="font-semibold flex items-center gap-1.5">
+                <Database className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                Spreadsheet Exports vs Full SQL Database Backup
+              </p>
+              <p className="text-indigo-700/80 dark:text-indigo-300/80">
+                Use CSV/JSON below for spreadsheets &amp; reporting. For full relational database SQL dumps, validation &amp; restore, use Settings.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => onNavigateTab?.('settings')}
+                className="text-xs whitespace-nowrap"
+              >
+                <Database className="w-3.5 h-3.5 mr-1.5" />
+                Open SQL Backup &amp; Drive
+              </Button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* CSV Export Card */}
             <Card className="flex flex-col justify-between">
@@ -412,6 +594,29 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
       {/* Import CSV Sub-Tab */}
       {activeSubTab === 'import' && (
         <div className="space-y-6">
+          <div className="rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/20 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 max-w-2xl mx-auto">
+            <div className="text-xs text-amber-900 dark:text-amber-200 space-y-0.5">
+              <p className="font-semibold">Reconciling a Bank or Card Statement?</p>
+              <p className="text-amber-800/80 dark:text-amber-300/80">
+                This form bulk-adds spreadsheet rows directly. For bank CSV/TSV statements with row hashing, duplicate prevention &amp; variance checks, use Accounts Statement Import.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent('truespend:openAccountsSection', { detail: 'statement_import' })
+                )
+              }
+              className="text-xs whitespace-nowrap shrink-0 border-amber-300 dark:border-amber-800"
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+              Open Statement Reconciliation
+            </Button>
+          </div>
+
           {importStatus && (
             <div className={`p-4 rounded-xl flex items-start gap-3 border ${
               importStatus.type === 'success'
@@ -431,12 +636,12 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
             <CardHeader>
               <div className="flex items-center gap-2">
                 <Upload className="w-5 h-5 text-emerald-500" />
-                <CardTitle>Import Transactions from CSV</CardTitle>
+                <CardTitle>Bulk Import Transactions from Spreadsheet CSV</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Upload transactions from a spreadsheet. The parser automatically detects headers: <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-gray-800 dark:text-gray-200">Date, Type, Wallet, Category, Amount, Notes</code>.
+                Upload transactions from a personal spreadsheet. The parser automatically detects headers: <code className="text-xs bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-gray-800 dark:text-gray-200">Date, Type, Wallet, Category, Amount, Notes</code>.
               </p>
               <input
                 ref={fileInputRef}
@@ -467,7 +672,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
                     className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
                   >
                     <Upload className="w-4 h-4" />
-                    Select & Import CSV File
+                    Select &amp; Import Spreadsheet CSV
                   </Button>
                 )}
               </div>

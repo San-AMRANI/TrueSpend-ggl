@@ -49,6 +49,7 @@ export function buildAiContextSnapshot({
   investmentsData = null,
   focusScopes = ['all'],
   responseDepth = 'deep_creative',
+  experienceTier = 'advanced',
 }: {
   kpis: KPI | null;
   transactions: Transaction[];
@@ -61,7 +62,9 @@ export function buildAiContextSnapshot({
   investmentsData?: InvestmentsData | null;
   focusScopes?: AiDataFocusScope[];
   responseDepth?: AiResponseDepth;
+  experienceTier?: 'basic' | 'advanced';
 }) {
+  const isBasic = experienceTier === 'basic';
   const activeScopes: AiDataFocusScope[] =
     !focusScopes || focusScopes.length === 0 ? ['all'] : focusScopes;
   const isAll = activeScopes.includes('all');
@@ -139,6 +142,110 @@ export function buildAiContextSnapshot({
     (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
   );
 
+  // Minimalist snapshot in Basic mode: keeps AI focused, fast, and free of investments/enterprise bloat
+  if (isBasic) {
+    return {
+      mode: 'basic' as const,
+      asOf: dateKey(new Date()),
+      currency: 'MAD',
+      financialPeriod: current
+        ? {
+            label: financialPeriodLabel(current),
+            start: dateKey(current.start),
+            end: dateKey(current.end),
+          }
+        : null,
+      wallets: kpis
+        ? kpis.accounts
+            .filter((w) => w.type !== 'Investment')
+            .map((w) => ({
+              id: w.id,
+              name: w.name,
+              type: w.type,
+              isMain: Boolean((w as any).isMain),
+              balanceMad: amountOf(w.balance),
+            }))
+        : [],
+      kpis: kpis
+        ? {
+            safeToSpendMad: amountOf(kpis.safeToSpend),
+            bankBalanceMad: amountOf(kpis.bankBalance),
+            cashOnHandMad: amountOf(kpis.cashOnHand),
+            emergencyBufferMad: amountOf(kpis.emergencyBuffer),
+            pendingPayablesMad: amountOf(kpis.pendingPayables),
+            monthlyIncomeMad: amountOf(kpis.monthlyIncome),
+            monthlyExpensesMad: amountOf(kpis.monthlyExpenses),
+            dailyAllowanceMad: amountOf(kpis.dailyAllowance),
+            dailySpentMad: amountOf(kpis.dailySpent),
+            dailyRemainingMad: amountOf(kpis.dailyRemaining),
+            daysUntilPayroll: kpis.daysUntilPayday,
+          }
+        : null,
+      financialPeriodSummary: {
+        income: amountOf(income),
+        expenses: amountOf(expenses),
+        netPosition: amountOf(income - expenses),
+        previousPeriodExpenses: previousTransactions
+          .filter((transaction) => transaction.type === 'Expense')
+          .reduce((sum, transaction) => sum + netExpenseOf(transaction), 0),
+        periodCategoryBreakdown: periodCategoryTotals,
+      },
+      budgets: budgets.slice(0, 30).map((budget) => ({
+        category: budget.category,
+        amount: amountOf(budget.amount),
+        year: budget.year,
+        month: budget.month,
+      })),
+      debts: debts.slice(0, 25).map((debt) => ({
+        id: debt.id,
+        contact: debt.contactName,
+        type: debt.type,
+        status: debt.status,
+        remaining: amountOf(debt.remainingBalance),
+        dueDate: dateKey(debt.dueDate),
+      })),
+      goals: goals.map((goal) => ({
+        id: goal.id,
+        name: goal.name,
+        targetAmount: amountOf(goal.targetAmount),
+        currentAmount: amountOf(goal.currentAmount),
+        walletId: goal.walletId || null,
+        deadline: dateKey(goal.deadline),
+      })),
+      subscriptions: subscriptions.map((sub) => ({
+        id: sub.id,
+        name: sub.name,
+        amountMad: amountOf(sub.amount),
+        billingCycle: sub.billingCycle,
+        nextBillingDate: dateKey(sub.nextBillingDate),
+        status: sub.status,
+      })),
+      currentPeriodTransactions: periodTransactions
+        .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+        .slice(0, 40)
+        .map((transaction) => ({
+          id: transaction.id,
+          date: dateKey(transaction.createdAt),
+          amount: amountOf(transaction.amount),
+          type: transaction.type,
+          category: transaction.category,
+          walletId: transaction.walletId,
+          sourceWallet: transaction.sourceWallet,
+          note: transaction.notes,
+        })),
+      allRecentTransactions: sortedTransactions.slice(0, 25).map((transaction) => ({
+        id: transaction.id,
+        date: dateKey(transaction.createdAt),
+        amount: amountOf(transaction.amount),
+        type: transaction.type,
+        category: transaction.category,
+        walletId: transaction.walletId,
+        sourceWallet: transaction.sourceWallet,
+        note: transaction.notes,
+      })),
+    };
+  }
+
   // Determine how many transactions to include based on focus
   const txLimit = hasScope('transactions') ? 160 : 60;
 
@@ -147,6 +254,7 @@ export function buildAiContextSnapshot({
   const usdToMad = investmentsData?.rates?.USD_TO_MAD || 9.95;
 
   return {
+    mode: 'advanced' as const,
     asOf: dateKey(new Date()),
     currency: 'MAD',
     activeFocusScopes: activeScopes,

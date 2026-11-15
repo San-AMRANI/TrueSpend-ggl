@@ -1,11 +1,70 @@
+import crypto from 'crypto';
+import { eq, inArray } from 'drizzle-orm';
 import { userRepository } from '../repositories/UserRepository.js';
 import { createPool, db } from '../../src/db/index.js';
-import { categoryBudgets, debts, splits, transactions, users } from '../../src/db/schema.js';
+import { encryptSecret } from './SecurityCrypto.js';
+import {
+  categoryBudgets,
+  commitmentOccurrences,
+  counterparties,
+  debts,
+  exchangeRates,
+  externalWealthItems,
+  externalWealthValuations,
+  financialContexts,
+  financialPositionSnapshots,
+  financialRules,
+  goalContributionEvents,
+  goals,
+  investmentDividendEvents,
+  investmentSettings,
+  journalEntries,
+  journalLines,
+  notificationPreferences,
+  payrolls,
+  portfolioDailySnapshots,
+  savedScenarios,
+  splits,
+  stockOrders,
+  stockPositions,
+  subscriptions,
+  transactions,
+  users,
+  wallets,
+} from '../../src/db/schema.js';
 
 const TRUE_SPEND_BACKUP_HEADER = '-- TrueSpend Complete PostgreSQL Database Backup';
-const MAX_BACKUP_SIZE_BYTES = 10 * 1024 * 1024;
+const BACKUP_SCHEMA_VERSION = '2.1';
+const MAX_BACKUP_SIZE_BYTES = 25 * 1024 * 1024;
 
-type BackupTable = 'users' | 'debts' | 'transactions' | 'splits' | 'category_budgets';
+export type BackupTable =
+  | 'users'
+  | 'counterparties'
+  | 'wallets'
+  | 'debts'
+  | 'payrolls'
+  | 'financial_contexts'
+  | 'transactions'
+  | 'splits'
+  | 'category_budgets'
+  | 'goals'
+  | 'goal_contribution_events'
+  | 'subscriptions'
+  | 'stock_positions'
+  | 'stock_orders'
+  | 'investment_dividend_events'
+  | 'investment_settings'
+  | 'portfolio_daily_snapshots'
+  | 'notification_preferences'
+  | 'journal_entries'
+  | 'journal_lines'
+  | 'exchange_rates'
+  | 'commitment_occurrences'
+  | 'saved_scenarios'
+  | 'financial_rules'
+  | 'external_wealth_items'
+  | 'external_wealth_valuations'
+  | 'financial_position_snapshots';
 
 type BackupRow = {
   table: BackupTable;
@@ -13,16 +72,37 @@ type BackupRow = {
   values: Array<string | null>;
 };
 
-const backupTables = new Set<BackupTable>(['users', 'debts', 'transactions', 'splits', 'category_budgets']);
-const allowedColumns: Record<BackupTable, ReadonlySet<string>> = {
-  users: new Set(['id', 'uid', 'email', 'created_at', 'payday', 'emergency_buffer', 'salary']),
-  debts: new Set(['id', 'user_id', 'contact_name', 'type', 'original_amount', 'remaining_balance', 'status', 'due_date', 'created_at']),
-  transactions: new Set(['id', 'user_id', 'created_at', 'amount', 'type', 'source_wallet', 'category', 'notes']),
-  splits: new Set(['id', 'transaction_id', 'reimbursable_amount', 'linked_contact_id']),
-  category_budgets: new Set(['id', 'user_id', 'category', 'year', 'month', 'amount', 'created_at', 'updated_at']),
-};
+export const restoreOrder: BackupTable[] = [
+  'users',
+  'counterparties',
+  'wallets',
+  'debts',
+  'payrolls',
+  'financial_contexts',
+  'transactions',
+  'splits',
+  'category_budgets',
+  'goals',
+  'goal_contribution_events',
+  'subscriptions',
+  'stock_positions',
+  'stock_orders',
+  'investment_dividend_events',
+  'investment_settings',
+  'portfolio_daily_snapshots',
+  'notification_preferences',
+  'journal_entries',
+  'journal_lines',
+  'exchange_rates',
+  'commitment_occurrences',
+  'saved_scenarios',
+  'financial_rules',
+  'external_wealth_items',
+  'external_wealth_valuations',
+  'financial_position_snapshots',
+];
 
-const restoreOrder: BackupTable[] = ['users', 'debts', 'transactions', 'splits', 'category_budgets'];
+const backupTables = new Set<BackupTable>(restoreOrder);
 
 function splitSqlValues(valuesSql: string): string[] {
   const values: string[] = [];
@@ -50,18 +130,21 @@ function splitSqlValues(valuesSql: string): string[] {
 function parseSqlValue(value: string): string | null {
   const withoutCast = value.replace(/::[a-z_][a-z0-9_]*\s*$/i, '').trim();
   if (withoutCast.toUpperCase() === 'NULL') return null;
+  if (withoutCast.toUpperCase() === 'TRUE') return 'true';
+  if (withoutCast.toUpperCase() === 'FALSE') return 'false';
   if (/^-?\d+(\.\d+)?$/.test(withoutCast)) return withoutCast;
 
   if (withoutCast.startsWith("'") && withoutCast.endsWith("'")) {
     return withoutCast.slice(1, -1).replace(/''/g, "'");
   }
 
-  throw new Error('Invalid TrueSpend backup: an unsupported SQL value was found.');
+  throw new Error(`Invalid TrueSpend backup: unsupported SQL value (${withoutCast.slice(0, 32)}).`);
 }
 
 function getInsertStatements(sqlContent: string): string[] {
   const inserts: string[] = [];
-  const startPattern = /INSERT\s+INTO\s+(users|debts|transactions|splits|category_budgets)\b/gi;
+  const tablePattern = restoreOrder.join('|');
+  const startPattern = new RegExp(`INSERT\\s+INTO\\s+(${tablePattern})\\b`, 'gi');
   let match: RegExpExecArray | null;
 
   while ((match = startPattern.exec(sqlContent)) !== null) {
@@ -89,27 +172,68 @@ function getInsertStatements(sqlContent: string): string[] {
   return inserts;
 }
 
-function parseBackupRows(sqlContent: unknown): BackupRow[] {
-  if (typeof sqlContent !== 'string' || !sqlContent.slice(0, 500).includes(TRUE_SPEND_BACKUP_HEADER)) {
+function parseBackupRows(sqlContent: unknown): {
+  rows: BackupRow[];
+  schemaVersion: string;
+  checksumVerified: boolean;
+  manifest: Record<string, any> | null;
+} {
+  if (typeof sqlContent !== 'string' || !sqlContent.slice(0, 800).includes(TRUE_SPEND_BACKUP_HEADER)) {
     throw new Error('Please select a SQL backup exported by TrueSpend.');
   }
   if (Buffer.byteLength(sqlContent, 'utf8') > MAX_BACKUP_SIZE_BYTES) {
-    throw new Error('This backup is larger than the 10 MB import limit.');
+    throw new Error('This backup is larger than the 25 MB import limit.');
+  }
+
+  const versionMatch = /--\s*Schema-Version:\s*([^\r\n]+)/i.exec(sqlContent);
+  const schemaVersion = versionMatch ? versionMatch[1].trim() : '1.0-legacy';
+
+  const manifestMatch = /--\s*Manifest-JSON:\s*([^\r\n]+)/i.exec(sqlContent);
+  let manifest: Record<string, any> | null = null;
+  if (manifestMatch) {
+    try {
+      manifest = JSON.parse(manifestMatch[1].trim());
+    } catch {
+      manifest = null;
+    }
+  }
+
+  const checksumMatch = /--\s*Checksum-SHA256:\s*([a-f0-9]{64})/i.exec(sqlContent);
+  let checksumVerified = false;
+  if (checksumMatch) {
+    const expectedHash = checksumMatch[1].toLowerCase();
+    const bodyStart = sqlContent.indexOf('BEGIN;');
+    if (bodyStart !== -1) {
+      const actualHash = crypto
+        .createHash('sha256')
+        .update(sqlContent.slice(bodyStart).trim(), 'utf8')
+        .digest('hex')
+        .toLowerCase();
+      checksumVerified = actualHash === expectedHash;
+    }
   }
 
   const rows: BackupRow[] = [];
   for (const statement of getInsertStatements(sqlContent)) {
-    const parsed = /^INSERT\s+INTO\s+([a-z_]+)\s*\(([^)]+)\)\s*VALUES\s*\(([\s\S]*)\)\s*;$/i.exec(statement.trim());
-    if (!parsed || !backupTables.has(parsed[1] as BackupTable)) {
+    const parsed = /^INSERT\s+INTO\s+([a-z_]+)\s*\(([^)]+)\)\s*VALUES\s*\(([\s\S]*)\)\s*;$/i.exec(
+      statement.trim()
+    );
+    if (!parsed || !backupTables.has(parsed[1].toLowerCase() as BackupTable)) {
       throw new Error('Invalid TrueSpend backup: an INSERT statement could not be read.');
     }
 
-    const table = parsed[1] as BackupTable;
-    const columns = parsed[2].split(',').map((column) => column.trim().toLowerCase());
+    const table = parsed[1].toLowerCase() as BackupTable;
+    const columns = parsed[2]
+      .split(',')
+      .map((column) => column.trim().replace(/^"|"$/g, '').toLowerCase());
     const rawValues = splitSqlValues(parsed[3]);
 
-    if (columns.length !== rawValues.length || columns.length === 0 || columns.some((column) => !allowedColumns[table].has(column))) {
-      throw new Error('Invalid TrueSpend backup: table columns do not match this version of TrueSpend.');
+    if (
+      columns.length !== rawValues.length ||
+      columns.length === 0 ||
+      columns.some((col) => !/^[a-z_][a-z0-9_]*$/.test(col))
+    ) {
+      throw new Error(`Invalid TrueSpend backup: column count mismatch in table ${table}.`);
     }
 
     rows.push({ table, columns, values: rawValues.map(parseSqlValue) });
@@ -119,7 +243,7 @@ function parseBackupRows(sqlContent: unknown): BackupRow[] {
     throw new Error('This backup does not contain any TrueSpend user records.');
   }
 
-  return rows;
+  return { rows, schemaVersion, checksumVerified, manifest };
 }
 
 export interface UpdateSettingsDTO {
@@ -130,6 +254,7 @@ export interface UpdateSettingsDTO {
   payday?: number;
   emergencyBuffer?: number;
   salary?: number;
+  baseCurrency?: string;
 }
 
 export class SettingsService {
@@ -138,8 +263,12 @@ export class SettingsService {
       payday: dbUser.payday || 25,
       emergencyBuffer: dbUser.emergencyBuffer || 0,
       salary: dbUser.salary || 0,
+      baseCurrency: dbUser.baseCurrency || 'MAD',
       automatedDriveBackups: Boolean(dbUser.automatedDriveBackups),
-      lastDriveBackupDate: dbUser.lastDriveBackupDate ? new Date(dbUser.lastDriveBackupDate).toISOString() : null,
+      googleDriveConnected: Boolean(dbUser.googleDriveToken),
+      lastDriveBackupDate: dbUser.lastDriveBackupDate
+        ? new Date(dbUser.lastDriveBackupDate).toISOString()
+        : null,
       driveBackupFrequency: dbUser.driveBackupFrequency || 'weekly',
     };
   }
@@ -149,6 +278,7 @@ export class SettingsService {
       payday?: number;
       emergencyBuffer?: string;
       salary?: string;
+      baseCurrency?: string;
       automatedDriveBackups?: number;
       lastDriveBackupDate?: Date;
       driveBackupFrequency?: string;
@@ -163,11 +293,23 @@ export class SettingsService {
       updateData.lastDriveBackupDate = new Date(dto.lastDriveBackupDate);
     }
     if (dto.driveBackupFrequency !== undefined) {
+      if (!['daily', '3days', 'weekly'].includes(dto.driveBackupFrequency)) {
+        throw new Error('Invalid drive backup frequency');
+      }
       updateData.driveBackupFrequency = dto.driveBackupFrequency;
     }
     if (dto.googleDriveToken !== undefined) {
-      updateData.googleDriveToken = dto.googleDriveToken;
+      updateData.googleDriveToken = dto.googleDriveToken
+        ? encryptSecret(dto.googleDriveToken)
+        : (null as any);
       updateData.googleDriveTokenExpiry = new Date(Date.now() + 3600 * 1000);
+    }
+    if (dto.baseCurrency !== undefined) {
+      const cleanCurrency = String(dto.baseCurrency).trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(cleanCurrency)) {
+        throw new Error('Invalid base currency code');
+      }
+      updateData.baseCurrency = cleanCurrency;
     }
     if (dto.payday !== undefined) {
       if (dto.payday >= 1 && dto.payday <= 31) {
@@ -197,11 +339,38 @@ export class SettingsService {
       await userRepository.updateSettings(userId, updateData);
     }
 
-    return { success: true, ...updateData };
+    return {
+      success: true,
+      payday: updateData.payday,
+      emergencyBuffer: updateData.emergencyBuffer,
+      salary: updateData.salary,
+      baseCurrency: updateData.baseCurrency,
+      automatedDriveBackups:
+        updateData.automatedDriveBackups !== undefined
+          ? Boolean(updateData.automatedDriveBackups)
+          : undefined,
+      lastDriveBackupDate: updateData.lastDriveBackupDate
+        ? updateData.lastDriveBackupDate.toISOString()
+        : undefined,
+      driveBackupFrequency: updateData.driveBackupFrequency,
+      googleDriveConnected: dto.googleDriveToken !== undefined ? Boolean(dto.googleDriveToken) : undefined,
+    };
   }
 
-  async backupToGoogleDrive(accessToken: string): Promise<{ fileId: string; lastDriveBackupDate: string }> {
-    const sqlContent = await this.exportSqlDatabase();
+  async disconnectGoogleDrive(userId: string) {
+    await userRepository.updateSettings(userId, {
+      googleDriveToken: null,
+      googleDriveTokenExpiry: null,
+      automatedDriveBackups: 0,
+    });
+    return { success: true, googleDriveConnected: false };
+  }
+
+  async backupToGoogleDrive(
+    userId: string,
+    accessToken: string
+  ): Promise<{ fileId: string; lastDriveBackupDate: string }> {
+    const sqlContent = await this.exportSqlDatabase(userId);
     const filename = `truespend_backup_${new Date().toISOString().slice(0, 10)}.sql`;
 
     const metadata = {
@@ -242,183 +411,702 @@ export class SettingsService {
     return { fileId: result.id, lastDriveBackupDate };
   }
 
-  async exportSqlDatabase(): Promise<string> {
-    const [allUsers, allDebts, allTransactions, allSplits, allCategoryBudgets] = await Promise.all([
-      db.select().from(users),
-      db.select().from(debts),
-      db.select().from(transactions),
-      db.select().from(splits),
-      db.select().from(categoryBudgets),
-    ]);
-
-    const escapeStr = (str: string | null | undefined) => {
-      if (str === null || str === undefined) return 'NULL';
-      return `'${String(str).replace(/'/g, "''")}'`;
-    };
-
-    const escapeNum = (num: string | number | null | undefined) => {
-      if (num === null || num === undefined) return 'NULL';
-      const value = String(num);
-      if (!/^-?\d+(\.\d+)?$/.test(value)) {
-        throw new Error(`Cannot export invalid numeric value: ${value}`);
-      }
-      return value;
-    };
-
-    const escapeDate = (date: Date | string | null | undefined) => {
-      if (!date) return 'NULL';
-      const d = new Date(date);
-      return `'${d.toISOString()}'`;
-    };
-
-    const lines: string[] = [];
-
-    lines.push('-- ====================================================');
-    lines.push('-- TrueSpend Complete PostgreSQL Database Backup');
-    lines.push(`-- Exported At: ${new Date().toISOString()}`);
-    lines.push(`-- Records: ${allUsers.length} users, ${allTransactions.length} transactions, ${allDebts.length} debts, ${allSplits.length} splits, ${allCategoryBudgets.length} category budgets`);
-    lines.push('-- Restore this script into a new or empty PostgreSQL database.');
-    lines.push('-- ====================================================\n');
-
-    lines.push('BEGIN;');
-    lines.push("CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";\n");
-
-    lines.push('-- 1. ENUMS CREATION');
-    lines.push(`DO $$ BEGIN
-    CREATE TYPE transaction_type AS ENUM ('Income', 'Expense', 'Transfer', 'Debt Repayment');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
-
-    lines.push(`DO $$ BEGIN
-    CREATE TYPE wallet_type AS ENUM ('Bank', 'Cash', 'Savings');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
-
-    lines.push(`DO $$ BEGIN
-    CREATE TYPE debt_type AS ENUM ('Receivable', 'Payable');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
-
-    lines.push(`DO $$ BEGIN
-    CREATE TYPE debt_status AS ENUM ('Pending', 'Cleared');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
-
-    lines.push('-- 2. SCHEMA TABLES');
-    lines.push(`CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    uid TEXT NOT NULL UNIQUE,
-    email TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW(),
-    payday INTEGER DEFAULT 25,
-    emergency_buffer DECIMAL DEFAULT '0' NOT NULL,
-    salary DECIMAL DEFAULT '0' NOT NULL
-);`);
-
-    lines.push(`CREATE TABLE debts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id),
-    contact_name TEXT NOT NULL,
-    type debt_type NOT NULL,
-    original_amount DECIMAL NOT NULL,
-    remaining_balance DECIMAL NOT NULL,
-    status debt_status NOT NULL,
-    due_date TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW()
-);`);
-
-    lines.push(`CREATE TABLE transactions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT NOW(),
-    amount DECIMAL NOT NULL,
-    type transaction_type NOT NULL,
-    source_wallet wallet_type NOT NULL,
-    category TEXT,
-    notes TEXT
-);`);
-
-    lines.push(`CREATE TABLE splits (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transaction_id UUID NOT NULL REFERENCES transactions(id),
-    reimbursable_amount DECIMAL NOT NULL,
-    linked_contact_id UUID REFERENCES debts(id)
-);\n`);
-
-    lines.push(`CREATE TABLE category_budgets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id),
-    category TEXT NOT NULL,
-    year INTEGER NOT NULL,
-    month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
-    amount DECIMAL NOT NULL CHECK (amount >= 0),
-    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
-    updated_at TIMESTAMP DEFAULT NOW() NOT NULL,
-    CONSTRAINT category_budgets_user_category_month_unique UNIQUE (user_id, category, year, month)
-);\n`);
-
-    lines.push('-- 3. DATA INSERTS\n');
-
-    if (allUsers.length > 0) {
-      lines.push('-- Users Data');
-      for (const user of allUsers) {
-        lines.push(
-          `INSERT INTO users (id, uid, email, created_at, payday, emergency_buffer, salary) ` +
-            `VALUES (${escapeStr(user.id)}, ${escapeStr(user.uid)}, ${escapeStr(user.email)}, ${escapeDate(user.createdAt)}, ${escapeNum(user.payday ?? 25)}, ${escapeNum(user.emergencyBuffer ?? 0)}, ${escapeNum(user.salary ?? 0)});`
-        );
-      }
-      lines.push('');
+  private formatSqlLiteral(val: any): string {
+    if (val === null || val === undefined) return 'NULL';
+    if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
+    if (typeof val === 'number') {
+      return Number.isFinite(val) ? String(val) : 'NULL';
     }
-
-    if (allDebts.length > 0) {
-      lines.push('-- Debts Data');
-      for (const d of allDebts) {
-        lines.push(
-          `INSERT INTO debts (id, user_id, contact_name, type, original_amount, remaining_balance, status, due_date, created_at) ` +
-            `VALUES (${escapeStr(d.id)}, ${escapeStr(d.userId)}, ${escapeStr(d.contactName)}, ${escapeStr(d.type)}::debt_type, ${escapeNum(d.originalAmount)}, ${escapeNum(d.remainingBalance)}, ${escapeStr(d.status)}::debt_status, ${escapeDate(d.dueDate)}, ${escapeDate(d.createdAt)}) ` +
-            `;`
-        );
-      }
-      lines.push('');
+    if (val instanceof Date) {
+      return `'${val.toISOString()}'`;
     }
-
-    if (allTransactions.length > 0) {
-      lines.push('-- Transactions Data');
-      for (const t of allTransactions) {
-        lines.push(
-          `INSERT INTO transactions (id, user_id, created_at, amount, type, wallet_id, category, notes) ` +
-            `VALUES (${escapeStr(t.id)}, ${escapeStr(t.userId)}, ${escapeDate(t.createdAt)}, ${escapeNum(t.amount)}, ${escapeStr(t.type)}::transaction_type, ${escapeStr(t.walletId)}, ${escapeStr(t.category)}, ${escapeStr(t.notes)}) ` +
-            `;`
-        );
-      }
-      lines.push('');
-    }
-
-    if (allSplits.length > 0) {
-      lines.push('-- Splits Data');
-      for (const s of allSplits) {
-        lines.push(
-          `INSERT INTO splits (id, transaction_id, reimbursable_amount, linked_contact_id) ` +
-            `VALUES (${escapeStr(s.id)}, ${escapeStr(s.transactionId)}, ${escapeNum(s.reimbursableAmount)}, ${escapeStr(s.linkedContactId)}) ` +
-            `;`
-        );
-      }
-      lines.push('');
-    }
-
-    if (allCategoryBudgets.length > 0) {
-      lines.push('-- Category Budgets Data');
-      for (const budget of allCategoryBudgets) {
-        lines.push(
-          `INSERT INTO category_budgets (id, user_id, category, year, month, amount, created_at, updated_at) ` +
-            `VALUES (${escapeStr(budget.id)}, ${escapeStr(budget.userId)}, ${escapeStr(budget.category)}, ${escapeNum(budget.year)}, ${escapeNum(budget.month)}, ${escapeNum(budget.amount)}, ${escapeDate(budget.createdAt)}, ${escapeDate(budget.updatedAt)});`,
-        );
-      }
-      lines.push('');
-    }
-
-    lines.push('COMMIT;');
-    return lines.join('\n');
+    return `'${String(val).replace(/'/g, "''")}'`;
   }
 
-  async importSqlDatabase(sqlContent: unknown) {
-    const backupRows = parseBackupRows(sqlContent);
+  private buildTableInserts(tableName: BackupTable, records: Record<string, any>[], columnMap: Record<string, string>): string[] {
+    if (!records || records.length === 0) return [];
+    const out: string[] = [`-- Table: ${tableName} (${records.length} rows)`];
+    const propKeys = Object.keys(columnMap);
+    const sqlCols = propKeys.map((k) => columnMap[k]);
+
+    for (const row of records) {
+      const vals = propKeys.map((prop) => this.formatSqlLiteral(row[prop]));
+      out.push(`INSERT INTO ${tableName} (${sqlCols.join(', ')}) VALUES (${vals.join(', ')});`);
+    }
+    out.push('');
+    return out;
+  }
+
+  /**
+   * User-scoped PostgreSQL SQL backup with SHA-256 Checksum & Schema Manifest.
+   * Strictly exports ONLY records owned by `userId` (zero cross-user leakage, zero credentials).
+   */
+  async exportSqlDatabase(userId: string): Promise<string> {
+    const userTxs = await db.select().from(transactions).where(eq(transactions.userId, userId));
+    const userTxIds = userTxs.map((t) => t.id);
+
+    const [
+      allUsers,
+      allCounterparties,
+      allWallets,
+      allDebts,
+      allPayrolls,
+      allContexts,
+      allSplits,
+      allCategoryBudgets,
+      allGoals,
+      allGoalEvents,
+      allSubscriptions,
+      allStockPositions,
+      allStockOrders,
+      allDividends,
+      allInvSettings,
+      allSnapshots,
+      allNotifPrefs,
+      allJournalEntries,
+      allJournalLines,
+      allFxRates,
+      allOccurrences,
+      allScenarios,
+      allRules,
+      allExternalWealth,
+      allExternalValuations,
+      allPositionSnapshots,
+    ] = await Promise.all([
+      db.select().from(users).where(eq(users.id, userId)),
+      db.select().from(counterparties).where(eq(counterparties.userId, userId)).catch(() => []),
+      db.select().from(wallets).where(eq(wallets.userId, userId)),
+      db.select().from(debts).where(eq(debts.userId, userId)),
+      db.select().from(payrolls).where(eq(payrolls.userId, userId)),
+      db.select().from(financialContexts).where(eq(financialContexts.userId, userId)),
+      userTxIds.length > 0 ? db.select().from(splits).where(inArray(splits.transactionId, userTxIds)) : Promise.resolve([]),
+      db.select().from(categoryBudgets).where(eq(categoryBudgets.userId, userId)),
+      db.select().from(goals).where(eq(goals.userId, userId)),
+      db.select().from(goalContributionEvents).where(eq(goalContributionEvents.userId, userId)).catch(() => []),
+      db.select().from(subscriptions).where(eq(subscriptions.userId, userId)),
+      db.select().from(stockPositions).where(eq(stockPositions.userId, userId)),
+      db.select().from(stockOrders).where(eq(stockOrders.userId, userId)),
+      db.select().from(investmentDividendEvents).where(eq(investmentDividendEvents.userId, userId)).catch(() => []),
+      db.select().from(investmentSettings).where(eq(investmentSettings.userId, userId)).catch(() => []),
+      db.select().from(portfolioDailySnapshots).where(eq(portfolioDailySnapshots.userId, userId)).catch(() => []),
+      db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)).catch(() => []),
+      db.select().from(journalEntries).where(eq(journalEntries.userId, userId)).catch(() => []),
+      db.select().from(journalLines).where(eq(journalLines.userId, userId)).catch(() => []),
+      db.select().from(exchangeRates).where(eq(exchangeRates.userId, userId)).catch(() => []),
+      db.select().from(commitmentOccurrences).where(eq(commitmentOccurrences.userId, userId)).catch(() => []),
+      db.select().from(savedScenarios).where(eq(savedScenarios.userId, userId)).catch(() => []),
+      db.select().from(financialRules).where(eq(financialRules.userId, userId)).catch(() => []),
+      db.select().from(externalWealthItems).where(eq(externalWealthItems.userId, userId)).catch(() => []),
+      db.select().from(externalWealthValuations).where(eq(externalWealthValuations.userId, userId)).catch(() => []),
+      db.select().from(financialPositionSnapshots).where(eq(financialPositionSnapshots.userId, userId)).catch(() => []),
+    ]);
+    const allTransactions = userTxs;
+
+    const bodyLines: string[] = [];
+    bodyLines.push('BEGIN;');
+    bodyLines.push('CREATE EXTENSION IF NOT EXISTS "pgcrypto";\n');
+
+    bodyLines.push(
+      ...this.buildTableInserts('users', allUsers, {
+        id: 'id',
+        uid: 'uid',
+        username: 'username',
+        displayName: 'display_name',
+        email: 'email',
+        role: 'role',
+        status: 'status',
+        workspaceMode: 'workspace_mode',
+        createdAt: 'created_at',
+        payday: 'payday',
+        emergencyBuffer: 'emergency_buffer',
+        salary: 'salary',
+        baseCurrency: 'base_currency',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('counterparties', allCounterparties, {
+        id: 'id',
+        userId: 'user_id',
+        canonicalName: 'canonical_name',
+        normalizedName: 'normalized_name',
+        counterpartyType: 'counterparty_type',
+        aliasesJson: 'aliases_json',
+        defaultCategory: 'default_category',
+        website: 'website',
+        logoUrl: 'logo_url',
+        contactDetails: 'contact_details',
+        notes: 'notes',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('wallets', allWallets, {
+        id: 'id',
+        userId: 'user_id',
+        name: 'name',
+        type: 'type',
+        accountSubtype: 'account_subtype',
+        institutionName: 'institution_name',
+        accountReference: 'account_reference',
+        currency: 'currency',
+        isMain: 'is_main',
+        initialBalance: 'initial_balance',
+        currentBalance: 'current_balance',
+        creditLimit: 'credit_limit',
+        liabilityBalance: 'liability_balance',
+        statementClosingDay: 'statement_closing_day',
+        paymentDueDay: 'payment_due_day',
+        minimumPayment: 'minimum_payment',
+        valuationStatus: 'valuation_status',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('debts', allDebts, {
+        id: 'id',
+        userId: 'user_id',
+        contactName: 'contact_name',
+        counterpartyType: 'counterparty_type',
+        type: 'type',
+        originalAmount: 'original_amount',
+        remainingBalance: 'remaining_balance',
+        principalBalance: 'principal_balance',
+        accruedInterest: 'accrued_interest',
+        feesAmount: 'fees_amount',
+        interestRateApr: 'interest_rate_apr',
+        rateType: 'rate_type',
+        installmentAmount: 'installment_amount',
+        installmentFrequency: 'installment_frequency',
+        currency: 'currency',
+        status: 'status',
+        dueDate: 'due_date',
+        createdAt: 'created_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('payrolls', allPayrolls, {
+        id: 'id',
+        userId: 'user_id',
+        scheduledFor: 'scheduled_for',
+        amount: 'amount',
+        status: 'status',
+        confirmedAmount: 'confirmed_amount',
+        confirmedAt: 'confirmed_at',
+        varianceAmount: 'variance_amount',
+        varianceNotes: 'variance_notes',
+        createdAt: 'created_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('financial_contexts', allContexts, {
+        id: 'id',
+        userId: 'user_id',
+        name: 'name',
+        type: 'type',
+        startDate: 'start_date',
+        endDate: 'end_date',
+        budget: 'budget',
+        status: 'status',
+        notes: 'notes',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('transactions', allTransactions, {
+        id: 'id',
+        userId: 'user_id',
+        walletId: 'wallet_id',
+        destinationWalletId: 'destination_wallet_id',
+        createdAt: 'created_at',
+        amount: 'amount',
+        nativeAmount: 'native_amount',
+        currency: 'currency',
+        exchangeRateUsed: 'exchange_rate_used',
+        fxSource: 'fx_source',
+        idempotencyKey: 'idempotency_key',
+        type: 'type',
+        category: 'category',
+        notes: 'notes',
+        payrollId: 'payroll_id',
+        contextId: 'context_id',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('splits', allSplits, {
+        id: 'id',
+        transactionId: 'transaction_id',
+        reimbursableAmount: 'reimbursable_amount',
+        linkedContactId: 'linked_contact_id',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('category_budgets', allCategoryBudgets, {
+        id: 'id',
+        userId: 'user_id',
+        category: 'category',
+        year: 'year',
+        month: 'month',
+        amount: 'amount',
+        rolloverEnabled: 'rollover_enabled',
+        rolloverAmount: 'rollover_amount',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('goals', allGoals, {
+        id: 'id',
+        userId: 'user_id',
+        walletId: 'wallet_id',
+        name: 'name',
+        targetAmount: 'target_amount',
+        currentAmount: 'current_amount',
+        autoSyncBalance: 'auto_sync_balance',
+        fundingCadence: 'funding_cadence',
+        plannedContributionAmount: 'planned_contribution_amount',
+        deadline: 'deadline',
+        category: 'category',
+        notes: 'notes',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('goal_contribution_events', allGoalEvents, {
+        id: 'id',
+        userId: 'user_id',
+        goalId: 'goal_id',
+        transactionId: 'transaction_id',
+        sourceWalletId: 'source_wallet_id',
+        destinationWalletId: 'destination_wallet_id',
+        eventType: 'event_type',
+        amount: 'amount',
+        eventDate: 'event_date',
+        notes: 'notes',
+        createdAt: 'created_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('subscriptions', allSubscriptions, {
+        id: 'id',
+        userId: 'user_id',
+        name: 'name',
+        amount: 'amount',
+        currency: 'currency',
+        billingCycle: 'billing_cycle',
+        category: 'category',
+        walletId: 'wallet_id',
+        nextBillingDate: 'next_billing_date',
+        status: 'status',
+        notes: 'notes',
+        icon: 'icon',
+        websiteUrl: 'website_url',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('stock_positions', allStockPositions, {
+        id: 'id',
+        userId: 'user_id',
+        walletId: 'wallet_id',
+        ticker: 'ticker',
+        companyName: 'company_name',
+        market: 'market',
+        sector: 'sector',
+        instrumentType: 'instrument_type',
+        shares: 'shares',
+        avgCostPerShare: 'avg_cost_per_share',
+        currentPrice: 'current_price',
+        currency: 'currency',
+        annualDividendPerShare: 'annual_dividend_per_share',
+        targetWeightPercent: 'target_weight_percent',
+        convictionThesis: 'conviction_thesis',
+        isWatchlistOnly: 'is_watchlist_only',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('stock_orders', allStockOrders, {
+        id: 'id',
+        userId: 'user_id',
+        positionId: 'position_id',
+        walletId: 'wallet_id',
+        linkedTransactionId: 'linked_transaction_id',
+        action: 'action',
+        shares: 'shares',
+        pricePerShare: 'price_per_share',
+        totalNativeAmount: 'total_native_amount',
+        totalMadAmount: 'total_mad_amount',
+        exchangeRateUsed: 'exchange_rate_used',
+        realizedPnlMad: 'realized_pnl_mad',
+        notes: 'notes',
+        executedAt: 'executed_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('investment_dividend_events', allDividends, {
+        id: 'id',
+        userId: 'user_id',
+        positionId: 'position_id',
+        ticker: 'ticker',
+        companyName: 'company_name',
+        paymentDate: 'payment_date',
+        dividendPerShare: 'dividend_per_share',
+        eligibleShares: 'eligible_shares',
+        currency: 'currency',
+        grossAmount: 'gross_amount',
+        withholdingTax: 'withholding_tax',
+        feeAmount: 'fee_amount',
+        netAmount: 'net_amount',
+        netAmountMad: 'net_amount_mad',
+        fxRateUsed: 'fx_rate_used',
+        status: 'status',
+        source: 'source',
+        notes: 'notes',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('investment_settings', allInvSettings, {
+        id: 'id',
+        userId: 'user_id',
+        reportingCurrency: 'reporting_currency',
+        selectedBenchmarks: 'selected_benchmarks',
+        riskFreeRatePercent: 'risk_free_rate_percent',
+        manualUsdMadRate: 'manual_usd_mad_rate',
+        updatedAt: 'updated_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('portfolio_daily_snapshots', allSnapshots, {
+        id: 'id',
+        userId: 'user_id',
+        snapshotDate: 'snapshot_date',
+        baseCurrency: 'base_currency',
+        totalMarketValueMad: 'total_market_value_mad',
+        investmentCashMad: 'investment_cash_mad',
+        netContributionsMad: 'net_contributions_mad',
+        costBasisMad: 'cost_basis_mad',
+        unrealizedPnlMad: 'unrealized_pnl_mad',
+        realizedPnlMad: 'realized_pnl_mad',
+        dividendsReceivedMad: 'dividends_received_mad',
+        usdToMadRate: 'usd_to_mad_rate',
+        isEstimated: 'is_estimated',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('notification_preferences', allNotifPrefs, {
+        id: 'id',
+        userId: 'user_id',
+        enabled: 'enabled',
+        dailyInsightEnabled: 'daily_insight_enabled',
+        budgetWarningEnabled: 'budget_warning_enabled',
+        forecastWarningEnabled: 'forecast_warning_enabled',
+        debtReminderEnabled: 'debt_reminder_enabled',
+        anomalyEnabled: 'anomaly_enabled',
+        goalEnabled: 'goal_enabled',
+        deliveryTime: 'delivery_time',
+        timezone: 'timezone',
+        quietHoursStart: 'quiet_hours_start',
+        quietHoursEnd: 'quiet_hours_end',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('journal_entries', allJournalEntries, {
+        id: 'id',
+        userId: 'user_id',
+        transactionId: 'transaction_id',
+        entryType: 'entry_type',
+        status: 'status',
+        reversalOfEntryId: 'reversal_of_entry_id',
+        currency: 'currency',
+        exchangeRateUsed: 'exchange_rate_used',
+        isEstimatedBackfill: 'is_estimated_backfill',
+        idempotencyKey: 'idempotency_key',
+        memo: 'memo',
+        postedAt: 'posted_at',
+        createdAt: 'created_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('journal_lines', allJournalLines, {
+        id: 'id',
+        journalEntryId: 'journal_entry_id',
+        userId: 'user_id',
+        walletId: 'wallet_id',
+        accountCode: 'account_code',
+        accountName: 'account_name',
+        accountClass: 'account_class',
+        debitMad: 'debit_mad',
+        creditMad: 'credit_mad',
+        nativeAmount: 'native_amount',
+        nativeCurrency: 'native_currency',
+        createdAt: 'created_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('exchange_rates', allFxRates, {
+        id: 'id',
+        userId: 'user_id',
+        baseCurrency: 'base_currency',
+        quoteCurrency: 'quote_currency',
+        rate: 'rate',
+        source: 'source',
+        effectiveDate: 'effective_date',
+        createdAt: 'created_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('commitment_occurrences', allOccurrences, {
+        id: 'id',
+        userId: 'user_id',
+        sourceType: 'source_type',
+        sourceId: 'source_id',
+        title: 'title',
+        expectedDate: 'expected_date',
+        expectedAmount: 'expected_amount',
+        currency: 'currency',
+        status: 'status',
+        actualDate: 'actual_date',
+        actualAmount: 'actual_amount',
+        varianceAmount: 'variance_amount',
+        linkedTransactionId: 'linked_transaction_id',
+        notes: 'notes',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('saved_scenarios', allScenarios, {
+        id: 'id',
+        userId: 'user_id',
+        name: 'name',
+        description: 'description',
+        baselineSnapshotJson: 'baseline_snapshot_json',
+        eventsJson: 'events_json',
+        assumptionsJson: 'assumptions_json',
+        projectedSummaryJson: 'projected_summary_json',
+        isApprovedPlan: 'is_approved_plan',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('financial_rules', allRules, {
+        id: 'id',
+        userId: 'user_id',
+        name: 'name',
+        enabled: 'enabled',
+        triggerType: 'trigger_type',
+        conditionsJson: 'conditions_json',
+        actionType: 'action_type',
+        actionPayloadJson: 'action_payload_json',
+        approvalPolicy: 'approval_policy',
+        version: 'version',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('external_wealth_items', allExternalWealth, {
+        id: 'id',
+        userId: 'user_id',
+        name: 'name',
+        itemClass: 'item_class',
+        isLiability: 'is_liability',
+        isLiquid: 'is_liquid',
+        estimatedValue: 'estimated_value',
+        currency: 'currency',
+        valuationDate: 'valuation_date',
+        valuationSource: 'valuation_source',
+        confidenceLevel: 'confidence_level',
+        isExternallyVerified: 'is_externally_verified',
+        notes: 'notes',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('external_wealth_valuations', allExternalValuations, {
+        id: 'id',
+        itemId: 'item_id',
+        userId: 'user_id',
+        valuationDate: 'valuation_date',
+        estimatedValue: 'estimated_value',
+        currency: 'currency',
+        fxRateUsed: 'fx_rate_used',
+        fxSource: 'fx_source',
+        valueMad: 'value_mad',
+        valuationSource: 'valuation_source',
+        confidenceLevel: 'confidence_level',
+        notes: 'notes',
+        createdAt: 'created_at',
+      })
+    );
+
+    bodyLines.push(
+      ...this.buildTableInserts('financial_position_snapshots', allPositionSnapshots, {
+        id: 'id',
+        userId: 'user_id',
+        snapshotDate: 'snapshot_date',
+        reportingCurrency: 'reporting_currency',
+        bankBalanceMad: 'bank_balance_mad',
+        cashBalanceMad: 'cash_balance_mad',
+        savingsBalanceMad: 'savings_balance_mad',
+        investmentCashMad: 'investment_cash_mad',
+        creditCardLiabilityMad: 'credit_card_liability_mad',
+        overdraftLiabilityMad: 'overdraft_liability_mad',
+        receivablesMad: 'receivables_mad',
+        payablesMad: 'payables_mad',
+        investmentMarketValueMad: 'investment_market_value_mad',
+        externalAssetsMad: 'external_assets_mad',
+        externalLiabilitiesMad: 'external_liabilities_mad',
+        totalNetWorthMad: 'total_net_worth_mad',
+        liquidNetWorthMad: 'liquid_net_worth_mad',
+        fxRatesJson: 'fx_rates_json',
+        componentsJson: 'components_json',
+        dataSource: 'data_source',
+        confidenceLevel: 'confidence_level',
+        isEstimated: 'is_estimated',
+        triggerSource: 'trigger_source',
+        createdAt: 'created_at',
+      })
+    );
+
+    bodyLines.push('COMMIT;');
+    const bodyString = bodyLines.join('\n').trim();
+    const checksum = crypto.createHash('sha256').update(bodyString, 'utf8').digest('hex');
+
+    const manifest = {
+      schemaVersion: BACKUP_SCHEMA_VERSION,
+      exportedAt: new Date().toISOString(),
+      tablesCovered: restoreOrder.length,
+      counts: {
+        users: allUsers.length,
+        counterparties: allCounterparties.length,
+        wallets: allWallets.length,
+        debts: allDebts.length,
+        payrolls: allPayrolls.length,
+        financial_contexts: allContexts.length,
+        transactions: allTransactions.length,
+        splits: allSplits.length,
+        category_budgets: allCategoryBudgets.length,
+        goals: allGoals.length,
+        goal_contribution_events: allGoalEvents.length,
+        subscriptions: allSubscriptions.length,
+        stock_positions: allStockPositions.length,
+        stock_orders: allStockOrders.length,
+        investment_dividend_events: allDividends.length,
+        journal_entries: allJournalEntries.length,
+        journal_lines: allJournalLines.length,
+        commitment_occurrences: allOccurrences.length,
+        saved_scenarios: allScenarios.length,
+        financial_rules: allRules.length,
+        external_wealth_items: allExternalWealth.length,
+        external_wealth_valuations: allExternalValuations.length,
+        financial_position_snapshots: allPositionSnapshots.length,
+      },
+    };
+
+    const headerLines = [
+      '-- ====================================================',
+      TRUE_SPEND_BACKUP_HEADER,
+      `-- Schema-Version: ${BACKUP_SCHEMA_VERSION}`,
+      `-- Exported-At: ${manifest.exportedAt}`,
+      `-- Checksum-SHA256: ${checksum}`,
+      `-- Manifest-JSON: ${JSON.stringify(manifest)}`,
+      `-- Full dependency-ordered PostgreSQL backup covering all ${restoreOrder.length} TrueSpend tables.`,
+      '-- ====================================================\n',
+    ];
+
+    return `${headerLines.join('\n')}\n${bodyString}\n`;
+  }
+
+  async validateBackupPreview(userId: string, sqlContent: unknown) {
+    const { rows, schemaVersion, checksumVerified, manifest } = parseBackupRows(sqlContent);
+    const countsByTable: Record<string, number> = {};
+    for (const table of restoreOrder) countsByTable[table] = 0;
+    for (const r of rows) {
+      countsByTable[r.table] = (countsByTable[r.table] || 0) + 1;
+    }
+
+    const foreignRows = rows.filter((r) => {
+      if (r.table === 'users') {
+        const idIdx = r.columns.indexOf('id');
+        return idIdx !== -1 && r.values[idIdx] !== userId;
+      }
+      const uidIdx = r.columns.indexOf('user_id');
+      return uidIdx !== -1 && r.values[uidIdx] && r.values[uidIdx] !== userId;
+    }).length;
+
+    const userIds = new Set(
+      rows
+        .filter((r) => r.table === 'users')
+        .map((r) => r.values[r.columns.indexOf('id')])
+        .filter(Boolean)
+    );
+    const orphanCount = rows.filter((r) => {
+      if (r.table === 'users') return false;
+      const uidIdx = r.columns.indexOf('user_id');
+      if (uidIdx === -1) return false;
+      const uid = r.values[uidIdx];
+      return uid && !userIds.has(uid);
+    }).length;
+
+    return {
+      valid: orphanCount === 0 && foreignRows === 0,
+      schemaVersion,
+      checksumVerified,
+      totalRows: rows.length,
+      tablesWithData: Object.entries(countsByTable)
+        .filter(([, count]) => count > 0)
+        .map(([table, count]) => ({ table, count })),
+      countsByTable,
+      referentialIntegrityOk: orphanCount === 0 && foreignRows === 0,
+      orphanRecordsDetected: orphanCount + foreignRows,
+      manifest,
+    };
+  }
+
+  async importSqlDatabase(userId: string, sqlContent: unknown) {
+    const { rows: backupRows } = parseBackupRows(sqlContent);
+
+    // Strictly refuse any backup containing another account's rows
+    for (const row of backupRows) {
+      if (row.table === 'users') {
+        const idIdx = row.columns.indexOf('id');
+        if (idIdx === -1 || row.values[idIdx] !== userId) {
+          throw new Error('You can only restore a backup owned by your own account.');
+        }
+      } else {
+        const uidIdx = row.columns.indexOf('user_id');
+        if (uidIdx !== -1 && row.values[uidIdx] !== userId) {
+          throw new Error('You can only restore a backup owned by your own account.');
+        }
+      }
+    }
+
     const rowsByTable = new Map<BackupTable, BackupRow[]>();
     for (const table of restoreOrder) rowsByTable.set(table, []);
     for (const row of backupRows) rowsByTable.get(row.table)!.push(row);
@@ -426,31 +1114,189 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;\n`);
     const client = await createPool().connect();
     try {
       await client.query('BEGIN');
-      await client.query('LOCK TABLE splits, transactions, debts, category_budgets, users IN ACCESS EXCLUSIVE MODE');
-      await client.query('DELETE FROM splits');
-      await client.query('DELETE FROM transactions');
-      await client.query('DELETE FROM debts');
-      await client.query('DELETE FROM category_budgets');
-      await client.query('DELETE FROM users');
+
+      // Delete ONLY authenticated user's records in reverse dependency order (never touch other users!)
+      const deleteOrder = [...restoreOrder].reverse();
+      for (const table of deleteOrder) {
+        if (table === 'users') continue;
+        if (table === 'splits') {
+          await client.query(
+            `DELETE FROM splits WHERE transaction_id IN (SELECT id FROM transactions WHERE user_id = $1)`,
+            [userId]
+          );
+        } else {
+          await client.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
+        }
+      }
 
       for (const table of restoreOrder) {
+        if (table === 'users') {
+          // Only restore safe preference columns for this user; never overwrite role, status, email, or passwordHash
+          for (const row of rowsByTable.get('users')!) {
+            const safeCols = ['payday', 'emergency_buffer', 'salary', 'base_currency'];
+            const sets: string[] = [];
+            const params: any[] = [];
+            for (const col of safeCols) {
+              const idx = row.columns.indexOf(col);
+              if (idx !== -1 && row.values[idx] !== null) {
+                params.push(row.values[idx]);
+                sets.push(`"${col}" = $${params.length}`);
+              }
+            }
+            if (sets.length > 0) {
+              params.push(userId);
+              await client.query(
+                `UPDATE users SET ${sets.join(', ')} WHERE id = $${params.length}`,
+                params
+              );
+            }
+          }
+          continue;
+        }
+
         for (const row of rowsByTable.get(table)!) {
           const placeholders = row.values.map((_, index) => `$${index + 1}`).join(', ');
           await client.query(
             `INSERT INTO ${row.table} (${row.columns.join(', ')}) VALUES (${placeholders})`,
-            row.values,
+            row.values
           );
         }
       }
 
       await client.query('COMMIT');
-      return Object.fromEntries(restoreOrder.map((table) => [table, rowsByTable.get(table)!.length]));
+      return Object.fromEntries(
+        restoreOrder.map((table) => [table, rowsByTable.get(table)!.length])
+      );
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       throw error;
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Self-service user-scoped JSON personal data export (Section 11.2).
+   * Explicitly allowlists safe profile fields and excludes all auth secrets, hashes, and integration tokens.
+   */
+  async exportPersonalDataJson(userId: string) {
+    const userRows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (userRows.length === 0) {
+      throw new Error('User account not found.');
+    }
+    const u = userRows[0];
+    const isAdvanced = (u.experienceTier || 'advanced') === 'advanced';
+
+    const userTxs = await db.select().from(transactions).where(eq(transactions.userId, userId));
+    const txIds = userTxs.map((t) => t.id);
+
+    const [
+      userWallets,
+      userSplits,
+      userBudgets,
+      userDebts,
+      userPayrolls,
+      userGoals,
+      userGoalEvents,
+      userSubscriptions,
+      userOccurrences,
+      userContexts,
+      userNotifPrefs,
+      userStockPositions,
+      userStockOrders,
+      userDividends,
+      userExternalWealth,
+      userScenarios,
+      userRules,
+    ] = await Promise.all([
+      db.select().from(wallets).where(eq(wallets.userId, userId)),
+      txIds.length > 0 ? db.select().from(splits).where(inArray(splits.transactionId, txIds)) : Promise.resolve([]),
+      db.select().from(categoryBudgets).where(eq(categoryBudgets.userId, userId)),
+      db.select().from(debts).where(eq(debts.userId, userId)),
+      db.select().from(payrolls).where(eq(payrolls.userId, userId)),
+      db.select().from(goals).where(eq(goals.userId, userId)),
+      db.select().from(goalContributionEvents).where(eq(goalContributionEvents.userId, userId)).catch(() => []),
+      db.select().from(subscriptions).where(eq(subscriptions.userId, userId)),
+      db.select().from(commitmentOccurrences).where(eq(commitmentOccurrences.userId, userId)).catch(() => []),
+      db.select().from(financialContexts).where(eq(financialContexts.userId, userId)),
+      db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)).catch(() => []),
+      isAdvanced ? db.select().from(stockPositions).where(eq(stockPositions.userId, userId)) : Promise.resolve([]),
+      isAdvanced ? db.select().from(stockOrders).where(eq(stockOrders.userId, userId)) : Promise.resolve([]),
+      isAdvanced ? db.select().from(investmentDividendEvents).where(eq(investmentDividendEvents.userId, userId)).catch(() => []) : Promise.resolve([]),
+      isAdvanced ? db.select().from(externalWealthItems).where(eq(externalWealthItems.userId, userId)).catch(() => []) : Promise.resolve([]),
+      isAdvanced ? db.select().from(savedScenarios).where(eq(savedScenarios.userId, userId)).catch(() => []) : Promise.resolve([]),
+      isAdvanced ? db.select().from(financialRules).where(eq(financialRules.userId, userId)).catch(() => []) : Promise.resolve([]),
+    ]);
+
+    return {
+      manifest: {
+        format: 'truespend.personal-export.v1',
+        exportedAt: new Date().toISOString(),
+        userId: u.id,
+        experienceTier: u.experienceTier || 'advanced',
+        counts: {
+          wallets: userWallets.length,
+          transactions: userTxs.length,
+          splits: userSplits.length,
+          categoryBudgets: userBudgets.length,
+          debts: userDebts.length,
+          payrolls: userPayrolls.length,
+          goals: userGoals.length,
+          subscriptions: userSubscriptions.length,
+          financialContexts: userContexts.length,
+          ...(isAdvanced
+            ? {
+                stockPositions: userStockPositions.length,
+                stockOrders: userStockOrders.length,
+                investmentDividends: userDividends.length,
+                externalWealthItems: userExternalWealth.length,
+                savedScenarios: userScenarios.length,
+                financialRules: userRules.length,
+              }
+            : {}),
+        },
+      },
+      profile: {
+        id: u.id,
+        email: u.email,
+        username: u.username,
+        displayName: u.displayName,
+        experienceTier: u.experienceTier,
+        locale: u.locale,
+        countryCode: u.countryCode,
+        timezone: u.timezone,
+        baseCurrency: u.baseCurrency,
+        payday: u.payday,
+        salary: Number(u.salary || 0),
+        emergencyBuffer: Number(u.emergencyBuffer || 0),
+        createdAt: u.createdAt,
+        emailVerifiedAt: u.emailVerifiedAt,
+      },
+      accounts: userWallets,
+      transactions: userTxs,
+      splits: userSplits,
+      budgets: userBudgets,
+      debts: userDebts,
+      payrolls: userPayrolls,
+      goals: userGoals,
+      goalContributions: userGoalEvents,
+      subscriptions: userSubscriptions,
+      commitments: userOccurrences,
+      contexts: userContexts,
+      notificationPreferences: userNotifPrefs,
+      ...(isAdvanced
+        ? {
+            investments: {
+              positions: userStockPositions,
+              orders: userStockOrders,
+              dividends: userDividends,
+              externalWealth: userExternalWealth,
+            },
+            savedScenarios: userScenarios,
+            financialRules: userRules,
+          }
+        : {}),
+    };
   }
 }
 

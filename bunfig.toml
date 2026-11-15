@@ -1,3 +1,0 @@
-[install]
-networkConcurrency = 4
-concurrentScripts = 1

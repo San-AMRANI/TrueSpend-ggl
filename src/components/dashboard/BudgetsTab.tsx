@@ -3,6 +3,7 @@ import { CategoryBudget, Payroll, Transaction, Debt, Goal, Subscription, Dashboa
 import { useAuth } from '../../context/AuthContext';
 import { dashboardService } from '../../services/api/dashboardService';
 import { SpexAvatar } from '../common/SpexAvatar';
+import { TemplatesGallery } from '../onboarding/TemplatesGallery';
 import { expenseCategories, normalizeCategory } from '../../lib/categories';
 import {
   budgetFor,
@@ -61,6 +62,8 @@ import {
   RefreshCw,
   CalendarRange,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { AnimatedMetricValue, AnimatedProgressBar, MotionModal } from '../ui/MotionPrimitives';
 
 type FixedPlanKey = 'balanced' | 'savings_first' | 'essentials';
 type PlanKey = 'spex_ai' | FixedPlanKey;
@@ -879,7 +882,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   onFundInvestmentWallet,
   setActiveTab,
 }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [monthRef, setMonthRef] = useState(() => getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [budgetModel, setBudgetModel] = useState<BudgetModel>('category');
   const [pillarFilter, setPillarFilter] = useState<PillarFilter>('all');
@@ -892,12 +895,19 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   const [autoBudgetOpen, setAutoBudgetOpen] = useState(false);
   const [autoBudgetLoading, setAutoBudgetLoading] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<PlanKey>('spex_ai');
+  const isAdvanced = user?.experienceTier === 'advanced';
+  const [selectedPlan, setSelectedPlan] = useState<PlanKey>(isAdvanced ? 'spex_ai' : 'balanced');
   const [spexUserNotes, setSpexUserNotes] = useState('');
   const [spexGenerating, setSpexGenerating] = useState(false);
   const [spexPlanResult, setSpexPlanResult] = useState<Awaited<ReturnType<typeof dashboardService.generateSpexBudgetPlan>> | null>(null);
   const [spexCustomOverrides, setSpexCustomOverrides] = useState<Record<string, number>>({});
   const [showPeriodHistory, setShowPeriodHistory] = useState(false);
+
+  useEffect(() => {
+    if (!isAdvanced && selectedPlan === 'spex_ai') {
+      setSelectedPlan('balanced');
+    }
+  }, [isAdvanced, selectedPlan]);
 
   const currentFM = getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
   const isCurrentMonth = monthRef.year === currentFM.year && monthRef.month === currentFM.month;
@@ -1412,19 +1422,31 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
     <div className="space-y-6">
 
       {/* ── Toast ── */}
-      {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium shadow-lg transition-all ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900'}`}>
-          {toast.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-          {toast.msg}
-        </div>
-      )}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 12, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium shadow-lg ${toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900'}`}
+          >
+            {toast.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+            {toast.msg}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Header ── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Budget &amp; Salary Retention Planner</h2>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+            {isAdvanced ? 'Budget & Salary Retention Planner' : 'Monthly Budgets'}
+          </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Bank-as-Savings hybrid engine: plan what you spend on Obligations &amp; Yourself, and automatically retain the rest in your bank.
+            {isAdvanced
+              ? 'Bank-as-Savings hybrid engine: plan what you spend on Obligations & Yourself, and automatically retain the rest in your bank.'
+              : 'Set monthly spending limits by category and track what is left.'}
           </p>
         </div>
         {/* Month navigator & Auto Budget */}
@@ -1445,7 +1467,8 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         </div>
       </div>
 
-      {/* ── 4-Pillar Salary & Bank-Retention Vision Hub ── */}
+      {/* ── 4-Pillar Salary & Bank-Retention Vision Hub (Advanced) ── */}
+      {isAdvanced && (
       <Card className="border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-br from-indigo-50/40 via-white to-emerald-50/30 dark:from-gray-900 dark:via-gray-900 dark:to-emerald-950/20 shadow-xs overflow-hidden">
         <CardContent className="p-4 sm:p-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1466,7 +1489,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
             <div className="text-left sm:text-right shrink-0">
               <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">Period Income Baseline</p>
               <p className="text-lg font-black font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
-                {totalIncome.toFixed(2)} MAD
+                <AnimatedMetricValue value={totalIncome} suffix=" MAD" />
               </p>
             </div>
           </div>
@@ -1474,7 +1497,13 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
           {/* 4-Pillar Stacked Allocation Bar */}
           {totalIncome > 0 && (
             <div className="space-y-1.5">
-              <div className="h-3 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex">
+              <motion.div
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                style={{ transformOrigin: 'left' }}
+                className="h-3 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex"
+              >
                 <div
                   className="h-full bg-indigo-600 transition-all duration-500"
                   style={{ width: `${Math.min(100, (fourPillar.spentOnObligations / totalIncome) * 100)}%` }}
@@ -1495,7 +1524,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                   style={{ width: `${Math.min(100, (fourPillar.totalActualRetainedAndSaved / totalIncome) * 100)}%` }}
                   title={`Retained in Bank & Saved: ${fourPillar.totalActualRetainedAndSaved.toFixed(0)} MAD`}
                 />
-              </div>
+              </motion.div>
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400 font-mono">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-indigo-600" />
@@ -1528,7 +1557,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                 </span>
               </div>
               <p className="text-xl font-black font-mono tabular-nums text-gray-900 dark:text-white">
-                {fourPillar.spentOnObligations.toFixed(0)} MAD
+                <AnimatedMetricValue value={fourPillar.spentOnObligations} decimals={0} suffix=" MAD" />
               </p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
                 Budget: {fourPillar.plannedObligationsBudget.toFixed(0)} MAD •{' '}
@@ -1547,7 +1576,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                 </span>
               </div>
               <p className="text-xl font-black font-mono tabular-nums text-gray-900 dark:text-white">
-                {fourPillar.spentOnMyself.toFixed(0)} MAD
+                <AnimatedMetricValue value={fourPillar.spentOnMyself} decimals={0} suffix=" MAD" />
               </p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
                 Budget: {fourPillar.plannedMyselfBudget.toFixed(0)} MAD •{' '}
@@ -1566,7 +1595,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                 </span>
               </div>
               <p className="text-xl font-black font-mono tabular-nums text-gray-900 dark:text-white">
-                {fourPillar.investedAmount.toFixed(0)} MAD
+                <AnimatedMetricValue value={fourPillar.investedAmount} decimals={0} suffix=" MAD" />
               </p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
                 Target: {fourPillar.plannedInvestmentBudget.toFixed(0)} MAD • Stocks &amp; Crypto
@@ -1582,7 +1611,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                 </span>
               </div>
               <p className="text-xl font-black font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
-                {fourPillar.effectiveSavedForBudget.toFixed(0)} MAD
+                <AnimatedMetricValue value={fourPillar.effectiveSavedForBudget} decimals={0} suffix=" MAD" />
               </p>
               <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 font-mono">
                 Live in Bank: {fourPillar.liveRetainedInBank.toFixed(0)} MAD
@@ -1592,12 +1621,16 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* ── Summary KPI Row ── */}
+      {isAdvanced ? (
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card className="p-4">
           <p className="text-xs text-gray-500 dark:text-gray-400">Spendable Living Budget</p>
-          <p className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">{livingBudgetTotal.toFixed(0)}</p>
+          <p className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
+            <AnimatedMetricValue value={livingBudgetTotal} decimals={0} />
+          </p>
           <p className="text-xs text-gray-400 font-mono">
             MAD ({totalBudget.toFixed(0)} total w/ wealth)
           </p>
@@ -1605,7 +1638,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         <Card className="p-4">
           <p className="text-xs text-gray-500 dark:text-gray-400">Living Spent So Far</p>
           <p className={`text-2xl font-bold font-mono tabular-nums ${livingSpentTotal > livingBudgetTotal && livingBudgetTotal > 0 ? 'text-red-600' : 'text-gray-900 dark:text-gray-100'}`}>
-            {livingSpentTotal.toFixed(0)}
+            <AnimatedMetricValue value={livingSpentTotal} decimals={0} />
           </p>
           <p className="text-xs text-gray-400 font-mono">
             Oblig: {fourPillar.spentOnObligations.toFixed(0)} • Myself: {fourPillar.spentOnMyself.toFixed(0)}
@@ -1614,7 +1647,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         <Card className="p-4">
           <p className="text-xs text-gray-500 dark:text-gray-400">Spendable Remaining</p>
           <p className={`text-2xl font-bold font-mono tabular-nums ${livingRemaining < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-            {livingBudgetTotal > 0 ? livingRemaining.toFixed(0) : '—'}
+            {livingBudgetTotal > 0 ? <AnimatedMetricValue value={livingRemaining} decimals={0} /> : '—'}
           </p>
           <p className="text-xs text-gray-400">MAD safe to spend</p>
         </Card>
@@ -1622,11 +1655,38 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
           <p className="text-xs text-gray-500 dark:text-gray-400">Budget Health Score</p>
           <div className="flex items-end gap-2">
             <p className={`text-2xl font-bold ${gradeColor}`}>{grade}</p>
-            <p className="text-sm text-gray-500 mb-0.5 font-mono">{healthScore}/100</p>
+            <p className="text-sm text-gray-500 mb-0.5 font-mono">
+              <AnimatedMetricValue value={healthScore} decimals={0} />/100
+            </p>
           </div>
           <p className="text-xs text-gray-400">{overBudgetCount > 0 ? `${overBudgetCount} living cat. over budget` : 'All living budgets on track'}</p>
         </Card>
       </div>
+      ) : (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Card className="p-4">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Total Budget</p>
+          <p className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
+            <AnimatedMetricValue value={totalBudget} decimals={0} />{' '}
+            <span className="text-xs font-sans font-normal text-gray-400">MAD</span>
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Spent So Far</p>
+          <p className={`text-2xl font-bold font-mono tabular-nums ${livingSpentTotal > totalBudget && totalBudget > 0 ? 'text-red-600' : 'text-gray-900 dark:text-gray-100'}`}>
+            <AnimatedMetricValue value={livingSpentTotal} decimals={0} />{' '}
+            <span className="text-xs font-sans font-normal text-gray-400">MAD</span>
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Remaining</p>
+          <p className={`text-2xl font-bold font-mono tabular-nums ${totalBudget - livingSpentTotal < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+            {totalBudget > 0 ? <AnimatedMetricValue value={totalBudget - livingSpentTotal} decimals={0} /> : '—'}
+            {totalBudget > 0 && <span className="text-xs font-sans font-normal text-gray-400"> MAD</span>}
+          </p>
+        </Card>
+      </div>
+      )}
 
       {/* ── Overall Living Consumption Pace Bar ── */}
       {livingBudgetTotal > 0 && (
@@ -1642,12 +1702,12 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <div className="flex-1 h-3 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${livingSpentTotal > livingBudgetTotal ? 'bg-red-500' : pace.difference > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                  style={{ width: `${livingBudgetTotal > 0 ? Math.min(100, (livingSpentTotal / livingBudgetTotal) * 100) : 0}%` }}
-                />
-              </div>
+              <AnimatedProgressBar
+                className="flex-1"
+                trackClassName="h-3 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden"
+                percent={livingBudgetTotal > 0 ? (livingSpentTotal / livingBudgetTotal) * 100 : 0}
+                barClassName={livingSpentTotal > livingBudgetTotal ? 'bg-red-500' : pace.difference > 0 ? 'bg-amber-500' : 'bg-emerald-500'}
+              />
               <span className="text-sm tabular-nums font-mono text-gray-500 dark:text-gray-400 shrink-0">
                 {livingBudgetTotal > 0 ? `${Math.min(100, (livingSpentTotal / livingBudgetTotal) * 100).toFixed(0)}%` : '—'}
               </span>
@@ -1661,8 +1721,8 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         </Card>
       )}
 
-      {/* ── Interconnected Debt Payoff Reserve Hub ── */}
-      {totalPayableDebt > 0 && (
+      {/* ── Interconnected Debt Payoff Reserve Hub (Advanced) ── */}
+      {isAdvanced && totalPayableDebt > 0 && (
         <Card className={`border overflow-hidden transition-all shadow-xs ${
           isDebtFullyReserved
             ? 'border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-r from-emerald-50/50 via-white to-white dark:from-emerald-950/20 dark:via-gray-900 dark:to-gray-900'
@@ -1733,8 +1793,8 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         </Card>
       )}
 
-      {/* ── Interconnected Stock Portfolio & 📈 Investments Budget Hub ── */}
-      {(currentInvestmentBudget > 0 || (investmentsData && (investmentsData.positions.length > 0 || investmentsData.buyingPower.investmentWalletBalanceMad > 0))) && (
+      {/* ── Interconnected Stock Portfolio & 📈 Investments Budget Hub (Advanced) ── */}
+      {isAdvanced && (currentInvestmentBudget > 0 || (investmentsData && (investmentsData.positions.length > 0 || investmentsData.buyingPower.investmentWalletBalanceMad > 0))) && (
         <Card className="border border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-r from-emerald-50/50 via-white to-indigo-50/30 dark:from-emerald-950/20 dark:via-gray-900 dark:to-indigo-950/20 shadow-xs overflow-hidden">
           <CardContent className="p-4 sm:p-5">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1805,8 +1865,8 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         </Card>
       )}
 
-      {/* ── Interconnected Smart Surplus Sweep into Savings Goals ── */}
-      {budgetSurplus > 0 && goals.length > 0 && (
+      {/* ── Interconnected Smart Surplus Sweep into Savings Goals (Advanced) ── */}
+      {isAdvanced && budgetSurplus > 0 && goals.length > 0 && (
         <Card className="border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-50/70 via-teal-50/30 to-white dark:from-indigo-950/30 dark:via-teal-950/20 dark:to-gray-900 shadow-xs overflow-hidden">
           <CardContent className="p-4 sm:p-5">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -1889,16 +1949,19 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
       )}
 
       {/* ── Model Selector + Add Form ── */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className={`grid gap-4 ${isAdvanced ? 'lg:grid-cols-3' : 'grid-cols-1'}`}>
+        <Card className={isAdvanced ? 'lg:col-span-2' : ''}>
           <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-800/60">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <CardTitle className="text-base font-bold">Add / Update Budget or Retention Target</CardTitle>
+                <CardTitle className="text-base font-bold">
+                  {isAdvanced ? 'Add / Update Budget or Retention Target' : 'Set a Category Budget'}
+                </CardTitle>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium">
                   {setCategoriesCount} / {expenseCategories.length} Set
                 </span>
               </div>
+              {isAdvanced && (
               <div>
                 {totalIncome > 0 ? (
                   unbudgetedIncome > 0.01 ? (
@@ -1923,10 +1986,12 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                   </span>
                 )}
               </div>
+              )}
             </div>
           </CardHeader>
           <CardContent className="pt-4 space-y-4">
             {/* Allocation Meter & Quick Summary */}
+            {isAdvanced && (
             <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-800 space-y-2">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs font-mono">
                 <div>
@@ -1973,6 +2038,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                 </div>
               )}
             </div>
+            )}
 
             {/* Unset Categories Quick Pick Chips */}
             <div className="space-y-1.5">
@@ -2021,16 +2087,18 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                     Category
                   </label>
                   <Select value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
-                    {expenseCategories.map((c) => {
-                      const existingAmt = monthBudgetsMap.get(c) ?? 0;
-                      const p = getCategoryPillar(c);
-                      const tag = p === 'myself' ? 'Myself' : p === 'obligations' ? 'Obligation' : p === 'investments' ? 'Investment' : 'Bank Retention';
-                      return (
-                        <option key={c} value={c}>
-                          {c} [{tag}] {existingAmt > 0 ? `(Set: ${existingAmt.toFixed(0)} MAD)` : '— (Unset)'}
-                        </option>
-                      );
-                    })}
+                    {expenseCategories
+                      .filter((c) => isAdvanced || c !== '📈 Investments')
+                      .map((c) => {
+                        const existingAmt = monthBudgetsMap.get(c) ?? 0;
+                        const p = getCategoryPillar(c);
+                        const tag = p === 'myself' ? 'Myself' : p === 'obligations' ? 'Obligation' : p === 'investments' ? 'Investment' : 'Bank Retention';
+                        return (
+                          <option key={c} value={c}>
+                            {c}{isAdvanced ? ` [${tag}]` : ''} {existingAmt > 0 ? `(Set: ${existingAmt.toFixed(0)} MAD)` : '— (Unset)'}
+                          </option>
+                        );
+                      })}
                   </Select>
                   <div className="text-[11px] pt-0.5">
                     {currentCategoryExistingBudget > 0 ? (
@@ -2093,6 +2161,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
           </CardContent>
         </Card>
 
+        {isAdvanced && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">View Mode</CardTitle>
@@ -2118,6 +2187,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
             ))}
           </CardContent>
         </Card>
+        )}
       </div>
 
       {/* ── Copy + Pillar Filter Bar + Donut ── */}
@@ -2136,27 +2206,37 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         </div>
 
         {/* Pillar Filter Pills */}
-        {budgetModel === 'category' && (
+        {isAdvanced && budgetModel === 'category' && (
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
             {([
               { id: 'all', label: `All (${budgetRows.length})` },
               { id: 'obligations', label: `🏛️ Obligations (${budgetRows.filter((c) => getCategoryPillar(c) === 'obligations').length})` },
               { id: 'myself', label: `✨ Spent on Myself (${budgetRows.filter((c) => getCategoryPillar(c) === 'myself').length})` },
               { id: 'wealth', label: `🏦 Saved & Invested (${budgetRows.filter((c) => isWealthAllocationCategory(c)).length})` },
-            ] as { id: PillarFilter; label: string }[]).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setPillarFilter(tab.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
-                  pillarFilter === tab.id
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            ] as { id: PillarFilter; label: string }[]).map((tab) => {
+              const active = pillarFilter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setPillarFilter(tab.id)}
+                  className={`relative px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                    active
+                      ? 'text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="budgetPillarFilterPill"
+                      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                      className="absolute inset-0 rounded-lg bg-indigo-600 shadow-xs"
+                    />
+                  )}
+                  <span className="relative z-10">{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -2235,16 +2315,36 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         />
       )}
 
+      {/* ── Starter Budget & Planning Templates ── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-indigo-500" />
+            Starter Templates
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <TemplatesGallery
+            compact
+            onApplied={() => {
+              showToast('Starter template applied!');
+              window.dispatchEvent(new CustomEvent('truespend:tier-changed'));
+            }}
+          />
+        </CardContent>
+      </Card>
+
       {/* ── Auto-Budget Modal (Spex AI Personalized Pattern + 3 Fixed Plans) ── */}
-      {autoBudgetOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 bg-black/50 backdrop-blur-sm"
-          onClick={() => !autoBudgetLoading && !spexGenerating && setAutoBudgetOpen(false)}
+      <MotionModal
+        isOpen={autoBudgetOpen}
+        onClose={() => !autoBudgetLoading && !spexGenerating && setAutoBudgetOpen(false)}
+        zIndexClass="z-50"
+        containerClassName="w-full sm:max-w-2xl my-auto"
+      >
+        <Card
+          className="w-full shadow-2xl rounded-2xl max-h-[92dvh] flex flex-col"
+          onClick={(e) => e.stopPropagation()}
         >
-          <Card
-            className="w-full sm:max-w-2xl shadow-2xl rounded-t-2xl sm:rounded-2xl max-h-[94dvh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
             <CardHeader className="flex-shrink-0 pb-2 border-b border-gray-100 dark:border-gray-800">
               {/* drag handle on mobile */}
               <div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600 mx-auto mb-3 sm:hidden" />
@@ -2313,7 +2413,8 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Choose Budget Plan</p>
                 <div className="grid grid-cols-1 gap-2.5">
-                  {/* Plan 1: Spex AI Personalized Pattern Plan */}
+                  {/* Plan 1: Spex AI Personalized Pattern Plan (Advanced Mode) */}
+                  {isAdvanced && (
                   <label
                     className={`flex items-start gap-3 rounded-xl border p-3.5 cursor-pointer transition-all ${
                       selectedPlan === 'spex_ai'
@@ -2349,6 +2450,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                       </p>
                     </div>
                   </label>
+                  )}
 
                   {/* 3 Fixed Plans */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -2676,8 +2778,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
               </div>
             </CardContent>
           </Card>
-        </div>
-      )}
+      </MotionModal>
     </div>
   );
 };

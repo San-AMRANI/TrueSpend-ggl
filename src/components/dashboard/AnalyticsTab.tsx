@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from 'react';
+import { motion } from 'motion/react';
 import { Debt, Payroll, Transaction, Wallet, CategoryBudget, Goal, Subscription, DashboardTab, InvestmentsData, KPI } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
+import { useAuth } from '../../context/AuthContext';
 import {
   PieChart,
   Pie,
@@ -119,6 +121,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   investmentsData = null,
   setActiveTab,
 }) => {
+  const { user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
   const [subView, setSubView] = useState<AnalyticsSubView>('overview');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -855,6 +859,59 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
     };
   }, [adjustedTrueSpendData.debtRepayments, totalIncome, debts, goals]);
 
+  // Day-of-Week Burn Rhythm & Multi-Currency FX Exposure
+  const weekdayBurnAndFxData = useMemo(() => {
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const buckets = dayNames.map((day, idx) => ({
+      day,
+      isWeekend: idx === 0 || idx === 6,
+      totalMad: 0,
+      txCount: 0,
+    }));
+
+    const fxMap: Record<string, { currency: string; totalMad: number; nativeTotal: number; count: number }> = {};
+
+    filteredTransactions
+      .filter((t) => t.type === 'Expense')
+      .forEach((t) => {
+        const net = netExpenseOf(t);
+        if (net <= 0) return;
+        const d = new Date(t.createdAt);
+        const dow = d.getDay();
+        if (buckets[dow]) {
+          buckets[dow].totalMad += net;
+          buckets[dow].txCount += 1;
+        }
+
+        const ccy = (t.currency || 'MAD').toUpperCase();
+        if (!fxMap[ccy]) {
+          fxMap[ccy] = { currency: ccy, totalMad: 0, nativeTotal: 0, count: 0 };
+        }
+        fxMap[ccy].totalMad += net;
+        fxMap[ccy].nativeTotal += parseFloat(String(t.nativeAmount || t.amount || '0')) || net;
+        fxMap[ccy].count += 1;
+      });
+
+    // Reorder Mon -> Sun
+    const orderedDays = [...buckets.slice(1), buckets[0]];
+    const maxDayMad = Math.max(1, ...orderedDays.map((b) => b.totalMad));
+    const weekendTotal = orderedDays.filter((b) => b.isWeekend).reduce((s, b) => s + b.totalMad, 0);
+    const weekdayTotal = orderedDays.filter((b) => !b.isWeekend).reduce((s, b) => s + b.totalMad, 0);
+    const totalAll = weekendTotal + weekdayTotal;
+    const weekendSharePct = totalAll > 0 ? (weekendTotal / totalAll) * 100 : 0;
+    const peakDay = [...orderedDays].sort((a, b) => b.totalMad - a.totalMad)[0];
+
+    return {
+      orderedDays,
+      maxDayMad,
+      weekendTotal,
+      weekdayTotal,
+      weekendSharePct,
+      peakDay,
+      fxList: Object.values(fxMap).sort((a, b) => b.totalMad - a.totalMad),
+    };
+  }, [filteredTransactions]);
+
   // Outflow breakdown for Cash Flow Waterfall
   const cashFlowBreakdownChart = useMemo(() => {
     const targetEntry = selectedPeriodEntry || lastCompletedPeriodEntry;
@@ -879,6 +936,252 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       },
     ];
   }, [selectedPeriodEntry, lastCompletedPeriodEntry, totalIncome, totalGrossOutflow, adjustedTrueSpendData, currentTotalLiquidity]);
+
+  if (!isAdvanced) {
+    const basicNetSaved = totalIncome - totalExpense;
+    const totalCategorySpent = categoryData.reduce((s, c) => s + c.value, 0);
+    const totalWalletSpent = walletData.reduce((s, w) => s + w.value, 0);
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+              Spending Analytics
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Clear overview of your income, expenses, and category breakdown.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <Calendar className="h-4 w-4 text-gray-400" />
+            <Select
+              value={analyticsMonth}
+              onChange={(e) => setAnalyticsMonth(e.target.value)}
+              className="text-sm font-medium rounded-lg border-gray-200 dark:border-gray-700"
+            >
+              {availableMonths.map((month) => (
+                <option key={month} value={month}>
+                  {month}
+                </option>
+              ))}
+            </Select>
+          </div>
+        </div>
+
+        {/* 3 Clean Summary KPIs */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="p-4 sm:p-5">
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Total Income
+              </span>
+              <p className="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono tabular-nums">
+                +{totalIncome.toFixed(2)} MAD
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 sm:p-5">
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Total Expenses
+              </span>
+              <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-white font-mono tabular-nums">
+                {totalExpense.toFixed(2)} MAD
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4 sm:p-5">
+              <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Net Saved
+              </span>
+              <p
+                className={`mt-2 text-2xl font-bold font-mono tabular-nums ${
+                  basicNetSaved >= 0
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : 'text-rose-600 dark:text-rose-400'
+                }`}
+              >
+                {basicNetSaved >= 0 ? '+' : ''}
+                {basicNetSaved.toFixed(2)} MAD
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Category Breakdown & Period/Account Comparison */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <PieChartIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                Spending by Category
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {categoryData.length > 0 ? (
+                <>
+                  <div className="h-[240px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={categoryData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={55}
+                          outerRadius={90}
+                          paddingAngle={2}
+                          dataKey="value"
+                          onClick={(entry: any) =>
+                            setSelectedCategory(entry?.name === selectedCategory ? null : entry?.name)
+                          }
+                        >
+                          {categoryData.map((_, index) => (
+                            <Cell key={`basic-cat-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(val: any) => [`${Number(val).toFixed(2)} MAD`, 'Spent']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {categoryData.map((cat, idx) => {
+                      const pct = totalCategorySpent > 0 ? (cat.value / totalCategorySpent) * 100 : 0;
+                      const active = selectedCategory === cat.name;
+                      return (
+                        <button
+                          key={cat.name}
+                          type="button"
+                          onClick={() => setSelectedCategory(active ? null : cat.name)}
+                          className={`w-full flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-xs transition-colors cursor-pointer ${
+                            active
+                              ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/30'
+                              : 'border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span
+                              className="h-2.5 w-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                            />
+                            <span className="truncate font-medium text-gray-800 dark:text-gray-200">
+                              {cat.name}
+                            </span>
+                          </span>
+                          <span className="font-mono tabular-nums font-semibold text-gray-900 dark:text-white shrink-0">
+                            {cat.value.toFixed(0)} MAD ({pct.toFixed(0)}%)
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                  No expenses recorded for this period yet.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="space-y-6">
+            {/* Period Comparison */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Period Comparison</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">{comparisonLabel}</p>
+                <p className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-white">
+                  {spendingChange.current.toFixed(2)} MAD
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {spendingChange.percentage === null
+                    ? `Previous period: ${spendingChange.previous.toFixed(2)} MAD`
+                    : `${spendingChange.percentage > 0 ? '+' : ''}${spendingChange.percentage.toFixed(1)}% vs previous (${spendingChange.previous.toFixed(0)} MAD)`}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Account Breakdown */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Spending by Account</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {walletData.length > 0 ? (
+                  walletData.map((w) => {
+                    const pct = totalWalletSpent > 0 ? (w.value / totalWalletSpent) * 100 : 0;
+                    return (
+                      <div key={w.name} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-medium text-gray-800 dark:text-gray-200">{w.name}</span>
+                          <span className="font-mono tabular-nums font-semibold text-gray-900 dark:text-white">
+                            {w.value.toFixed(0)} MAD ({pct.toFixed(0)}%)
+                          </span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                          <div className="h-full rounded-full bg-indigo-500" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="py-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                    No account spending recorded in this period.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* Drill-down when category clicked */}
+        {activeCategory && (
+          <Card className="border-indigo-200 dark:border-indigo-850 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-base">{activeCategory}</CardTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {selectedCategoryTransactions.length} transactions · {selectedCategoryTotal.toFixed(2)} MAD
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Close category details"
+                onClick={() => setSelectedCategory(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="divide-y divide-gray-100 dark:divide-gray-800 max-h-80 overflow-y-auto">
+              {selectedCategoryTransactions.map((tx) => (
+                <div key={tx.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-gray-900 dark:text-gray-100">
+                      {tx.notes || activeCategory}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {format(new Date(tx.createdAt), 'MMM d, yyyy')}
+                    </p>
+                  </div>
+                  <span className="font-mono font-semibold text-gray-900 dark:text-gray-100 shrink-0">
+                    {(tx.type === 'Expense' ? netExpenseOf(tx) : parseFloat(tx.amount)).toFixed(2)} MAD
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -913,115 +1216,56 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       </div>
 
       {/* Sub-view Navigation Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-gray-200 dark:border-gray-800 text-sm">
-        <button
-          type="button"
-          onClick={() => {
-            setSubView('overview');
-            setSelectedCategory(null);
-          }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'overview'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <Sparkles className="w-4 h-4" />
-          <span>Overview &amp; Cash Flow</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setSubView('pillars');
-            setSelectedCategory(null);
-          }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'pillars'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <UserCheck className="w-4 h-4" />
-          <span>Myself vs. Obligations &amp; Wealth</span>
-          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 font-bold border border-emerald-500/20">
-            4 Pillars
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setSubView('categories')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'categories'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <PieChartIcon className="w-4 h-4" />
-          <span>Categories &amp; Budget Variance</span>
-          {budgetSummary.overBudgetCount > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500 text-white font-bold">
-              {budgetSummary.overBudgetCount}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setSubView('recurring');
-            setSelectedCategory(null);
-          }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'recurring'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <Repeat className="w-4 h-4" />
-          <span>Recurring vs Discretionary</span>
-          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold border border-indigo-500/20">
-            {recurringAnalysis.activeSubs.length} subs
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setSubView('merchants');
-            setSelectedCategory(null);
-          }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'merchants'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <Store className="w-4 h-4" />
-          <span>Payees &amp; Spikes</span>
-          {spendingSpikes.length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500 text-white font-bold">
-              {spendingSpikes.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setSubView('debts_goals');
-            setSelectedCategory(null);
-          }}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-all whitespace-nowrap shrink-0 ${
-            subView === 'debts_goals'
-              ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-          }`}
-        >
-          <Target className="w-4 h-4" />
-          <span>Debt &amp; Goals Velocity</span>
-        </button>
+      <div className="ts-scrollbar flex items-center gap-1.5 overflow-x-auto pb-2 border-b border-gray-200 dark:border-gray-800 text-sm">
+        {(
+          [
+            { id: 'overview', label: 'Overview & Cash Flow', icon: Sparkles },
+            { id: 'pillars', label: 'Myself vs. Obligations & Wealth', icon: UserCheck, badge: '4 Pillars', badgeStyle: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/20' },
+            { id: 'categories', label: 'Categories & Budget Variance', icon: PieChartIcon, badge: budgetSummary.overBudgetCount > 0 ? String(budgetSummary.overBudgetCount) : undefined, badgeStyle: 'bg-rose-500 text-white border-transparent' },
+            { id: 'recurring', label: 'Recurring vs Discretionary', icon: Repeat, badge: `${recurringAnalysis.activeSubs.length} subs`, badgeStyle: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' },
+            { id: 'merchants', label: 'Payees & Spikes', icon: Store, badge: spendingSpikes.length > 0 ? String(spendingSpikes.length) : undefined, badgeStyle: 'bg-amber-500 text-white border-transparent' },
+            { id: 'debts_goals', label: 'Debt & Goals Velocity', icon: Target },
+          ] as Array<{ id: AnalyticsSubView; label: string; icon: any; badge?: string; badgeStyle?: string }>
+        ).map((tab) => {
+          const Icon = tab.icon;
+          const isActive = subView === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setSubView(tab.id);
+                if (tab.id !== 'categories') setSelectedCategory(null);
+              }}
+              className={`relative flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                isActive
+                  ? 'text-white'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="analytics-subtab-pill"
+                  transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                  className="absolute inset-0 rounded-lg bg-indigo-600 shadow-sm"
+                />
+              )}
+              <Icon className="relative z-10 w-4 h-4 shrink-0" />
+              <span className="relative z-10">{tab.label}</span>
+              {tab.badge && (
+                <span
+                  className={`relative z-10 px-1.5 py-0.2 rounded-md text-[10px] font-bold border ${
+                    isActive
+                      ? 'bg-white/20 text-white border-white/25'
+                      : tab.badgeStyle
+                  }`}
+                >
+                  {tab.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Macro Key Metrics Row */}
@@ -2718,6 +2962,106 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
                     Tip: Use the Smart Budget Surplus Soak in the Budgets or Goals tab to automatically sweep unspent month-end cash into your priority goal.
                   </p>
                 </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Day-of-Week Burn Rhythm & Multi-Currency FX Telemetry */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>Day-of-Week Spending Rhythm</span>
+                </CardTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Net living outflow by day of week · Peak day:{' '}
+                  <strong className="text-gray-900 dark:text-white">
+                    {weekdayBurnAndFxData.peakDay?.day || 'N/A'}
+                  </strong>{' '}
+                  ({(weekdayBurnAndFxData.peakDay?.totalMad ?? 0).toFixed(0)} MAD)
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-7 gap-2 items-end h-32 pt-4">
+                  {weekdayBurnAndFxData.orderedDays.map((item) => {
+                    const heightPct = Math.max(8, Math.round((item.totalMad / weekdayBurnAndFxData.maxDayMad) * 100));
+                    return (
+                      <div key={item.day} className="flex flex-col items-center gap-1.5 h-full justify-end">
+                        <span className="text-[10px] font-mono tabular-nums text-gray-500 dark:text-gray-400">
+                          {item.totalMad > 0 ? `${Math.round(item.totalMad)}` : '0'}
+                        </span>
+                        <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-md h-20 flex items-end overflow-hidden">
+                          <div
+                            className={`w-full rounded-md transition-all ${
+                              item.isWeekend
+                                ? 'bg-amber-500 dark:bg-amber-400'
+                                : 'bg-indigo-600 dark:bg-indigo-500'
+                            }`}
+                            style={{ height: `${heightPct}%` }}
+                            title={`${item.day}: ${item.totalMad.toFixed(2)} MAD (${item.txCount} tx)`}
+                          />
+                        </div>
+                        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                          {item.day}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between text-xs pt-2 border-t border-gray-100 dark:border-gray-800 font-mono tabular-nums">
+                  <span className="text-gray-600 dark:text-gray-400">
+                    Weekdays: <strong className="text-gray-900 dark:text-white">{weekdayBurnAndFxData.weekdayTotal.toFixed(0)} MAD</strong>
+                  </span>
+                  <span className="text-amber-600 dark:text-amber-400">
+                    Weekends: <strong>{weekdayBurnAndFxData.weekendTotal.toFixed(0)} MAD</strong> ({weekdayBurnAndFxData.weekendSharePct.toFixed(1)}%)
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Landmark className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>Currency &amp; FX Settlement Exposure</span>
+                </CardTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Multi-currency expenses normalized to MAD via locked transaction FX rates
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-2.5">
+                {weekdayBurnAndFxData.fxList.length > 0 ? (
+                  weekdayBurnAndFxData.fxList.map((fx) => (
+                    <div
+                      key={fx.currency}
+                      className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-800 text-xs"
+                    >
+                      <div>
+                        <span className="font-bold font-mono text-gray-900 dark:text-white">
+                          {fx.currency}
+                        </span>
+                        <span className="text-gray-500 dark:text-gray-400 ml-2">
+                          {fx.count} {fx.count === 1 ? 'transaction' : 'transactions'}
+                        </span>
+                      </div>
+                      <div className="text-right font-mono tabular-nums">
+                        <span className="font-bold text-gray-900 dark:text-white">
+                          {fx.totalMad.toFixed(2)} MAD
+                        </span>
+                        {fx.currency !== 'MAD' && (
+                          <span className="block text-[10px] text-gray-500">
+                            Native: {fx.nativeTotal.toFixed(2)} {fx.currency}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 py-4 text-center">
+                    No expense transactions recorded in this period.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>

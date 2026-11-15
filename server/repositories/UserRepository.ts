@@ -1,6 +1,7 @@
 import { db } from '../../src/db/index.js';
 import { users } from '../../src/db/schema.js';
 import { eq } from 'drizzle-orm';
+import { invalidateAuthUserCache } from '../../src/middleware/auth.js';
 
 export class UserRepository {
   async findById(id: string) {
@@ -10,6 +11,7 @@ export class UserRepository {
 
   async updateSettings(userId: string, data: any) {
     await db.update(users).set(data).where(eq(users.id, userId));
+    invalidateAuthUserCache(userId);
   }
 }
 

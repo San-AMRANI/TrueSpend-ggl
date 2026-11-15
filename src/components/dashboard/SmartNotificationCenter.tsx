@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   Bell,
   CalendarDays,
@@ -61,7 +62,14 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
   const [pushedId, setPushedId] = useState<string | null>(null);
   const [bursting, setBursting] = useState(false);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
 
   const filteredItems =
     selectedCategory === 'all'
@@ -146,14 +154,26 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[85] flex justify-end bg-black/50 backdrop-blur-[2px] animate-in fade-in duration-150"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 h-full flex flex-col shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="notif-drawer-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.16 }}
+          className="fixed inset-0 z-[85] flex justify-end bg-black/50 backdrop-blur-[2px]"
+          onClick={onClose}
+        >
+          <motion.div
+            key="notif-drawer-panel"
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 28, stiffness: 320, mass: 0.7 }}
+            className="w-full max-w-lg bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 h-full flex flex-col shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-gray-200 dark:border-gray-800 space-y-3">
           <div className="flex items-center justify-between gap-3">
@@ -242,7 +262,7 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
         </div>
 
         {/* Category Filter Bar */}
-        <div className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex items-center gap-1.5 overflow-x-auto bg-gray-50/60 dark:bg-gray-950/50 shrink-0">
+        <div className="ts-scrollbar px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex items-center gap-1.5 overflow-x-auto bg-gray-50/60 dark:bg-gray-950/50 shrink-0">
           {CATEGORY_TABS.map((tab) => {
             const count =
               tab.id === 'all'
@@ -276,7 +296,7 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
         </div>
 
         {/* Feed Content — Clean Stream Without Read/Ignore Clutter */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="ts-scrollbar flex-1 overflow-y-auto p-4 space-y-3">
           {filteredItems.length === 0 ? (
             <div className="p-8 rounded-xl border border-dashed border-gray-200 dark:border-gray-800 text-center space-y-2 my-6">
               <div className="mx-auto h-10 w-10 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500">
@@ -374,7 +394,9 @@ export const SmartNotificationCenter: React.FC<SmartNotificationCenterProps> = (
             Configure Channels →
           </button>
         </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };

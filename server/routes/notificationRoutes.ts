@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth } from '../../src/middleware/auth.js';
+import { requireAuth, invalidateAuthUserCache } from '../../src/middleware/auth.js';
 import { db } from '../../src/db/index.js';
 import { pushSubscriptions, users } from '../../src/db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -53,6 +53,7 @@ router.post('/notifications/subscribe', requireAuth, async (req, res) => {
       notificationTime: settings.time // Make sure client sends UTC time if needed, or we just rely on client's local HH:MM string and server assumes it's UTC for matching. Wait! Timezones!
       // For simplicity, we just save what the client sends. But server is in UTC.
     }).where(eq(users.id, user.id));
+    invalidateAuthUserCache(user.id);
 
     res.status(201).json({});
   } catch (error) {

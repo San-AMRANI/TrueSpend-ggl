@@ -18,7 +18,6 @@ import {
   Activity,
   Search,
   Sliders,
-  ArrowRightLeft,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -89,7 +88,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 };
 
 export const UsersAndRolesSection: React.FC = () => {
-  const { user: currentUser, token, refreshUserProfile, switchUserSession } = useAuth();
+  const { user: currentUser, token, refreshUserProfile } = useAuth();
 
   const [usersList, setUsersList] = useState<ManagedUser[]>([]);
   const [rolesList, setRolesList] = useState<RoleDefinition[]>([]);
@@ -110,15 +109,14 @@ export const UsersAndRolesSection: React.FC = () => {
 
   // Delete confirmation state
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [switchingUserId, setSwitchingUserId] = useState<string | null>(null);
 
   // Form fields
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole>('manager');
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('shared');
+  const [role, setRole] = useState<UserRole>('member');
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('isolated');
   const [avatarColor, setAvatarColor] = useState('indigo');
   const [notes, setNotes] = useState('');
   const [seedDefaultWallets, setSeedDefaultWallets] = useState(true);
@@ -160,8 +158,7 @@ export const UsersAndRolesSection: React.FC = () => {
   const canManageUsers =
     currentUser?.role === 'owner' ||
     currentUser?.role === 'admin' ||
-    Boolean(currentUser?.permissions?.canManageUsers) ||
-    Boolean(currentUser?.impersonatedBy);
+    Boolean(currentUser?.permissions?.canManageUsers);
 
   const handleSelectRoleInForm = (newRole: UserRole) => {
     setRole(newRole);
@@ -169,7 +166,7 @@ export const UsersAndRolesSection: React.FC = () => {
     if (roleDef) {
       setPermissions({ ...roleDef.defaultPermissions });
       if (!editingUser) {
-        setWorkspaceMode(roleDef.defaultWorkspaceMode);
+        setWorkspaceMode('isolated');
       }
     }
   };
@@ -181,8 +178,8 @@ export const UsersAndRolesSection: React.FC = () => {
     setDisplayName('');
     setEmail('');
     setPassword('');
-    setRole('manager');
-    setWorkspaceMode('shared');
+    setRole('member');
+    setWorkspaceMode('isolated');
     setAvatarColor('emerald');
     setNotes('');
     setSeedDefaultWallets(true);
@@ -233,7 +230,7 @@ export const UsersAndRolesSection: React.FC = () => {
             displayName: displayName.trim(),
             email: email.trim(),
             role: editingUser.isOwnerAccount ? 'owner' : role,
-            workspaceMode: editingUser.isOwnerAccount ? 'shared' : workspaceMode,
+            workspaceMode: 'isolated',
             permissions,
             avatarColor,
             notes: notes.trim() || null,
@@ -312,19 +309,6 @@ export const UsersAndRolesSection: React.FC = () => {
     }
   };
 
-  const handleSwitchSession = async (targetUserId: string, targetName: string) => {
-    setSwitchingUserId(targetUserId);
-    try {
-      await switchUserSession(targetUserId);
-      showToast(`Switched active session to ${targetName}.`);
-      await fetchUsersAndRoles();
-    } catch (err: any) {
-      showToast(err.message || 'Could not switch session');
-    } finally {
-      setSwitchingUserId(null);
-    }
-  };
-
   const filteredUsers = useMemo(() => {
     return usersList.filter((u) => {
       if (roleFilter !== 'all' && u.role !== roleFilter) return false;
@@ -359,40 +343,13 @@ export const UsersAndRolesSection: React.FC = () => {
         </div>
       )}
 
-      {/* Impersonation Banner if currently previewing another user */}
-      {currentUser?.impersonatedBy && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-950/40 px-4 py-3 text-amber-950 dark:text-amber-200">
-          <div className="flex items-center gap-3">
-            <Eye className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
-            <div className="text-xs sm:text-sm">
-              <span className="font-semibold">
-                Previewing Workspace as {currentUser.displayName} (@{currentUser.username})
-              </span>
-              <span className="mx-1.5" aria-hidden="true">
-                ·
-              </span>
-              <span className="text-amber-800 dark:text-amber-300">
-                Role: {ROLE_LABELS[currentUser.role || 'member']} ({currentUser.workspaceMode === 'shared' ? 'Shared Main Ledger' : 'Isolated Personal Ledger'})
-              </span>
-            </div>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              currentUser.impersonatedBy &&
-              handleSwitchSession(
-                currentUser.impersonatedBy.id,
-                currentUser.impersonatedBy.displayName
-              )
-            }
-            className="border-amber-400 dark:border-amber-700 bg-white dark:bg-gray-900 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50 shrink-0"
-          >
-            <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" />
-            Return to Owner ({currentUser.impersonatedBy.username})
-          </Button>
+      {/* Private Isolation Notice */}
+      <div className="flex items-start gap-3 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/70 dark:bg-indigo-950/30 px-4 py-3 text-xs text-indigo-950 dark:text-indigo-200">
+        <Lock className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+        <div>
+          <span className="font-semibold">Strict Account Isolation Active:</span> Every user account operates inside its own private ledger. Administrative session impersonation is permanently disabled to safeguard user financial privacy.
         </div>
-      )}
+      </div>
 
       {/* Header & Sub-Navigation */}
       <Card>
@@ -675,22 +632,7 @@ export const UsersAndRolesSection: React.FC = () => {
                               </select>
                             )}
 
-                            {/* Switch / Preview Session Button */}
-                            {canManageUsers && !isCurrentSession && u.status === 'active' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={switchingUserId === u.id}
-                                onClick={() => handleSwitchSession(u.id, u.displayName)}
-                                title={`Switch into @${u.username}'s session to preview their role and workspace`}
-                                className="text-xs flex items-center gap-1.5"
-                              >
-                                <Eye className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                                <span>
-                                  {switchingUserId === u.id ? 'Switching...' : 'Preview Session'}
-                                </span>
-                              </Button>
-                            )}
+                            {/* Direct impersonation permanently disabled for account privacy */}
 
                             {/* Edit Profile & Permissions */}
                             {(canManageUsers || isCurrentSession) && (
@@ -995,7 +937,7 @@ export const UsersAndRolesSection: React.FC = () => {
                     required={!editingUser}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder={editingUser ? '••••••••' : 'Minimum 4 characters'}
+                    placeholder={editingUser ? '••••••••••••' : 'Minimum 12 characters'}
                   />
                 </div>
               </div>

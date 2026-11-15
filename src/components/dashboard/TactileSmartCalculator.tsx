@@ -44,6 +44,7 @@ import {
 import { evaluateExpression } from '../../lib/calculatorParser';
 import { useAuth } from '../../context/AuthContext';
 import { expenseCategories, incomeAndTransferCategories } from '../../lib/categories';
+import { getApiUrl } from '../../lib/capacitorBridge';
 
 export interface CalculationHistoryItem {
   id: string;
@@ -393,7 +394,7 @@ export const TactileSmartCalculator: React.FC<TactileSmartCalculatorProps> = ({
         transaction_date: new Date().toISOString().slice(0, 10),
       };
 
-      const res = await fetch('/api/transactions', {
+      const res = await fetch(getApiUrl('/api/transactions'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

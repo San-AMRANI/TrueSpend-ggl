@@ -15,7 +15,11 @@ export class InvestmentController {
     applyPrivateNoCacheHeaders(res);
     try {
       const forceRefresh = req.query.refresh === 'true';
-      const data = await investmentService.getInvestmentsData(req.dbUser.id, { forceRefresh });
+      const skipLiveQuotes = req.query.skipLive === '1' || req.query.skipLive === 'true';
+      const data = await investmentService.getInvestmentsData(req.dbUser.id, {
+        forceRefresh,
+        skipLiveQuotes,
+      });
       res.json(data);
     } catch (e: any) {
       console.error('InvestmentController.getData error:', e?.message || 'Unknown error');

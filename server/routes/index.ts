@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { ensureDatabaseSchema } from '../../src/db/index.js';
 import authRoutes from './authRoutes.js';
+import onboardingRoutes from './onboardingRoutes.js';
 import kpiRoutes from './kpiRoutes.js';
 import transactionRoutes from './transactionRoutes.js';
 import debtRoutes from './debtRoutes.js';
@@ -16,17 +18,42 @@ import subscriptionRoutes from './subscriptionRoutes.js';
 import investmentRoutes from './investmentRoutes.js';
 import cycleRetrospectiveRoutes from './cycleRetrospectiveRoutes.js';
 import userManagementRoutes from './userManagementRoutes.js';
+import coreAuditRoutes from './coreAuditRoutes.js';
 import { NotificationController } from '../controllers/NotificationController.js';
 import { requireAuth } from '../../src/middleware/auth.js';
 
 const apiRouter = Router();
 const notificationController = new NotificationController();
 
-apiRouter.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+apiRouter.get('/health', async (_req, res) => {
+  try {
+    await ensureDatabaseSchema();
+    res.json({ status: 'ok', database: 'ready' });
+  } catch (err: any) {
+    console.error('[Health] Database readiness check failed:', err?.cause?.message || err?.message || err);
+    res.status(503).json({
+      status: 'degraded',
+      error: 'Database service unavailable.',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
+});
+
+apiRouter.use(async (_req, res, next) => {
+  try {
+    await ensureDatabaseSchema();
+    next();
+  } catch (err: any) {
+    console.error('[DB Schema] Initialization failed:', err?.cause?.message || err?.message || err);
+    res.status(503).json({
+      error: 'Database service is initializing or temporarily unavailable. Please try again shortly.',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
 });
 
 apiRouter.use('/', authRoutes);
+apiRouter.use('/', onboardingRoutes);
 apiRouter.use('/', kpiRoutes);
 apiRouter.use('/', transactionRoutes);
 apiRouter.use('/', debtRoutes);
@@ -43,6 +70,7 @@ apiRouter.use('/', subscriptionRoutes);
 apiRouter.use('/', investmentRoutes);
 apiRouter.use('/', cycleRetrospectiveRoutes);
 apiRouter.use('/', userManagementRoutes);
+apiRouter.use('/', coreAuditRoutes);
 
 // Push Notifications v2
 apiRouter.get('/notifications/vapid-public-key', notificationController.getPublicKey);

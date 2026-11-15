@@ -3,10 +3,12 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { flushOfflineOutbox } from './offlineOutbox';
+import { getApiAccessToken } from '../services/api/apiClient';
 
 const STORAGE_KEY_API_BASE = 'truespend_capacitor_api_base_url';
 const DEFAULT_CLOUD_API_URL =
-  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env?.VITE_API_BASE_URL ||
   'https://true-spend-ggl.vercel.app';
 
 export function isNativePlatform(): boolean {
@@ -46,6 +48,11 @@ export function getCapacitorApiBaseUrl(): string {
     }
   } catch {}
   return DEFAULT_CLOUD_API_URL.replace(/\/+$/, '');
+}
+
+export function getApiUrl(path: string): string {
+  if (!path.startsWith('/api')) return path;
+  return isNativePlatform() ? `${getCapacitorApiBaseUrl()}${path}` : path;
 }
 
 export function setCapacitorApiBaseUrl(url: string): void {
@@ -104,7 +111,7 @@ function installNativeApiFetchInterceptor() {
     if (native || (customBase && customBase.trim())) {
       const baseUrl = getCapacitorApiBaseUrl();
       if (typeof input === 'string' && input.startsWith('/api')) {
-        const targetUrl = `${baseUrl}${input}`;
+        const targetUrl = getApiUrl(input);
         return originalFetch(targetUrl, {
           ...init,
           credentials: init?.credentials ?? 'include',
@@ -125,6 +132,13 @@ function installNativeApiFetchInterceptor() {
 
 export async function initCapacitorBridge(): Promise<void> {
   installNativeApiFetchInterceptor();
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', () => {
+      const token = getApiAccessToken();
+      flushOfflineOutbox(token).catch(() => {});
+    });
+  }
 
   if (!isNativePlatform()) return;
 

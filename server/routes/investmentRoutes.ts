@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { investmentController } from '../controllers/InvestmentController.js';
-import { requireAuth } from '../../src/middleware/auth.js';
+import { requireAuth, requireFeature } from '../../src/middleware/auth.js';
 
 const router = Router();
 
-// Enforce authentication + server-side RBAC on all investment & Binance routes
-router.use(requireAuth);
+// Enforce authentication + server-side tier & RBAC strictly on /investments routes
+router.use('/investments', requireAuth, requireFeature('investments'));
 
 // Prevent shared or public caching of private financial responses
-router.use((_req, res, next) => {
+router.use('/investments', (_req, res, next) => {
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
@@ -21,11 +21,17 @@ router.get('/investments', (req, res) => investmentController.getData(req as any
 router.get('/investments/stocks/search', (req, res) => investmentController.searchStocks(req as any, res));
 
 // Read-Only Binance Spot Account & Personal Trade History Endpoints (Ed25519 Server-Signed)
-router.get('/investments/binance/account', (req, res) => investmentController.getBinanceAccount(req as any, res));
-router.get('/investments/binance/trades', (req, res) => investmentController.getBinanceTrades(req as any, res));
+router.get('/investments/binance/account', requireFeature('binance.integration'), (req, res) =>
+  investmentController.getBinanceAccount(req as any, res)
+);
+router.get('/investments/binance/trades', requireFeature('binance.integration'), (req, res) =>
+  investmentController.getBinanceTrades(req as any, res)
+);
 
 // TrueSpend Wallet Synchronization & Capital Flows (Local Ledger Only — Never Executes Binance Trades/Withdrawals)
-router.post('/investments/binance/sync-wallet', (req, res) => investmentController.syncBinanceWallet(req as any, res));
+router.post('/investments/binance/sync-wallet', requireFeature('binance.integration'), (req, res) =>
+  investmentController.syncBinanceWallet(req as any, res)
+);
 router.post('/investments/wallet-transfer', (req, res) => investmentController.logWalletCapitalTransfer(req as any, res));
 
 // Off-Exchange / Local Stock Positions Ledger
@@ -49,5 +55,3 @@ router.put('/investments/settings', (req, res) => investmentController.updateInv
 router.post('/investments/market-data/refresh', (req, res) => investmentController.refreshMarketData(req as any, res));
 
 export default router;
-
-

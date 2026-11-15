@@ -593,6 +593,11 @@ const COMMON_BINANCE_STOCK_TICKERS = [
   'LMT',
 ];
 
+const QUOTE_CACHE_TTL_MS = 5 * 60 * 1000;
+const EXCHANGE_RATE_CACHE_TTL_MS = 15 * 60 * 1000;
+const INVESTMENTS_CACHE_TTL_MS = 20 * 1000;
+const INVESTMENTS_CACHE_MAX_SIZE = 200;
+
 let cachedRates = {
   USD_TO_MAD: 9.95,
   EUR_TO_MAD: 10.82,
@@ -615,10 +620,22 @@ const quoteCache: Record<
   }
 > = {};
 
+const inFlightQuoteFetches = new Map<string, Promise<void>>();
+const investmentsDataCache = new Map<string, { data: any; expiresAt: number }>();
+
+export function invalidateInvestmentsCache(userId?: string): void {
+  if (!userId) {
+    investmentsDataCache.clear();
+    return;
+  }
+  investmentsDataCache.delete(`${userId}:fast`);
+  investmentsDataCache.delete(`${userId}:live`);
+}
+
 export class InvestmentService {
-  async getExchangeRates(): Promise<{ USD_TO_MAD: number; EUR_TO_MAD: number; USD_TO_EUR: number }> {
+  async getExchangeRates(options?: { cachedOnly?: boolean }): Promise<{ USD_TO_MAD: number; EUR_TO_MAD: number; USD_TO_EUR: number }> {
     const now = Date.now();
-    if (now - cachedRates.lastFetched < 5 * 60 * 1000) {
+    if (options?.cachedOnly || now - cachedRates.lastFetched < EXCHANGE_RATE_CACHE_TTL_MS) {
       return {
         USD_TO_MAD: cachedRates.USD_TO_MAD,
         EUR_TO_MAD: cachedRates.EUR_TO_MAD,
@@ -654,6 +671,42 @@ export class InvestmentService {
     };
   }
 
+  getCachedStockQuotes(tickers: string[]): ExternalStockQuoteMap {
+    const result: ExternalStockQuoteMap = {};
+    if (!tickers || tickers.length === 0) return result;
+    for (const raw of tickers) {
+      const ticker = normalizeStockTicker(raw) || raw.trim().toUpperCase();
+      if (!ticker) continue;
+      const cached = quoteCache[ticker];
+      if (cached) {
+        result[ticker] = {
+          price: cached.price,
+          change24hPercent: cached.change24hPercent,
+          currency: cached.currency,
+          companyName: cached.companyName,
+          sector: cached.sector,
+          industry: cached.industry,
+          dividendYieldPercent: cached.dividendYieldPercent,
+          annualDividendPerShare: cached.annualDividendPerShare,
+        };
+        continue;
+      }
+      const catalogItem = CURATED_STOCK_CATALOG.find((c) => c.ticker === ticker);
+      if (catalogItem) {
+        result[ticker] = {
+          price: catalogItem.price,
+          change24hPercent: catalogItem.change24hPercent,
+          currency: catalogItem.currency,
+          companyName: catalogItem.companyName,
+          sector: catalogItem.sector,
+          dividendYieldPercent: catalogItem.dividendYieldPercent,
+          annualDividendPerShare: catalogItem.annualDividendPerShare,
+        };
+      }
+    }
+    return result;
+  }
+
   toMad(amount: number, currency: string, rates: { USD_TO_MAD: number; EUR_TO_MAD: number }): number {
     const c = (currency || 'USD').toUpperCase();
     if (c === 'MAD') return amount;
@@ -687,7 +740,7 @@ export class InvestmentService {
     await Promise.all(
       uniqueTickers.map(async (ticker) => {
         const cached = quoteCache[ticker];
-        if (!forceRefresh && cached && now - cached.lastUpdated < 30 * 1000) {
+        if (!forceRefresh && cached && now - cached.lastUpdated < QUOTE_CACHE_TTL_MS) {
           result[ticker] = {
             price: cached.price,
             change24hPercent: cached.change24hPercent,
@@ -701,7 +754,17 @@ export class InvestmentService {
           return;
         }
 
-        const catalogItem = CURATED_STOCK_CATALOG.find((c) => c.ticker === ticker);
+        const existingFlight = !forceRefresh ? inFlightQuoteFetches.get(ticker) : undefined;
+        if (existingFlight) {
+          await existingFlight;
+          if (quoteCache[ticker]) {
+            result[ticker] = quoteCache[ticker];
+          }
+          return;
+        }
+
+        const fetchTask = (async () => {
+          const catalogItem = CURATED_STOCK_CATALOG.find((c) => c.ticker === ticker);
         if (catalogItem && catalogItem.market === 'BVC') {
           quoteCache[ticker] = {
             price: catalogItem.price,
@@ -822,6 +885,14 @@ export class InvestmentService {
           };
           result[ticker] = quoteCache[ticker];
         }
+        })();
+
+        inFlightQuoteFetches.set(ticker, fetchTask);
+        try {
+          await fetchTask;
+        } finally {
+          inFlightQuoteFetches.delete(ticker);
+        }
       })
     );
 
@@ -917,20 +988,51 @@ export class InvestmentService {
   /**
    * Complete, deeply integrated Binance Spot/Funding/Earn + Stock Intelligence + Capital Reconciliation payload
    */
-  async getInvestmentsData(userId: string, options?: { forceRefresh?: boolean }) {
-    const [rawPositions, rawOrders, rates, dbUser, subscriptions, allTransactions] = await Promise.all([
+  async getInvestmentsData(
+    userId: string,
+    options?: { forceRefresh?: boolean; skipLiveQuotes?: boolean; preloadedKpis?: any }
+  ) {
+    const cacheKey = `${userId}:${options?.skipLiveQuotes ? 'fast' : 'live'}`;
+    if (
+      !options?.forceRefresh &&
+      process.env.NODE_ENV !== 'test'
+    ) {
+      const cachedEntry = investmentsDataCache.get(cacheKey);
+      if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+        return cachedEntry.data;
+      }
+    }
+
+    const [rawPositions, rawOrders, rates, dbUser, subscriptions, allTransactions, investmentSettings] = await Promise.all([
       investmentRepository.findAllPositionsByUserId(userId),
       investmentRepository.findAllOrdersByUserId(userId),
-      this.getExchangeRates(),
+      this.getExchangeRates({ cachedOnly: options?.skipLiveQuotes }),
       userRepository.findById(userId),
       subscriptionRepository.findAllByUserId(userId),
       transactionRepository.findAllByUserId(userId),
+      marketDataService.getUserInvestmentSettings(userId),
     ]);
 
-    // Fetch live quotes for manual user positions AND common Binance tokenized stocks in parallel
+    const allowServerBinance = dbUser?.role === 'owner';
+    // Fetch live quotes for manual user positions (and Binance tokenized stocks only when owner needs them)
     const userTickers = rawPositions.map((p) => normalizeStockTicker(p.ticker) || p.ticker);
-    const allLookupTickers = Array.from(new Set([...userTickers, ...COMMON_BINANCE_STOCK_TICKERS]));
-    const liveQuotes = await this.fetchLiveStockQuotes(allLookupTickers, options?.forceRefresh);
+    const allLookupTickers = allowServerBinance
+      ? Array.from(new Set([...userTickers, ...COMMON_BINANCE_STOCK_TICKERS]))
+      : Array.from(new Set(userTickers));
+
+    const [liveQuotes, precomputedKpis] = await Promise.all([
+      options?.skipLiveQuotes
+        ? Promise.resolve(this.getCachedStockQuotes(allLookupTickers))
+        : this.fetchLiveStockQuotes(allLookupTickers, options?.forceRefresh),
+      options?.preloadedKpis
+        ? Promise.resolve(options.preloadedKpis)
+        : dbUser
+        ? kpiService.getKpisForUser(dbUser).catch((err) => {
+            console.warn('[InvestmentService] KPI sync notice:', (err as any)?.message);
+            return null;
+          })
+        : Promise.resolve(null),
+    ]);
 
     // Compute TrueSpend Buying Power from KPIs, Wallets, and Category Budgets
     let safeToSpendMad = 0;
@@ -947,9 +1049,9 @@ export class InvestmentService {
     let variableSpendPaceMad = 0;
     let kpiAccounts: any[] = [];
 
-    if (dbUser) {
+    if (dbUser && precomputedKpis) {
       try {
-        const kpis = await kpiService.getKpisForUser(dbUser);
+        const kpis = precomputedKpis;
         kpiAccounts = kpis.accounts || [];
         safeToSpendMad = Math.max(0, Math.round((kpis.safeToSpend || 0) * 100) / 100);
         investmentWalletBalanceMad = Math.max(0, Math.round((kpis.investmentReserve || 0) * 100) / 100);
@@ -1099,7 +1201,7 @@ export class InvestmentService {
         ? netCapitalContributedMad
         : 0;
 
-    // Fetch live read-only Binance overview (Spot + Funding + Earn + Wallet Balance + Trade Forensics)
+    // Fetch live read-only Binance overview strictly for explicitly authorized owner account (never leak server env keys to public users)
     const binanceOverview = await binanceService.getAccountOverview(rates, {
       forceRefresh: options?.forceRefresh,
       linkedWallet: linkedBinanceAcc
@@ -1111,6 +1213,7 @@ export class InvestmentService {
         : null,
       externalStockQuotes: liveQuotes,
       initialCapitalMad: initialCapitalBaselineMad,
+      allowServerCredentials: allowServerBinance && !options?.skipLiveQuotes,
     });
 
     const remainingInvestmentBudgetMad =
@@ -1363,7 +1466,9 @@ export class InvestmentService {
       .filter((t) => Boolean(t) && !liveQuotes[t]);
 
     if (discoveredBinanceStockTickers.length > 0) {
-      const extraQuotes = await this.fetchLiveStockQuotes(discoveredBinanceStockTickers, options?.forceRefresh);
+      const extraQuotes = options?.skipLiveQuotes
+        ? this.getCachedStockQuotes(discoveredBinanceStockTickers)
+        : await this.fetchLiveStockQuotes(discoveredBinanceStockTickers, options?.forceRefresh);
       Object.assign(liveQuotes, extraQuotes);
     }
 
@@ -1944,8 +2049,7 @@ export class InvestmentService {
       };
     });
 
-    // Load User Investment Settings, Dividend Ledger, Market Data Cache Status, and Stored Daily Bars
-    const investmentSettings = await marketDataService.getUserInvestmentSettings(userId);
+    // Load Dividend Ledger, Market Data Cache Status, and Stored Daily Bars
     const [marketDataStatus, dividendEvents] = await Promise.all([
       marketDataService.getBudgetAndCacheStatus(investmentSettings.twelveDataDisplayApproved),
       marketDataService.getDividendEventsForUser(userId, enrichedPositions, rates.USD_TO_MAD),
@@ -1973,6 +2077,7 @@ export class InvestmentService {
           currentLivePrice: posMatch?.currentPriceNum,
           currency: posMatch?.currency,
           userDisplayApproved: investmentSettings.twelveDataDisplayApproved,
+          skipNetworkFetch: options?.skipLiveQuotes,
         });
         if (bars.length > 0) {
           storedDailyBarsBySymbol[sym] = bars;
@@ -1980,21 +2085,23 @@ export class InvestmentService {
       })
     );
 
-    // Record daily portfolio snapshot in PostgreSQL
-    await marketDataService.recordDailyPortfolioSnapshot({
-      userId,
-      totalMarketValueMad: totalPortfolioValueMad,
-      investmentCashMad: investmentWalletBalanceMad,
-      netContributionsMad: effectiveInitialCapitalMad,
-      costBasisMad: totalCostBasisMad,
-      unrealizedPnlMad: totalUnrealizedPnlMad,
-      realizedPnlMad: totalRealizedPnlMad,
-      dividendsReceivedMad: totalDividendsCollectedMad,
-      usdToMadRate: rates.USD_TO_MAD,
-      positions: enrichedPositions,
-    });
+    // Record daily portfolio snapshot in PostgreSQL without blocking response
+    void marketDataService
+      .recordDailyPortfolioSnapshot({
+        userId,
+        totalMarketValueMad: totalPortfolioValueMad,
+        investmentCashMad: investmentWalletBalanceMad,
+        netContributionsMad: effectiveInitialCapitalMad,
+        costBasisMad: totalCostBasisMad,
+        unrealizedPnlMad: totalUnrealizedPnlMad,
+        realizedPnlMad: totalRealizedPnlMad,
+        dividendsReceivedMad: totalDividendsCollectedMad,
+        usdToMadRate: rates.USD_TO_MAD,
+        positions: enrichedPositions,
+      })
+      .catch(() => {});
 
-    return {
+    const responsePayload = {
       positions: enrichedPositions,
       watchlistPositions,
       orders,
@@ -2059,6 +2166,19 @@ export class InvestmentService {
         riskAppetiteMax: deployableSurplusMad,
       },
     };
+
+    if (process.env.NODE_ENV !== 'test') {
+      if (investmentsDataCache.size >= INVESTMENTS_CACHE_MAX_SIZE) {
+        const firstKey = investmentsDataCache.keys().next().value;
+        if (firstKey) investmentsDataCache.delete(firstKey);
+      }
+      investmentsDataCache.set(cacheKey, {
+        data: responsePayload,
+        expiresAt: Date.now() + INVESTMENTS_CACHE_TTL_MS,
+      });
+    }
+
+    return responsePayload;
   }
 
   /**
@@ -2320,11 +2440,15 @@ export class InvestmentService {
       }
     }
 
+    const ownerUser = userId ? await userRepository.findById(userId) : null;
+    const allowServerBinance = ownerUser?.role === 'owner';
+
     return await binanceService.getAccountOverview(rates, {
       forceRefresh,
       linkedWallet,
       externalStockQuotes: liveQuotes,
       initialCapitalMad: linkedWallet?.balanceMad || 0,
+      allowServerCredentials: allowServerBinance,
     });
   }
 
@@ -2346,17 +2470,19 @@ export class InvestmentService {
     const { baseAsset, quoteAsset } = binanceService.splitSymbol(normalizedSym);
     const cleanBase = baseAsset.replace(/^LD/, '');
 
-    const [rates, liveQuotes] = await Promise.all([
+    const [rates, liveQuotes, ownerUser] = await Promise.all([
       this.getExchangeRates(),
       this.fetchLiveStockQuotes(
         Array.from(new Set([...COMMON_BINANCE_STOCK_TICKERS, cleanBase, baseAsset])),
         options?.forceRefresh
       ),
+      userId ? userRepository.findById(userId) : Promise.resolve(null),
     ]);
 
     const result = await binanceService.getPersonalTradesForSymbol(normalizedSym, rates, {
       ...options,
       externalStockQuotes: liveQuotes,
+      allowServerCredentials: ownerUser?.role === 'owner',
     });
 
     if (result.trades.length > 0) {
@@ -2713,6 +2839,7 @@ export class InvestmentService {
     const overview = await binanceService.getAccountOverview(rates, {
       forceRefresh: true,
       externalStockQuotes: liveQuotes,
+      allowServerCredentials: dbUser.role === 'owner',
     });
     if (!overview.isConfigured || !overview.connected) {
       throw new Error(
@@ -2760,6 +2887,8 @@ export class InvestmentService {
     const updatedWallet = await walletRepository.update(targetWallet.id, userId, {
       initialBalance: nextInitialMad.toFixed(2),
     });
+
+    invalidateInvestmentsCache(userId);
 
     return {
       success: true,
@@ -2841,6 +2970,8 @@ export class InvestmentService {
         payload.notes ||
         `Capital Withdrawal: ${invWallet.name} → ${bankWallet.name}`,
     });
+
+    invalidateInvestmentsCache(userId);
 
     return {
       success: true,
@@ -2979,6 +3110,7 @@ export class InvestmentService {
       });
     }
 
+    invalidateInvestmentsCache(userId);
     return createdPosition;
   }
 
@@ -3025,11 +3157,14 @@ export class InvestmentService {
     if (payload.isWatchlistOnly !== undefined)
       updateData.isWatchlistOnly = Boolean(payload.isWatchlistOnly);
 
-    return await investmentRepository.updatePosition(positionId, userId, updateData);
+    const updated = await investmentRepository.updatePosition(positionId, userId, updateData);
+    invalidateInvestmentsCache(userId);
+    return updated;
   }
 
   async deleteStockPosition(userId: string, positionId: string) {
     await investmentRepository.deletePosition(positionId, userId);
+    invalidateInvestmentsCache(userId);
     return { success: true };
   }
 
@@ -3214,6 +3349,8 @@ export class InvestmentService {
       notes: payload.notes || null,
     });
 
+    invalidateInvestmentsCache(userId);
+
     return {
       success: true,
       order,
@@ -3234,6 +3371,7 @@ export class InvestmentService {
     }
 
     await investmentRepository.deleteOrder(orderId, userId);
+    invalidateInvestmentsCache(userId);
     return { success: true };
   }
 
@@ -3344,6 +3482,8 @@ export class InvestmentService {
         `Brokerage Reserve Funding: ${sourceWallet.name} → ${destWallet.name}`,
     });
 
+    invalidateInvestmentsCache(userId);
+
     return {
       success: true,
       transaction: tx,
@@ -3366,15 +3506,21 @@ export class InvestmentService {
 
   async createDividendEvent(userId: string, payload: Record<string, any>) {
     const rates = await this.getExchangeRates();
-    return await marketDataService.createDividendEvent(userId, payload, rates.USD_TO_MAD);
+    const res = await marketDataService.createDividendEvent(userId, payload, rates.USD_TO_MAD);
+    invalidateInvestmentsCache(userId);
+    return res;
   }
 
   async deleteDividendEvent(userId: string, eventId: string) {
-    return await marketDataService.deleteDividendEvent(userId, eventId);
+    const res = await marketDataService.deleteDividendEvent(userId, eventId);
+    invalidateInvestmentsCache(userId);
+    return res;
   }
 
   async updateInvestmentSettings(userId: string, payload: Record<string, any>) {
-    return await marketDataService.updateUserInvestmentSettings(userId, payload);
+    const res = await marketDataService.updateUserInvestmentSettings(userId, payload);
+    invalidateInvestmentsCache(userId);
+    return res;
   }
 
   async refreshMarketData(userId: string, symbols?: string[]) {
@@ -3392,6 +3538,7 @@ export class InvestmentService {
     const status = await marketDataService.getBudgetAndCacheStatus(
       settings.twelveDataDisplayApproved
     );
+    invalidateInvestmentsCache(userId);
     return { status };
   }
 }

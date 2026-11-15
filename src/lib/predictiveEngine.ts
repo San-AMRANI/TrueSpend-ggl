@@ -153,6 +153,19 @@ export interface HolisticForecastReport {
     holdings: number;
     contexts: number;
   };
+
+  // Item O: Forecast Calibration, Assumption Transparency & Data Freshness
+  calibrationAndFreshness?: {
+    historyDaysAvailable: number;
+    reliabilityScorePercent: number;
+    reliabilityLabel: 'High (90+ days)' | 'Moderate (30–89 days)' | 'Low (<30 days)';
+    confirmedInflowsCount: number;
+    estimatedInflowsCount: number;
+    keyAssumptions: string[];
+    calibrationVariancePercent: number;
+    freshnessStatus: 'live' | 'cached' | 'stale';
+    computedAtIso: string;
+  };
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -894,6 +907,29 @@ export function computeHolisticForecast(params: {
     });
   }
 
+  // Item O: Compute Forecast Calibration, Assumption Transparency & Data Freshness
+  const oldestTxTime = transactions.reduce((min, t) => {
+    const ms = new Date(t.createdAt).getTime();
+    return Number.isFinite(ms) && ms < min ? ms : min;
+  }, now.getTime());
+  const historyDaysAvailable = Math.max(1, Math.round((now.getTime() - oldestTxTime) / 86_400_000));
+  const reliabilityScorePercent = Math.min(98, Math.max(35, Math.round((Math.min(historyDaysAvailable, 120) / 120) * 100)));
+  const reliabilityLabel: 'High (90+ days)' | 'Moderate (30–89 days)' | 'Low (<30 days)' =
+    historyDaysAvailable >= 90
+      ? 'High (90+ days)'
+      : historyDaysAvailable >= 30
+      ? 'Moderate (30–89 days)'
+      : 'Low (<30 days)';
+
+  const confirmedInflowsCount = payrolls.filter((p) => p.status === 'confirmed' || p.status === 'matched').length;
+  const estimatedInflowsCount = Math.max(0, payrolls.length - confirmedInflowsCount);
+  const keyAssumptions = [
+    `Baseline monthly income: ${monthlyIncomeBaseline.toFixed(0)} MAD (${confirmedInflowsCount} confirmed / ${estimatedInflowsCount} expected payrolls)`,
+    `Variable daily velocity: ${(monthlyVariableBurn / 30).toFixed(1)} MAD/day weighted by 90-day day-of-week seasonality`,
+    `Recurring subscriptions burn: ${monthlyFixedSubsBurn.toFixed(0)} MAD/mo across ${activeSubs.length} active services`,
+    `Portfolio compounding: 8.5% expected p.a. (3.5% conservative – 14.0% optimistic band)`,
+  ];
+
   return {
     currentLiquidity,
     currentPortfolioMad,
@@ -932,6 +968,17 @@ export function computeHolisticForecast(params: {
       goals: goals.length,
       holdings: investmentsData?.positions?.length ?? 0,
       contexts: contexts.length,
+    },
+    calibrationAndFreshness: {
+      historyDaysAvailable,
+      reliabilityScorePercent,
+      reliabilityLabel,
+      confirmedInflowsCount,
+      estimatedInflowsCount,
+      keyAssumptions,
+      calibrationVariancePercent: Math.round(Math.abs(monthlyVariableBurn - cycleSpendSoFar) / Math.max(1, monthlyIncomeBaseline) * 1000) / 10,
+      freshnessStatus: investmentsData?.marketDataStatus?.status === 'cache_only' ? 'cached' : 'live',
+      computedAtIso: now.toISOString(),
     },
   };
 }

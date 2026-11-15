@@ -373,6 +373,7 @@ export class MarketDataService {
       currentLivePrice?: number;
       currency?: string;
       userDisplayApproved?: boolean;
+      skipNetworkFetch?: boolean;
     }
   ): Promise<DailyOhlcvBar[]> {
     const cleanSymbol = normalizeStockTicker(rawSymbol) || rawSymbol.trim().toUpperCase();
@@ -410,6 +411,7 @@ export class MarketDataService {
       currentLivePrice?: number;
       currency?: string;
       userDisplayApproved?: boolean;
+      skipNetworkFetch?: boolean;
     }
   ): Promise<DailyOhlcvBar[]> {
     // 1. Check PostgreSQL persistent cache (`market_data_daily_bars`)
@@ -458,9 +460,17 @@ export class MarketDataService {
       return dbBars;
     }
 
+    if (
+      options?.skipNetworkFetch &&
+      dbBars.length >= 30
+    ) {
+      this.memoryBarsCache.set(symbol, { bars: dbBars, fetchedAtMs: Date.now() });
+      return dbBars;
+    }
+
     // 2. Try Twelve Data `/time_series` if API key + display gate + budget allow
     let fetchedBars: DailyOhlcvBar[] = [];
-    if (symbol !== 'MASI') {
+    if (!options?.skipNetworkFetch && symbol !== 'MASI') {
       const reservation = await this.tryReserveTwelveDataCredits(
         '/time_series',
         1,
@@ -522,7 +532,7 @@ export class MarketDataService {
     }
 
     // 3. Fallback to Yahoo Finance 6-month daily chart endpoint (0 Twelve Data credits)
-    if (fetchedBars.length === 0 && symbol !== 'MASI') {
+    if (!options?.skipNetworkFetch && fetchedBars.length === 0 && symbol !== 'MASI') {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 5500);

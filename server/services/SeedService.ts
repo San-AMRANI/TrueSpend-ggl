@@ -5,8 +5,8 @@ import { walletService } from './WalletService.js';
 
 export class SeedService {
   async seedForUser(userId: string) {
-    // Truncate tables for this user / splits
-    await transactionRepository.deleteAllSplits();
+    // Clear records strictly for this user only
+    await transactionRepository.deleteAllSplitsByUserId(userId);
     await transactionRepository.deleteAllByUserId(userId);
     await debtRepository.deleteAllByUserId(userId);
 

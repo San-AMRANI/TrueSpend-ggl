@@ -13,7 +13,10 @@ import { eq } from 'drizzle-orm';
 import { PushService } from './PushService.js';
 import { KpiService } from './KpiService.js';
 import { settingsService } from './SettingsService.js';
+import { decryptSecret } from './SecurityCrypto.js';
 import { investmentService } from './InvestmentService.js';
+import { investmentRepository } from '../repositories/InvestmentRepository.js';
+import { coreAuditService } from './CoreAuditService.js';
 
 const pushService = new PushService();
 const kpiService = new KpiService();
@@ -98,7 +101,7 @@ export class NotificationScheduler {
         .where(eq(users.automatedDriveBackups, 1));
 
       for (const user of backupUsers) {
-        if (!user.googleDriveToken) continue;
+        if (!user.googleDriveToken || user.status !== 'active' || !user.emailVerifiedAt) continue;
 
         if (
           user.googleDriveTokenExpiry &&
@@ -106,6 +109,9 @@ export class NotificationScheduler {
         ) {
           continue;
         }
+
+        const decryptedToken = decryptSecret(user.googleDriveToken);
+        if (!decryptedToken) continue;
 
         const lastBackup = user.lastDriveBackupDate
           ? new Date(user.lastDriveBackupDate).getTime()
@@ -119,17 +125,13 @@ export class NotificationScheduler {
             : 7 * 24 * 60 * 60 * 1000;
 
         if (Date.now() - lastBackup >= intervalMs) {
-          console.log(
-            `[BackupScheduler] Triggering server backup for ${user.email} (frequency: ${frequency})`
-          );
           try {
-            const result = await settingsService.backupToGoogleDrive(user.googleDriveToken);
+            const result = await settingsService.backupToGoogleDrive(user.id, decryptedToken);
             await settingsService.updateSettings(user.id, {
               lastDriveBackupDate: result.lastDriveBackupDate,
             });
-            console.log(`[BackupScheduler] Backup succeeded for ${user.email}`);
           } catch (err) {
-            console.error(`[BackupScheduler] Error backing up user ${user.email}:`, err);
+            console.error(`[BackupScheduler] Error backing up user ${user.id}:`, err);
           }
         }
       }
@@ -149,6 +151,9 @@ export class NotificationScheduler {
       .where(eq(notificationPreferences.enabled, true));
 
     for (const { prefs, user } of allPrefs) {
+      if (user.status !== 'active' || !user.emailVerifiedAt) {
+        continue;
+      }
       const now = new Date();
       const userTime = new Intl.DateTimeFormat('en-US', {
         timeZone: prefs.timezone || 'Africa/Casablanca',
@@ -189,6 +194,9 @@ export class NotificationScheduler {
         db.select().from(payrolls).where(eq(payrolls.userId, user.id)),
         kpiService.getKpisForUser(user),
       ]);
+
+      await coreAuditService.evaluateUpcomingCommitmentRules(user.id).catch(() => undefined);
+      await coreAuditService.processPendingOutboxEvents(user.id).catch(() => undefined);
 
       // 1. FUTURE CALENDAR EVENTS & SUBSCRIPTION RENEWALS (with cycle projection)
       if (prefs.forecastWarningEnabled) {
@@ -287,10 +295,15 @@ export class NotificationScheduler {
       // 2. STOCKS & PORTFOLIO STATUS PULSE (Movers, Breakeven & Cash Reserve)
       if (prefs.anomalyEnabled) {
         try {
-          const invData: any = await investmentService.getInvestmentsData(user.id);
-          const stockPositions = (invData.positions || []).filter(
-            (p: any) => p.market !== 'CRYPTO' && !p.isWatchlistOnly
-          );
+          const userPositions = await investmentRepository.findAllPositionsByUserId(user.id);
+          if (userPositions.length > 0 || user.role === 'owner') {
+            const invData: any = await investmentService.getInvestmentsData(user.id, {
+              skipLiveQuotes: true,
+              preloadedKpis: kpis,
+            });
+            const stockPositions = (invData.positions || []).filter(
+              (p: any) => p.market !== 'CRYPTO' && !p.isWatchlistOnly
+            );
 
           for (const pos of stockPositions) {
             const move = Number(pos.change24hPercent || 0);
@@ -324,15 +337,16 @@ export class NotificationScheduler {
           const pnlMad = Number(
             invData.summary?.stockUnrealizedPnlMad ?? invData.totalUnrealizedPnlMad ?? 0
           );
-          if (totalMad > 0) {
-            candidates.push({
-              type: 'STOCK_PORTFOLIO_SUMMARY',
-              payload: {
-                title: `💼 Equity Portfolio Pulse: ${totalMad.toFixed(0)} MAD (${pnlMad >= 0 ? '+' : ''}${pnlMad.toFixed(0)} MAD)`,
-                body: `Tracking ${stockPositions.length} active stock positions across US & Moroccan markets.`,
-                url: '/dashboard',
-              },
-            });
+            if (totalMad > 0) {
+              candidates.push({
+                type: 'STOCK_PORTFOLIO_SUMMARY',
+                payload: {
+                  title: `💼 Equity Portfolio Pulse: ${totalMad.toFixed(0)} MAD (${pnlMad >= 0 ? '+' : ''}${pnlMad.toFixed(0)} MAD)`,
+                  body: `Tracking ${stockPositions.length} active stock positions across US & Moroccan markets.`,
+                  url: '/dashboard',
+                },
+              });
+            }
           }
         } catch (invErr) {
           console.warn('[NotificationScheduler] Stock status check skipped:', invErr);

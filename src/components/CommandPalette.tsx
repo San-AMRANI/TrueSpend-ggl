@@ -1,34 +1,31 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search,
-  LayoutDashboard,
-  TrendingUp,
-  Sparkles,
   Calculator,
-  CalendarDays,
-  ArrowRightLeft,
-  WalletCards,
-  BarChart2,
-  FileBarChart,
-  Map,
-  Repeat,
-  Target,
-  Users,
-  ShieldCheck,
-  Settings,
   Plus,
   ArrowDownRight,
   ArrowUpRight,
   RefreshCw,
-  Moon,
-  Sun,
   X,
   CornerDownLeft,
   Landmark,
   Banknote,
+  WalletCards,
   Bot,
   Palette,
+  Inbox,
+  FileSpreadsheet,
+  Scale,
+  GitBranch,
+  Copy,
+  TrendingUp,
+  Target,
+  Repeat,
+  PanelLeft,
+  LayoutGrid,
+  PanelLeftClose,
 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import {
   DashboardTab,
   KPI,
@@ -37,8 +34,12 @@ import {
   Goal,
   Subscription,
   InvestmentsData,
+  WalletsWorkbenchSection,
 } from '../types';
+import { NAV_ITEMS } from '../config/navigation';
 import { useTheme, THEME_PRESETS } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { hasFeatureAccess, isTabAvailableForUser } from '../lib/entitlements';
 import { format } from 'date-fns';
 
 interface CommandPaletteProps {
@@ -69,6 +70,70 @@ interface CommandItem {
   keywords?: string;
 }
 
+function evaluateSafeMathExpression(raw: string): { expression: string; value: number } | null {
+  const cleaned = raw.trim().replace(/^=/, '').trim();
+  if (!cleaned) return null;
+  if (!/^[0-9+\-*/().%\s]+$/.test(cleaned) || !/\d/.test(cleaned)) return null;
+  const hasOperator = /[+\-*/%]/.test(cleaned.replace(/^-/, ''));
+  if (!raw.trim().startsWith('=') && !hasOperator) return null;
+
+  try {
+    let pos = 0;
+    const str = cleaned.replace(/\s+/g, '');
+
+    const parseExpression = (): number => {
+      let val = parseTerm();
+      while (pos < str.length && (str[pos] === '+' || str[pos] === '-')) {
+        const op = str[pos++];
+        const right = parseTerm();
+        val = op === '+' ? val + right : val - right;
+      }
+      return val;
+    };
+
+    const parseTerm = (): number => {
+      let val = parseFactor();
+      while (pos < str.length && (str[pos] === '*' || str[pos] === '/' || str[pos] === '%')) {
+        const op = str[pos++];
+        const right = parseFactor();
+        if ((op === '/' || op === '%') && right === 0) return NaN;
+        val = op === '*' ? val * right : op === '/' ? val / right : val % right;
+      }
+      return val;
+    };
+
+    const parseFactor = (): number => {
+      if (str[pos] === '+') {
+        pos++;
+        return parseFactor();
+      }
+      if (str[pos] === '-') {
+        pos++;
+        return -parseFactor();
+      }
+      if (str[pos] === '(') {
+        pos++;
+        const val = parseExpression();
+        if (str[pos] !== ')') return NaN;
+        pos++;
+        return val;
+      }
+      const start = pos;
+      while (pos < str.length && ((str[pos] >= '0' && str[pos] <= '9') || str[pos] === '.')) {
+        pos++;
+      }
+      if (start === pos) return NaN;
+      return parseFloat(str.slice(start, pos));
+    };
+
+    const result = parseExpression();
+    if (pos !== str.length || !Number.isFinite(result)) return null;
+    return { expression: cleaned, value: Math.round(result * 100) / 100 };
+  } catch {
+    return null;
+  }
+}
+
 export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
   onClose,
@@ -88,7 +153,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const { theme, setTheme } = useTheme();
+  const { user } = useAuth();
+  const tier = user?.experienceTier;
+  const isAdvanced = tier === 'advanced';
+  const {
+    theme,
+    setTheme,
+    desktopNavLayout,
+    setDesktopNavLayout,
+    sidebarCollapsed,
+    toggleSidebarCollapsed,
+  } = useTheme();
+
+  const mathResult = useMemo(() => evaluateSafeMathExpression(query), [query]);
 
   useEffect(() => {
     if (isOpen) {
@@ -99,7 +176,35 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   }, [isOpen]);
 
   const allItems = useMemo<CommandItem[]>(() => {
-    const items: CommandItem[] = [
+    const items: CommandItem[] = [];
+
+    if (mathResult && mathResult.value > 0) {
+      const sts = kpis?.safeToSpend ?? 0;
+      const daily = kpis?.dailyAllowance ?? 0;
+      const stsPct = sts > 0 ? `${((mathResult.value / sts) * 100).toFixed(1)}% of Safe-to-Spend` : undefined;
+      const daysImpact = daily > 0 ? `${(mathResult.value / daily).toFixed(1)} days of allowance` : undefined;
+      items.push({
+        id: 'act-inline-calc-copy',
+        group: 'Quick Actions',
+        title: `= ${mathResult.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD`,
+        subtitle: [`Expression: ${mathResult.expression}`, stsPct, daysImpact].filter(Boolean).join(' · '),
+        badge: 'Copy Result',
+        badgeColor: 'text-indigo-600 dark:text-indigo-400',
+        icon: Copy,
+        keywords: `${query} ${mathResult.expression} calculator math`,
+        onSelect: () => {
+          navigator.clipboard?.writeText(String(mathResult.value));
+          window.dispatchEvent(
+            new CustomEvent('truespend:toast', {
+              detail: { message: `Copied ${mathResult.value.toFixed(2)} MAD to clipboard`, type: 'success' },
+            })
+          );
+          onClose();
+        },
+      });
+    }
+
+    items.push(
       // 1. Quick Actions
       {
         id: 'act-log-expense',
@@ -160,17 +265,85 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       {
         id: 'act-reconcile-wallets',
         group: 'Quick Actions',
-        title: 'Manage & Reconcile Wallets',
+        title: 'Accounts, Wallets & Accounting Workbench',
         subtitle: `Total Liquidity: ${(kpis?.totalLiquidity ?? 0).toFixed(2)} MAD across ${kpis?.accounts?.length ?? 0} accounts`,
-        badge: 'Wallets',
+        badge: 'Accounts',
         badgeColor: 'text-indigo-600 dark:text-indigo-400',
         icon: WalletCards,
-        keywords: 'reconcile balance bank cash wallet adjust',
+        keywords: 'reconcile balance bank cash wallet adjust journal review inbox csv import counterparty',
         onSelect: () => {
           onClose();
-          onOpenWalletsModal();
+          window.dispatchEvent(new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', { detail: 'wallets' }));
         },
       },
+      ...(isAdvanced
+        ? [
+            {
+              id: 'act-review-inbox',
+              group: 'Quick Actions' as const,
+              title: 'Open Financial Review Inbox & Statement Import',
+              subtitle: 'Confirm OCR receipts, CSV bank statement rows & automated rule drafts',
+              badge: 'Inbox',
+              badgeColor: 'text-emerald-600 dark:text-emerald-400',
+              icon: Inbox,
+              keywords: 'review inbox pending approval ocr receipt csv tsv statement import reconcile',
+              onSelect: () => {
+                onClose();
+                window.dispatchEvent(
+                  new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', {
+                    detail: 'review_inbox',
+                  }),
+                );
+              },
+            },
+            {
+              id: 'act-ledger-integrity',
+              group: 'Quick Actions' as const,
+              title: 'Double-Entry Journal & Integrity Diagnostics',
+              subtitle: 'Audit Trial Balance parity, unjournaled items & counterparty aliases',
+              badge: 'Ledger',
+              badgeColor: 'text-teal-600 dark:text-teal-400',
+              icon: FileSpreadsheet,
+              keywords: 'double entry journal ledger trial balance integrity audit backfill',
+              onSelect: () => {
+                onClose();
+                window.dispatchEvent(
+                  new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', {
+                    detail: 'journal_audit',
+                  }),
+                );
+              },
+            },
+            {
+              id: 'act-networth-bridge',
+              group: 'Quick Actions' as const,
+              title: 'Net Worth Change Bridge & External Assets',
+              subtitle: 'Attribute period wealth delta across Cash, Credit, Debt, Equities & Real Estate',
+              badge: 'Bridge',
+              badgeColor: 'text-indigo-600 dark:text-indigo-400',
+              icon: Scale,
+              keywords: 'net worth bridge change delta external assets liabilities real estate vehicle',
+              onSelect: () => {
+                setActiveTab('reports');
+                onClose();
+              },
+            },
+            {
+              id: 'act-rules-engine',
+              group: 'Quick Actions' as const,
+              title: 'Automated Financial Rules & Execution Logs',
+              subtitle: 'Configure deterministic rules for categorization, review alerts & goal funding',
+              badge: 'Rules',
+              badgeColor: 'text-purple-600 dark:text-purple-400',
+              icon: GitBranch,
+              keywords: 'rules automation triggers conditions execution logs',
+              onSelect: () => {
+                setActiveTab('settings');
+                onClose();
+              },
+            },
+          ]
+        : []),
       {
         id: 'act-spex-audit',
         group: 'Quick Actions',
@@ -192,6 +365,55 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           }, 120);
         },
       },
+      {
+        id: 'act-nav-layout-toggle',
+        group: 'Quick Actions',
+        title:
+          desktopNavLayout === 'side'
+            ? 'Switch Desktop Navigation to Top Header Menu'
+            : 'Switch Desktop Navigation to Side Menu Rail',
+        subtitle:
+          desktopNavLayout === 'side'
+            ? 'Move navigation bar horizontally into the top header bar'
+            : 'Move navigation items into a collapsible left sidebar rail',
+        badge: desktopNavLayout === 'side' ? 'Side Active' : 'Top Active',
+        badgeColor: 'text-indigo-600 dark:text-indigo-400',
+        icon: desktopNavLayout === 'side' ? LayoutGrid : PanelLeft,
+        keywords: 'menu layout side top header sidebar navigation rail switch',
+        onSelect: () => {
+          const next = desktopNavLayout === 'side' ? 'top' : 'side';
+          setDesktopNavLayout(next);
+          window.dispatchEvent(
+            new CustomEvent('truespend:toast', {
+              detail: {
+                message: `Desktop navigation switched to ${next === 'side' ? 'Side Menu' : 'Top Menu'}.`,
+                type: 'info',
+              },
+            })
+          );
+          onClose();
+        },
+      },
+      ...(desktopNavLayout === 'side'
+        ? [
+            {
+              id: 'act-sidebar-collapse-toggle',
+              group: 'Quick Actions' as const,
+              title: sidebarCollapsed ? 'Expand Left Navigation Sidebar' : 'Collapse Left Sidebar to Icon Rail',
+              subtitle: sidebarCollapsed
+                ? 'Show full navigation labels and section headings'
+                : 'Maximize horizontal workspace width with icons',
+              badge: sidebarCollapsed ? 'Compact' : 'Expanded',
+              badgeColor: 'text-indigo-600 dark:text-indigo-400',
+              icon: PanelLeftClose,
+              keywords: 'collapse expand compact sidebar icon rail width',
+              onSelect: () => {
+                toggleSidebarCollapsed();
+                onClose();
+              },
+            },
+          ]
+        : []),
       ...THEME_PRESETS.map((preset) => ({
         id: `act-theme-${preset.id}`,
         group: 'Quick Actions' as const,
@@ -207,202 +429,55 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         },
       })),
 
-      // 2. Navigation
-      {
-        id: 'nav-overview',
-        group: 'Navigation',
-        title: 'Overview Command Center',
-        subtitle: `Safe to Spend: ${(kpis?.safeToSpend ?? 0).toFixed(0)} MAD · Health: ${kpis?.healthScore ?? 0}/100`,
-        icon: LayoutDashboard,
-        keywords: 'home dashboard overview safe to spend',
-        onSelect: () => {
-          setActiveTab('overview');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-calculators',
-        group: 'Navigation',
-        title: 'Calculators & What-If Simulators Hub',
-        subtitle: 'Affordability, Loan Payoff, Moroccan Salary Tax (IGR/CNSS), Inflation & Bill Split',
-        icon: Calculator,
-        keywords: 'calculators what if simulator loan mortgage tax salary igr cnss inflation split',
-        onSelect: () => {
-          setActiveTab('calculators');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-forecast',
-        group: 'Navigation',
-        title: 'Predictive Forecast & Trajectory',
-        subtitle: '30-day cash runway, 24-month net worth projection & category exhaustion radar',
-        icon: Sparkles,
-        keywords: 'forecast predictive trajectory runway future',
-        onSelect: () => {
-          setActiveTab('forecast');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-investments',
-        group: 'Navigation',
-        title: 'Stocks & Equities Portfolio',
-        subtitle: `Portfolio Value: ${(investmentsData?.totalPortfolioValueMad ?? 0).toFixed(0)} MAD`,
-        icon: TrendingUp,
-        keywords: 'stocks equities investments portfolio dividends bvc us',
-        onSelect: () => {
-          setActiveTab('investments');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-transactions',
-        group: 'Navigation',
-        title: 'Transactions Ledger',
-        subtitle: `${transactions.length} recorded transactions`,
-        icon: ArrowRightLeft,
-        keywords: 'transactions ledger history expenses income',
-        onSelect: () => {
-          setActiveTab('transactions');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-budgets',
-        group: 'Navigation',
-        title: 'Budgets & 50/30/20 Planner',
-        subtitle: 'Category caps, Envelope view, and macro rule benchmarks',
-        icon: WalletCards,
-        keywords: 'budgets envelope 50 30 20 categories limit',
-        onSelect: () => {
-          setActiveTab('budgets');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-calendar',
-        group: 'Navigation',
-        title: 'Financial Calendar & Cash Flow',
-        subtitle: 'Payday schedule, recurring bills, and daily balance timeline',
-        icon: CalendarDays,
-        keywords: 'calendar cash flow payday schedule payroll',
-        onSelect: () => {
-          setActiveTab('calendar');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-subscriptions',
-        group: 'Navigation',
-        title: 'Subscriptions & Fixed Commitments Radar',
-        subtitle: `${subscriptions.filter((s) => s.status === 'active').length} active recurring bills`,
-        icon: Repeat,
-        keywords: 'subscriptions recurring bills netflix spotify pruner',
-        onSelect: () => {
-          setActiveTab('subscriptions');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-goals',
-        group: 'Navigation',
-        title: 'Savings Goals & Milestones',
-        subtitle: `${goals.length} active savings targets`,
-        icon: Target,
-        keywords: 'goals savings target emergency fund',
-        onSelect: () => {
-          setActiveTab('goals');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-debts',
-        group: 'Navigation',
-        title: 'Debts, Receivables & Splits',
-        subtitle: `${debts.filter((d) => d.status === 'Pending').length} pending debt records`,
-        icon: Users,
-        keywords: 'debts receivables payables owed iou splits',
-        onSelect: () => {
-          setActiveTab('debts');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-analytics',
-        group: 'Navigation',
-        title: 'Deep Spending Analytics & Merchants',
-        subtitle: 'Category breakdowns, merchant intelligence, and month-over-month trends',
-        icon: BarChart2,
-        keywords: 'analytics charts merchants categories trends',
-        onSelect: () => {
-          setActiveTab('analytics');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-reports',
-        group: 'Navigation',
-        title: 'Cycle Report Card & Data Sovereignty',
-        subtitle: 'AI cycle retrospective grade, CSV/JSON export & import',
-        icon: FileBarChart,
-        keywords: 'reports retrospective grade export import csv json',
-        onSelect: () => {
-          setActiveTab('reports');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-contexts',
-        group: 'Navigation',
-        title: 'Financial Contexts & Projects',
-        subtitle: 'Track Trips, Missions, Life Events, and dedicated project budgets',
-        icon: Map,
-        keywords: 'contexts trips projects events',
-        onSelect: () => {
-          setActiveTab('contexts');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-users',
-        group: 'Navigation',
-        title: 'Users, Roles & Access Control',
-        subtitle: 'Manage workspace members, permissions, and audit logs',
-        icon: ShieldCheck,
-        keywords: 'users roles permissions admin audit',
-        onSelect: () => {
-          setActiveTab('users');
-          onClose();
-        },
-      },
-      {
-        id: 'nav-settings',
-        group: 'Navigation',
-        title: 'Settings, Cloud Backups & Notifications',
-        subtitle: 'Payday, salary, emergency buffer, Google Drive & SQL backup',
-        icon: Settings,
-        keywords: 'settings backup sql google drive notifications',
-        onSelect: () => {
-          setActiveTab('settings');
-          onClose();
-        },
-      },
-    ];
+      // 2. Navigation (derived from unified NAV_ITEMS registry, filtered by tier and role)
+      ...NAV_ITEMS.filter((navItem) =>
+        isTabAvailableForUser(navItem.id, tier, user?.role)
+      ).map((navItem) => {
+        let subtitle = navItem.description;
+        if (navItem.id === 'overview') {
+          subtitle = `Safe to Spend: ${(kpis?.safeToSpend ?? 0).toFixed(0)} MAD · Health: ${kpis?.healthScore ?? 0}/100`;
+        } else if (navItem.id === 'accounts') {
+          subtitle = `${kpis?.accounts?.length ?? 0} accounts · Total Liquidity ${(kpis?.totalLiquidity ?? 0).toFixed(0)} MAD`;
+        } else if (navItem.id === 'investments') {
+          subtitle = `Portfolio Value: ${(investmentsData?.totalPortfolioValueMad ?? 0).toFixed(0)} MAD`;
+        } else if (navItem.id === 'transactions') {
+          subtitle = `${transactions.length} recorded transactions`;
+        } else if (navItem.id === 'subscriptions') {
+          subtitle = `${subscriptions.filter((s) => s.status === 'active').length} active recurring bills`;
+        } else if (navItem.id === 'goals') {
+          subtitle = `${goals.length} active savings targets`;
+        } else if (navItem.id === 'debts') {
+          subtitle = `${debts.filter((d) => d.status === 'Pending').length} pending debt records`;
+        }
+        return {
+          id: `nav-${navItem.id}`,
+          group: 'Navigation' as const,
+          title: navItem.label,
+          subtitle,
+          badge: navItem.groupLabel,
+          icon: navItem.icon,
+          keywords: `${navItem.keywords} ${navItem.groupLabel.toLowerCase()}`,
+          onSelect: () => {
+            setActiveTab(navItem.id);
+            onClose();
+          },
+        };
+      })
+    );
 
     // 3. Wallets
     (kpis?.accounts || []).forEach((w) => {
       items.push({
         id: `wallet-${w.id}`,
         group: 'Wallets',
-        title: `${w.name} (${w.type})`,
-        subtitle: `Current Balance: ${w.balance.toFixed(2)} MAD`,
-        badge: `${w.balance.toFixed(0)} MAD`,
+        title: `${w.name} (${w.accountSubtype || w.type})`,
+        subtitle: `Current Balance: ${w.balance.toFixed(2)} ${w.currency || 'MAD'}`,
+        badge: `${w.balance.toFixed(0)} ${w.currency || 'MAD'}`,
         icon: w.type === 'Bank' ? Landmark : w.type === 'Cash' ? Banknote : WalletCards,
-        keywords: `wallet ${w.name} ${w.type}`,
+        keywords: `wallet account ${w.name} ${w.type} ${w.accountSubtype || ''} ${w.institutionName || ''}`,
         onSelect: () => {
           onClose();
-          onOpenWalletsModal();
+          window.dispatchEvent(new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', { detail: 'wallets' }));
         },
       });
     });
@@ -467,26 +542,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     });
 
-    // 6. Equities
-    (investmentsData?.positions || []).forEach((pos) => {
-      items.push({
-        id: `stock-${pos.id}`,
-        group: 'Equities',
-        title: `${pos.ticker} — ${pos.companyName}`,
-        subtitle: `${pos.sharesNum} shares · Value: ${pos.marketValueMad.toFixed(0)} MAD`,
-        badge: `${pos.unrealizedPnlPercent >= 0 ? '+' : ''}${pos.unrealizedPnlPercent.toFixed(1)}%`,
-        badgeColor:
-          pos.unrealizedPnlPercent >= 0
-            ? 'text-emerald-600 dark:text-emerald-400'
-            : 'text-rose-600 dark:text-rose-400',
-        icon: TrendingUp,
-        keywords: `stock equity ${pos.ticker} ${pos.companyName} ${pos.sector}`,
-        onSelect: () => {
-          setActiveTab('investments');
-          onClose();
-        },
+    // 6. Equities (Advanced mode only)
+    if (hasFeatureAccess(tier, 'investments')) {
+      (investmentsData?.positions || []).forEach((pos) => {
+        items.push({
+          id: `stock-${pos.id}`,
+          group: 'Equities',
+          title: `${pos.ticker} — ${pos.companyName}`,
+          subtitle: `${pos.sharesNum} shares · Value: ${pos.marketValueMad.toFixed(0)} MAD`,
+          badge: `${pos.unrealizedPnlPercent >= 0 ? '+' : ''}${pos.unrealizedPnlPercent.toFixed(1)}%`,
+          badgeColor:
+            pos.unrealizedPnlPercent >= 0
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-rose-600 dark:text-rose-400',
+          icon: TrendingUp,
+          keywords: `stock equity ${pos.ticker} ${pos.companyName} ${pos.sector}`,
+          onSelect: () => {
+            setActiveTab('investments');
+            onClose();
+          },
+        });
       });
-    });
+    }
 
     return items;
   }, [
@@ -497,6 +574,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     subscriptions,
     investmentsData,
     theme,
+    desktopNavLayout,
+    sidebarCollapsed,
+    mathResult,
+    query,
+    tier,
+    isAdvanced,
+    user?.role,
     onClose,
     onOpenQuickTransaction,
     onOpenSmartCalculator,
@@ -504,6 +588,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     setActiveTab,
     openTransaction,
     setTheme,
+    setDesktopNavLayout,
+    toggleSidebarCollapsed,
   ]);
 
   const filteredItems = useMemo(() => {
@@ -514,12 +600,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         (item) =>
           item.group === 'Quick Actions' ||
           item.group === 'Navigation' ||
-          (item.group === 'Recent Transactions' && allItems.indexOf(item) < 28)
+          (item.group === 'Recent Transactions' && allItems.indexOf(item) < 32)
       );
     }
 
     return allItems
       .filter((item) => {
+        if (item.id === 'act-inline-calc-copy') return true;
         const haystack = `${item.title} ${item.subtitle || ''} ${item.keywords || ''} ${item.group}`.toLowerCase();
         return q.split(/\s+/).every((word) => haystack.includes(word));
       })
@@ -553,50 +640,64 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, filteredItems, selectedIndex, onClose]);
 
-  if (!isOpen) return null;
-
   // Group filtered items for clean presentation
   const groups = Array.from(new Set(filteredItems.map((i) => i.group)));
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-start justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-6 pt-12 sm:pt-20 animate-in fade-in duration-150">
-      <div
-        className="fixed inset-0"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-2xl animate-in zoom-in-95 duration-150">
-        {/* Search Input Bar */}
-        <div className="flex items-center gap-3 border-b border-gray-200 dark:border-gray-800 px-4 py-3.5">
-          <Search className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search transactions, wallets, stocks, calculators, or type a command..."
-            className="w-full bg-transparent text-sm sm:text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => setQuery('')}
-              className="rounded-md p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-          <button
-            type="button"
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="command-palette-backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.14 }}
+          className="fixed inset-0 z-[120] flex items-start justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-6 pt-12 sm:pt-20"
+        >
+          <div
+            className="fixed inset-0"
             onClick={onClose}
-            className="rounded-md border border-gray-200 dark:border-gray-700 px-2 py-0.5 text-[11px] font-mono text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0"
+            aria-hidden="true"
+          />
+          <motion.div
+            key="command-palette-panel"
+            initial={{ opacity: 0, scale: 0.97, y: -6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.98, y: -4 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-2xl"
           >
-            ESC
-          </button>
-        </div>
+            {/* Search Input Bar */}
+            <div className="flex items-center gap-3 border-b border-gray-200 dark:border-gray-800 px-4 py-3.5">
+              <Search className="h-5 w-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search transactions, wallets, stocks, calculators, or type a command..."
+                className="w-full bg-transparent text-sm sm:text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="rounded-md p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-md border border-gray-200 dark:border-gray-700 px-2 py-0.5 text-[11px] font-mono text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 cursor-pointer"
+              >
+                ESC
+              </button>
+            </div>
 
-        {/* Results List */}
-        <div ref={listRef} className="max-h-[65vh] overflow-y-auto p-2 divide-y divide-gray-100 dark:divide-gray-800/60">
+            {/* Results List */}
+            <div ref={listRef} className="ts-scrollbar max-h-[65vh] overflow-y-auto p-2 divide-y divide-gray-100 dark:divide-gray-800/60">
           {filteredItems.length === 0 ? (
             <div className="py-12 px-4 text-center">
               <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -677,26 +778,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           )}
         </div>
 
-        {/* Footer Hint Bar */}
-        <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/90 px-4 py-2 text-[11px] text-gray-500 dark:text-gray-400">
-          <div className="flex items-center gap-3">
-            <span>
-              <strong className="font-mono text-gray-700 dark:text-gray-300">↑↓</strong> Navigate
-            </span>
-            <span>·</span>
-            <span>
-              <strong className="font-mono text-gray-700 dark:text-gray-300">↵</strong> Execute
-            </span>
-            <span>·</span>
-            <span>
-              <strong className="font-mono text-gray-700 dark:text-gray-300">ESC</strong> Close
-            </span>
-          </div>
-          <span className="font-mono tabular-nums">
-            Safe to Spend: {(kpis?.safeToSpend ?? 0).toFixed(0)} MAD
-          </span>
-        </div>
-      </div>
-    </div>
+            {/* Footer Hint Bar */}
+            <div className="flex items-center justify-between border-t border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/90 px-4 py-2 text-[11px] text-gray-500 dark:text-gray-400">
+              <div className="flex items-center gap-3">
+                <span>
+                  <strong className="font-mono text-gray-700 dark:text-gray-300">↑↓</strong> Navigate
+                </span>
+                <span>·</span>
+                <span>
+                  <strong className="font-mono text-gray-700 dark:text-gray-300">↵</strong> Execute
+                </span>
+                <span>·</span>
+                <span>
+                  <strong className="font-mono text-gray-700 dark:text-gray-300">ESC</strong> Close
+                </span>
+              </div>
+              <span className="font-mono tabular-nums">
+                Safe to Spend: {(kpis?.safeToSpend ?? 0).toFixed(0)} MAD
+              </span>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };

@@ -45,6 +45,34 @@ export function resolveContextStatusFromDates(
   return fallbackStatus || 'Planned';
 }
 
+export async function syncContextStatuses(userId: string, userContexts: any[]) {
+  const now = new Date();
+  return await Promise.all(
+    userContexts.map(async (ctx) => {
+      if (!ctx.startDate && !ctx.endDate) return ctx;
+      const computedStatus = resolveContextStatusFromDates(
+        ctx.startDate,
+        ctx.endDate,
+        (ctx.status as any) || 'Planned',
+        now
+      );
+      if (computedStatus !== ctx.status) {
+        try {
+          const [updated] = await db
+            .update(financialContexts)
+            .set({ status: computedStatus, updatedAt: now })
+            .where(and(eq(financialContexts.id, ctx.id), eq(financialContexts.userId, userId)))
+            .returning();
+          return updated || { ...ctx, status: computedStatus };
+        } catch {
+          return { ...ctx, status: computedStatus };
+        }
+      }
+      return ctx;
+    })
+  );
+}
+
 export const contextController = {
   async getContexts(req: AuthRequest, res: Response) {
     try {
@@ -59,31 +87,7 @@ export const contextController = {
         .where(eq(financialContexts.userId, userId))
         .orderBy(desc(financialContexts.createdAt));
 
-      const now = new Date();
-      const syncedContexts = await Promise.all(
-        userContexts.map(async (ctx) => {
-          if (!ctx.startDate && !ctx.endDate) return ctx;
-          const computedStatus = resolveContextStatusFromDates(
-            ctx.startDate,
-            ctx.endDate,
-            (ctx.status as any) || 'Planned',
-            now
-          );
-          if (computedStatus !== ctx.status) {
-            try {
-              const [updated] = await db
-                .update(financialContexts)
-                .set({ status: computedStatus, updatedAt: now })
-                .where(and(eq(financialContexts.id, ctx.id), eq(financialContexts.userId, userId)))
-                .returning();
-              return updated || { ...ctx, status: computedStatus };
-            } catch {
-              return { ...ctx, status: computedStatus };
-            }
-          }
-          return ctx;
-        })
-      );
+      const syncedContexts = await syncContextStatuses(userId, userContexts);
 
       res.json(syncedContexts);
     } catch (error) {

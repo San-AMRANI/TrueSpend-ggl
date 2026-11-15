@@ -1,32 +1,87 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { DashboardNav } from './dashboard/DashboardNav';
 import { OverviewTab } from './dashboard/OverviewTab';
-import { TransactionsTab } from './dashboard/TransactionsTab';
-
-import { DebtsTab } from './dashboard/DebtsTab';
-import { AnalyticsTab } from './dashboard/AnalyticsTab';
-import { SettingsTab } from './dashboard/SettingsTab';
-import { BudgetsTab } from './dashboard/BudgetsTab';
-import { GoalsTab } from './dashboard/GoalsTab';
-import { SubscriptionsTab } from './dashboard/SubscriptionsTab';
-import { FinancialCalendarTab } from './dashboard/FinancialCalendarTab';
-import { ReportsTab } from './dashboard/ReportsTab';
-import { ContextsTab } from './dashboard/ContextsTab';
-import { UsersAndRolesSection } from './dashboard/UsersAndRolesSection';
-import { PredictiveForecastTab } from './dashboard/PredictiveForecastTab';
-import { InvestmentsTab } from './dashboard/InvestmentsTab';
-import { CalculatorsHubTab } from './dashboard/CalculatorsHubTab';
 import { TactileSmartCalculator } from './dashboard/TactileSmartCalculator';
-import { WalletsManager } from './dashboard/WalletsManager';
 import TransactionForm from './TransactionForm';
 import { CommandPalette } from './CommandPalette';
-import { AIChat } from './AIChat';
 import { SpexCompanionPet } from './common/SpexCompanionPet';
 import { SmartNotificationCenter } from './dashboard/SmartNotificationCenter';
+import { FeatureUnavailableCard } from './dashboard/FeatureUnavailableCard';
+import { OnboardingFlow } from './onboarding/OnboardingFlow';
+import { PageTransition, MotionModal } from './ui/MotionPrimitives';
+import { AnimatePresence, motion } from 'motion/react';
 import { X, CheckCircle2, AlertCircle, Info, Calculator } from 'lucide-react';
-import type { DashboardTab } from '../types';
+import {
+  FEATURE_METADATA,
+  getTabRequiredFeature,
+  hasFeatureAccess,
+  isTabAvailableForUser,
+} from '../lib/entitlements';
+import type { DashboardTab, WalletsWorkbenchSection } from '../types';
+
+const TransactionsTab = lazy(() =>
+  import('./dashboard/TransactionsTab').then((m) => ({ default: m.TransactionsTab }))
+);
+const DebtsTab = lazy(() =>
+  import('./dashboard/DebtsTab').then((m) => ({ default: m.DebtsTab }))
+);
+const AnalyticsTab = lazy(() =>
+  import('./dashboard/AnalyticsTab').then((m) => ({ default: m.AnalyticsTab }))
+);
+const SettingsTab = lazy(() =>
+  import('./dashboard/SettingsTab').then((m) => ({ default: m.SettingsTab }))
+);
+const BudgetsTab = lazy(() =>
+  import('./dashboard/BudgetsTab').then((m) => ({ default: m.BudgetsTab }))
+);
+const GoalsTab = lazy(() =>
+  import('./dashboard/GoalsTab').then((m) => ({ default: m.GoalsTab }))
+);
+const SubscriptionsTab = lazy(() =>
+  import('./dashboard/SubscriptionsTab').then((m) => ({ default: m.SubscriptionsTab }))
+);
+const FinancialCalendarTab = lazy(() =>
+  import('./dashboard/FinancialCalendarTab').then((m) => ({ default: m.FinancialCalendarTab }))
+);
+const ReportsTab = lazy(() =>
+  import('./dashboard/ReportsTab').then((m) => ({ default: m.ReportsTab }))
+);
+const ContextsTab = lazy(() =>
+  import('./dashboard/ContextsTab').then((m) => ({ default: m.ContextsTab }))
+);
+const UsersAndRolesSection = lazy(() =>
+  import('./dashboard/UsersAndRolesSection').then((m) => ({ default: m.UsersAndRolesSection }))
+);
+const PredictiveForecastTab = lazy(() =>
+  import('./dashboard/PredictiveForecastTab').then((m) => ({ default: m.PredictiveForecastTab }))
+);
+const InvestmentsTab = lazy(() =>
+  import('./dashboard/InvestmentsTab').then((m) => ({ default: m.InvestmentsTab }))
+);
+const CalculatorsHubTab = lazy(() =>
+  import('./dashboard/CalculatorsHubTab').then((m) => ({ default: m.CalculatorsHubTab }))
+);
+const WalletsManager = lazy(() =>
+  import('./dashboard/WalletsManager').then((m) => ({ default: m.WalletsManager }))
+);
+const AIChat = lazy(() =>
+  import('./AIChat').then((m) => ({ default: m.AIChat }))
+);
+
+function TabLoadingSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-28 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+        ))}
+      </div>
+      <div className="h-80 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+    </div>
+  );
+}
 
 interface DashboardProps {
   onTabChange?: (tab: DashboardTab) => void;
@@ -34,8 +89,8 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ onTabChange, activeTab: propActiveTab }: DashboardProps = {}) {
-
-  const { token } = useAuth();
+  const { token, user, onboarding, refreshUserProfile, refreshOnboarding } = useAuth();
+  const tier = user?.experienceTier;
   const {
     kpis,
     transactions,
@@ -68,6 +123,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     openTransaction,
     handleSaveSettings,
     handleCreatePayroll,
+    handleUpdatePayroll,
     handleDeletePayroll,
     handleExportSql,
     handleImportSql,
@@ -87,6 +143,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleUpdateSubscription,
     handleDeleteSubscription,
     handlePaySubscription,
+    handleChangeSubscriptionPlan,
     handleDetectSubscriptions,
     handleUpsertStockPosition,
     handleUpdateStockPosition,
@@ -106,16 +163,18 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleLinkTransactionsToContext,
     userSettings,
     notifications,
-  } = useDashboardData(token);
+  } = useDashboardData(token, tier);
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   const [quickTxModalType, setQuickTxModalType] = useState<'Expense' | 'Income' | 'Transfer' | null>(null);
   const [isSmartCalcModalOpen, setIsSmartCalcModalOpen] = useState(false);
   const [isWalletsModalOpen, setIsWalletsModalOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const hasAutoOpenedWizard = React.useRef(false);
+  const [accountsSection, setAccountsSection] = useState<WalletsWorkbenchSection>('wallets');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Notify parent whenever tab changes (used to hide header on mobile chat)
   const setActiveTab = (tab: DashboardTab) => {
     setActiveTabRaw(tab);
     onTabChange?.(tab);
@@ -139,11 +198,24 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     const handleSetTab = (e: any) => {
       setActiveTab(e.detail);
     };
+    const handleOpenAccountsSection = (e: any) => {
+      const section: WalletsWorkbenchSection = e.detail || 'wallets';
+      setAccountsSection(section);
+      setIsWalletsModalOpen(false);
+      setActiveTab('accounts');
+    };
     const handleOpenCommandPalette = () => {
       setIsCommandPaletteOpen(true);
     };
     const handleOpenNotifications = () => {
       setIsNotificationCenterOpen((prev) => !prev);
+    };
+    const handleOpenQuickTransaction = (e: any) => {
+      const txType = e?.detail === 'Income' || e?.detail === 'Transfer' ? e.detail : 'Expense';
+      setQuickTxModalType(txType);
+    };
+    const handleOpenSmartCalculator = () => {
+      setIsSmartCalcModalOpen(true);
     };
     const handleToast = (e: any) => {
       if (e.detail?.message) {
@@ -156,23 +228,69 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setIsCommandPaletteOpen(prev => !prev);
+        setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        setQuickTxModalType(null);
+        setIsSmartCalcModalOpen(false);
+        setIsNotificationCenterOpen(false);
+        setIsWalletsModalOpen(false);
+        return;
+      }
+
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable);
+
+      if (!isTyping && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        setQuickTxModalType('Expense');
       }
     };
 
+    const handleOpenOnboarding = () => {
+      setIsOnboardingOpen(true);
+    };
+    const handleTierChanged = () => {
+      fetchData();
+      refreshOnboarding();
+    };
     window.addEventListener('truespend:setTab', handleSetTab);
+    window.addEventListener('truespend:openAccountsSection', handleOpenAccountsSection);
     window.addEventListener('truespend:openCommandPalette', handleOpenCommandPalette);
     window.addEventListener('truespend:openNotifications', handleOpenNotifications);
+    window.addEventListener('truespend:openQuickTransaction', handleOpenQuickTransaction);
+    window.addEventListener('truespend:openSmartCalculator', handleOpenSmartCalculator);
+    window.addEventListener('truespend:openOnboarding', handleOpenOnboarding);
+    window.addEventListener('truespend:tier-changed', handleTierChanged);
     window.addEventListener('truespend:toast', handleToast);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('truespend:setTab', handleSetTab);
+      window.removeEventListener('truespend:openAccountsSection', handleOpenAccountsSection);
       window.removeEventListener('truespend:openCommandPalette', handleOpenCommandPalette);
       window.removeEventListener('truespend:openNotifications', handleOpenNotifications);
+      window.removeEventListener('truespend:openQuickTransaction', handleOpenQuickTransaction);
+      window.removeEventListener('truespend:openSmartCalculator', handleOpenSmartCalculator);
+      window.removeEventListener('truespend:openOnboarding', handleOpenOnboarding);
+      window.removeEventListener('truespend:tier-changed', handleTierChanged);
       window.removeEventListener('truespend:toast', handleToast);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  useEffect(() => {
+    if (!hasAutoOpenedWizard.current && onboarding?.shouldShowWizard && user?.emailVerified !== false) {
+      hasAutoOpenedWizard.current = true;
+      setIsOnboardingOpen(true);
+    }
+  }, [onboarding?.shouldShowWizard, user?.emailVerified]);
 
   useEffect(() => {
     if (!toast) return;
@@ -185,41 +303,73 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       <DashboardNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Global Toast Notification */}
-      {toast && (
-        <div className="fixed bottom-20 md:bottom-6 right-4 z-[90] flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border backdrop-blur-md animate-in slide-in-from-bottom-3 fade-in duration-200 bg-gray-900/95 dark:bg-gray-800/95 text-white border-gray-700/80 max-w-sm">
-          {toast.type === 'success' ? (
-            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-          ) : toast.type === 'error' ? (
-            <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
-          ) : (
-            <Info className="h-4 w-4 text-indigo-400 shrink-0" />
-          )}
-          <span className="text-xs font-medium leading-snug">{toast.message}</span>
-          <button
-            type="button"
-            onClick={() => setToast(null)}
-            className="ml-auto p-1 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700/60 transition-colors"
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key="global-toast"
+            initial={{ opacity: 0, y: 12, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.97 }}
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed bottom-20 md:bottom-6 right-4 z-[90] flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border backdrop-blur-md bg-gray-900/95 dark:bg-gray-800/95 text-white border-gray-700/80 max-w-sm"
           >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-      
+            {toast.type === 'success' ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            ) : toast.type === 'error' ? (
+              <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+            ) : (
+              <Info className="h-4 w-4 text-indigo-400 shrink-0" />
+            )}
+            <span className="text-xs font-medium leading-snug">{toast.message}</span>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              aria-label="Dismiss notification"
+              className="ml-auto p-1 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700/60 transition-colors cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {loading && !kpis ? (
         <div className="space-y-6 animate-pulse">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-32 bg-gray-200 dark:bg-gray-800 rounded-xl"></div>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-32 bg-gray-200 dark:bg-gray-800 rounded-xl" />
             ))}
           </div>
           <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2 h-96 bg-gray-200 dark:bg-gray-800 rounded-xl"></div>
-            <div className="h-96 bg-gray-200 dark:bg-gray-800 rounded-xl"></div>
+            <div className="lg:col-span-2 h-96 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+            <div className="h-96 bg-gray-200 dark:bg-gray-800 rounded-xl" />
           </div>
         </div>
       ) : (
-        <>
-          {activeTab === 'overview' && (
+        <Suspense fallback={<TabLoadingSkeleton />}>
+          <PageTransition pageKey={activeTab}>
+            {!isTabAvailableForUser(activeTab, tier, user?.role) ? (
+              (() => {
+                const reqFeature = getTabRequiredFeature(activeTab);
+                const meta = reqFeature ? FEATURE_METADATA[reqFeature] : null;
+                return (
+                  <FeatureUnavailableCard
+                    title={meta?.title || 'Advanced Experience Tool'}
+                    description={
+                      meta?.description ||
+                      'This workspace view is included in TrueSpend Advanced Mode.'
+                    }
+                    targetTab={activeTab}
+                    onReturnOverview={() => setActiveTab('overview')}
+                    onSwitched={() => {
+                      fetchData();
+                    }}
+                  />
+                );
+              })()
+            ) : (
+              <>
+            {activeTab === 'overview' && (
             <OverviewTab
               kpis={kpis}
               transactions={transactions}
@@ -235,9 +385,28 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               handleCreateWallet={handleCreateWallet}
               handleUpdateWallet={handleUpdateWallet}
               handleDeleteWallet={handleDeleteWallet}
+              onDataChange={fetchData}
               onOpenQuickTransaction={(type) => setQuickTxModalType(type)}
               onOpenSmartCalculator={() => setIsSmartCalcModalOpen(true)}
               onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+            />
+          )}
+
+          {activeTab === 'accounts' && (
+            <WalletsManager
+              wallets={kpis?.accounts || []}
+              subscriptions={subscriptions}
+              debts={debts}
+              transactions={transactions}
+              investmentsData={investmentsData}
+              initialSection={accountsSection}
+              onSectionChange={setAccountsSection}
+              onOpenInvestments={() => setActiveTab('investments')}
+              onPaySubscription={handlePaySubscription}
+              onCreateWallet={handleCreateWallet}
+              onUpdateWallet={handleUpdateWallet}
+              onDeleteWallet={handleDeleteWallet}
+              onRefresh={fetchData}
             />
           )}
 
@@ -314,8 +483,10 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               openTransaction={openTransaction}
               setActiveTab={setActiveTab}
               onCreatePayroll={handleCreatePayroll}
+              onUpdatePayroll={handleUpdatePayroll}
               onDeletePayroll={handleDeletePayroll}
               onPaySubscription={handlePaySubscription}
+              onDataChange={fetchData}
             />
           )}
 
@@ -367,6 +538,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               onUpdateSubscription={handleUpdateSubscription}
               onDeleteSubscription={handleDeleteSubscription}
               onPaySubscription={handlePaySubscription}
+              onChangeSubscriptionPlan={handleChangeSubscriptionPlan}
               onDetectSubscriptions={handleDetectSubscriptions}
             />
           )}
@@ -422,6 +594,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               handleUpdateWallet={handleUpdateWallet}
               handleDeleteWallet={handleDeleteWallet}
               notifications={notifications}
+              onDataChange={fetchData}
             />
           )}
 
@@ -444,8 +617,15 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           )}
 
           {activeTab === 'reports' && (
-            <ReportsTab transactions={transactions} kpis={kpis} budgets={budgets} onDataChange={fetchData} onNavigateTab={setActiveTab} />
+            <ReportsTab
+              transactions={transactions}
+              kpis={kpis}
+              budgets={budgets}
+              onDataChange={fetchData}
+              onNavigateTab={setActiveTab}
+            />
           )}
+
           {activeTab === 'contexts' && (
             <ContextsTab
               contexts={contexts}
@@ -456,8 +636,12 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               handleLinkTransactions={handleLinkTransactionsToContext}
             />
           )}
-          {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}
-        </>
+
+            {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}
+              </>
+            )}
+          </PageTransition>
+        </Suspense>
       )}
 
       {/* Global Command Palette (Cmd+K / Ctrl+K) */}
@@ -468,7 +652,10 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
         openTransaction={openTransaction}
         onOpenQuickTransaction={(type) => setQuickTxModalType(type)}
         onOpenSmartCalculator={() => setIsSmartCalcModalOpen(true)}
-        onOpenWalletsModal={() => setIsWalletsModalOpen(true)}
+        onOpenWalletsModal={() => {
+          setAccountsSection('wallets');
+          setActiveTab('accounts');
+        }}
         kpis={kpis}
         transactions={transactions}
         debts={debts}
@@ -478,113 +665,115 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       />
 
       {/* Quick Transaction Entry Modal */}
-      {quickTxModalType && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150"
-          onClick={() => setQuickTxModalType(null)}
-        >
-          <div
-            className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <TransactionForm
-              initialType={quickTxModalType}
-              wallets={kpis?.accounts || []}
-              contexts={contexts}
-              onCancel={() => setQuickTxModalType(null)}
-              onSuccess={() => {
-                setQuickTxModalType(null);
-                fetchData();
-                setToast({ message: `${quickTxModalType} recorded and balances updated.`, type: 'success' });
-              }}
-            />
-          </div>
-        </div>
-      )}
+      <MotionModal
+        isOpen={Boolean(quickTxModalType)}
+        onClose={() => setQuickTxModalType(null)}
+        containerClassName="w-full max-w-lg max-h-[90vh] overflow-y-auto ts-scrollbar rounded-2xl shadow-2xl"
+      >
+        {quickTxModalType && (
+          <TransactionForm
+            initialType={quickTxModalType}
+            wallets={kpis?.accounts || []}
+            contexts={contexts}
+            onCancel={() => setQuickTxModalType(null)}
+            onSuccess={() => {
+              const label = quickTxModalType;
+              setQuickTxModalType(null);
+              fetchData();
+              setToast({ message: `${label} recorded and balances updated.`, type: 'success' });
+            }}
+          />
+        )}
+      </MotionModal>
 
       {/* Quick Tactile Smart Calculator Modal */}
-      {isSmartCalcModalOpen && (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-6 animate-in fade-in duration-150"
-          onClick={() => setIsSmartCalcModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-5xl max-h-[92vh] overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl p-4 sm:p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
-                  <Calculator className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-gray-900 dark:text-white">Tactile Smart Calculator</h3>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Evaluate expressions, check Safe-to-Spend impact, and convert numbers directly into transactions or goals.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSmartCalcModalOpen(false);
-                    setActiveTab('calculators');
-                  }}
-                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline px-2.5 py-1.5"
-                >
-                  Open All 7 Simulators →
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsSmartCalcModalOpen(false)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
+      <MotionModal
+        isOpen={isSmartCalcModalOpen}
+        onClose={() => setIsSmartCalcModalOpen(false)}
+        containerClassName="w-full max-w-5xl max-h-[92vh] overflow-y-auto ts-scrollbar bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl p-4 sm:p-6"
+      >
+        <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+              <Calculator className="h-5 w-5" />
             </div>
-            <TactileSmartCalculator
-              kpis={kpis}
-              debts={debts}
-              goals={goals}
-              userSettings={userSettings}
-              onNavigateToTab={(tab) => {
-                setIsSmartCalcModalOpen(false);
-                setActiveTab(tab);
-              }}
-              onSetWhatIfAmount={(amt) => {
-                setWhatIfAmount(amt);
-                setIsSmartCalcModalOpen(false);
-                setActiveTab('calculators');
-              }}
-              onCreateGoal={handleCreateGoal}
-              onTransactionLogged={() => {
-                fetchData();
-                setToast({ message: 'Logged directly from Smart Calculator.', type: 'success' });
-              }}
-            />
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white">Tactile Smart Calculator</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Evaluate expressions, check Safe-to-Spend impact, and convert numbers directly into transactions or goals.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {hasFeatureAccess(tier, 'simulator') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSmartCalcModalOpen(false);
+                  setActiveTab('calculators');
+                }}
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline px-2.5 py-1.5 cursor-pointer"
+              >
+                Open All 7 Simulators →
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsSmartCalcModalOpen(false)}
+              aria-label="Close calculator"
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
         </div>
-      )}
-
-      {/* Quick Wallets & Balance Reconciliation Modal */}
-      {isWalletsModalOpen && (
-        <WalletsManager
-          wallets={kpis?.accounts || []}
-          subscriptions={subscriptions}
+        <TactileSmartCalculator
+          kpis={kpis}
           debts={debts}
-          investmentsData={investmentsData}
-          onOpenInvestments={() => {
-            setIsWalletsModalOpen(false);
-            setActiveTab('investments');
+          goals={goals}
+          userSettings={userSettings}
+          onNavigateToTab={(tab) => {
+            setIsSmartCalcModalOpen(false);
+            setActiveTab(tab);
           }}
-          onClose={() => setIsWalletsModalOpen(false)}
-          isModal={true}
-          onCreateWallet={handleCreateWallet}
-          onUpdateWallet={handleUpdateWallet}
-          onDeleteWallet={handleDeleteWallet}
+          onSetWhatIfAmount={(amt) => {
+            setWhatIfAmount(amt);
+            setIsSmartCalcModalOpen(false);
+            setActiveTab('calculators');
+          }}
+          onCreateGoal={handleCreateGoal}
+          onTransactionLogged={() => {
+            fetchData();
+            setToast({ message: 'Logged directly from Smart Calculator.', type: 'success' });
+          }}
         />
+      </MotionModal>
+
+      {/* Optional Quick Wallets Modal */}
+      {isWalletsModalOpen && (
+        <Suspense fallback={null}>
+          <WalletsManager
+            wallets={kpis?.accounts || []}
+            subscriptions={subscriptions}
+            debts={debts}
+            transactions={transactions}
+            investmentsData={investmentsData}
+            onOpenInvestments={
+              hasFeatureAccess(tier, 'investments')
+                ? () => {
+                    setIsWalletsModalOpen(false);
+                    setActiveTab('investments');
+                  }
+                : undefined
+            }
+            onClose={() => setIsWalletsModalOpen(false)}
+            isModal={true}
+            onCreateWallet={handleCreateWallet}
+            onUpdateWallet={handleUpdateWallet}
+            onDeleteWallet={handleDeleteWallet}
+            onRefresh={fetchData}
+          />
+        </Suspense>
       )}
 
       {/* Smart Multi-Domain Notification & Insights Center Drawer */}
@@ -598,13 +787,25 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
         }}
       />
 
-      {/* Interactive SPEX Companion Pet (16° Cursor Gaze, Patrol Flight & Live Reactions) */}
+      {/* Interactive SPEX Companion Pet */}
       <SpexCompanionPet
         activeTab={activeTab}
         kpis={kpis}
         onOpenChat={() => setActiveTab('chat')}
       />
+
+      {/* Interactive Setup & Onboarding Wizard */}
+      <OnboardingFlow
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        onComplete={async (jumpTab) => {
+          setIsOnboardingOpen(false);
+          await Promise.all([fetchData(), refreshUserProfile(), refreshOnboarding()]);
+          if (jumpTab && isTabAvailableForUser(jumpTab, user?.experienceTier, user?.role)) {
+            setActiveTab(jumpTab);
+          }
+        }}
+      />
     </div>
   );
 }
-

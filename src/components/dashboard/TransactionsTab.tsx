@@ -46,6 +46,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface TransactionsTabProps {
   transactions: Transaction[];
@@ -93,7 +94,8 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   selectedTransactionId,
   onSelectionHandled,
 }) => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
   const [filters, setFilters] = useState<TransactionFilters>(initialFilters);
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
@@ -598,6 +600,12 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                   {inspectingTx.type === 'Expense' ? '-' : inspectingTx.type === 'Income' ? '+' : ''}
                   {Number.parseFloat(inspectingTx.amount).toFixed(2)} MAD
                 </div>
+                {inspectingTx.currency && inspectingTx.currency !== 'MAD' && (
+                  <p className="mt-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                    Native: {Number.parseFloat(inspectingTx.nativeAmount || inspectingTx.amount).toFixed(2)} {inspectingTx.currency}
+                    {inspectingTx.exchangeRateUsed ? ` · Locked FX ${Number.parseFloat(inspectingTx.exchangeRateUsed).toFixed(4)}` : ''}
+                  </p>
+                )}
                 <h3 className="mt-1.5 text-base font-semibold text-gray-900 dark:text-gray-100">
                   {inspectingTx.notes || inspectingTx.category || inspectingTx.type}
                 </h3>
@@ -610,7 +618,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
               {/* Wallet Information Card */}
               <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40 p-4 space-y-3">
                 <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Wallet & Routing
+                  Wallet &amp; Routing
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
@@ -644,6 +652,22 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                         <Tag className="w-3.5 h-3.5" />
                         {contexts.find((c) => c.id === inspectingTx.contextId)?.name}
                       </span>
+                    </div>
+                  )}
+                  {inspectingTx.currency && inspectingTx.currency !== 'MAD' && (
+                    <div className="col-span-2 pt-2 border-t border-gray-200/70 dark:border-gray-700/70 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="text-gray-500 dark:text-gray-400">
+                        Multi-Currency FX Lock:{' '}
+                        <strong className="text-gray-800 dark:text-gray-200">
+                          {Number.parseFloat(inspectingTx.nativeAmount || inspectingTx.amount).toFixed(2)} {inspectingTx.currency}
+                        </strong>
+                        {inspectingTx.exchangeRateUsed ? ` × ${Number.parseFloat(inspectingTx.exchangeRateUsed).toFixed(4)} MAD` : ''}
+                      </span>
+                      {inspectingTx.fxSource && (
+                        <span className="px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-semibold">
+                          Source: {inspectingTx.fxSource}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -742,7 +766,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
               })()}
 
               {/* Connected Stock Order / Equity Trade Card */}
-              {(() => {
+              {isAdvanced && (() => {
                 const matchedOrder = getMatchedStockOrder(inspectingTx);
                 const isInvTransfer =
                   inspectingTx.type === 'Transfer' &&
@@ -1222,9 +1246,11 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         <CardHeader className="flex flex-col gap-4 border-b border-gray-100 dark:border-gray-800 pb-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <CardTitle className="text-xl">Transactions Ledger</CardTitle>
+              <CardTitle className="text-xl">{isAdvanced ? 'Transactions Ledger' : 'Transactions'}</CardTitle>
               <p className="mt-1 text-sm font-normal text-gray-500 dark:text-gray-400">
-                Search, filter, batch-edit, export, and inspect interconnected financial records.
+                {isAdvanced
+                  ? 'Search, filter, batch-edit, export, and inspect interconnected financial records.'
+                  : 'Search, filter, and manage your expenses, income, and transfers.'}
               </p>
             </div>
 
@@ -1308,42 +1334,35 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
 
             {/* View Mode Switcher */}
             <div className="flex items-center self-end sm:self-auto gap-1 rounded-xl border border-gray-200 dark:border-gray-800 p-1 bg-gray-50 dark:bg-gray-800/40">
-              <button
-                type="button"
-                onClick={() => setViewMode('grouped')}
-                className={`p-1.5 rounded-lg text-xs font-medium transition-all ${
-                  viewMode === 'grouped'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
-                }`}
-                title="Grouped by Date Timeline"
-              >
-                <Layers className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('compact')}
-                className={`p-1.5 rounded-lg text-xs font-medium transition-all ${
-                  viewMode === 'compact'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
-                }`}
-                title="Compact List Rows"
-              >
-                <List className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-lg text-xs font-medium transition-all ${
-                  viewMode === 'table'
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
-                }`}
-                title="Spreadsheet / Table View"
-              >
-                <TableIcon className="h-4 w-4" />
-              </button>
+              {([
+                { id: 'grouped', title: 'Grouped by Date Timeline', Icon: Layers },
+                { id: 'compact', title: 'Compact List Rows', Icon: List },
+                { id: 'table', title: 'Spreadsheet / Table View', Icon: TableIcon },
+              ] as const).map(({ id, title, Icon }) => {
+                const active = viewMode === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setViewMode(id)}
+                    className={`relative p-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                      active
+                        ? 'text-gray-900 dark:text-gray-100'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                    }`}
+                    title={title}
+                  >
+                    {active && (
+                      <motion.span
+                        layoutId="txViewModePill"
+                        transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                        className="absolute inset-0 rounded-lg bg-white dark:bg-gray-700 shadow-sm"
+                      />
+                    )}
+                    <Icon className="relative z-10 h-4 w-4" />
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1389,6 +1408,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
             >
               🔄 Transfers
             </button>
+            {isAdvanced && (
             <button
               onClick={() => setQuickPreset(quickPreset === 'stocks' ? 'all' : 'stocks')}
               className={`rounded-full px-3 py-1 font-medium transition-all whitespace-nowrap ${
@@ -1399,6 +1419,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
             >
               📈 Stock Orders &amp; Reserve
             </button>
+            )}
             <button
               onClick={() => setQuickPreset(quickPreset === 'split' ? 'all' : 'split')}
               className={`rounded-full px-3 py-1 font-medium transition-all whitespace-nowrap ${
@@ -1442,8 +1463,15 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
           </div>
 
           {/* Advanced Filters Expandable Drawer */}
+          <AnimatePresence initial={false}>
           {showFilters && (
-            <div className="space-y-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40 p-4 animate-in slide-in-from-top-2">
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              className="space-y-5 rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/40 p-4"
+            >
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                   <SlidersHorizontal className="w-4 h-4 text-gray-500" /> Advanced Filters
@@ -1612,8 +1640,9 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                   ))}
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
         </CardHeader>
 
         <CardContent className="space-y-4 pt-4">
@@ -1643,8 +1672,15 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
           </div>
 
           {/* Floating/Sticky Batch Action Bar */}
+          <AnimatePresence>
           {selectedTxIds.size > 0 && (
-            <div className="sticky top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 px-4 py-3 shadow-xl animate-in fade-in slide-in-from-top-2">
+            <motion.div
+              initial={{ opacity: 0, y: -8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.98 }}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              className="sticky top-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 px-4 py-3 shadow-xl"
+            >
               <div className="flex items-center gap-2">
                 <CheckSquare className="h-4 w-4 text-emerald-400 dark:text-emerald-600" />
                 <span className="text-xs font-bold">
@@ -1699,8 +1735,9 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                   <X className="h-4 w-4" />
                 </button>
               </div>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
 
           {/* VIEW MODE 1: Grouped by Date (Default modern fintech layout) */}
           {viewMode === 'grouped' && (
@@ -1874,6 +1911,18 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                                     {contexts.find((c) => c.id === transaction.contextId)?.name}
                                   </span>
                                 )}
+
+                                {/* Foreign Currency / FX Lock Badge */}
+                                {transaction.currency && transaction.currency !== 'MAD' && (
+                                  <span
+                                    title={`Converted from ${transaction.nativeAmount || transaction.amount} ${transaction.currency}${transaction.exchangeRateUsed ? ` @ FX ${transaction.exchangeRateUsed}` : ''}${transaction.fxSource ? ` (${transaction.fxSource})` : ''}`}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300 border border-sky-200/70 dark:border-sky-800/70"
+                                  >
+                                    <Coins className="w-2.5 h-2.5" />
+                                    {Number.parseFloat(transaction.nativeAmount || transaction.amount).toFixed(2)} {transaction.currency}
+                                    {transaction.exchangeRateUsed ? ` · FX ${Number.parseFloat(transaction.exchangeRateUsed).toFixed(2)}` : ''}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1995,6 +2044,11 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
+                      {transaction.currency && transaction.currency !== 'MAD' && (
+                        <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300">
+                          {Number.parseFloat(transaction.nativeAmount || transaction.amount).toFixed(2)} {transaction.currency}
+                        </span>
+                      )}
                       <span
                         className={`font-semibold text-xs ${
                           transaction.type === 'Income'
@@ -2125,8 +2179,16 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                               : 'text-blue-600 dark:text-blue-400'
                           }`}
                         >
-                          {transaction.type === 'Expense' ? '-' : transaction.type === 'Income' ? '+' : ''}
-                          {Number.parseFloat(transaction.amount).toFixed(2)}
+                          <div>
+                            {transaction.type === 'Expense' ? '-' : transaction.type === 'Income' ? '+' : ''}
+                            {Number.parseFloat(transaction.amount).toFixed(2)}
+                          </div>
+                          {transaction.currency && transaction.currency !== 'MAD' && (
+                            <div className="text-[10px] font-medium text-sky-600 dark:text-sky-400">
+                              {Number.parseFloat(transaction.nativeAmount || transaction.amount).toFixed(2)} {transaction.currency}
+                              {transaction.exchangeRateUsed ? ` @ ${Number.parseFloat(transaction.exchangeRateUsed).toFixed(2)}` : ''}
+                            </div>
+                          )}
                         </td>
                         <td className="p-3 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1">

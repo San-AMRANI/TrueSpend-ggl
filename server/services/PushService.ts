@@ -166,3 +166,5 @@ export class PushService {
     return false;
   }
 }
+
+export const pushService = new PushService();

@@ -1,11 +1,16 @@
-import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Landmark, Trash2, WalletCards, CalendarDays, TrendingUp, Repeat, Zap, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
-import { Debt, Payroll, Transaction, Goal, Subscription, KPI, Wallet, InvestmentsData } from '../../types';
+import React, { useMemo, useState, useEffect } from 'react';
+import { motion } from 'motion/react';
+import { ChevronLeft, ChevronRight, Landmark, Trash2, WalletCards, CalendarDays, TrendingUp, Repeat, Zap, CheckCircle2, ExternalLink, X } from 'lucide-react';
+import { Debt, Payroll, Transaction, Subscription, KPI, Wallet, InvestmentsData, CommitmentOccurrence } from '../../types';
 import { Button } from '../ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { CashFlowTab } from './CashFlowTab';
+import { dashboardService } from '../../services/api/dashboardService';
+import { useAuth } from '../../context/AuthContext';
+import { useCommitmentOccurrences } from '../../hooks/useCommitmentOccurrences';
+import { buildPayrollConfirmPayload } from '../../lib/auditContracts';
 
-type EventKind = 'income' | 'expense' | 'transfer' | 'debt' | 'payroll' | 'goal' | 'subscription' | 'dca' | 'investment';
+type EventKind = 'income' | 'expense' | 'transfer' | 'debt' | 'payroll' | 'goal' | 'subscription' | 'dca' | 'investment' | 'occurrence';
 type CalendarEvent = {
   id: string;
   date: string;
@@ -18,6 +23,7 @@ type CalendarEvent = {
   goalId?: string;
   dcaPlanId?: string;
   subscription?: Subscription;
+  occurrence?: CommitmentOccurrence;
 };
 
 const dateKey = (value: Date | string) => new Date(value).toISOString().slice(0, 10);
@@ -34,9 +40,11 @@ interface FinancialCalendarTabProps {
   investmentsData?: InvestmentsData | null;
   openTransaction: (id: string) => void;
   setActiveTab: (tab: any) => void;
-  onCreatePayroll: (scheduledFor: string, amount: number) => Promise<void>;
+  onCreatePayroll: (scheduledFor: string, amount: number, walletId?: string | null) => Promise<void>;
+  onUpdatePayroll?: (id: string, payload: { scheduledFor?: string; amount?: number; walletId?: string | null }) => Promise<void>;
   onDeletePayroll: (id: string) => Promise<void>;
   onPaySubscription?: (id: string, payload?: { walletId?: string; date?: string }) => Promise<any>;
+  onDataChange?: () => Promise<void> | void;
 }
 
 export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
@@ -50,9 +58,13 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   openTransaction,
   setActiveTab,
   onCreatePayroll,
+  onUpdatePayroll,
   onDeletePayroll,
   onPaySubscription,
+  onDataChange,
 }) => {
+  const { token, user } = useAuth();
+  const isAdvanced = user?.experienceTier === 'advanced';
   const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'cashflow'>('calendar');
   const [payingSubId, setPayingSubId] = useState<string | null>(null);
   const today = dateKey(new Date());
@@ -60,8 +72,67 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   const [ref, setRef] = useState({ year: now.getUTCFullYear(), month: now.getUTCMonth() });
   const [selectedDate, setSelectedDate] = useState(today);
   const [amount, setAmount] = useState('');
+  const [scheduledPayrollWalletId, setScheduledPayrollWalletId] = useState('');
+  const [confirmedPayrollInput, setConfirmedPayrollInput] = useState('');
+  const [confirmedPayrollDate, setConfirmedPayrollDate] = useState(today);
+  const [confirmedPayrollWalletId, setConfirmedPayrollWalletId] = useState('');
+  const [payrollVarianceNotes, setPayrollVarianceNotes] = useState('');
+  const [showOccurrences, setShowOccurrences] = useState(false);
+  const [showAddRecurringIncome, setShowAddRecurringIncome] = useState(false);
+  const [recIncomeTitle, setRecIncomeTitle] = useState('');
+  const [recIncomeAmount, setRecIncomeAmount] = useState('');
+  const [recIncomeCadence, setRecIncomeCadence] = useState<'monthly' | 'weekly' | 'biweekly' | 'quarterly' | 'once'>('monthly');
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // Commitment Settlement Drawer / Modal state
+  const [settlingOcc, setSettlingOcc] = useState<CommitmentOccurrence | null>(null);
+  const [settleAction, setSettleAction] = useState<'pay' | 'partial' | 'reschedule' | 'skip'>('pay');
+  const [settleAmount, setSettleAmount] = useState('');
+  const [settleDate, setSettleDate] = useState(today);
+  const [settleWalletId, setSettleWalletId] = useState('');
+  const [settleLinkedTxId, setSettleLinkedTxId] = useState('');
+  const [settleNotes, setSettleNotes] = useState('');
+
+  const sortedPayrollWallets = useMemo(() => {
+    const score = (w: Wallet) =>
+      (w.type === 'Bank' ? 4 : 0) + (w.isMain ? 2 : 0) + (w.type === 'Savings' ? 1 : 0);
+    return [...wallets].sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
+  }, [wallets]);
+
+  const preferredPayrollWalletId = useMemo(
+    () => sortedPayrollWallets[0]?.id || '',
+    [sortedPayrollWallets]
+  );
+
+  const formatWalletOption = (w: Wallet) =>
+    `${w.name} · ${w.type}${w.isMain ? ' (Main)' : ''} · ${Number(w.balance || 0).toFixed(0)} ${w.currency || 'MAD'}`;
+
+  const {
+    occurrences,
+    busyId: occBusyId,
+    refresh: loadOccurrences,
+    settleOccurrence,
+    createRecurringIncome,
+  } = useCommitmentOccurrences(token, onDataChange);
+
+  useEffect(() => {
+    if (token) {
+      loadOccurrences();
+    }
+  }, [token, loadOccurrences]);
+
+  useEffect(() => {
+    if (!scheduledPayrollWalletId && preferredPayrollWalletId) {
+      setScheduledPayrollWalletId(preferredPayrollWalletId);
+    }
+    if (!confirmedPayrollWalletId && preferredPayrollWalletId) {
+      setConfirmedPayrollWalletId(preferredPayrollWalletId);
+    }
+    if (!settleWalletId && preferredPayrollWalletId) {
+      setSettleWalletId(preferredPayrollWalletId);
+    }
+  }, [preferredPayrollWalletId, scheduledPayrollWalletId, confirmedPayrollWalletId, settleWalletId]);
 
   const events = useMemo<CalendarEvent[]>(() => {
     const transactionEvents = transactions.map((transaction) => {
@@ -91,22 +162,52 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
         transactionId: transaction.id,
       };
     });
-    const payrollEvents = payrolls.map((payroll) => ({
-      id: `payroll-${payroll.id}`,
-      date: dateKey(payroll.scheduledFor),
-      kind: 'payroll' as const,
-      title: 'Payroll',
-      amount: Number.parseFloat(payroll.amount),
-      payroll,
-    }));
-    const debtEvents = debts.filter((debt) => debt.status === 'Pending' && debt.dueDate).map((debt) => ({
-      id: `debt-${debt.id}`,
-      date: dateKey(debt.dueDate!),
-      kind: 'debt' as const,
-      title: debt.contactName,
-      amount: Number.parseFloat(debt.remainingBalance),
-      debtId: debt.id,
-    }));
+    const payrollEvents = payrolls.map((payroll) => {
+      const targetWallet = wallets.find((w) => w.id === payroll.walletId);
+      const walletLabel = targetWallet?.name || payroll.walletName;
+      return {
+        id: `payroll-${payroll.id}`,
+        date: dateKey(payroll.scheduledFor),
+        kind: 'payroll' as const,
+        title: walletLabel ? `Payroll → ${walletLabel}` : 'Payroll',
+        amount: Number.parseFloat(payroll.amount),
+        payroll,
+      };
+    });
+    const occurrenceSubSourceMonthKeys = new Set<string>();
+    const occurrenceDebtSourceMonthKeys = new Set<string>();
+
+    const occurrenceEvents: CalendarEvent[] = (occurrences || [])
+      .filter((occ) => occ.status !== 'cancelled')
+      .map((occ) => {
+        const occMonth = occ.expectedDate.slice(0, 7);
+        if (occ.sourceType === 'subscription' && occ.sourceId) {
+          occurrenceSubSourceMonthKeys.add(`${occ.sourceId}:${occMonth}`);
+        }
+        if (occ.sourceType === 'debt_installment' && occ.sourceId) {
+          occurrenceDebtSourceMonthKeys.add(`${occ.sourceId}:${occMonth}`);
+        }
+        return {
+          id: `occ-${occ.id}`,
+          date: occ.expectedDate,
+          kind: 'occurrence' as const,
+          title: `${occ.sourceType === 'recurring_income' ? '💵 ' : '🗓️ '}${occ.title} (${occ.status})`,
+          amount: Number.parseFloat(occ.expectedAmount || '0'),
+          occurrence: occ,
+        };
+      });
+
+    const debtEvents = debts
+      .filter((debt) => debt.status === 'Pending' && debt.dueDate)
+      .filter((debt) => !occurrenceDebtSourceMonthKeys.has(`${debt.id}:${dateKey(debt.dueDate!).slice(0, 7)}`))
+      .map((debt) => ({
+        id: `debt-${debt.id}`,
+        date: dateKey(debt.dueDate!),
+        kind: 'debt' as const,
+        title: debt.contactName,
+        amount: Number.parseFloat(debt.remainingBalance),
+        debtId: debt.id,
+      }));
 
     const dcaEvents: CalendarEvent[] = [];
 
@@ -128,11 +229,15 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
       });
     }
 
-    // Project active recurring subscriptions onto this calendar month
+    // Project active recurring subscriptions onto this calendar month (only when no occurrence exists for that sub/month)
     const subscriptionEvents: CalendarEvent[] = [];
     const daysInViewMonth = new Date(Date.UTC(ref.year, ref.month + 1, 0)).getUTCDate();
+    const viewMonthKey = `${ref.year}-${String(ref.month + 1).padStart(2, '0')}`;
 
     (subscriptions || []).filter((sub) => sub.status === 'active' || sub.status === 'planned').forEach((sub) => {
+      if (occurrenceSubSourceMonthKeys.has(`${sub.id}:${viewMonthKey}`)) {
+        return;
+      }
       const subAmount = parseFloat(sub.amount) || 0;
       let billDay = 1;
       let anchorYear = ref.year;
@@ -177,8 +282,8 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
       });
     });
 
-    return [...transactionEvents, ...payrollEvents, ...debtEvents, ...dcaEvents, ...subscriptionEvents];
-  }, [debts, payrolls, transactions, subscriptions, investmentsData, ref]);
+    return [...transactionEvents, ...payrollEvents, ...occurrenceEvents, ...debtEvents, ...dcaEvents, ...subscriptionEvents];
+  }, [debts, payrolls, transactions, subscriptions, investmentsData, occurrences, wallets, ref]);
 
   const visible = events.filter((event) => {
     const eventDate = new Date(`${event.date}T00:00:00Z`);
@@ -187,6 +292,17 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   const selected = visible.filter((event) => event.date === selectedDate);
   const selectedPayroll = payrolls.find((payroll) => dateKey(payroll.scheduledFor) === selectedDate);
   const generatedTransaction = selectedPayroll ? transactions.find((transaction) => transaction.payrollId === selectedPayroll.id) : undefined;
+  const resolvedPayrollWalletId = generatedTransaction?.walletId || selectedPayroll?.walletId || preferredPayrollWalletId;
+  const resolvedPayrollWallet = wallets.find((w) => w.id === resolvedPayrollWalletId) || null;
+
+  useEffect(() => {
+    if (selectedPayroll) {
+      setConfirmedPayrollWalletId(selectedPayroll.walletId || generatedTransaction?.walletId || preferredPayrollWalletId);
+    } else if (preferredPayrollWalletId) {
+      setConfirmedPayrollWalletId(preferredPayrollWalletId);
+    }
+  }, [selectedPayroll?.id, selectedPayroll?.walletId, generatedTransaction?.walletId, preferredPayrollWalletId]);
+
   const days = new Date(Date.UTC(ref.year, ref.month + 1, 0)).getUTCDate();
   const offset = (new Date(Date.UTC(ref.year, ref.month, 1)).getUTCDay() + 6) % 7;
 
@@ -196,8 +312,34 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
   };
   const selectDay = (key: string) => {
     setSelectedDate(key);
+    setConfirmedPayrollDate(key);
     setAmount('');
     setNotice(null);
+  };
+  const openSettlementModal = (occ: CommitmentOccurrence, initialAction: 'pay' | 'partial' | 'reschedule' | 'skip' = 'pay') => {
+    const rem = Math.max(0, Number(occ.expectedAmount || 0) - Number(occ.paidAmount || 0));
+    const defaultWallet = wallets.find((w) => w.isMain)?.id || wallets[0]?.id || '';
+    setSettlingOcc(occ);
+    setSettleAction(initialAction);
+    setSettleAmount(
+      initialAction === 'partial'
+        ? (rem / 2).toFixed(2)
+        : rem > 0
+        ? rem.toFixed(2)
+        : String(Number(occ.expectedAmount || 0).toFixed(2))
+    );
+    setSettleDate(
+      initialAction === 'reschedule'
+        ? (() => {
+            const d = new Date(`${occ.expectedDate}T12:00:00Z`);
+            d.setUTCDate(d.getUTCDate() + 7);
+            return d.toISOString().slice(0, 10);
+          })()
+        : today
+    );
+    setSettleWalletId(defaultWallet);
+    setSettleLinkedTxId('');
+    setSettleNotes('');
   };
   const showNotice = (message: string) => {
     setNotice(message);
@@ -209,11 +351,17 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
       showNotice('Enter a payroll amount greater than zero.');
       return;
     }
+    const targetWalletId = scheduledPayrollWalletId || preferredPayrollWalletId || undefined;
+    const chosenWallet = wallets.find((w) => w.id === targetWalletId);
     setSaving(true);
     try {
-      await onCreatePayroll(selectedDate, parsedAmount);
+      await onCreatePayroll(selectedDate, parsedAmount, targetWalletId);
       setAmount('');
-      showNotice(`Payroll set for ${formatDate(selectedDate)}.`);
+      showNotice(
+        chosenWallet
+          ? `Payroll set for ${formatDate(selectedDate)} → ${chosenWallet.name}.`
+          : `Payroll set for ${formatDate(selectedDate)}.`
+      );
     } catch (error: any) {
       showNotice(error?.message || 'Could not save this payroll.');
     } finally {
@@ -243,6 +391,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     subscription: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
     dca: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-semibold',
     investment: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 font-semibold',
+    occurrence: 'bg-teal-100 text-teal-800 dark:bg-teal-950/60 dark:text-teal-300 font-semibold',
   };
 
   return (
@@ -266,30 +415,38 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
         </div>
 
         {/* View Toggle */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700/60 self-start sm:self-auto">
-          <button
-            onClick={() => setActiveSubTab('calendar')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeSubTab === 'calendar'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <CalendarDays className="w-3.5 h-3.5" />
-            <span>Calendar & Payday</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('cashflow')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeSubTab === 'cashflow'
-                ? 'bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Cash Flow Timeline</span>
-          </button>
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700/60 self-start sm:self-auto">
+          {(
+            [
+              { id: 'calendar', label: 'Calendar & Payday', icon: CalendarDays },
+              { id: 'cashflow', label: 'Cash Flow Timeline', icon: TrendingUp },
+            ] as const
+          ).map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeSubTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveSubTab(tab.id)}
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+                  isActive
+                    ? 'text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="calendar-subtab-pill"
+                    transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                    className="absolute inset-0 rounded-lg bg-white dark:bg-gray-900 shadow-sm"
+                  />
+                )}
+                <Icon className="relative z-10 w-3.5 h-3.5 shrink-0" />
+                <span className="relative z-10">{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -373,45 +530,403 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Payroll setup</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Payroll Verification &amp; Setup</CardTitle></CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <p className="font-medium text-gray-900 dark:text-gray-100">{formatDate(selectedDate)}</p>
                 {selectedPayroll ? (
                   <>
-                    <div className="rounded-lg bg-violet-50 p-3 dark:bg-violet-950/50">
-                      <p className="text-xs font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">Configured payroll</p>
-                      <p className="mt-1 text-lg font-bold text-violet-800 dark:text-violet-100">+{Number(selectedPayroll.amount).toFixed(2)} MAD</p>
-                      <p className="mt-1 text-xs text-violet-700 dark:text-violet-300">{generatedTransaction ? 'Automatically posted to Bank.' : selectedDate <= today ? 'Will post on your next data refresh.' : 'Will post automatically on this date.'}</p>
+                    <div className="rounded-lg bg-violet-50 p-3 dark:bg-violet-950/50 space-y-2 border border-violet-200/70 dark:border-violet-800/40">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">
+                          {selectedPayroll.status === 'confirmed' || selectedPayroll.status === 'matched' || generatedTransaction
+                            ? 'Confirmed Salary Inflow'
+                            : 'Expected Scheduled Payroll'}
+                        </p>
+                        <span
+                          className={`text-[11px] font-semibold uppercase tracking-wide ${
+                            selectedPayroll.status === 'confirmed' || selectedPayroll.status === 'matched' || generatedTransaction
+                              ? 'text-emerald-700 dark:text-emerald-300'
+                              : 'text-amber-700 dark:text-amber-300'
+                          }`}
+                        >
+                          {selectedPayroll.status || (generatedTransaction ? 'confirmed' : 'expected')}
+                        </span>
+                      </div>
+                      <p className="text-lg font-bold tabular-nums text-violet-900 dark:text-violet-100">
+                        +{Number(selectedPayroll.confirmedAmount || selectedPayroll.amount).toFixed(2)} MAD
+                      </p>
+
+                      {/* Explicit Destination Bank Account / Wallet Display & Pre-Confirmation Switcher */}
+                      <div className="pt-1 border-t border-violet-200/60 dark:border-violet-800/40 space-y-1">
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="text-violet-700 dark:text-violet-300 font-medium flex items-center gap-1">
+                            <Landmark className="h-3.5 w-3.5 shrink-0" />
+                            <span>Destination Account</span>
+                          </span>
+                          <span className="font-semibold text-violet-950 dark:text-violet-100 truncate">
+                            {resolvedPayrollWallet
+                              ? `${resolvedPayrollWallet.name} · ${resolvedPayrollWallet.type}`
+                              : selectedPayroll.walletName || 'Unassigned'}
+                          </span>
+                        </div>
+                        {!generatedTransaction &&
+                          selectedPayroll.status !== 'confirmed' &&
+                          selectedPayroll.status !== 'matched' &&
+                          onUpdatePayroll &&
+                          sortedPayrollWallets.length > 0 && (
+                            <div>
+                              <label
+                                htmlFor="expected-payroll-wallet"
+                                className="sr-only"
+                              >
+                                Change expected payroll destination bank account
+                              </label>
+                              <select
+                                id="expected-payroll-wallet"
+                                value={selectedPayroll.walletId || resolvedPayrollWalletId || ''}
+                                disabled={saving}
+                                onChange={async (e) => {
+                                  const nextWalletId = e.target.value;
+                                  const nextWallet = wallets.find((w) => w.id === nextWalletId);
+                                  setConfirmedPayrollWalletId(nextWalletId);
+                                  setSaving(true);
+                                  try {
+                                    await onUpdatePayroll(selectedPayroll.id, { walletId: nextWalletId || null });
+                                    showNotice(
+                                      nextWallet
+                                        ? `Expected payroll destination set to ${nextWallet.name} (${nextWallet.type}).`
+                                        : 'Expected payroll destination updated.'
+                                    );
+                                  } catch (err: any) {
+                                    showNotice(err?.message || 'Could not update deposit bank account.');
+                                  } finally {
+                                    setSaving(false);
+                                  }
+                                }}
+                                className="w-full rounded-md border border-violet-200 bg-white px-2.5 py-1 text-xs text-gray-900 dark:border-violet-700/60 dark:bg-gray-900 dark:text-gray-100"
+                              >
+                                {sortedPayrollWallets.map((w) => (
+                                  <option key={w.id} value={w.id}>
+                                    {formatWalletOption(w)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                      </div>
+
+                      {selectedPayroll.varianceAmount && Math.abs(Number(selectedPayroll.varianceAmount)) > 0.01 && (
+                        <p className="text-xs font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+                          Variance vs Expected ({Number(selectedPayroll.amount).toFixed(0)} MAD):{' '}
+                          {Number(selectedPayroll.varianceAmount) > 0 ? '+' : ''}
+                          {Number(selectedPayroll.varianceAmount).toFixed(2)} MAD
+                        </p>
+                      )}
+                      <p className="text-xs text-violet-700 dark:text-violet-300">
+                        {generatedTransaction || selectedPayroll.status === 'confirmed' || selectedPayroll.status === 'matched'
+                          ? `Confirmed and deposited into ${resolvedPayrollWallet ? `${resolvedPayrollWallet.name} (${resolvedPayrollWallet.type})` : selectedPayroll.walletName || 'your selected account'} & double-entry ledger.`
+                          : `Expected salary does not count as received cash until you confirm receipt into ${resolvedPayrollWallet ? resolvedPayrollWallet.name : 'your bank account'}.`}
+                      </p>
                     </div>
                     {generatedTransaction ? (
                       <Button className="w-full" variant="outline" onClick={() => openTransaction(generatedTransaction.id)}>
                         <Landmark className="mr-2 h-4 w-4" />Open payroll transaction
                       </Button>
                     ) : (
-                      <Button className="w-full text-red-600" variant="outline" disabled={saving} onClick={removePayroll}>
-                        <Trash2 className="mr-2 h-4 w-4" />Remove payroll
-                      </Button>
+                      <div className="space-y-2 pt-1">
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                          Confirm Actual Received Salary (MAD)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={confirmedPayrollInput}
+                          onChange={(e) => setConfirmedPayrollInput(e.target.value)}
+                          placeholder={String(selectedPayroll.amount)}
+                          className="w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 tabular-nums dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                        />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-0.5">
+                              Received Date
+                            </label>
+                            <input
+                              type="date"
+                              value={confirmedPayrollDate}
+                              onChange={(e) => setConfirmedPayrollDate(e.target.value)}
+                              className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-medium text-gray-600 dark:text-gray-400 mb-0.5">
+                              Deposit Bank / Account
+                            </label>
+                            <select
+                              value={confirmedPayrollWalletId}
+                              onChange={(e) => setConfirmedPayrollWalletId(e.target.value)}
+                              className="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                            >
+                              {sortedPayrollWallets.map((w) => (
+                                <option key={w.id} value={w.id}>
+                                  {formatWalletOption(w)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <input
+                          type="text"
+                          value={payrollVarianceNotes}
+                          onChange={(e) => setPayrollVarianceNotes(e.target.value)}
+                          placeholder="Variance / bonus notes (optional)"
+                          className="w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                        />
+                        <Button
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                          disabled={saving}
+                          onClick={async () => {
+                            setSaving(true);
+                            try {
+                              const actual = confirmedPayrollInput
+                                ? parseFloat(confirmedPayrollInput)
+                                : parseFloat(selectedPayroll.amount);
+                              const chosenWalletId = confirmedPayrollWalletId || selectedPayroll.walletId || preferredPayrollWalletId || undefined;
+                              const chosenWallet = wallets.find((w) => w.id === chosenWalletId);
+                              const payload = buildPayrollConfirmPayload({
+                                confirmedAmount: actual,
+                                confirmedDate: confirmedPayrollDate || selectedDate,
+                                walletId: chosenWalletId,
+                                varianceNotes: payrollVarianceNotes || undefined,
+                              });
+                              const res = await dashboardService.confirmPayroll(
+                                selectedPayroll.id,
+                                payload,
+                                token
+                              );
+                              setConfirmedPayrollInput('');
+                              setPayrollVarianceNotes('');
+                              await Promise.all([loadOccurrences(), Promise.resolve(onDataChange?.())]);
+                              const varianceTxt =
+                                Math.abs(Number(res.variance || 0)) > 0.01
+                                  ? ` (variance ${Number(res.variance) > 0 ? '+' : ''}${Number(res.variance).toFixed(2)} MAD)`
+                                  : '';
+                              showNotice(
+                                res.alreadyConfirmed
+                                  ? 'Payroll was already confirmed in the ledger.'
+                                  : `Payroll confirmed (+${actual.toFixed(2)} MAD${varianceTxt}) and deposited to ${chosenWallet?.name || 'wallet'}!`
+                              );
+                            } catch (err: any) {
+                              showNotice(err?.message || 'Failed to confirm payroll');
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          Confirm Salary Receipt
+                        </Button>
+                        <Button className="w-full text-red-600" variant="outline" disabled={saving} onClick={removePayroll}>
+                          <Trash2 className="mr-2 h-4 w-4" />Remove payroll
+                        </Button>
+                      </div>
                     )}
                   </>
                 ) : (
                   <>
-                    <p className="text-gray-500 dark:text-gray-400">Set this day as the one payroll for {monthLabel(ref.year, ref.month)}. You must also set the next month to form a complete financial period.</p>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300" htmlFor="payroll-amount">Payroll amount (MAD)</label>
-                    <input
-                      id="payroll-amount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={amount}
-                      onChange={(event) => setAmount(event.target.value)}
-                      className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                      placeholder="e.g. 8000"
-                    />
-                    <Button className="w-full" disabled={saving} onClick={savePayroll}>
+                    <p className="text-gray-500 dark:text-gray-400">Set this day as the one payroll for {monthLabel(ref.year, ref.month)} and choose which bank account or wallet it deposits into.</p>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="payroll-amount">
+                        Expected Payroll Amount (MAD)
+                      </label>
+                      <input
+                        id="payroll-amount"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={amount}
+                        onChange={(event) => setAmount(event.target.value)}
+                        className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 tabular-nums dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                        placeholder="e.g. 8000"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1" htmlFor="payroll-wallet">
+                        Deposit Bank Account / Wallet
+                      </label>
+                      <select
+                        id="payroll-wallet"
+                        value={scheduledPayrollWalletId || preferredPayrollWalletId}
+                        onChange={(e) => setScheduledPayrollWalletId(e.target.value)}
+                        className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                      >
+                        {sortedPayrollWallets.length === 0 ? (
+                          <option value="">No wallets found — create one in Accounts &amp; Wallets</option>
+                        ) : (
+                          sortedPayrollWallets.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {formatWalletOption(w)}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                        This tells TrueSpend which bank account will receive your salary when confirmed.
+                      </p>
+                    </div>
+                    <Button className="w-full" disabled={saving || sortedPayrollWallets.length === 0} onClick={savePayroll}>
                       <WalletCards className="mr-2 h-4 w-4" />{saving ? 'Saving…' : 'Set payroll day'}
                     </Button>
                   </>
                 )}
+
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowOccurrences((prev) => !prev)}
+                    className="w-full text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center justify-between"
+                  >
+                    <span>Unified Commitment Occurrences Ledger</span>
+                    <span>{showOccurrences ? 'Hide' : 'Open'}</span>
+                  </button>
+                  {showOccurrences && (
+                    <div className="mt-2 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-gray-500">Rolling horizon obligations &amp; income</span>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddRecurringIncome((v) => !v)}
+                          className="text-[11px] font-semibold text-emerald-600 hover:underline"
+                        >
+                          {showAddRecurringIncome ? 'Close' : '+ Recurring Income'}
+                        </button>
+                      </div>
+
+                      {showAddRecurringIncome && (
+                        <div className="p-2 rounded border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-1.5">
+                          <input
+                            type="text"
+                            placeholder="Title (e.g. Rental Income / Freelance)"
+                            value={recIncomeTitle}
+                            onChange={(e) => setRecIncomeTitle(e.target.value)}
+                            className="w-full px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                          />
+                          <div className="flex gap-1.5">
+                            <input
+                              type="number"
+                              placeholder="Amount (MAD)"
+                              value={recIncomeAmount}
+                              onChange={(e) => setRecIncomeAmount(e.target.value)}
+                              className="flex-1 px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                            />
+                            <select
+                              value={recIncomeCadence}
+                              onChange={(e) => setRecIncomeCadence(e.target.value as any)}
+                              className="px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
+                            >
+                              <option value="monthly">Monthly</option>
+                              <option value="weekly">Weekly</option>
+                              <option value="biweekly">Biweekly</option>
+                              <option value="quarterly">Quarterly</option>
+                              <option value="once">One-time</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const amt = parseFloat(recIncomeAmount);
+                                if (!recIncomeTitle.trim() || !Number.isFinite(amt) || amt <= 0) return;
+                                await createRecurringIncome({
+                                  title: recIncomeTitle.trim(),
+                                  expectedAmount: amt,
+                                  expectedDate: selectedDate,
+                                  cadence: recIncomeCadence,
+                                });
+                                setRecIncomeTitle('');
+                                setRecIncomeAmount('');
+                                setShowAddRecurringIncome(false);
+                                showNotice('Recurring income commitment scheduled!');
+                              }}
+                              className="px-2.5 py-1 rounded bg-emerald-600 text-white text-xs font-semibold"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                        {occurrences.slice(0, 12).map((occ) => (
+                          <div
+                            key={occ.id}
+                            className="rounded border border-gray-100 dark:border-gray-800 p-2 space-y-1"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="truncate">
+                                <p className="font-semibold text-gray-900 dark:text-white truncate">{occ.title}</p>
+                                <p className="text-[10px] text-gray-500">
+                                  {occ.expectedDate} · {occ.sourceType} · {occ.status}
+                                  {occ.installmentNumber ? ` · #${occ.installmentNumber}` : ''}
+                                </p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <span className="font-mono font-bold text-gray-900 dark:text-white">
+                                  {Number(occ.expectedAmount || 0).toFixed(0)} {occ.currency || 'MAD'}
+                                </span>
+                                {Number(occ.paidAmount || 0) > 0 && (
+                                  <p className="text-[10px] text-emerald-600 font-mono">
+                                    Paid: {Number(occ.paidAmount).toFixed(0)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            {(Number(occ.principalComponent || 0) > 0 || Number(occ.interestComponent || 0) > 0) && (
+                              <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">
+                                Principal {Number(occ.principalComponent || 0).toFixed(2)} · Interest {Number(occ.interestComponent || 0).toFixed(2)}
+                              </p>
+                            )}
+
+                            {(occ.status === 'scheduled' || occ.status === 'partial' || occ.status === 'overdue') && (
+                              <div className="flex flex-wrap gap-1 pt-0.5">
+                                <button
+                                  type="button"
+                                  disabled={occBusyId === occ.id}
+                                  onClick={() => openSettlementModal(occ, 'pay')}
+                                  className="px-2 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-semibold"
+                                >
+                                  Settle…
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={occBusyId === occ.id}
+                                  onClick={() => openSettlementModal(occ, 'partial')}
+                                  className="px-2 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-semibold"
+                                >
+                                  Partial…
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={occBusyId === occ.id}
+                                  onClick={() => openSettlementModal(occ, 'reschedule')}
+                                  className="px-2 py-0.5 rounded bg-amber-600 text-white text-[10px] font-semibold"
+                                >
+                                  Reschedule…
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={occBusyId === occ.id}
+                                  onClick={() => openSettlementModal(occ, 'skip')}
+                                  className="px-2 py-0.5 rounded bg-gray-500 text-white text-[10px] font-semibold"
+                                >
+                                  Skip…
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -421,6 +936,25 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
             <CardContent>
               {selected.length ? (
                 <div className="space-y-2">
+                  {selectedPayroll && (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-violet-200 dark:border-violet-900/60 bg-violet-50/40 dark:bg-violet-950/20 p-3.5">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                          {selectedPayroll.status === 'confirmed' || selectedPayroll.status === 'matched' || generatedTransaction
+                            ? 'Confirmed Salary Deposit'
+                            : 'Expected Scheduled Payroll'}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          Destination: <strong>{resolvedPayrollWallet ? `${resolvedPayrollWallet.name} (${resolvedPayrollWallet.type})` : selectedPayroll.walletName || 'Unassigned'}</strong>
+                          {' · '}
+                          <span className="uppercase">{selectedPayroll.status || (generatedTransaction ? 'confirmed' : 'expected')}</span>
+                        </p>
+                      </div>
+                      <span className="font-mono font-bold tabular-nums text-sm text-violet-800 dark:text-violet-200 shrink-0">
+                        +{Number(selectedPayroll.confirmedAmount || selectedPayroll.amount).toFixed(2)} MAD
+                      </span>
+                    </div>
+                  )}
                   {selected.filter((event) => event.kind !== 'payroll').map((event) => {
                     if (event.kind === 'subscription' && event.subscription) {
                       const sub = event.subscription;
@@ -505,6 +1039,49 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                       );
                     }
 
+                    if (event.kind === 'occurrence' && event.occurrence) {
+                      const occ = event.occurrence;
+                      const isActionable = occ.status === 'scheduled' || occ.status === 'partial' || occ.status === 'overdue';
+                      return (
+                        <div
+                          key={event.id}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-teal-200 dark:border-teal-900/60 bg-teal-50/40 dark:bg-teal-950/20 p-3.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">{occ.title}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {occ.sourceType.replace(/_/g, ' ')} · Status: <strong className="uppercase">{occ.status}</strong>
+                              {Number(occ.paidAmount || 0) > 0 ? ` · Paid ${Number(occ.paidAmount).toFixed(2)} ${occ.currency || 'MAD'}` : ''}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-mono font-bold text-sm text-gray-900 dark:text-white">
+                              {Number(occ.expectedAmount || 0).toFixed(2)} {occ.currency || 'MAD'}
+                            </span>
+                            {isActionable && (
+                              <Button
+                                size="sm"
+                                className="h-8 text-xs bg-teal-600 hover:bg-teal-700 text-white"
+                                onClick={() => openSettlementModal(occ, 'pay')}
+                              >
+                                Settle…
+                              </Button>
+                            )}
+                            {occ.linkedTransactionId && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 text-xs"
+                                onClick={() => openTransaction(occ.linkedTransactionId!)}
+                              >
+                                Open Tx
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <button
                         key={event.id}
@@ -513,7 +1090,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                             ? openTransaction(event.transactionId)
                             : event.debtId
                             ? setActiveTab('debts')
-                            : event.kind === 'dca' || event.kind === 'investment'
+                            : isAdvanced && (event.kind === 'dca' || event.kind === 'investment')
                             ? setActiveTab('investments')
                             : undefined
                         }
@@ -522,7 +1099,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
                         <div className="min-w-0">
                           <p className="font-medium text-gray-900 dark:text-gray-100">{event.title}</p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {event.kind === 'dca' ? 'Recommended 15% Payday Stock Allocation • Click to open Stocks' : event.kind}
+                            {event.kind === 'dca' && isAdvanced ? 'Recommended 15% Payday Stock Allocation • Click to open Stocks' : event.kind}
                           </p>
                         </div>
                         <span className="shrink-0 font-semibold text-gray-900 dark:text-gray-100">
@@ -537,6 +1114,194 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
               )}
             </CardContent>
           </Card>
+
+          {/* Interactive Commitment Settlement Modal */}
+          {settlingOcc && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+              onClick={() => setSettlingOcc(null)}
+            >
+              <form
+                onClick={(e) => e.stopPropagation()}
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const parsedAmount = Number(settleAmount);
+                  try {
+                    await settleOccurrence(settlingOcc.id, {
+                      action: settleAction,
+                      ...((settleAction === 'pay' || settleAction === 'partial') && Number.isFinite(parsedAmount) && parsedAmount > 0
+                        ? { actualAmount: parsedAmount }
+                        : {}),
+                      ...((settleAction === 'pay' || settleAction === 'partial') && settleDate
+                        ? { actualDate: settleDate }
+                        : {}),
+                      ...(settleAction === 'reschedule' && settleDate
+                        ? { newDate: settleDate }
+                        : {}),
+                      ...((settleAction === 'pay' || settleAction === 'partial') && settleWalletId && !settleLinkedTxId
+                        ? { walletId: settleWalletId }
+                        : {}),
+                      ...(settleLinkedTxId ? { linkedTransactionId: settleLinkedTxId } : {}),
+                      ...(settleNotes.trim()
+                        ? { notes: settleNotes.trim(), reason: settleNotes.trim(), varianceNotes: settleNotes.trim() }
+                        : {}),
+                    });
+                    showNotice(`Updated commitment: ${settlingOcc.title}`);
+                    setSettlingOcc(null);
+                  } catch (err: any) {
+                    showNotice(err?.message || 'Could not settle commitment.');
+                  }
+                }}
+                className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-2xl space-y-4"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                      Commitment Settlement Drawer
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {settlingOcc.title} · Expected {Number(settlingOcc.expectedAmount || 0).toFixed(2)} {settlingOcc.currency || 'MAD'} on {settlingOcc.expectedDate}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSettlingOcc(null)}
+                    className="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(['pay', 'partial', 'reschedule', 'skip'] as const).map((action) => (
+                    <button
+                      key={action}
+                      type="button"
+                      onClick={() => setSettleAction(action)}
+                      className={`px-2 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                        settleAction === action
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+                      }`}
+                    >
+                      {action === 'pay' ? 'Pay Full' : action === 'partial' ? 'Partial' : action === 'reschedule' ? 'Move Date' : 'Skip'}
+                    </button>
+                  ))}
+                </div>
+
+                {(settleAction === 'pay' || settleAction === 'partial') && (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Actual Amount ({settlingOcc.currency || 'MAD'})
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={settleAmount}
+                          onChange={(e) => setSettleAmount(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm font-mono text-gray-900 dark:text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Actual Date
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={settleDate}
+                          onChange={(e) => setSettleDate(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                        Link Existing Transaction (Optional)
+                      </label>
+                      <select
+                        value={settleLinkedTxId}
+                        onChange={(e) => setSettleLinkedTxId(e.target.value)}
+                        className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs text-gray-900 dark:text-white"
+                      >
+                        <option value="">Create new wallet transaction automatically</option>
+                        {transactions.slice(0, 20).map((tx) => (
+                          <option key={tx.id} value={tx.id}>
+                            {tx.createdAt.slice(0, 10)} · {tx.notes || tx.category} · {Number(tx.amount).toFixed(2)} MAD
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {!settleLinkedTxId && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Wallet / Account
+                        </label>
+                        <select
+                          value={settleWalletId}
+                          onChange={(e) => setSettleWalletId(e.target.value)}
+                          className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
+                        >
+                          {wallets.map((w) => (
+                            <option key={w.id} value={w.id}>
+                              {w.name} ({w.balance.toFixed(2)} {w.currency || 'MAD'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {settleAction === 'reschedule' && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      New Expected Date
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={settleDate}
+                      onChange={(e) => setSettleDate(e.target.value)}
+                      className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    {settleAction === 'skip' || settleAction === 'reschedule' ? 'Reason (Optional)' : 'Notes / Variance Notes (Optional)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settleNotes}
+                    onChange={(e) => setSettleNotes(e.target.value)}
+                    placeholder="Add context for the audit log..."
+                    className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-white"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setSettlingOcc(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={occBusyId === settlingOcc.id}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    {occBusyId === settlingOcc.id ? 'Saving...' : 'Confirm Action'}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
         </>
       )}
     </div>
