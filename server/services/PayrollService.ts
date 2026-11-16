@@ -1,6 +1,6 @@
 import { eq, and } from 'drizzle-orm';
 import { db } from '../../src/db/index.js';
-import { payrolls } from '../../src/db/schema.js';
+import { payrolls, commitmentOccurrences } from '../../src/db/schema.js';
 import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { walletService } from './WalletService.js';
@@ -160,6 +160,16 @@ export class PayrollService {
       throw new Error('This payroll has already been confirmed and posted. Edit its transaction instead.');
     }
     await payrollRepository.deleteByIdAndUserId(payrollId, userId);
+    await db
+      .delete(commitmentOccurrences)
+      .where(
+        and(
+          eq(commitmentOccurrences.userId, userId),
+          eq(commitmentOccurrences.sourceType, 'payroll'),
+          eq(commitmentOccurrences.sourceId, payrollId)
+        )
+      )
+      .catch(() => undefined);
   }
 
   /**

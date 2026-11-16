@@ -177,7 +177,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     const occurrenceDebtSourceMonthKeys = new Set<string>();
 
     const occurrenceEvents: CalendarEvent[] = (occurrences || [])
-      .filter((occ) => occ.status !== 'cancelled')
+      .filter((occ) => occ.status !== 'cancelled' && occ.sourceType !== 'payroll')
       .map((occ) => {
         const occMonth = occ.expectedDate.slice(0, 7);
         if (occ.sourceType === 'subscription' && occ.sourceId) {
@@ -355,6 +355,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     setSaving(true);
     try {
       await onCreatePayroll(selectedDate, parsedAmount, targetWalletId);
+      await loadOccurrences();
       setAmount('');
       showNotice(
         chosenWallet
@@ -372,6 +373,7 @@ export const FinancialCalendarTab: React.FC<FinancialCalendarTabProps> = ({
     setSaving(true);
     try {
       await onDeletePayroll(selectedPayroll.id);
+      await loadOccurrences();
       showNotice('Payroll removed.');
     } catch (error: any) {
       showNotice(error?.message || 'Could not remove this payroll.');

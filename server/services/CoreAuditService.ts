@@ -1333,13 +1333,57 @@ export class CoreAuditService {
   }
 
   async syncAndGetCommitmentOccurrences(userId: string, horizonDays = 90) {
-    const [userSubs, userDebts, userPayrolls, userWallets] = await Promise.all([
+    const [userSubs, userDebts, userPayrolls, userWallets, existingOccs] = await Promise.all([
       db.select().from(subscriptions).where(eq(subscriptions.userId, userId)),
       db.select().from(debts).where(eq(debts.userId, userId)),
       db.select().from(payrolls).where(eq(payrolls.userId, userId)),
       db.select().from(wallets).where(eq(wallets.userId, userId)),
+      db.select().from(commitmentOccurrences).where(eq(commitmentOccurrences.userId, userId)),
     ]);
     const walletMap = new Map(userWallets.map((w) => [w.id, w]));
+    const subMap = new Map(userSubs.map((s) => [s.id, s]));
+    const debtMap = new Map(userDebts.map((d) => [d.id, d]));
+    const payrollMap = new Map(userPayrolls.map((p) => [p.id, p]));
+
+    const staleOccurrenceIds: string[] = [];
+    for (const occ of existingOccs) {
+      if (occ.sourceType === 'payroll') {
+        const pr = payrollMap.get(occ.sourceId);
+        if (!pr) {
+          staleOccurrenceIds.push(occ.id);
+          continue;
+        }
+        const prDate = new Date(pr.scheduledFor).toISOString().slice(0, 10);
+        if ((occ.status === 'scheduled' || occ.status === 'overdue') && occ.expectedDate !== prDate) {
+          staleOccurrenceIds.push(occ.id);
+        }
+      } else if (occ.sourceType === 'subscription') {
+        if (occ.status === 'scheduled' || occ.status === 'overdue') {
+          const sub = subMap.get(occ.sourceId);
+          if (!sub || (sub.status !== 'active' && sub.status !== 'planned')) {
+            staleOccurrenceIds.push(occ.id);
+          }
+        }
+      } else if (occ.sourceType === 'debt_installment') {
+        if (occ.status === 'scheduled' || occ.status === 'overdue') {
+          const debt = debtMap.get(occ.sourceId);
+          if (!debt || debt.status === 'Cleared') {
+            staleOccurrenceIds.push(occ.id);
+          }
+        }
+      }
+    }
+
+    if (staleOccurrenceIds.length > 0) {
+      await db
+        .delete(commitmentOccurrences)
+        .where(
+          and(
+            eq(commitmentOccurrences.userId, userId),
+            inArray(commitmentOccurrences.id, staleOccurrenceIds)
+          )
+        );
+    }
 
     const todayStr = new Date().toISOString().slice(0, 10);
     const horizonEnd = new Date(Date.now() + Math.max(7, horizonDays) * 86400000);
@@ -1448,12 +1492,13 @@ export class CoreAuditService {
               eq(commitmentOccurrences.sourceId, pr.id)
             )
           );
-      } else if (prWallet) {
+      } else {
         await db
           .update(commitmentOccurrences)
           .set({
-            title: `💰 Scheduled Salary / Payroll → ${prWallet.name}`,
-            notes: `Destination account: ${prWallet.name} (${prWallet.type})`,
+            title: prWallet ? `💰 Scheduled Salary / Payroll → ${prWallet.name}` : '💰 Scheduled Salary / Payroll',
+            expectedAmount: String(pr.amount),
+            notes: prWallet ? `Destination account: ${prWallet.name} (${prWallet.type})` : null,
             updatedAt: new Date(),
           })
           .where(
@@ -1675,6 +1720,7 @@ export class CoreAuditService {
           .values({
             userId,
             walletId: targetWallet.id,
+            payrollId: occ.sourceType === 'payroll' ? occ.sourceId : null,
             amount: String(madAmt),
             nativeAmount: String(paymentAmt),
             currency: occ.currency || 'MAD',
@@ -1735,6 +1781,17 @@ export class CoreAuditService {
             })
             .where(eq(debts.id, debt.id));
         }
+      } else if (isFull && occ.sourceType === 'payroll') {
+        await txDb
+          .update(payrolls)
+          .set({
+            status: 'confirmed',
+            confirmedAmount: String(cumulativePaid),
+            confirmedAt: new Date(`${actualDate}T12:00:00.000Z`),
+            varianceAmount: String(variance),
+            ...(dto.walletId ? { walletId: dto.walletId } : {}),
+          })
+          .where(and(eq(payrolls.id, occ.sourceId), eq(payrolls.userId, userId)));
       }
 
       priorHistory.push({
