@@ -890,7 +890,21 @@ export class AuthService {
       .limit(1);
 
     if (found.length === 0) {
-      return genericResponse;
+      const fallbackToken = generateOpaqueToken(16);
+      const delivery = await emailService.enqueueAndSend({
+        userId: null,
+        recipientEmail: cleanEmail,
+        templateName: 'email_verification',
+        subject: 'Verify your TrueSpend email address',
+        payload: {
+          displayName: cleanEmail.split('@')[0] || 'there',
+          token: fallbackToken,
+        },
+      });
+      return {
+        ...genericResponse,
+        deliveryStatus: delivery.status,
+      };
     }
 
     const userRow = found[0];
@@ -919,7 +933,7 @@ export class AuthService {
       });
     });
 
-    await emailService.enqueueAndSend({
+    const delivery = await emailService.enqueueAndSend({
       userId: userRow.id,
       recipientEmail: cleanEmail,
       templateName: isPendingChange ? 'email_change_verification' : 'email_verification',
@@ -943,6 +957,7 @@ export class AuthService {
     const isDevPreview = process.env.NODE_ENV !== 'production' && !process.env.RESEND_API_KEY;
     return {
       ...genericResponse,
+      deliveryStatus: delivery.status,
       ...(isDevPreview ? { devVerificationToken: rawToken } : {}),
     };
   }
@@ -970,7 +985,21 @@ export class AuthService {
       .limit(1);
 
     if (found.length === 0) {
-      return genericResponse;
+      const fallbackToken = generateOpaqueToken(16);
+      const delivery = await emailService.enqueueAndSend({
+        userId: null,
+        recipientEmail: cleanEmail,
+        templateName: 'password_reset',
+        subject: 'Reset your TrueSpend password',
+        payload: {
+          displayName: cleanEmail.split('@')[0] || 'there',
+          token: fallbackToken,
+        },
+      });
+      return {
+        ...genericResponse,
+        deliveryStatus: delivery.status,
+      };
     }
 
     const userRow = found[0];
@@ -991,7 +1020,7 @@ export class AuthService {
       });
     });
 
-    await emailService.enqueueAndSend({
+    const delivery = await emailService.enqueueAndSend({
       userId: userRow.id,
       recipientEmail: userRow.email,
       templateName: 'password_reset',
@@ -1013,6 +1042,7 @@ export class AuthService {
     const isDevPreview = process.env.NODE_ENV !== 'production' && !process.env.RESEND_API_KEY;
     return {
       ...genericResponse,
+      deliveryStatus: delivery.status,
       ...(isDevPreview ? { devResetToken: rawToken } : {}),
     };
   }

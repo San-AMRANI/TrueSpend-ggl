@@ -10,6 +10,7 @@ import {
 import { AuthRequest } from '../../src/middleware/auth.js';
 import { getClientIp } from '../middleware/rateLimit.js';
 import { isProductionEnv } from '../services/SecurityCrypto.js';
+import { emailService, EmailTemplateName } from '../services/EmailService.js';
 
 function getClientContext(req: Request): RequestClientContext {
   const userAgent = String(req.headers['user-agent'] || '');
@@ -299,6 +300,28 @@ export class AuthController {
       res.status(201).json(created);
     } catch (e: any) {
       handleAuthError(res, e, 400);
+    }
+  }
+
+  async testEmail(req: Request, res: Response) {
+    try {
+      const email = String(req.body?.email || req.query?.email || 'frank.ctl35@gmail.com').trim();
+      const templateName = (req.body?.templateName ||
+        req.query?.templateName ||
+        'email_verification') as EmailTemplateName;
+      const subject = req.body?.subject ? String(req.body.subject) : undefined;
+      const payload =
+        req.body?.payload && typeof req.body.payload === 'object' ? req.body.payload : undefined;
+
+      const result = await emailService.sendTestEmailWithDiagnostics({
+        email,
+        templateName,
+        subject,
+        payload,
+      });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Test email failed' });
     }
   }
 }

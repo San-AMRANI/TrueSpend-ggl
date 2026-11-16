@@ -96,5 +96,11 @@ router.get('/auth/security-events', requireAuth, (req, res) =>
 router.post('/invitations', requireAuth, requireUserManager, (req, res) =>
   authController.createInvitation(req as any, res)
 );
+router.get('/auth/test-email', recoveryEmailLimiter, (req, res) =>
+  authController.testEmail(req, res)
+);
+router.post('/auth/test-email', recoveryEmailLimiter, (req, res) =>
+  authController.testEmail(req, res)
+);
 
 export default router;
