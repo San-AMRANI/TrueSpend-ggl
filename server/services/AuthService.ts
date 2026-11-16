@@ -563,16 +563,6 @@ export class AuthService {
       .where(eq(users.id, userRow.id))
       .returning();
 
-    const priorSessions = await db
-      .select({ ipAddress: authSessions.ipAddress, deviceLabel: authSessions.deviceLabel })
-      .from(authSessions)
-      .where(eq(authSessions.userId, updatedUser.id))
-      .limit(10);
-
-    const isKnownContext = priorSessions.some(
-      (s) => s.ipAddress === ctx.ipAddress && s.deviceLabel === ctx.deviceLabel
-    );
-
     const pair = await this.issueSessionPair(updatedUser, ctx);
 
     await this.logSecurityEvent({
@@ -584,7 +574,7 @@ export class AuthService {
       metadata: { sessionId: pair.sessionId },
     });
 
-    if (priorSessions.length > 0 && !isKnownContext) {
+    if (updatedUser.email && updatedUser.email.includes('@')) {
       await emailService.enqueueAndSend({
         userId: updatedUser.id,
         recipientEmail: updatedUser.email,
@@ -905,9 +895,6 @@ export class AuthService {
 
     const userRow = found[0];
     const isPendingChange = userRow.pendingEmail?.toLowerCase() === cleanEmail;
-    if (userRow.emailVerifiedAt && !isPendingChange && userRow.status !== 'pending_verification') {
-      return genericResponse;
-    }
 
     const rawToken = generateOpaqueToken(32);
     const tokenHash = hashOpaqueToken(rawToken);

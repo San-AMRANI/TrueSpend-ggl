@@ -376,8 +376,10 @@ export class EmailService {
         .returning();
       outboxId = inserted.id;
     } catch (err) {
-      console.warn('[EmailService] Failed to insert outbox row:', (err as any)?.message || err);
-      return { outboxId: '', status: 'skipped' };
+      console.warn(
+        '[EmailService] Outbox DB insert warning (proceeding with direct Resend delivery):',
+        (err as any)?.message || err
+      );
     }
 
     return await this.deliverOutboxEntry(
@@ -405,7 +407,7 @@ export class EmailService {
       },
       body: JSON.stringify({
         from: fromAddress,
-        to: [recipientEmail],
+        to: [recipientEmail.trim()],
         subject,
         html,
         text: textFallback,
@@ -420,15 +422,22 @@ export class EmailService {
     templateName: EmailTemplateName,
     payload: Record<string, any>
   ): Promise<{ outboxId: string; status: string }> {
-    const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
-    const emailFrom = this.resolveFromAddress();
+    const rawKey = (
+      process.env.RESEND_API_KEY ||
+      process.env.RESEND_KEY ||
+      process.env.VITE_RESEND_API_KEY ||
+      ''
+    )
+      .trim()
+      .replace(/^["']|["']$/g, '');
+    const emailFrom = this.resolveFromAddress().replace(/^["']|["']$/g, '');
     const model = this.buildTemplateModel(templateName, subject, payload);
     const html = this.renderHtml(templateName, payload, subject);
 
     try {
-      if (resendApiKey) {
+      if (rawKey) {
         let res = await this.sendViaResend(
-          resendApiKey,
+          rawKey,
           emailFrom,
           recipientEmail,
           subject,
@@ -436,28 +445,32 @@ export class EmailService {
           model.textFallback
         );
 
-        // If a custom EMAIL_FROM domain is unverified in Resend (403 validation_error),
-        // automatically fall back to Resend's default verified sender (onboarding@resend.dev).
-        if (!res.ok && res.status === 403 && emailFrom !== DEFAULT_RESEND_FROM) {
+        // If custom EMAIL_FROM fails with 403 or 422 (domain not verified / invalid from),
+        // automatically retry with Resend's default verified sender.
+        if (!res.ok && (res.status === 403 || res.status === 422)) {
           const firstErrText = await res.text().catch(() => '');
-          if (
-            firstErrText.toLowerCase().includes('domain') ||
-            firstErrText.toLowerCase().includes('not verified') ||
-            firstErrText.toLowerCase().includes('validation_error')
-          ) {
-            console.warn(
-              `[EmailService] Custom sender "${emailFrom}" is not verified in Resend; retrying with default "${DEFAULT_RESEND_FROM}".`
-            );
+          console.warn(
+            `[EmailService] Primary sender "${emailFrom}" returned ${res.status} (${firstErrText.slice(0, 120)}); retrying with "${DEFAULT_RESEND_FROM}".`
+          );
+          if (emailFrom !== DEFAULT_RESEND_FROM) {
             res = await this.sendViaResend(
-              resendApiKey,
+              rawKey,
               DEFAULT_RESEND_FROM,
               recipientEmail,
               subject,
               html,
               model.textFallback
             );
-          } else {
-            throw new Error(`Email provider error (${res.status}): ${firstErrText.slice(0, 160)}`);
+          }
+          if (!res.ok && (res.status === 403 || res.status === 422)) {
+            res = await this.sendViaResend(
+              rawKey,
+              'onboarding@resend.dev',
+              recipientEmail,
+              subject,
+              html,
+              model.textFallback
+            );
           }
         }
 
@@ -485,6 +498,7 @@ export class EmailService {
       }
       return { outboxId, status: 'sent' };
     } catch (err: any) {
+      console.error('[EmailService] Delivery error:', err?.message || err);
       if (outboxId) {
         await db
           .update(emailOutbox)
