@@ -13,9 +13,9 @@ import { eq } from 'drizzle-orm';
 import { PushService } from './PushService.js';
 import { KpiService } from './KpiService.js';
 import { settingsService } from './SettingsService.js';
+import { decryptSecret } from './SecurityCrypto.js';
 import { investmentService } from './InvestmentService.js';
 import { coreAuditService } from './CoreAuditService.js';
-import { payrollService } from './PayrollService.js';
 
 const pushService = new PushService();
 const kpiService = new KpiService();
@@ -72,9 +72,6 @@ function projectNextBillingDate(
 }
 
 export class NotificationScheduler {
-  private isProcessingNotifications = false;
-  private isProcessingBackups = false;
-
   start() {
     // Notification delivery run every minute
     cron.schedule('* * * * *', async () => {
@@ -96,8 +93,6 @@ export class NotificationScheduler {
   }
 
   async processAutomatedBackups() {
-    if (this.isProcessingBackups) return;
-    this.isProcessingBackups = true;
     try {
       const backupUsers = await db
         .select()
@@ -105,7 +100,7 @@ export class NotificationScheduler {
         .where(eq(users.automatedDriveBackups, 1));
 
       for (const user of backupUsers) {
-        if (!user.googleDriveToken) continue;
+        if (!user.googleDriveToken || user.status !== 'active' || !user.emailVerifiedAt) continue;
 
         if (
           user.googleDriveTokenExpiry &&
@@ -113,6 +108,9 @@ export class NotificationScheduler {
         ) {
           continue;
         }
+
+        const decryptedToken = decryptSecret(user.googleDriveToken);
+        if (!decryptedToken) continue;
 
         const lastBackup = user.lastDriveBackupDate
           ? new Date(user.lastDriveBackupDate).getTime()
@@ -126,38 +124,22 @@ export class NotificationScheduler {
             : 7 * 24 * 60 * 60 * 1000;
 
         if (Date.now() - lastBackup >= intervalMs) {
-          console.log(
-            `[BackupScheduler] Triggering server backup for ${user.email} (frequency: ${frequency})`
-          );
           try {
-            const result = await settingsService.backupToGoogleDrive(user.googleDriveToken);
+            const result = await settingsService.backupToGoogleDrive(user.id, decryptedToken);
             await settingsService.updateSettings(user.id, {
               lastDriveBackupDate: result.lastDriveBackupDate,
             });
-            console.log(`[BackupScheduler] Backup succeeded for ${user.email}`);
           } catch (err) {
-            console.error(`[BackupScheduler] Error backing up user ${user.email}:`, err);
+            console.error(`[BackupScheduler] Error backing up user ${user.id}:`, err);
           }
         }
       }
     } catch (err) {
       console.error('[BackupScheduler] Failed to query automated backup users:', err);
-    } finally {
-      this.isProcessingBackups = false;
     }
   }
 
   async processNotifications() {
-    if (this.isProcessingNotifications) return;
-    this.isProcessingNotifications = true;
-    try {
-      await this.runNotificationsTick();
-    } finally {
-      this.isProcessingNotifications = false;
-    }
-  }
-
-  private async runNotificationsTick() {
     const allPrefs = await db
       .select({
         prefs: notificationPreferences,
@@ -168,6 +150,9 @@ export class NotificationScheduler {
       .where(eq(notificationPreferences.enabled, true));
 
     for (const { prefs, user } of allPrefs) {
+      if (user.status !== 'active' || !user.emailVerifiedAt) {
+        continue;
+      }
       const now = new Date();
       const userTime = new Intl.DateTimeFormat('en-US', {
         timeZone: prefs.timezone || 'Africa/Casablanca',
@@ -200,20 +185,14 @@ export class NotificationScheduler {
         payload: { title: string; body: string; url: string };
       }> = [];
 
-      await payrollService.reconcileDuePayrolls(user.id, now).catch(() => undefined);
-
-      const [userSubs, userTx, userDebts, userGoals, userPayrolls] = await Promise.all([
+      const [userSubs, userTx, userDebts, userGoals, userPayrolls, kpis] = await Promise.all([
         db.select().from(subscriptions).where(eq(subscriptions.userId, user.id)),
         db.select().from(transactions).where(eq(transactions.userId, user.id)),
         db.select().from(debts).where(eq(debts.userId, user.id)),
         db.select().from(goals).where(eq(goals.userId, user.id)),
         db.select().from(payrolls).where(eq(payrolls.userId, user.id)),
+        kpiService.getKpisForUser(user),
       ]);
-
-      const kpis = await kpiService.getKpisForUser(user, {
-        debts: userDebts,
-        payrolls: userPayrolls,
-      });
 
       await coreAuditService.evaluateUpcomingCommitmentRules(user.id).catch(() => undefined);
       await coreAuditService.processPendingOutboxEvents(user.id).catch(() => undefined);
@@ -315,12 +294,7 @@ export class NotificationScheduler {
       // 2. STOCKS & PORTFOLIO STATUS PULSE (Movers, Breakeven & Cash Reserve)
       if (prefs.anomalyEnabled) {
         try {
-          const invData: any = await investmentService.getInvestmentsData(user.id, {
-            preloadedKpis: kpis,
-            preloadedTransactions: userTx,
-            preloadedUser: user,
-            preloadedSubscriptions: userSubs,
-          });
+          const invData: any = await investmentService.getInvestmentsData(user.id);
           const stockPositions = (invData.positions || []).filter(
             (p: any) => p.market !== 'CRYPTO' && !p.isWatchlistOnly
           );

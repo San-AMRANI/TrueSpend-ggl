@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
 import { CoreAuditService } from '../server/services/CoreAuditService.js';
-import { normalizeSqlFingerprint, perfMonitor } from '../src/lib/perfMonitor.js';
-import { REQUIRED_INDEX_CATALOG, SCHEMA_MIGRATIONS } from '../src/db/migrations.js';
 import {
   clearOfflineFinancialCachesOnLogout,
   forceDiscardOfflineOutbox,
@@ -70,7 +68,7 @@ async function runTests() {
     ];
 
     for (const tx of txTypes) {
-      const { entryType, lines, affectedCreditWalletIds } = await svc.buildBalancedLinesForTransaction(
+      const { entryType, lines } = await svc.buildBalancedLinesForTransaction(
         'user-1',
         {
           id: 'tx-1',
@@ -94,11 +92,6 @@ async function runTests() {
         Math.abs(debits - credits) < 0.005,
         `Journal must balance for ${tx.type}: debits=${debits}, credits=${credits}`
       );
-      if (tx.type === 'Transfer') {
-        assert.ok(affectedCreditWalletIds.includes('w-2'), 'Transfer to CreditCard wallet w-2 should mark w-2 as affected credit wallet');
-      } else {
-        assert.equal(affectedCreditWalletIds.length, 0, 'Checking wallet w-1 alone should not trigger credit liability sync');
-      }
     }
     console.log('✓ Test 1 passed: Double-entry journal lines always balance across all transaction types and FX conversions.');
   }
@@ -258,66 +251,6 @@ async function runTests() {
     console.log('✓ Test 5 passed: Offline outbox uses AES-GCM encryption, preserves pending items on logout, and bounds retry backoff.');
   }
 
-  // 6. Set-based Credit & Overdraft Wallet Liability Calculation Equivalence (DB-02 / PERF-05)
-  {
-    const sampleTxs = [
-      { walletId: 'w-cc', destinationWalletId: null, type: 'Expense', amount: 1200.5 }, // +1200.50 liability -> 1700.50
-      { walletId: 'w-cc', destinationWalletId: 'w-bank', type: 'Transfer', amount: 300 }, // cash advance +300 -> 2000.50
-      { walletId: 'w-bank', destinationWalletId: 'w-cc', type: 'Transfer', amount: 750.25 }, // card bill payment -750.25 -> 1250.25
-      { walletId: 'w-cc', destinationWalletId: null, type: 'Income', amount: 50.25 }, // merchant refund -50.25 -> 1200.00
-      { walletId: 'w-cc', destinationWalletId: null, type: 'Debt Repayment', amount: 200 }, // direct repayment -200 -> 1000.00
-    ];
-
-    const computed = svc.computeCreditWalletLiabilityFromTransactions(-500, sampleTxs, 'w-cc');
-    assert.equal(computed, 1000);
-
-    // Overpaid credit card should floor liability at 0
-    const overpaid = svc.computeCreditWalletLiabilityFromTransactions(
-      0,
-      [{ walletId: 'w-bank', destinationWalletId: 'w-cc', type: 'Transfer', amount: 500 }],
-      'w-cc'
-    );
-    assert.equal(overpaid, 0);
-    console.log('✓ Test 6 passed: Credit & overdraft wallet liability calculation matches set-based SQL aggregate across expenses, cash advances, repayments, and refunds.');
-  }
-
-  // 7. SQL Fingerprint Sanitization & Performance Monitor Telemetry (DB-00 / PERF-00)
-  {
-    const rawSql = `SELECT * FROM transactions WHERE user_id = '4803c6b5-5a7d-4696-8b28-372b0694500d' AND notes = 'Secret Salary 25000 MAD' AND amount > 1500.75 LIMIT 50`;
-    const fingerprint = normalizeSqlFingerprint(rawSql);
-    assert.ok(!fingerprint.includes('4803c6b5'), 'UUIDs must be scrubbed from SQL fingerprints');
-    assert.ok(!fingerprint.includes('Secret Salary'), 'String literals must be scrubbed from SQL fingerprints');
-    assert.ok(!fingerprint.includes('1500.75'), 'Numeric literals must be scrubbed from SQL fingerprints');
-
-    perfMonitor.recordSqlExecution(rawSql, 42.5);
-    const diag = perfMonitor.getDiagnosticsReport();
-    assert.ok(diag.slowQueryThresholdMs > 0);
-    assert.ok(Array.isArray(diag.topQueries));
-    assert.ok(diag.topQueries.length >= 1);
-    console.log('✓ Test 7 passed: SQL fingerprint sanitizer scrubs sensitive literals/UUIDs and perfMonitor aggregates query telemetry.');
-  }
-
-  // 8. Versioned Database Migration & Index Catalog Verification (DB-01 / DB-07 / PERF-07)
-  {
-    assert.ok(SCHEMA_MIGRATIONS.length >= 7, 'Expected at least 7 versioned database migrations');
-    assert.ok(REQUIRED_INDEX_CATALOG.length >= 35, `Expected at least 35 cataloged indexes, found ${REQUIRED_INDEX_CATALOG.length}`);
-    const indexNames = new Set<string>(REQUIRED_INDEX_CATALOG);
-    const criticalIndexes = [
-      'idx_transactions_user_created',
-      'uq_transactions_user_idempotency',
-      'idx_splits_transaction',
-      'idx_splits_linked_contact',
-      'idx_journal_entries_user_tx_status',
-      'idx_journal_lines_entry',
-      'idx_debts_user_status_due',
-      'idx_payrolls_user_scheduled',
-    ];
-    for (const reqIdx of criticalIndexes) {
-      assert.ok(indexNames.has(reqIdx), `Missing required index ${reqIdx} in REQUIRED_INDEX_CATALOG`);
-    }
-    console.log(`✓ Test 8 passed: Versioned migration runner (${SCHEMA_MIGRATIONS.length} migrations) and index catalog (${REQUIRED_INDEX_CATALOG.length} indexes) verified.`);
-  }
-
   console.log('\nAll Core Financial Invariant tests passed!');
 }
 
@@ -325,4 +258,3 @@ runTests().catch((err) => {
   console.error('Core financial invariant test failure:', err);
   process.exit(1);
 });
-

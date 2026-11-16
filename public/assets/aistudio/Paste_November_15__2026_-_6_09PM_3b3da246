@@ -1,0 +1,1117 @@
+TrueSpend — Public Accounts, Security, Onboarding & Experience Tiers
+Document type: Product and technical specification
+Status: Draft for product review
+Prepared: 15 November 2026
+Target branch: feature/core-updates-audit
+Scope: Public registration, custom authentication hardening, private user data isolation, Basic and Advanced experiences, onboarding, profile/security controls, and public-launch readiness.
+
+1. Executive summary
+TrueSpend is moving from a developer-operated personal finance application to a product that can be safely shared with friends and eventually opened to the public.
+
+This update establishes the foundations required for that transition:
+
+Anyone can create an account through public registration. An invitation code is optional.
+Every account owns a completely separate private financial dataset. There are no shared workspaces, shared ledgers, or shared accounts.
+The existing custom authentication system is retained and hardened. Firebase Authentication is not part of this design.
+Every user chooses one of two free experiences: Basic or Advanced. Neither tier is paid, and payment processing is explicitly out of scope.
+Basic remains a useful personal-finance product, not an empty demo. It removes selected advanced capabilities and simplifies others.
+Advanced exposes the full TrueSpend toolset.
+The user may change experience tier later without losing or duplicating financial data.
+Onboarding guides the user through account creation and optional financial setup, with templates and a persistent getting-started checklist.
+Account security, data export, account deletion, session management, privacy information, and public-launch protections are part of the scope.
+Tier selection, user role, and ownership of financial data are separate concepts.
+The work must start with security and data isolation. Public registration must not be enabled until the backend can reliably guarantee that one user cannot access another user's information.
+
+2. Product decisions — confirmed
+Decision	Agreed direction
+Registration	Public self-registration is open to everyone
+Invitation	Optional; never required to register
+Invitation purpose	Referral/source attribution or an optional invitation campaign
+Shared workspaces	Not supported
+Shared financial data	Not supported
+Data ownership	Each account has its own private financial data
+Authentication	Keep the existing custom authentication; improve it
+Firebase Authentication	Do not migrate to Firebase Authentication
+Experience tiers	Basic and Advanced
+Tier pricing	Both are free
+Payments	No payment, billing, subscription checkout, or paywall in this update
+Tier choice	User chooses during onboarding and may change later
+Tier meaning	Product experience and feature availability, not account role
+Basic experience	Useful everyday finance management with a simpler feature set
+Advanced experience	Full TrueSpend capabilities
+Account model	One user account and one private financial workspace per person
+2.1 Important terminology
+These concepts must never be mixed:
+
+Experience tier: basic or advanced. Determines which product features and interface are available.
+Account role: member, admin, or a narrowly scoped internal operator role. Determines administrative privileges, not access to other people's money.
+Account ownership: The authenticated user owns their financial records. There is no shared-ledger mode.
+Invitation: An optional registration attribution or access-campaign token. It does not create a shared account, grant data access, or change ownership.
+The current role owner is an implementation-era concept tied to the developer's shared ledger. It must not be treated as a public user's account type.
+
+3. Existing implementation audit
+The following observations were confirmed from the source on feature/core-updates-audit. They are baseline findings, not claims that production behavior or a live database has been tested.
+
+3.1 Authentication currently present
+server/routes/authRoutes.ts exposes POST /login and authenticated GET /auth/me.
+server/controllers/AuthController.ts delegates login to AuthService.
+AuthService issues JWTs with a seven-day lifetime.
+Password hashes use Node scryptSync with a random salt and timing-safe comparison.
+UserManagementService.createUser can create managed users, but this is not public self-registration.
+There are no public registration, email verification, forgot-password, password-reset, or session-revocation routes in the inspected auth router.
+src/context/AuthContext.tsx stores the access token and cached user in localStorage.
+The client uses /api/login and then calls /api/auth/me to refresh profile state.
+3.2 Security concerns to address
+Fallback JWT secret: Authentication code falls back to a hardcoded signing secret when JWT_SECRET is absent. Production must fail closed when a strong secret is missing.
+Fallback administrator credentials: Login includes fallback values for administrator username/password. Public deployments must not have a reusable default credential path.
+Automatic owner bootstrap: ensureOwnerConfigured() creates or repairs a fixed primary-owner identity. This is not an acceptable public account-provisioning strategy.
+Shared-ledger resolution: requireAuth calls ensureOwnerConfigured() and sets req.dbUser to the owner record whenever the authenticated account has workspaceMode === 'shared'. This behavior conflicts with the confirmed no-sharing product model.
+Overly broad CORS behavior: server.ts reflects the request's Origin header while enabling credentials. Production must use an explicit origin allowlist.
+Token storage: The current browser client persists the bearer token in localStorage. The new session design should avoid persistent JavaScript-readable refresh credentials.
+User listing authorization: GET /users is protected by authentication but does not currently apply requireUserManager, unlike the user-management write routes. This must be corrected.
+Password policy: Existing managed-user creation accepts passwords as short as four characters. This is insufficient for public registration.
+Synchronous password work: scryptSync blocks the Node.js event loop during password derivation. Use an asynchronous password hashing implementation or asynchronous scrypt.
+Account identity constraints: The inspected users schema makes uid unique but does not declare a case-insensitive unique constraint for email or username.
+Google Drive token storage: The users table includes a Google Drive token field. Sensitive integration credentials must not be returned in profile responses and should be encrypted at rest.
+Impersonation and shared access: Existing account-switching/impersonation behavior was designed for owner-managed workspaces. It should not remain a general mechanism for accessing private customer financial data.
+3.3 Existing infrastructure that can be reused
+PostgreSQL and Drizzle are already the application's database foundation.
+cookie-parser is already present in package.json and configured in server.ts.
+jsonwebtoken is already present.
+The existing users table already contains profile and financial preference fields.
+Existing user audit logging can be retained where appropriate, with a separate, more security-focused event model for authentication/session events.
+Capacitor Android support exists. The authentication design must explicitly support both browser sessions and the Android application.
+3.4 Relevant source files
+src/context/AuthContext.tsx
+src/App.tsx
+src/middleware/auth.ts
+src/types/index.ts
+src/db/schema.ts
+server.ts
+server/routes/authRoutes.ts
+server/controllers/AuthController.ts
+server/services/AuthService.ts
+server/services/UserManagementService.ts
+server/routes/userManagementRoutes.ts
+server/controllers/UserManagementController.ts
+4. Product experience: Basic and Advanced
+4.1 Experience principles
+Basic must be a complete, credible personal finance experience.
+Advanced must offer depth, not merely a different color scheme or a longer navigation menu.
+Both tiers use the same account, ledger, records, calculations, and security model.
+Tier changes must not migrate, duplicate, delete, or reassign a user's financial data.
+A feature hidden from Basic must also be blocked by the backend when the user is on Basic.
+A Basic user's existing Advanced-created data must be preserved if they later switch to Basic.
+No feature should be hidden purely because it is expensive to build or because the current UI is complicated. Prioritize removing specialist tools and simplifying complex workflows.
+4.2 Proposed Basic experience
+Basic should provide the tools that most people need to understand and manage their everyday finances.
+
+Area / current navigation	Basic experience	Availability
+Overview	Clear dashboard: total balances, Bank/Cash, income, spending, remaining budget and payday context	Included
+Transactions	Add, edit, delete and search income, expenses, transfers and debt repayments; simple categories	Included
+Wallets / accounts	Everyday Bank, Cash and Savings accounts; opening balances and basic balance tracking	Included
+Budgets	Monthly category budgets, progress indicators, simple budget templates and straightforward adjustments	Included
+Calendar & Cash Flow	Calendar of transactions, payday, bills and due dates; simple upcoming cash-flow view	Included
+Debts & Splits	Track money owed and money to be received; record settlements; simple due dates	Included
+Goals	Savings goals with a target, current amount and target date	Included
+Subscriptions	Track recurring subscriptions and bills with amount and next date	Included
+Analytics	Essential monthly and category summaries, straightforward charts and comparisons	Included, simplified
+Reports	Useful monthly summary and basic data export	Included, simplified
+Spex AI Chat	Basic financial explanations and help understanding the user's own records, subject to privacy and feature controls	Included, simplified
+Settings / Profile	Account profile, preferences, privacy and security controls	Included
+Users & Roles	No public-user access to administrative user management	Internal/admin only
+Simulator / Calculators (calculators)	Excluded from Basic navigation and API access	Advanced only
+Investments (investments)	Stock portfolios, investment analytics and Binance features excluded	Advanced only
+Forecast (forecast)	Basic gets a concise spending outlook within Overview/Calendar; specialist forecast analysis is excluded	Simplified
+Contexts (contexts)	No full financial-context/project analysis workspace; basic notes or labels may remain where needed for existing records	Advanced-only workflow
+Basic must not impose artificial limits on ordinary financial records merely to make Advanced seem more attractive. It should be possible to manage everyday finances properly without an upgrade.
+
+4.3 Proposed Advanced experience
+Advanced retains the complete capabilities of TrueSpend, including:
+
+Full KPI dashboard and advanced financial health metrics.
+Advanced cash-flow forecast, scenario analysis and forecast calibration.
+Simulator and calculator tools.
+Investments, portfolio management, market data, Binance integration and external wealth.
+Advanced account types, credit and overdraft handling, liability analysis and reconciliation.
+Statement import, duplicate detection, matching and review inbox.
+Advanced budgets, envelopes, allocation models, rollover and scenario tools.
+Full debt metadata, APR, installment schedules and advanced repayment views.
+Advanced goal funding and contribution history.
+Financial contexts, life events, trips and project budgets.
+Commitment engine, recurring obligations and advanced occurrence handling.
+Financial rules, automation and rule execution logs.
+Advanced analytics, reports and financial retrospectives.
+Advanced Spex AI context, insights and permitted financial actions.
+Advanced backup, restore, data diagnostics and audit tools where appropriate.
+4.4 Initial feature entitlement matrix
+This matrix is the initial product contract. It should be implemented centrally rather than with scattered UI conditions.
+
+Capability key	Basic	Advanced
+dashboard.core	Yes	Yes
+transactions.core	Yes	Yes
+accounts.core	Yes	Yes
+budgets.core	Yes	Yes
+calendar.core	Yes	Yes
+debts.core	Yes	Yes
+goals.core	Yes	Yes
+subscriptions.core	Yes	Yes
+analytics.basic	Yes	Yes
+reports.basic	Yes	Yes
+ai.basic	Yes	Yes
+forecast.advanced	No	Yes
+simulator	No	Yes
+investments	No	Yes
+binance.integration	No	Yes
+statements.import	No	Yes
+review.inbox	No	Yes
+budgets.advanced	No	Yes
+debts.advanced	No	Yes
+goals.contributions	No	Yes
+contexts.advanced	No	Yes
+commitments.advanced	No	Yes
+rules.automation	No	Yes
+analytics.advanced	No	Yes
+reports.advanced	No	Yes
+ai.advanced	No	Yes
+backups.advanced	No	Yes
+The matrix is a starting contract and must be reconciled against the complete route/component inventory before implementation. It is not permission to remove or change existing functionality without review.
+
+4.5 Tier selection and switching
+The user chooses Basic or Advanced during onboarding.
+The choice is stored on the user account as an experience preference.
+Both experiences are free.
+The user can switch through Settings → Experience at any time.
+Switching takes effect immediately after the server confirms the change.
+The application should explain which features will become unavailable in Basic before switching down.
+Advanced-created records remain stored and are never deleted by a tier change.
+A Basic user switching to Advanced sees their existing data plus the newly available tools.
+No payments, invoices, billing providers, paid subscriptions or payment webhooks are introduced.
+Suggested user-facing language:
+
+Choose how you want to manage your finances. Basic keeps everyday money management clear and simple. Advanced unlocks the complete TrueSpend toolkit. You can change your experience whenever you like.
+
+4.6 Entitlement architecture
+Create a central entitlement definition, conceptually:
+
+type ExperienceTier = 'basic' | 'advanced';
+
+type FeatureKey =
+  | 'dashboard.core'
+  | 'transactions.core'
+  | 'accounts.core'
+  | 'budgets.core'
+  | 'calendar.core'
+  | 'debts.core'
+  | 'goals.core'
+  | 'subscriptions.core'
+  | 'analytics.basic'
+  | 'reports.basic'
+  | 'ai.basic'
+  | 'forecast.advanced'
+  | 'simulator'
+  | 'investments'
+  | 'binance.integration'
+  | 'statements.import'
+  | 'review.inbox'
+  | 'budgets.advanced'
+  | 'debts.advanced'
+  | 'goals.contributions'
+  | 'contexts.advanced'
+  | 'commitments.advanced'
+  | 'rules.automation'
+  | 'analytics.advanced'
+  | 'reports.advanced'
+  | 'ai.advanced'
+  | 'backups.advanced';
+Implementation requirements:
+
+Define FEATURE_ENTITLEMENTS in one shared, versioned product capability module.
+Resolve a user's tier from the authenticated database record, not from client-submitted request data.
+Use a frontend helper for navigation, buttons and feature explanations.
+Use backend middleware/service guards for protected API routes and actions.
+Do not trust a client-side tier, role, or entitlement value.
+Include the effective tier in /api/auth/me and the safe profile response.
+Return a consistent 403 FEATURE_NOT_AVAILABLE_FOR_TIER response for a tier-restricted operation.
+Distinguish tier restrictions from role/permission restrictions.
+Test direct URLs, API calls and background jobs, not just hidden navigation items.
+A database entitlement table is not required for the first release. A users.experience_tier column and centralized mapping are sufficient while there are only two free tiers. Keep the design extensible for future product plans without implementing billing now.
+
+5. Public registration
+5.1 Registration experience
+Public registration must be available from the unauthenticated landing/sign-in experience.
+
+Required fields:
+
+Email address.
+Password.
+Confirm password.
+Display name.
+Optional fields:
+
+Username/handle, if retained as a public identity feature.
+Invitation code.
+Do not request salary, balances, emergency buffer, employer or debt details during account creation. Those belong in optional onboarding steps after the account is verified.
+
+5.2 Registration rules
+Normalize email addresses consistently (trim whitespace and lowercase).
+Enforce a database-level unique email constraint.
+If usernames are enabled, normalize them and enforce case-insensitive uniqueness.
+Use a password policy designed for public accounts. Recommended minimum: 12 characters, allow long passphrases, reject common/compromised passwords where a suitable service/library is available, and do not impose arbitrary character-composition rules.
+Validate all fields on both client and server.
+Never accept role, workspaceMode, userId, permissions, or owner status from the registration payload.
+New public users always receive the standard member role.
+New accounts always receive an isolated private data scope.
+New accounts select Basic or Advanced; never trust a tier from an unvalidated client field.
+New accounts begin in pending_verification state.
+Financial APIs remain unavailable until email verification is completed.
+Registration must create the user and required account defaults transactionally.
+Duplicate registration must not reveal whether an email is already registered through a different response path.
+Public registration must be rate-limited and abuse-protected.
+5.3 Optional invitations
+Public registration remains open even when invitation campaigns exist.
+
+An optional invitation code may be used for:
+
+Recording who invited a user.
+Tracking referral or campaign source.
+Enabling a temporary onboarding experience or introductory content.
+Limiting access to a private beta feature only if explicitly defined later.
+An invitation code must never:
+
+Be required for ordinary registration.
+Create a shared workspace.
+Attach a user to the inviter's ledger.
+Grant access to the inviter's account or financial records.
+Elevate the new user's role or administrative permissions.
+Override the user's tier choice.
+Suggested invitation model:
+
+Opaque, high-entropy invitation token.
+Store only a hash of the token.
+Optional creator/inviter user ID.
+Expiry timestamp.
+Maximum uses and current use count, if campaign limits are required.
+Revocation timestamp.
+Optional campaign/referral metadata.
+Record redemption against the newly created account.
+Invalid optional codes should produce a clear, non-sensitive validation message. Registration without a code must always work.
+
+6. Custom authentication architecture
+6.1 Direction
+Keep TrueSpend's custom authentication and PostgreSQL-backed user identity. Do not migrate authentication to Firebase.
+
+The current JWT-based model can be retained as a foundation, but the seven-day bearer token in localStorage should not remain the long-term session design.
+
+6.2 Password storage
+Prefer Argon2id for password hashing if a maintained Node.js implementation is compatible with the deployment environment.
+If adding Argon2id is not suitable, use Node's asynchronous crypto.scrypt with reviewed parameters.
+Do not use synchronous hashing in request handlers.
+Store algorithm and parameters with the hash so future upgrades are possible.
+Rehash after successful login when parameters or algorithm are outdated.
+Never store plaintext passwords, reversible passwords, or password hints.
+Use timing-safe comparison through the chosen implementation.
+Add tests for hash creation, verification, invalid passwords and legacy hash migration.
+Existing scrypt$... hashes must remain verifiable during migration. Successful login can upgrade a legacy hash to the new format without forcing everyone to reset passwords.
+
+6.3 Access and refresh sessions
+Recommended web session model:
+
+Short-lived access token, approximately 5–15 minutes.
+Long-lived refresh session with rotation and revocation.
+Store refresh-token hashes in the database, not raw refresh tokens.
+Use secure, HttpOnly, Secure, appropriately SameSite cookies for browser refresh credentials.
+Keep access credentials in memory where practical.
+Protect cookie-authenticated state-changing requests against CSRF.
+Validate the Origin/Referer against an explicit allowlist.
+Rotate refresh tokens on use.
+Detect refresh-token reuse and revoke the affected session family.
+Provide logout-current-session and logout-all-sessions operations.
+The Android Capacitor client needs a deliberate native session transport. Do not assume browser cookie behavior is identical inside a WebView. If a secure native token store is needed, evaluate a maintained Capacitor secure-storage option and keep tokens out of ordinary local storage/preferences.
+
+6.4 JWT secret and key management
+Remove super_secret_fallback_key.
+Production startup must fail when required authentication secrets are absent or too weak.
+Use high-entropy, environment-managed secrets.
+Support secret rotation with a controlled key identifier/verification period if needed.
+Never commit secrets to the repository.
+Separate development and production secrets.
+Do not log JWTs, refresh tokens, reset tokens or verification tokens.
+6.5 Authentication abuse protection
+Rate-limit registration, login, verification resend, password-reset request and password-reset submission.
+Apply limits by IP and normalized account identifier, with careful handling of NAT/shared networks.
+Use progressive delays or temporary throttling after repeated login failures.
+Keep error messages generic where revealing account existence creates risk.
+Add request validation and body size limits.
+Add security headers and strict TLS requirements in production.
+Use explicit CORS origin allowlists; never reflect every incoming origin when credentials are enabled.
+6.6 Email verification
+Send a verification email after registration.
+Use a high-entropy, one-time verification token.
+Store only a cryptographic hash of the token.
+Expire verification tokens (recommended: 24 hours).
+Mark the account verified only after successful token validation.
+Make verification tokens single-use.
+Provide resend verification with rate limiting and generic responses.
+Do not permit access to financial APIs before verification.
+Allow access to the limited verification/account-help screens.
+Reissuing a verification token should invalidate or supersede earlier active tokens.
+6.7 Forgot and reset password
+Forgot password accepts an email address.
+Always return a generic response such as: “If an account exists for that email, we'll send password-reset instructions.”
+Generate a high-entropy, one-time reset token.
+Store only its hash.
+Use a short expiry (recommended: 30 minutes).
+Enforce single use and revoke previous reset tokens when appropriate.
+Never send the current password or reveal whether the account exists.
+On successful reset, invalidate all existing sessions and refresh tokens.
+Notify the account email that its password has changed.
+Do not automatically sign the user in after a reset unless the security design explicitly supports that behavior.
+6.8 Change password and email
+Changing a password requires a valid current session and current-password confirmation, unless using an active recovery flow.
+Changing an email requires re-authentication and verification of the new address.
+Keep the old verified email until the new address has been verified.
+Notify the old email address of the attempted change.
+Revoke other sessions after sensitive account changes.
+Record account-security events without logging secrets.
+6.9 Authentication endpoints
+Proposed endpoint contract (exact naming can be aligned to existing route conventions):
+
+Method	Endpoint	Purpose
+POST	/api/auth/register	Create pending public account
+POST	/api/auth/login	Authenticate existing account
+POST	/api/auth/refresh	Rotate/refresh session
+POST	/api/auth/logout	Revoke current session
+POST	/api/auth/logout-all	Revoke all active sessions
+GET	/api/auth/me	Return safe current-user profile
+POST	/api/auth/verify-email	Verify email using one-time token
+POST	/api/auth/resend-verification	Resend verification instructions
+POST	/api/auth/forgot-password	Request reset email
+POST	/api/auth/reset-password	Reset password with one-time token
+POST	/api/auth/change-password	Change password while authenticated
+POST	/api/auth/change-email	Start verified email change
+GET	/api/auth/sessions	List active sessions for current user
+DELETE	/api/auth/sessions/:id	Revoke one of the user's sessions
+PUT	/api/profile	Update safe profile/preferences
+PUT	/api/profile/experience	Change Basic/Advanced experience
+During migration, /api/login may remain as a temporary compatibility alias. It should be removed only after all clients are migrated and tests confirm no dependency remains.
+
+6.10 Two-factor authentication
+Include two-factor authentication in the security architecture, but it does not need to block the first registration release.
+
+Recommended progression:
+
+First release: secure passwords, verified email, sessions, recovery, rate limiting and account-security notifications.
+Follow-up: optional authenticator-app TOTP with recovery codes.
+Later: passkeys/WebAuthn where supported.
+Do not implement SMS OTP as the default second factor.
+
+7. Private-account and data-isolation architecture
+7.1 Non-negotiable invariant
+An authenticated user may access only records owned by that same user account.
+
+There are no shared ledgers or shared financial workspaces in this product.
+
+This invariant applies to:
+
+Transactions and transaction splits.
+Wallets and balances.
+Budgets and budget allocations.
+Debts, repayments and settlement events.
+Goals and contribution history.
+Payroll records.
+Subscriptions and recurring commitments.
+Financial contexts.
+Journal entries and journal lines.
+Statement import batches and rows.
+Review inbox items.
+Financial rules and execution logs.
+FX records and financial history.
+Investments, orders, dividends and portfolio snapshots.
+External wealth records.
+Notifications and push subscriptions.
+AI conversation context and any user-specific memory.
+Exports, backups and restore operations.
+Any new user-owned financial table added in future.
+7.2 Authentication identity versus data scope
+Replace the existing shared/isolated req.dbUser resolution with an explicit authenticated account identity:
+
+req.authUser.id identifies the signed-in account.
+A single, well-defined req.userId or equivalent trusted context identifies the owner of the requested financial data.
+For normal customer requests, this data-owner ID is always the authenticated account ID.
+Do not derive data ownership from a URL parameter, query parameter, request body, custom header or client-provided userId.
+Do not redirect public accounts to a developer/owner ledger.
+Do not rely on hiding another user's records in the frontend.
+The backend should pass the authenticated user ID explicitly into repository/service methods.
+
+7.3 Repository and query requirements
+Every user-owned query must include the authenticated user_id predicate.
+Every update/delete must scope both the record ID and authenticated user_id.
+Every nested resource lookup must verify that the parent belongs to the authenticated user.
+Bulk operations must use the same tenant scope.
+Exports and backups must be generated from the authenticated account's own data only.
+Background jobs must identify which account they are processing and must not reuse an unrelated user's scope.
+Avoid generic repository methods that accept an arbitrary user ID from client-controlled input.
+Review SQL joins for missing user ownership predicates.
+Review count/statistics endpoints; global totals must not leak private account activity.
+Do not return password hashes, reset tokens, verification tokens, session hashes, integration secrets or internal role metadata from profile APIs.
+7.4 Database-level defense in depth
+Application query scoping is required but should not be the only protection.
+
+Audit the schema and introduce ownership constraints where feasible:
+
+Add composite unique keys such as (user_id, id) on parent records where needed.
+Use composite foreign keys for tenant-owned relationships, e.g. a transaction's user_id plus wallet_id must refer to a wallet owned by the same user.
+Validate ownership for destination wallets, linked payrolls, goals, contexts, journal records and investment relationships.
+Add indexes that begin with user_id for common tenant-scoped reads.
+Review ON DELETE behavior so deleting an account cannot delete another user's data.
+Use PostgreSQL row-level security only as an additional layer if the connection-pool/session-context design is tested carefully. It must not replace application authorization.
+7.5 Roles and administrative separation
+Public registration always creates a standard member account.
+
+A public user cannot choose owner, admin, manager or viewer.
+User profile editing cannot change role or permissions.
+Administrative user management must be a separate, restricted control-plane capability.
+Admins may manage account status and abuse/security cases but do not automatically gain access to private financial records.
+The current Users & Roles tab must not be visible to ordinary customers.
+Any internal account-support access to customer data, if ever required, must be separately designed, limited, explicitly audited and preferably consent-based.
+Remove ordinary impersonation as a shortcut for viewing a user's ledger.
+Do not expose bulk user counts or audit details to all authenticated accounts.
+7.6 Existing shared-workspace migration
+This is a high-risk migration and must be planned before public registration is enabled.
+
+Current code includes workspaceMode values shared and isolated, with several roles defaulting to shared and requests redirected to the primary owner's ledger. The target design removes that model.
+
+Migration rules:
+
+Take and verify a database backup before changing user ownership behavior.
+Inventory users, roles, workspace modes, and counts of all user-owned records.
+Identify records stored under the primary owner's ID and records stored under other user IDs.
+Preserve the existing owner account's own historical data under that account.
+Do not automatically copy shared-ledger records to every user who previously had shared access.
+Do not guess record ownership from display names, notes, email addresses or transaction descriptions.
+Produce a migration report for any legacy account whose prior shared access makes data ownership ambiguous.
+Set all ordinary accounts to the new private-account model.
+Disable the shared-ledger resolution path and remove shared workspace defaults from roles.
+Re-run cross-user isolation tests after migration.
+Keep a rollback path and migration audit log.
+Existing users should initially retain the Advanced experience so that currently available features are not silently hidden. They can choose Basic later. This is a recommended grandfathering default, not a reason to grant any existing user access to another account's data.
+
+7.7 Security test examples
+For two test accounts, Alice and Bob:
+
+Alice cannot list Bob's transactions.
+Alice cannot fetch Bob's wallet by guessing its UUID.
+Alice cannot update or delete Bob's budget by supplying its ID.
+Alice cannot settle Bob's debt.
+Alice cannot import a statement into Bob's wallet.
+Alice cannot retrieve Bob's investment portfolio or Binance data.
+Alice cannot export Bob's records.
+Alice cannot read Bob's notifications or push subscriptions.
+Alice cannot alter Bob's profile, tier or role.
+Changing userId in a request body has no effect.
+A relationship that points to another user's wallet is rejected even if the record ID is valid.
+Signing out or revoking a session prevents subsequent use of the old refresh token.
+These checks must exist as automated integration tests, not only as manual QA instructions.
+
+8. User profile and account settings
+8.1 Profile information
+The profile area should include:
+
+Display name.
+Email and verification status.
+Optional username.
+Avatar or avatar color.
+Experience tier.
+Country/region.
+Language/locale.
+Timezone.
+Base/reporting currency.
+Account creation date.
+Last successful login (displayed carefully).
+Account status information where relevant.
+8.2 Financial preferences
+Keep these optional and editable:
+
+Payday.
+Expected salary/income.
+Emergency buffer.
+Base currency.
+Notification preferences.
+Preferred financial period behavior where supported.
+Do not require salary or account balances to finish onboarding.
+
+8.3 Privacy and security settings
+Change password.
+Change email.
+Show verified email status.
+List active sessions/devices with last activity.
+Revoke one session.
+Sign out everywhere.
+Configure two-factor authentication when available.
+Review recent account-security events.
+Export personal data.
+Request account deletion.
+Link to privacy policy and terms of service.
+8.4 Safe profile API
+GET /api/auth/me should return only client-safe values. It must not return password hashes, raw OAuth tokens, refresh credentials, verification/reset tokens or sensitive server-only permissions.
+
+Review and explicitly allowlist the returned fields rather than serializing the entire database user row.
+
+9. Onboarding and getting started
+9.1 Experience goals
+Explain what TrueSpend does without overwhelming new users.
+Help the user choose the experience that matches their comfort and needs.
+Avoid asking for sensitive financial information before it is necessary.
+Make account setup skippable where possible.
+Show an immediate, useful first dashboard.
+Teach the application progressively, in context.
+Let the user return to unfinished setup later.
+9.2 Proposed onboarding sequence
+Step	Screen	Required?	Purpose
+1	Welcome to TrueSpend	No separate data requirement	Explain the product and privacy-first account model
+2	Create account	Yes	Email, password, display name and optional invite code
+3	Verify email	Yes before financial access	Confirm account ownership
+4	Choose experience	Yes	Basic or Advanced, with a clear comparison
+5	Personal preferences	Mostly optional	Country, currency, language, timezone and payday
+6	Set up accounts	Optional	Create Bank/Cash/Savings accounts and optionally enter opening balances
+7	Choose a template	Optional	Start with a budget or planning template
+8	Add first financial items	Optional	First transaction, goal, bill or debt
+9	Meet the dashboard	Yes as the destination	Show a useful dashboard and a getting-started checklist
+The user should be able to skip steps 5–8 and complete them later.
+
+9.3 Welcome and privacy explanation
+Explain in plain language:
+
+TrueSpend helps users understand their money and financial commitments.
+Each account has its own private financial data.
+Other users cannot browse or share the account's financial records.
+The user controls their experience tier and can change it later.
+The application is a personal finance management tool, not a bank or a guarantee of investment performance.
+9.4 Tier selection screen
+Show two equally valid choices.
+
+Basic — Everyday money, made clear
+
+Track accounts, income, expenses and transfers.
+Manage budgets, debts, subscriptions and savings goals.
+See calendar events and useful summaries.
+Keep the interface focused and easy to navigate.
+Advanced — Your complete financial command center
+
+Includes everything in Basic.
+Adds investment tracking, simulator tools, deeper forecasts, advanced analytics, automation and richer financial workflows.
+Both cards must say Free. Do not label Advanced as a trial or imply that payment is required.
+
+9.5 Account setup
+Offer Bank, Cash and Savings account templates.
+Ask for an account name and currency.
+Opening balance is optional.
+Explain that an opening balance is a starting point, not income.
+Never create a fake transaction to represent an opening balance if the ledger model supports a true opening-balance entry.
+Do not connect to a bank automatically in this update.
+9.6 Getting-started checklist
+Show a dismissible checklist on the dashboard until the user completes or dismisses it.
+
+Suggested items:
+
+Confirm your email.
+Choose your experience.
+Create your first account.
+Record your first transaction.
+Set up a monthly budget.
+Add an upcoming bill or subscription.
+Create a savings goal.
+Checklist completion must be based on persisted user actions, not a browser-only flag.
+
+9.7 Onboarding state
+Persist:
+
+onboarding_version.
+onboarding_started_at.
+onboarding_completed_at.
+onboarding_dismissed_at.
+Optional step completion metadata.
+Do not store unnecessary personal financial information in onboarding analytics. Keep the state versioned so the application can introduce a new optional guide later without forcing every existing user through registration again.
+
+10. Templates and starter recommendations
+Templates should help users start quickly without making assumptions about their financial life.
+
+10.1 Basic templates
+Simple Monthly Budget — categories for essentials, daily spending, savings and flexible expenses.
+50/30/20 Starter Budget — an optional educational starting point, not a mandatory rule.
+Payday-Based Budget — a period based on the user's configured payday rather than assuming a calendar month.
+Essential Accounts Setup — Bank and Cash accounts, with an optional Savings account.
+First Savings Goal — a goal with target amount and optional deadline.
+Recurring Bills Checklist — a starter checklist for rent, utilities, phone, internet and subscriptions.
+10.2 Advanced templates
+Advanced Envelope Budget — category envelopes, rollover and planned allocations.
+Financial Safety Plan — emergency buffer and cash runway targets.
+Debt Repayment Planner — multiple debts, due dates and optional APR/installment information.
+Long-Term Savings Plan — goals and planned contribution cadence.
+Investment Tracking Setup — brokerage/investment accounts and portfolio tracking, without making investment recommendations.
+Life Event / Trip Budget — dedicated financial context with start/end dates and a budget.
+Advanced Payday Allocation — custom allocation rules and payday-cycle planning.
+10.3 Template behavior
+Templates are optional and can be previewed before applying.
+Applying a template creates editable user-owned records.
+Applying the same template twice must not silently duplicate budgets or accounts.
+Templates must not contain real people's financial data.
+Templates should have a version and stable identifier.
+Users can edit or delete records created from a template.
+Applying a template must be transactional where multiple records are created.
+Do not automatically apply a template based on inferred salary, debt or other sensitive data.
+Recommendations should explain why a template may be useful and let the user decide.
+11. Account lifecycle and data rights
+11.1 Account states
+Recommended states:
+
+pending_verification
+active
+suspended
+deletion_pending
+deleted or a documented tombstone/anonymized state
+Retain a narrowly scoped legacy state only while old records are migrated. Do not use legacy_hidden as a permanent public account state.
+
+11.2 Data export
+Provide a self-service export for the authenticated account.
+
+Minimum scope:
+
+Profile and preferences.
+Accounts/wallets.
+Transactions and splits.
+Budgets.
+Debts and settlements.
+Goals and contributions.
+Payrolls.
+Subscriptions and commitments.
+Contexts.
+Relevant investment records for Advanced users.
+A manifest describing export format and timestamps.
+Export must be scoped to the authenticated user and must not include authentication secrets, password hashes, other users' data, or internal application secrets.
+
+11.3 Account deletion
+Require re-authentication or a recent verified session.
+Explain which data will be deleted and what may remain temporarily in backups or security logs.
+Offer an explicit confirmation step.
+Revoke sessions and integration credentials immediately.
+Delete or anonymize user-owned data according to the published retention policy.
+Ensure foreign-key cascades cannot affect another user's records.
+Record a minimal security/audit event without retaining unnecessary personal financial information.
+Document backup expiration and restore behavior so a deleted account is not unexpectedly recreated from an old backup.
+A deletion grace period may be used, but the duration and legal requirements must be confirmed before launch. Do not claim deletion is instantaneous if backups retain data for a defined period.
+
+12. Database and backend changes
+12.1 User table additions
+Proposed additions to users (exact names can follow existing naming conventions):
+
+Field	Purpose
+email_verified_at	Verification timestamp
+experience_tier	basic or advanced
+onboarding_version	Last onboarding version shown/completed
+onboarding_started_at	Onboarding start time
+onboarding_completed_at	Completion time
+onboarding_dismissed_at	Checklist dismissal time
+locale	Preferred language/locale
+country_code	Country preference
+timezone	User timezone
+deletion_requested_at	Account deletion workflow
+password_updated_at	Password lifecycle tracking
+Keep existing financial preference fields where useful. Avoid creating a second source of truth for data already present.
+
+The workspace_mode field should be deprecated and removed only after all dependent code and legacy data have been migrated. Do not leave shared behavior active behind a cosmetic UI change.
+
+12.2 New authentication tables
+auth_sessions
+
+id
+user_id
+refresh_token_hash
+family_id
+created_at
+last_used_at
+expires_at
+revoked_at
+replaced_by_session_id or equivalent rotation metadata
+Optional user-agent and privacy-conscious IP metadata
+email_verification_tokens
+
+id
+user_id
+token_hash
+created_at
+expires_at
+used_at
+password_reset_tokens
+
+id
+user_id
+token_hash
+created_at
+expires_at
+used_at
+account_security_events
+
+id
+user_id
+event_type
+created_at
+Safe metadata such as session ID, outcome and non-sensitive device summary
+invitations (optional, if referral tracking is included in the first release)
+
+id
+token_hash
+created_by_user_id (nullable for system campaigns)
+campaign
+expires_at
+max_uses
+use_count
+revoked_at
+A separate redemption table can record invitation_id, redeemed_by_user_id and redeemed_at.
+
+12.3 Database constraints and indexes
+Unique case-insensitive email.
+Unique case-insensitive username if usernames remain supported.
+Unique token hashes.
+Index auth_sessions(user_id, expires_at).
+Index unrevoked sessions by user where useful.
+Index active verification/reset tokens by user and expiry.
+Index invitations by token hash and status/expiry.
+Index security events by (user_id, created_at DESC).
+Ensure all user-owned foreign keys and child relationships are tenant-safe.
+Inspect existing duplicate emails/usernames before adding unique constraints.
+Use ordered, versioned migrations and a rollback/recovery procedure.
+12.4 Transactional account creation
+Account registration should be one database transaction:
+
+Validate and normalize the registration payload.
+Check or rely on database uniqueness constraints for identity conflicts.
+Create the user in pending_verification.
+Store the hashed verification token.
+Create only safe default profile/preference records.
+Optionally record a valid invitation redemption.
+Commit.
+Send the email through a reliable email delivery service.
+Email delivery failure must not leave the database in an inconsistent state. Use an outbox/retry approach or a clearly recoverable resend flow.
+
+12.5 Sensitive integration credentials
+Audit Google Drive and other external-provider tokens.
+Encrypt sensitive OAuth refresh/access tokens at rest using a managed encryption key.
+Never return provider credentials through profile/settings APIs.
+Support revocation and disconnect.
+Rotate encryption keys through a documented migration strategy.
+13. Frontend architecture
+13.1 Authentication provider
+Extend AuthContext or replace it with a focused authentication/session provider that supports:
+
+Session restoration.
+Login.
+Registration.
+Verification state.
+Refresh and rotation.
+Logout.
+Logout all sessions.
+Safe profile refresh.
+Password recovery states.
+Tier selection/change.
+Account deletion state.
+The UI must distinguish loading, unauthenticated, unverified, suspended and authenticated states.
+
+13.2 Navigation
+Generate visible navigation from the user's effective tier and internal role.
+Basic hides the Simulator/Calculators and Investments navigation items.
+Basic sees simplified forecast/analytics/report experiences.
+Advanced sees the full toolset.
+Ordinary users never see the Users & Roles administration screen.
+A hidden tab must not be the only control protecting its underlying API.
+13.3 Feature-unavailable handling
+If a Basic user reaches an Advanced URL or an old bookmark:
+
+Show a clear explanation that the feature is part of the Advanced experience.
+Offer a one-click switch to Advanced (both tiers are free).
+Preserve the current page/return destination where safe.
+Do not show a payment prompt.
+Do not delete or hide existing data permanently.
+Backend API calls must return the standard tier restriction response.
+13.4 Settings
+Add sections:
+
+Profile.
+Security.
+Experience (Basic / Advanced).
+Preferences.
+Notifications.
+Privacy and data.
+Connected services.
+14. API authorization model
+Every protected endpoint should pass three distinct checks:
+
+Authentication: Is the caller a valid, active, verified account?
+Ownership/role authorization: Does the authenticated user own this resource, and does their role permit the requested operation?
+Experience entitlement: Is this capability available in the user's selected tier?
+These checks must be implemented centrally where possible and reinforced in service/repository methods.
+
+Example policy:
+
+requireAuth
+requireVerifiedAccount
+requireFeature('investments')
+requireResourceOwnership
+The actual middleware composition may differ, but no route should omit the required checks.
+
+A tier must never grant additional access to another user's data. An administrator role must never bypass ownership checks for ordinary financial records.
+
+15. Email delivery and public deployment readiness
+The registration lifecycle depends on reliable email delivery.
+
+Select a transactional email provider after reviewing price, sender-domain requirements, regional deliverability and operational needs.
+Configure a verified sender domain.
+Configure SPF, DKIM and DMARC.
+Use templates for verification, password reset, password changed, email changed, new sign-in and security notifications.
+Do not include passwords or raw long-lived credentials in email.
+Keep email sending asynchronous with retry/monitoring.
+Do not mark an email as verified merely because an email-send operation succeeded.
+No email vendor is selected by this specification.
+
+Production requirements:
+
+HTTPS/TLS enforced.
+Strict CORS allowlist for the web application and explicitly supported Capacitor origins.
+Secure cookie configuration.
+Trusted proxy configuration if deployed behind a reverse proxy.
+Rate limiting and request logging without secrets.
+Authentication secret validation at startup.
+Database backups and tested restore procedure.
+Error monitoring and authentication/security alerts.
+Privacy policy and terms of service published before public launch.
+No production default owner password or public seed endpoint.
+Separate development/staging/production environments.
+16. Privacy, transparency and financial safety
+Before public launch, provide:
+
+Privacy policy explaining what is stored and why.
+Terms of service.
+Clear account and data deletion process.
+Data export process.
+Explanation of optional integrations and their permissions.
+Explanation that the user is responsible for the accuracy of manually entered records.
+Clear distinction between financial tracking/education and regulated financial advice.
+No promise of investment returns or guaranteed forecast accuracy.
+User-controlled notification preferences.
+No selling or sharing of financial records as a product feature.
+Avoid using sensitive financial data for marketing, referrals or tier recommendations without explicit consent.
+
+17. Testing and acceptance criteria
+17.1 Registration and authentication
+A new visitor can register without an invitation.
+A valid optional invitation is accepted and attributed.
+Registration with an invalid invitation can still proceed without the code.
+Duplicate email is rejected safely, including concurrent registration attempts.
+New accounts cannot choose privileged roles or another user's data scope.
+Unverified accounts cannot use financial APIs.
+Verification tokens expire and are single-use.
+Forgot-password responses do not reveal whether an account exists.
+Reset tokens expire and are single-use.
+Resetting a password revokes previous sessions.
+Logout revokes the current refresh session.
+Logout-all revokes every active session.
+Refresh-token rotation and reuse detection work.
+Missing production secrets stop startup.
+Default administrator credentials cannot authenticate in production.
+Existing scrypt hashes can still be validated and upgraded.
+17.2 User isolation
+Automated tests prove cross-user read/write/delete/export denial.
+Tampering with request userId never changes data ownership.
+Every user-owned API route has an ownership test.
+Cross-user foreign-key relationships are rejected.
+Account deletion affects only the account being deleted.
+Public users cannot list customer accounts.
+Admin/support operations cannot silently impersonate a customer or read their ledger.
+Background jobs and exports remain user-scoped.
+17.3 Basic and Advanced
+Basic and Advanced both work without any payment configuration.
+Basic dashboard and core financial workflows are useful and complete.
+Simulator/Calculators and Investments are unavailable in Basic through both UI and API.
+Advanced exposes the complete approved feature set.
+Tier switching works without logging out.
+Downgrading preserves all data.
+Upgrading immediately restores access to existing Advanced data.
+Tier restrictions are distinct from role restrictions.
+Deep links and direct API requests respect entitlements.
+17.4 Onboarding
+New users see onboarding after verification.
+Users can skip optional financial setup.
+Users can choose either tier.
+Users can apply a template once without accidental duplicates.
+Checklist progress persists across devices/sessions.
+Existing users are not forced through new registration.
+Onboarding can be dismissed and revisited from Settings/help.
+17.5 Operational and quality checks
+Database migration is tested against a production-like backup.
+Migration can be rolled back or recovered.
+Email delivery failure can be retried.
+Authentication endpoints are rate-limited.
+CORS and cookies are tested on browser and Android Capacitor.
+TypeScript/build checks pass.
+Existing financial calculation and ledger tests remain green.
+New security tests run in CI.
+No secrets or private data appear in application logs.
+18. Recommended delivery phases
+Phase 0 — Full security and data-ownership audit
+Inventory every authenticated route and every user-owned table.
+Trace all req.dbUser, workspaceMode, owner bootstrap and impersonation behavior.
+Identify every repository query that trusts a client-provided user ID.
+Review authentication and sensitive integration secrets.
+Review CORS, cookies, environment configuration and deployment assumptions.
+Produce a legacy data ownership report.
+Do not enable public registration yet.
+Exit condition: A complete route/table ownership map and a safe migration plan exist.
+
+Phase 1 — Private-account foundation
+Remove shared-workspace resolution.
+Make authenticated user ID the only customer-data owner.
+Remove public-account access to the owner's ledger.
+Add ownership-scoped repository/service methods.
+Fix user-management route authorization.
+Add database constraints/indexes for account identity and tenant relationships.
+Migrate legacy accounts without guessing the owner of ambiguous records.
+Add cross-user isolation integration tests.
+Exit condition: All existing accounts operate on separate data, and cross-user tests pass.
+
+Phase 2 — Authentication hardening
+Remove hardcoded fallback credentials and fallback JWT secret.
+Implement password policy and legacy hash upgrade.
+Implement secure sessions, refresh rotation and revocation.
+Add registration and verification.
+Add forgot/reset password.
+Add email-change and password-change flows.
+Add rate limiting and strict CORS/origin validation.
+Support browser and Capacitor Android session behavior.
+Add authentication security events.
+Exit condition: Account lifecycle works without Firebase Authentication and passes security tests.
+
+Phase 3 — Profile and account controls
+Build profile/settings sections.
+Add active session management.
+Add export and account deletion workflows.
+Protect integration credentials.
+Add privacy and terms pages.
+Exit condition: Users can manage their account and data without administrator intervention.
+
+Phase 4 — Tier and entitlement system
+Add experience_tier.
+Implement centralized feature entitlement mapping.
+Add backend guards.
+Add tier-aware navigation and UI.
+Implement Basic simplifications and Advanced full experience.
+Add tier-switching flow and data-preservation tests.
+Exit condition: Both free experiences work and no tier restriction relies only on frontend hiding.
+
+Phase 5 — Onboarding and templates
+Add welcome and tier-selection screens.
+Add optional profile/preferences setup.
+Add wallet/account setup.
+Add Basic and Advanced starter templates.
+Add first-use checklist and persisted progress.
+Add contextual help and demo/sample-data option if approved.
+Exit condition: A new user can register, configure the essentials and understand how to start using TrueSpend.
+
+Phase 6 — Public-launch readiness
+Verify email deliverability and domain authentication.
+Finalize privacy policy and terms.
+Verify production secrets and environment settings.
+Test browser and Android deployments.
+Run migration rehearsal and restore rehearsal.
+Run security, load and end-to-end regression suites.
+Enable public registration only after all release gates pass.
+Exit condition: A new external user can register and use a private Basic or Advanced account safely.
+
+19. Out of scope
+This update does not include:
+
+Paid subscriptions or payment processing.
+Subscription billing, invoices, checkout pages or payment-provider integration.
+Shared workspaces or shared ledgers.
+Joint/family accounts.
+Firebase Authentication migration.
+Bank account aggregation or open-banking connections.
+Mandatory two-factor authentication on day one (the architecture should support it).
+A new investment recommendation engine.
+Rebuilding the financial ledger or replacing the existing accounting model.
+These can be considered separately without weakening the account and isolation foundations.
+
+20. Risks and mitigations
+Risk	Impact	Mitigation
+Legacy shared-ledger data is assigned to the wrong person	Critical privacy breach or data loss	Inventory and classify before migration; never auto-copy ambiguous records
+A route misses user ownership checks	Cross-account data exposure	Route/table inventory, centralized auth context and automated negative tests
+Frontend-only tier gating	Advanced APIs remain accessible to Basic	Enforce entitlements on backend routes/services
+Token compromise	Account takeover	Short-lived access tokens, rotating refresh sessions, secure storage and revocation
+Email deliverability failure	Users cannot verify or recover accounts	Verified sender domain, outbox/retry and resend flows
+Tier logic becomes duplicated	Inconsistent UI/API behavior	Central entitlement mapping and shared feature keys
+Basic becomes too limited	Poor adoption	Preserve core money-management workflows and test with non-developer users
+Account deletion conflicts with backups	Deleted data reappears after restore	Document retention, backup expiry and restore-time deletion tombstones
+Admin access becomes an unintended data-access path	Loss of user trust	Separate control plane from private financial data; audited break-glass access only
+21. Open implementation decisions
+These items can be decided during the detailed implementation design. They do not change the product decisions already confirmed.
+
+Email provider: Select a transactional email provider and configure sender-domain authentication.
+Username: Decide whether username remains a required public login identifier or becomes optional with email as the canonical login.
+Native session storage: Select and test secure token storage for Capacitor Android.
+Password hashing dependency: Confirm whether Argon2id is supported by the deployment/build environment; otherwise use asynchronous scrypt.
+Two-factor timing: Decide whether authenticator-app TOTP is included in the initial release or the immediate security follow-up.
+Account deletion retention: Confirm grace period, backup retention and legal requirements before making public promises.
+Language: Confirm launch languages and default locale. The onboarding architecture should support localization from the start.
+Existing account migration: Review the generated user/record ownership report before changing any legacy shared-mode account.
+22. Final recommendation
+Do not begin with the registration UI. Begin with the private-account security foundation.
+
+The most dangerous failure would be to add a polished public signup page while the middleware still redirects certain accounts to the developer's ledger or while one API route trusts a caller-supplied user ID.
+
+Recommended implementation order:
+
+Audit and remove shared-data behavior.
+Prove account isolation with automated tests.
+Harden the existing custom authentication and add the full account lifecycle.
+Add the Basic/Advanced entitlement system.
+Build onboarding and starter templates.
+Complete privacy, data-rights and operational launch requirements.
+Public registration is a release gate, not an early development toggle.
+
+Appendix A — Current source references
+All paths below refer to feature/core-updates-audit.
+
+src/context/AuthContext.tsx — browser token persistence, cached profile and sign-in state.
+src/App.tsx — existing sign-in screen and navigation tabs.
+src/middleware/auth.ts — JWT verification, owner bootstrap, shared/isolated workspace resolution and route permission checks.
+src/types/index.ts — existing user roles, permissions, workspace mode and dashboard tab types.
+src/db/schema.ts — users and financial ownership schema.
+server.ts — Express setup, cookie parser and current CORS behavior.
+server/routes/authRoutes.ts — current login and /auth/me routes.
+server/controllers/AuthController.ts — current login/profile controller.
+server/services/AuthService.ts — login, JWT signing and impersonation session.
+server/services/UserManagementService.ts — password hashing, owner bootstrap, role definitions and managed-user creation.
+server/routes/userManagementRoutes.ts — user-management route guards.
+server/controllers/UserManagementController.ts — user list/create/update/delete and impersonation controller.
+Appendix B — Release gate checklist
+ Legacy shared-workspace behavior removed.
+ Data ownership inventory reviewed.
+ Legacy migration rehearsed on a backup.
+ Cross-account integration tests pass.
+ Hardcoded fallback credentials removed.
+ Missing production secrets fail startup.
+ Registration and email verification work.
+ Forgot/reset password work.
+ Session rotation and revocation work.
+ CORS and CSRF protections validated.
+ Capacitor Android authentication validated.
+ Profile/security settings work.
+ Data export works and is user-scoped.
+ Account deletion/retention policy implemented.
+ Basic and Advanced entitlements enforced by backend.
+ Basic and Advanced interface flows validated.
+ Tier changes preserve all financial data.
+ Onboarding and templates work.
+ Privacy policy and terms are published.
+ Production email, monitoring, backups and restore process are verified.
+ Public registration enabled only after all required gates pass.

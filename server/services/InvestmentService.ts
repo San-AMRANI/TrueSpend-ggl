@@ -921,25 +921,22 @@ export class InvestmentService {
     userId: string,
     options?: {
       forceRefresh?: boolean;
-      preloadedKpis?: any;
-      preloadedTransactions?: any[];
-      preloadedUser?: any;
-      preloadedSubscriptions?: any[];
+      preloaded?: {
+        dbUser?: any;
+        kpis?: any;
+        subscriptions?: any[];
+        transactions?: any[];
+      };
     }
   ) {
+    const pre = options?.preloaded;
     const [rawPositions, rawOrders, rates, dbUser, subscriptions, allTransactions] = await Promise.all([
       investmentRepository.findAllPositionsByUserId(userId),
       investmentRepository.findAllOrdersByUserId(userId),
       this.getExchangeRates(),
-      options?.preloadedUser
-        ? Promise.resolve(options.preloadedUser)
-        : userRepository.findById(userId),
-      options?.preloadedSubscriptions
-        ? Promise.resolve(options.preloadedSubscriptions)
-        : subscriptionRepository.findAllByUserId(userId),
-      options?.preloadedTransactions
-        ? Promise.resolve(options.preloadedTransactions)
-        : transactionRepository.findAllByUserId(userId),
+      pre?.dbUser ? Promise.resolve(pre.dbUser) : userRepository.findById(userId),
+      pre?.subscriptions ? Promise.resolve(pre.subscriptions) : subscriptionRepository.findAllByUserId(userId),
+      pre?.transactions ? Promise.resolve(pre.transactions) : transactionRepository.findAllByUserId(userId),
     ]);
 
     // Fetch live quotes for manual user positions AND common Binance tokenized stocks in parallel
@@ -964,9 +961,7 @@ export class InvestmentService {
 
     if (dbUser) {
       try {
-        const kpis =
-          options?.preloadedKpis ||
-          (await kpiService.getKpisForUser(dbUser));
+        const kpis = pre?.kpis ?? (await kpiService.getKpisForUser(dbUser));
         kpiAccounts = kpis.accounts || [];
         safeToSpendMad = Math.max(0, Math.round((kpis.safeToSpend || 0) * 100) / 100);
         investmentWalletBalanceMad = Math.max(0, Math.round((kpis.investmentReserve || 0) * 100) / 100);
@@ -1116,7 +1111,8 @@ export class InvestmentService {
         ? netCapitalContributedMad
         : 0;
 
-    // Fetch live read-only Binance overview (Spot + Funding + Earn + Wallet Balance + Trade Forensics)
+    // Fetch live read-only Binance overview strictly for explicitly authorized owner account (never leak server env keys to public users)
+    const allowServerBinance = dbUser?.role === 'owner';
     const binanceOverview = await binanceService.getAccountOverview(rates, {
       forceRefresh: options?.forceRefresh,
       linkedWallet: linkedBinanceAcc
@@ -1128,6 +1124,7 @@ export class InvestmentService {
         : null,
       externalStockQuotes: liveQuotes,
       initialCapitalMad: initialCapitalBaselineMad,
+      allowServerCredentials: allowServerBinance,
     });
 
     const remainingInvestmentBudgetMad =
@@ -2337,11 +2334,15 @@ export class InvestmentService {
       }
     }
 
+    const ownerUser = userId ? await userRepository.findById(userId) : null;
+    const allowServerBinance = ownerUser?.role === 'owner';
+
     return await binanceService.getAccountOverview(rates, {
       forceRefresh,
       linkedWallet,
       externalStockQuotes: liveQuotes,
       initialCapitalMad: linkedWallet?.balanceMad || 0,
+      allowServerCredentials: allowServerBinance,
     });
   }
 
@@ -2363,17 +2364,19 @@ export class InvestmentService {
     const { baseAsset, quoteAsset } = binanceService.splitSymbol(normalizedSym);
     const cleanBase = baseAsset.replace(/^LD/, '');
 
-    const [rates, liveQuotes] = await Promise.all([
+    const [rates, liveQuotes, ownerUser] = await Promise.all([
       this.getExchangeRates(),
       this.fetchLiveStockQuotes(
         Array.from(new Set([...COMMON_BINANCE_STOCK_TICKERS, cleanBase, baseAsset])),
         options?.forceRefresh
       ),
+      userId ? userRepository.findById(userId) : Promise.resolve(null),
     ]);
 
     const result = await binanceService.getPersonalTradesForSymbol(normalizedSym, rates, {
       ...options,
       externalStockQuotes: liveQuotes,
+      allowServerCredentials: ownerUser?.role === 'owner',
     });
 
     if (result.trades.length > 0) {
@@ -2730,6 +2733,7 @@ export class InvestmentService {
     const overview = await binanceService.getAccountOverview(rates, {
       forceRefresh: true,
       externalStockQuotes: liveQuotes,
+      allowServerCredentials: dbUser.role === 'owner',
     });
     if (!overview.isConfigured || !overview.connected) {
       throw new Error(

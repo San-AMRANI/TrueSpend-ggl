@@ -1,7 +1,6 @@
 import crypto from 'crypto';
-import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
-import { db, createPool, REQUIRED_INDEX_CATALOG, SCHEMA_MIGRATIONS } from '../../src/db/index.js';
-import { perfMonitor } from '../../src/lib/perfMonitor.js';
+import { and, desc, eq, inArray } from 'drizzle-orm';
+import { db } from '../../src/db/index.js';
 import {
   categoryBudgets,
   commitmentOccurrences,
@@ -154,15 +153,13 @@ export class CoreAuditService {
       category?: string | null;
       notes?: string | null;
     },
-    txDb: DbExecutor = db,
-    preloadedWallets?: Array<typeof wallets.$inferSelect>
-  ): Promise<{ entryType: string; lines: JournalLineInput[]; affectedCreditWalletIds: string[] }> {
+    txDb: DbExecutor = db
+  ): Promise<{ entryType: string; lines: JournalLineInput[] }> {
     const amountMad = Math.abs(Number(tx.amount) || 0);
     const nativeCurrency = (tx.currency || 'MAD').toUpperCase();
     const nativeAmount = Math.abs(Number(tx.nativeAmount ?? tx.amount) || 0);
 
-    const userWallets =
-      preloadedWallets || (await txDb.select().from(wallets).where(eq(wallets.userId, userId)));
+    const userWallets = await txDb.select().from(wallets).where(eq(wallets.userId, userId));
     const walletMap = new Map(userWallets.map((w) => [w.id, w]));
 
     const sourceWallet = tx.walletId ? walletMap.get(tx.walletId) : undefined;
@@ -171,14 +168,7 @@ export class CoreAuditService {
     const isSourceCreditCard =
       sourceWallet?.accountSubtype === 'CreditCard' || sourceWallet?.accountSubtype === 'Overdraft';
     const isDestCreditCard =
-      tx.type === 'Transfer' &&
-      (destWallet?.accountSubtype === 'CreditCard' || destWallet?.accountSubtype === 'Overdraft');
-
-    const affectedCreditWalletIds: string[] = [];
-    if (isSourceCreditCard && sourceWallet?.id) affectedCreditWalletIds.push(sourceWallet.id);
-    if (isDestCreditCard && destWallet?.id && !affectedCreditWalletIds.includes(destWallet.id)) {
-      affectedCreditWalletIds.push(destWallet.id);
-    }
+      destWallet?.accountSubtype === 'CreditCard' || destWallet?.accountSubtype === 'Overdraft';
 
     const sourceAccountCode = isSourceCreditCard
       ? `2010-LIAB-${(sourceWallet?.name || 'CREDIT').toUpperCase().slice(0, 10)}`
@@ -192,7 +182,6 @@ export class CoreAuditService {
       const isLoan = (tx.category || '').toLowerCase().includes('loan');
       return {
         entryType: isLoan ? 'loan_receipt' : 'standard',
-        affectedCreditWalletIds,
         lines: [
           {
             walletId: tx.walletId || null,
@@ -229,7 +218,6 @@ export class CoreAuditService {
 
       return {
         entryType: isDestCreditCard ? 'credit_settlement' : 'transfer',
-        affectedCreditWalletIds,
         lines: [
           {
             walletId: tx.destinationWalletId || null,
@@ -258,7 +246,6 @@ export class CoreAuditService {
     if (tx.type === 'Debt Repayment') {
       return {
         entryType: 'credit_settlement',
-        affectedCreditWalletIds,
         lines: [
           {
             walletId: tx.destinationWalletId || null,
@@ -293,7 +280,6 @@ export class CoreAuditService {
         : isInvestmentAllocation
         ? 'investment'
         : 'standard',
-      affectedCreditWalletIds,
       lines: [
         {
           walletId: null,
@@ -322,18 +308,11 @@ export class CoreAuditService {
   async postJournalEntryForTransaction(
     userId: string,
     tx: any,
-    options: {
-      isEstimatedBackfill?: boolean;
-      idempotencyKey?: string;
-      memo?: string;
-      preloadedWallets?: Array<typeof wallets.$inferSelect>;
-      skipCreditSync?: boolean;
-    } = {},
+    options: { isEstimatedBackfill?: boolean; idempotencyKey?: string; memo?: string } = {},
     txDb?: DbExecutor
   ) {
     const runInExecutor = async (exec: DbExecutor) => {
-      const { entryType, lines, affectedCreditWalletIds } =
-        await this.buildBalancedLinesForTransaction(userId, tx, exec, options.preloadedWallets);
+      const { entryType, lines } = await this.buildBalancedLinesForTransaction(userId, tx, exec);
 
       const totalDebit = lines.reduce((sum, l) => sum + Number(l.debitMad || 0), 0);
       const totalCredit = lines.reduce((sum, l) => sum + Number(l.creditMad || 0), 0);
@@ -343,9 +322,7 @@ export class CoreAuditService {
         );
       }
 
-      const idempKey =
-        options.idempotencyKey ||
-        (tx.idempotencyKey ? `tx-post-${tx.idempotencyKey}` : `tx-post-${tx.id}`);
+      const idempKey = options.idempotencyKey || (tx.idempotencyKey ? `tx-post-${tx.idempotencyKey}` : `tx-post-${tx.id}`);
       const existingByKey = await exec
         .select()
         .from(journalEntries)
@@ -360,7 +337,7 @@ export class CoreAuditService {
         .values({
           userId,
           transactionId: tx.id,
-          entryType: entryType as any,
+          entryType,
           status: 'posted',
           currency: (tx.currency || 'MAD').toUpperCase(),
           exchangeRateUsed: String(tx.exchangeRateUsed || '1'),
@@ -386,9 +363,7 @@ export class CoreAuditService {
         }))
       );
 
-      if (!options.skipCreditSync && affectedCreditWalletIds.length > 0) {
-        await this.syncCreditWalletLiabilityBalances(userId, exec, affectedCreditWalletIds);
-      }
+      await this.syncCreditWalletLiabilityBalances(userId, exec);
       return entry;
     };
 
@@ -416,82 +391,53 @@ export class CoreAuditService {
           )
         );
 
-      if (existingEntries.length === 0) {
-        return 0;
-      }
+      for (const entry of existingEntries) {
+        const lines = await exec
+          .select()
+          .from(journalLines)
+          .where(eq(journalLines.journalEntryId, entry.id));
 
-      const entryIds = existingEntries.map((e) => e.id);
-      const allLines = await exec
-        .select()
-        .from(journalLines)
-        .where(inArray(journalLines.journalEntryId, entryIds));
+        await exec
+          .update(journalEntries)
+          .set({ status: 'reversed' })
+          .where(eq(journalEntries.id, entry.id));
 
-      const linesByEntryId = new Map<string, typeof allLines>();
-      const affectedWalletIds = new Set<string>();
-      for (const l of allLines) {
-        const list = linesByEntryId.get(l.journalEntryId) || [];
-        list.push(l);
-        linesByEntryId.set(l.journalEntryId, list);
-        if (l.walletId) affectedWalletIds.add(l.walletId);
-      }
-
-      await exec
-        .update(journalEntries)
-        .set({ status: 'reversed' })
-        .where(inArray(journalEntries.id, entryIds));
-
-      const nowTs = Date.now();
-      const reversalEntriesToInsert = existingEntries.map((entry, idx) => ({
-        userId,
-        transactionId: null as string | null,
-        entryType: 'reversal' as const,
-        status: 'posted' as const,
-        reversalOfEntryId: entry.id,
-        currency: entry.currency,
-        exchangeRateUsed: entry.exchangeRateUsed,
-        isEstimatedBackfill: false,
-        idempotencyKey: `rev-${entry.id}-${nowTs}-${idx}`,
-        memo: `Reversal of ${entry.id.slice(0, 8)}: ${reason}`,
-      }));
-
-      const insertedReversals = await exec
-        .insert(journalEntries)
-        .values(reversalEntriesToInsert)
-        .returning();
-
-      const reversalLinesToInsert: Array<typeof journalLines.$inferInsert> = [];
-      for (let i = 0; i < existingEntries.length; i++) {
-        const origEntry = existingEntries[i];
-        const revEntry = insertedReversals[i];
-        if (!revEntry) continue;
-        const origLines = linesByEntryId.get(origEntry.id) || [];
-        for (const l of origLines) {
-          reversalLinesToInsert.push({
-            journalEntryId: revEntry.id,
+        const reversalKey = `rev-${entry.id}-${Date.now()}`;
+        const [reversalEntry] = await exec
+          .insert(journalEntries)
+          .values({
             userId,
-            walletId: l.walletId,
-            accountCode: l.accountCode,
-            accountName: l.accountName,
-            accountClass: l.accountClass,
-            debitMad: l.creditMad,
-            creditMad: l.debitMad,
-            nativeAmount: l.nativeAmount,
-            nativeCurrency: l.nativeCurrency,
-          });
+            transactionId: null,
+            entryType: 'reversal',
+            status: 'posted',
+            reversalOfEntryId: entry.id,
+            currency: entry.currency,
+            exchangeRateUsed: entry.exchangeRateUsed,
+            isEstimatedBackfill: false,
+            idempotencyKey: reversalKey,
+            memo: `Reversal of ${entry.id.slice(0, 8)}: ${reason}`,
+          })
+          .returning();
+
+        if (lines.length > 0) {
+          await exec.insert(journalLines).values(
+            lines.map((l) => ({
+              journalEntryId: reversalEntry.id,
+              userId,
+              walletId: l.walletId,
+              accountCode: l.accountCode,
+              accountName: l.accountName,
+              accountClass: l.accountClass,
+              debitMad: l.creditMad,
+              creditMad: l.debitMad,
+              nativeAmount: l.nativeAmount,
+              nativeCurrency: l.nativeCurrency,
+            }))
+          );
         }
       }
 
-      if (reversalLinesToInsert.length > 0) {
-        await exec.insert(journalLines).values(reversalLinesToInsert);
-      }
-
-      if (affectedWalletIds.size > 0) {
-        await this.syncCreditWalletLiabilityBalances(
-          userId,
-          exec,
-          Array.from(affectedWalletIds)
-        );
-      }
+      await this.syncCreditWalletLiabilityBalances(userId, exec);
       return existingEntries.length;
     };
 
@@ -501,91 +447,31 @@ export class CoreAuditService {
     return await db.transaction(async (atomicTx) => await runInExecutor(atomicTx));
   }
 
-  /**
-   * Pure deterministic helper that computes the exact credit/overdraft liability balance
-   * for a wallet from its initial balance and transaction deltas.
-   */
-  computeCreditWalletLiabilityFromTransactions(
-    initialBalance: number | string | null | undefined,
-    txs: Array<{
-      walletId?: string | null;
-      destinationWalletId?: string | null;
-      type: string;
-      amount: number | string | null | undefined;
-    }>,
-    walletId: string
-  ): number {
-    const openingLiability = Math.max(0, -(Number(initialBalance || 0) || 0));
-    let chargesAndAdvancesSum = 0;
-    let repaymentsAndRefundsSum = 0;
+  async syncCreditWalletLiabilityBalances(userId: string, txDb: DbExecutor = db) {
+    const userWallets = await txDb.select().from(wallets).where(eq(wallets.userId, userId));
+    const creditWallets = userWallets.filter(
+      (w) => w.accountSubtype === 'CreditCard' || w.accountSubtype === 'Overdraft'
+    );
+    if (creditWallets.length === 0) return;
 
-    for (const tx of txs) {
-      const amt = Number(tx.amount || 0) || 0;
-      if (tx.walletId === walletId && (tx.type === 'Expense' || tx.type === 'Transfer')) {
-        chargesAndAdvancesSum += amt;
-      } else if (
-        (tx.destinationWalletId === walletId && (tx.type === 'Transfer' || tx.type === 'Debt Repayment')) ||
-        (tx.walletId === walletId && (tx.type === 'Income' || tx.type === 'Debt Repayment'))
-      ) {
-        repaymentsAndRefundsSum += amt;
+    const userTx = await txDb.select().from(transactions).where(eq(transactions.userId, userId));
+    for (const cw of creditWallets) {
+      let liability = Math.max(0, -Number(cw.initialBalance || 0));
+      for (const tx of userTx) {
+        const amt = Number(tx.amount || 0);
+        if (tx.walletId === cw.id && tx.type === 'Expense') {
+          liability += amt;
+        } else if (tx.destinationWalletId === cw.id && tx.type === 'Transfer') {
+          liability = Math.max(0, liability - amt);
+        } else if (tx.walletId === cw.id && tx.type === 'Income') {
+          liability = Math.max(0, liability - amt);
+        }
       }
+      await txDb
+        .update(wallets)
+        .set({ liabilityBalance: String(liability.toFixed(2)), updatedAt: new Date() })
+        .where(eq(wallets.id, cw.id));
     }
-
-    const computed = Math.max(0, openingLiability + chargesAndAdvancesSum - repaymentsAndRefundsSum);
-    return Number(computed.toFixed(2));
-  }
-
-  /**
-   * DB-02 / PERF-05: Set-based SQL aggregate update for credit-card and overdraft liability balances.
-   */
-  async syncCreditWalletLiabilityBalances(
-    userId: string,
-    txDb: DbExecutor = db,
-    targetWalletIds?: string[]
-  ) {
-    const cleanWalletIds = Array.isArray(targetWalletIds)
-      ? Array.from(new Set(targetWalletIds.filter(Boolean)))
-      : [];
-
-    if (Array.isArray(targetWalletIds) && cleanWalletIds.length === 0) {
-      return;
-    }
-
-    const walletFilterSql =
-      cleanWalletIds.length > 0
-        ? sql`AND w.id IN (${sql.join(
-            cleanWalletIds.map((id) => sql`${id}::uuid`),
-            sql`, `
-          )})`
-        : sql``;
-
-    await txDb.execute(sql`
-      WITH credit_deltas AS (
-        SELECT
-          w.id AS wallet_id,
-          GREATEST(
-            0::numeric,
-            GREATEST(0::numeric, -COALESCE(w.initial_balance, 0))
-            + COALESCE(SUM(CASE WHEN t.wallet_id = w.id AND t.type IN ('Expense', 'Transfer') THEN t.amount ELSE 0 END), 0)
-            - COALESCE(SUM(CASE WHEN t.destination_wallet_id = w.id AND t.type IN ('Transfer', 'Debt Repayment') THEN t.amount ELSE 0 END), 0)
-            - COALESCE(SUM(CASE WHEN t.wallet_id = w.id AND t.type IN ('Income', 'Debt Repayment') THEN t.amount ELSE 0 END), 0)
-          ) AS computed_liability
-        FROM wallets w
-        LEFT JOIN transactions t
-          ON t.user_id = w.user_id
-         AND (t.wallet_id = w.id OR t.destination_wallet_id = w.id)
-        WHERE w.user_id = ${userId}::uuid
-          AND w.account_subtype IN ('CreditCard', 'Overdraft')
-          ${walletFilterSql}
-        GROUP BY w.id, w.initial_balance
-      )
-      UPDATE wallets w
-      SET
-        liability_balance = ROUND(cd.computed_liability, 2),
-        updated_at = now()
-      FROM credit_deltas cd
-      WHERE w.id = cd.wallet_id
-    `);
   }
 
   /** Transactional outbox helpers: secondary rule/notification work runs outside critical posting TX */
@@ -641,35 +527,24 @@ export class CoreAuditService {
   }
 
   async backfillJournalFromTransactions(userId: string) {
-    const [allTx, existingEntries, userWallets] = await Promise.all([
+    const [allTx, existingEntries] = await Promise.all([
       db.select().from(transactions).where(eq(transactions.userId, userId)),
       db.select().from(journalEntries).where(eq(journalEntries.userId, userId)),
-      db.select().from(wallets).where(eq(wallets.userId, userId)),
     ]);
 
     const postedTxIds = new Set(
       existingEntries.filter((e) => e.transactionId && e.status === 'posted').map((e) => e.transactionId!)
     );
 
-    const missingTx = allTx.filter((tx) => !postedTxIds.has(tx.id));
-    if (missingTx.length === 0) {
-      return { backfilledCount: 0, totalTransactions: allTx.length };
-    }
-
     let backfilledCount = 0;
-    for (const tx of missingTx) {
+    for (const tx of allTx) {
+      if (postedTxIds.has(tx.id)) continue;
       await this.postJournalEntryForTransaction(userId, tx, {
         isEstimatedBackfill: true,
         idempotencyKey: `backfill-${tx.id}`,
         memo: `[Backfilled] ${tx.notes || tx.category || tx.type}`,
-        preloadedWallets: userWallets,
-        skipCreditSync: true,
       });
       backfilledCount++;
-    }
-
-    if (backfilledCount > 0) {
-      await this.syncCreditWalletLiabilityBalances(userId);
     }
 
     return { backfilledCount, totalTransactions: allTx.length };
@@ -864,19 +739,32 @@ export class CoreAuditService {
         ? headerCols.findIndex((c) => /amount|montant|value|somme/i.test(c))
         : 2);
 
-    // 1. Parse all CSV rows in memory first and compute date bounds + row hashes
-    interface ParsedStatementLine {
-      rowDate: string;
-      description: string;
-      amount: number;
-      currency: string;
-      externalRef: string | null;
-      rowHash: string;
-    }
+    const [existingTx, existingImportRows] = await Promise.all([
+      db.select().from(transactions).where(eq(transactions.userId, userId)),
+      db.select().from(statementImportRows).where(eq(statementImportRows.userId, userId)),
+    ]);
+    const existingHashes = new Set(existingImportRows.map((r) => r.rowHash));
 
-    const parsedLines: ParsedStatementLine[] = [];
-    let minDateStr: string | null = null;
-    let maxDateStr: string | null = null;
+    const [batch] = await db
+      .insert(statementImportBatches)
+      .values({
+        userId,
+        walletId: dto.walletId,
+        fileName: dto.fileName || 'statement.csv',
+        fileFormat: dto.fileFormat || 'CSV',
+        statementOpeningBalance:
+          dto.statementOpeningBalance !== undefined ? String(dto.statementOpeningBalance) : null,
+        statementClosingBalance:
+          dto.statementClosingBalance !== undefined ? String(dto.statementClosingBalance) : null,
+        status: 'pending_review',
+      })
+      .returning();
+
+    let matchedCount = 0;
+    let unmatchedCount = 0;
+    let ambiguousCount = 0;
+    let duplicateCount = 0;
+    const insertedRows = [];
 
     for (const rawLine of dataLines) {
       const cols = splitRow(rawLine);
@@ -893,8 +781,7 @@ export class CoreAuditService {
       const amount = Number(cleanedAmtStr);
       if (!Number.isFinite(amount) || Math.abs(amount) < 0.01) continue;
 
-      const rawCurr = (cols[dto.columnMap?.currencyCol ?? 3] || 'MAD').toUpperCase().slice(0, 3);
-      const currency = /^[A-Z]{3}$/.test(rawCurr) ? rawCurr : 'MAD';
+      const currency = (cols[dto.columnMap?.currencyCol ?? 3] || 'MAD').toUpperCase().slice(0, 3);
       const externalRef = cols[dto.columnMap?.refCol ?? 4] || null;
 
       const rowHash = crypto
@@ -903,96 +790,30 @@ export class CoreAuditService {
         .digest('hex')
         .slice(0, 32);
 
-      if (!minDateStr || rowDate < minDateStr) minDateStr = rowDate;
-      if (!maxDateStr || rowDate > maxDateStr) maxDateStr = rowDate;
-
-      parsedLines.push({
-        rowDate,
-        description,
-        amount,
-        currency,
-        externalRef,
-        rowHash,
-      });
-    }
-
-    const minWindowDate = minDateStr
-      ? new Date(new Date(`${minDateStr}T00:00:00.000Z`).getTime() - 7 * 86400000)
-      : new Date(Date.now() - 90 * 86400000);
-    const maxWindowDate = maxDateStr
-      ? new Date(new Date(`${maxDateStr}T23:59:59.999Z`).getTime() + 7 * 86400000)
-      : new Date(Date.now() + 7 * 86400000);
-
-    // 2. Query only candidate transactions within [minDate - 7d, maxDate + 7d] and existing hashes for this wallet
-    const [existingTx, existingImportRows] = await Promise.all([
-      db
-        .select()
-        .from(transactions)
-        .where(
-          and(
-            eq(transactions.userId, userId),
-            gte(transactions.createdAt, minWindowDate),
-            lte(transactions.createdAt, maxWindowDate)
-          )
-        ),
-      db
-        .select({ rowHash: statementImportRows.rowHash })
-        .from(statementImportRows)
-        .where(
-          and(
-            eq(statementImportRows.userId, userId),
-            eq(statementImportRows.walletId, dto.walletId)
-          )
-        ),
-    ]);
-    const existingHashes = new Set(existingImportRows.map((r) => r.rowHash));
-
-    const [batch] = await db
-      .insert(statementImportBatches)
-      .values({
-        userId,
-        walletId: dto.walletId,
-        fileName: dto.fileName || 'statement.csv',
-        fileFormat: dto.fileFormat || 'CSV',
-        statementOpeningBalance:
-          dto.statementOpeningBalance !== undefined ? String(dto.statementOpeningBalance) : null,
-        statementClosingBalance:
-          dto.statementClosingBalance !== undefined ? String(dto.statementClosingBalance) : null,
-        statementStartDate: minDateStr,
-        statementEndDate: maxDateStr,
-        status: 'pending_review',
-      })
-      .returning();
-
-    let matchedCount = 0;
-    let unmatchedCount = 0;
-    let ambiguousCount = 0;
-    let duplicateCount = 0;
-
-    const statementRowsToInsert: Array<typeof statementImportRows.$inferInsert> = [];
-
-    for (const parsed of parsedLines) {
-      const { rowDate, description, amount, currency, externalRef, rowHash } = parsed;
-
       if (existingHashes.has(rowHash)) {
         duplicateCount++;
-        statementRowsToInsert.push({
-          batchId: batch.id,
-          userId,
-          walletId: dto.walletId,
-          rowDate,
-          description,
-          amount: String(amount),
-          currency,
-          externalReference: externalRef,
-          rowHash,
-          matchStatus: 'duplicate',
-          matchConfidence: '1.0',
-        });
+        const [dupRow] = await db
+          .insert(statementImportRows)
+          .values({
+            batchId: batch.id,
+            userId,
+            walletId: dto.walletId,
+            rowDate,
+            description,
+            amount: String(amount),
+            currency: /^[A-Z]{3}$/.test(currency) ? currency : 'MAD',
+            externalReference: externalRef,
+            rowHash,
+            matchStatus: 'duplicate',
+            matchConfidence: '1.0',
+          })
+          .returning();
+        insertedRows.push(dupRow);
         continue;
       }
       existingHashes.add(rowHash);
 
+      // Score matches against existing TrueSpend transactions
       const absAmt = Math.abs(amount);
       const rowTime = new Date(rowDate).getTime();
 
@@ -1035,63 +856,48 @@ export class CoreAuditService {
         unmatchedCount++;
       }
 
-      statementRowsToInsert.push({
-        batchId: batch.id,
-        userId,
-        walletId: dto.walletId,
-        rowDate,
-        description,
-        amount: String(amount),
-        currency,
-        externalReference: externalRef,
-        rowHash,
-        matchStatus,
-        matchConfidence: String(matchConfidence.toFixed(2)),
-        suggestedTransactionId: suggestedTxId,
-        candidateTransactionIdsJson: JSON.stringify(scoredCandidates.map((c) => c.tx.id)),
-      });
-    }
-
-    // 3. Batch-insert non-duplicate statement rows in one multi-row INSERT
-    const nonDuplicateRowsToInsert = statementRowsToInsert.filter(
-      (r) => r.matchStatus !== 'duplicate'
-    );
-    let insertedRows: Array<typeof statementImportRows.$inferSelect> = [];
-    if (nonDuplicateRowsToInsert.length > 0) {
-      insertedRows = await db
+      const [savedRow] = await db
         .insert(statementImportRows)
-        .values(nonDuplicateRowsToInsert)
-        .onConflictDoNothing()
-        .returning();
-    }
-
-    // 4. Batch-insert Financial Review Inbox items for all unmatched and ambiguous rows
-    const reviewItemsToInsert = insertedRows
-      .filter((r) => r.matchStatus === 'unmatched' || r.matchStatus === 'ambiguous')
-      .map((savedRow) => {
-        const amt = Number(savedRow.amount || 0);
-        return {
+        .values({
+          batchId: batch.id,
           userId,
-          sourceType: 'statement_row' as const,
-          status: 'Needs Review' as const,
-          confidenceScore: String(Number(savedRow.matchConfidence || 0) || 0.75),
-          parsedAmount: String(Math.abs(amt)),
-          parsedCurrency: savedRow.currency || 'MAD',
-          parsedDate: savedRow.rowDate,
-          parsedDescription: savedRow.description,
-          parsedCategory: amt < 0 ? '🧾 Bills & Utilities' : '📥 Income',
-          parsedType: (amt < 0 ? 'Expense' : 'Income') as 'Expense' | 'Income',
           walletId: dto.walletId,
-          linkedTransactionId: savedRow.suggestedTransactionId || null,
-          rawPayloadJson: JSON.stringify({ statementRowId: savedRow.id, batchId: batch.id }),
-        };
-      });
+          rowDate,
+          description,
+          amount: String(amount),
+          currency: /^[A-Z]{3}$/.test(currency) ? currency : 'MAD',
+          externalReference: externalRef,
+          rowHash,
+          matchStatus,
+          matchConfidence: String(matchConfidence.toFixed(2)),
+          suggestedTransactionId: suggestedTxId,
+          candidateTransactionIdsJson: JSON.stringify(scoredCandidates.map((c) => c.tx.id)),
+        })
+        .returning();
 
-    if (reviewItemsToInsert.length > 0) {
-      await db.insert(financialReviewItems).values(reviewItemsToInsert);
+      insertedRows.push(savedRow);
+
+      // Route unmatched and ambiguous rows into the Financial Review Inbox
+      if (matchStatus === 'unmatched' || matchStatus === 'ambiguous') {
+        await db.insert(financialReviewItems).values({
+          userId,
+          sourceType: 'statement_row',
+          status: 'Needs Review',
+          confidenceScore: String(matchConfidence || 0.75),
+          parsedAmount: String(Math.abs(amount)),
+          parsedCurrency: /^[A-Z]{3}$/.test(currency) ? currency : 'MAD',
+          parsedDate: rowDate,
+          parsedDescription: description,
+          parsedCategory: amount < 0 ? '🧾 Bills & Utilities' : '📥 Income',
+          parsedType: amount < 0 ? 'Expense' : 'Income',
+          walletId: dto.walletId,
+          linkedTransactionId: suggestedTxId,
+          rawPayloadJson: JSON.stringify({ statementRowId: savedRow.id, batchId: batch.id }),
+        });
+      }
     }
 
-    const totalRows = parsedLines.length;
+    const totalRows = insertedRows.length;
     const netStatementMovement = insertedRows
       .filter((r) => r.matchStatus !== 'duplicate')
       .reduce((s, r) => s + Number(r.amount || 0), 0);
@@ -3110,88 +2916,6 @@ export class CoreAuditService {
         unreconciledGoals,
         staleExternalValuations,
       },
-    };
-  }
-
-  // ─── 8. Database Catalog, Index & Performance Telemetry (DB-00 / PERF-00) ─
-
-  async getDatabasePerformanceReport() {
-    const telemetry = perfMonitor.getDiagnosticsReport();
-    const pool = createPool();
-
-    let appliedMigrations: Array<{ id: string; description: string; appliedAt: string }> = [];
-    let presentIndexes: string[] = [];
-    let tableStats: Array<{
-      tableName: string;
-      liveRows: number;
-      deadRows: number;
-      seqScan: number;
-      idxScan: number;
-    }> = [];
-
-    try {
-      const [migRes, idxRes, statRes] = await Promise.all([
-        pool
-          .query('SELECT id, description, applied_at FROM schema_migrations ORDER BY id ASC')
-          .catch(() => ({ rows: [] })),
-        pool
-          .query(
-            `SELECT indexname
-             FROM pg_indexes
-             WHERE schemaname = 'public'`
-          )
-          .catch(() => ({ rows: [] })),
-        pool
-          .query(
-            `SELECT
-               relname AS table_name,
-               COALESCE(n_live_tup, 0)::int AS live_rows,
-               COALESCE(n_dead_tup, 0)::int AS dead_rows,
-               COALESCE(seq_scan, 0)::int AS seq_scan,
-               COALESCE(idx_scan, 0)::int AS idx_scan
-             FROM pg_stat_user_tables
-             ORDER BY COALESCE(n_live_tup, 0) DESC
-             LIMIT 35`
-          )
-          .catch(() => ({ rows: [] })),
-      ]);
-
-      appliedMigrations = migRes.rows.map((r: any) => ({
-        id: String(r.id),
-        description: String(r.description || ''),
-        appliedAt: r.applied_at ? new Date(r.applied_at).toISOString() : new Date().toISOString(),
-      }));
-      presentIndexes = idxRes.rows.map((r: any) => String(r.indexname));
-      tableStats = statRes.rows.map((r: any) => ({
-        tableName: String(r.table_name),
-        liveRows: Number(r.live_rows || 0),
-        deadRows: Number(r.dead_rows || 0),
-        seqScan: Number(r.seq_scan || 0),
-        idxScan: Number(r.idx_scan || 0),
-      }));
-    } catch {
-      // Non-fatal if database catalog introspection is unavailable
-    }
-
-    const presentIndexSet = new Set(presentIndexes);
-    const missingRequiredIndexes = REQUIRED_INDEX_CATALOG.filter(
-      (idxName) => !presentIndexSet.has(idxName)
-    );
-
-    return {
-      ...telemetry,
-      migrations: {
-        definedCount: SCHEMA_MIGRATIONS.length,
-        appliedCount: appliedMigrations.length,
-        applied: appliedMigrations,
-      },
-      indexes: {
-        requiredCount: REQUIRED_INDEX_CATALOG.length,
-        presentRequiredCount: REQUIRED_INDEX_CATALOG.length - missingRequiredIndexes.length,
-        missingRequiredIndexes,
-        allCatalogHealthy: missingRequiredIndexes.length === 0,
-      },
-      tableStats,
     };
   }
 }

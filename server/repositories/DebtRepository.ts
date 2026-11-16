@@ -1,6 +1,6 @@
 import { db } from '../../src/db/index.js';
-import { debts, splits, userAuditLogs } from '../../src/db/schema.js';
-import { eq, desc, and, inArray, sql } from 'drizzle-orm';
+import { debts, splits, transactions, userAuditLogs } from '../../src/db/schema.js';
+import { eq, desc, and, isNotNull } from 'drizzle-orm';
 
 export type DbExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -33,15 +33,6 @@ export class DebtRepository {
     return result[0] || null;
   }
 
-  async findByIdsAndUserId(ids: string[], userId: string, exec: DbExecutor = db) {
-    const cleanIds = Array.from(new Set(ids.filter(Boolean)));
-    if (cleanIds.length === 0) return [];
-    return await exec
-      .select()
-      .from(debts)
-      .where(and(eq(debts.userId, userId), inArray(debts.id, cleanIds)));
-  }
-
   async create(data: CreateDebtParams, exec: DbExecutor = db) {
     const newDebt = await exec.insert(debts).values(data).returning();
     return newDebt[0];
@@ -62,8 +53,13 @@ export class DebtRepository {
     await db.delete(debts).where(eq(debts.userId, userId));
   }
 
-  async findAllLinkedSplits(exec: DbExecutor = db) {
-    return await exec.select().from(splits).where(sql`${splits.linkedContactId} IS NOT NULL`);
+  async findAllLinkedSplits(userId: string, exec: DbExecutor = db) {
+    const rows = await exec
+      .select({ split: splits })
+      .from(splits)
+      .innerJoin(transactions, eq(splits.transactionId, transactions.id))
+      .where(and(eq(transactions.userId, userId), isNotNull(splits.linkedContactId)));
+    return rows.map((r) => r.split);
   }
 
   async recordDebtForgiveness(params: {

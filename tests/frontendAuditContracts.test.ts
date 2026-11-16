@@ -17,7 +17,6 @@ import {
   getNormalizedMonthlyAmount,
   shiftDateByCycle,
 } from '../src/lib/subscriptionCycles.js';
-import { pickRandomFact, type FinancialFact } from '../src/lib/financialFacts.js';
 import type { FinancialRuleItem, SavedWhatIfScenario } from '../src/types/index.js';
 
 function runFrontendContractTests() {
@@ -299,31 +298,6 @@ function runFrontendContractTests() {
     assert.equal(legacyShape.walletComparison[1].legacyBalanceMad.toFixed(2), '0.00');
     assert.equal(legacyShape.walletComparison[1].discrepancyMad.toFixed(2), '0.00');
     console.log('✓ Test 9 passed: normalizeJournalAuditSummary coerces legacy and partial shapes with safe numeric guarantees.');
-  }
-
-  // 10. Financial Facts & Signals periodic random picker for SpexCompanionPet
-  {
-    const sampleFacts: FinancialFact[] = [
-      { id: 'f-1', type: 'liquidity', title: 'Liquidity', message: 'Healthy cushion', value: '5,000 MAD', icon: 'wallet', priority: 2 },
-      { id: 'f-2', type: 'budget', title: 'Budget Health', message: 'On track', value: '4/5 budgets', icon: 'target', priority: 2 },
-      { id: 'f-3', type: 'spending', title: 'Top Category', message: 'Groceries leads', value: '1,200 MAD', icon: 'bar-chart', priority: 3 },
-    ];
-    assert.equal(pickRandomFact([]), null);
-    assert.equal(pickRandomFact([sampleFacts[0]])?.id, 'f-1');
-
-    const pickedAfterTwo = pickRandomFact(sampleFacts, ['f-1', 'f-2']);
-    assert.equal(pickedAfterTwo?.id, 'f-3', 'Should prioritize unseen signal facts before repeating');
-
-    const pickedAfterAll = pickRandomFact(sampleFacts, ['f-1', 'f-2', 'f-3']);
-    assert.ok(pickedAfterAll && pickedAfterAll.id !== 'f-3', 'Must avoid immediate back-to-back repetition when cycling');
-
-    const petSrc = fs.readFileSync(
-      path.resolve(process.cwd(), 'src/components/common/SpexCompanionPet.tsx'),
-      'utf8',
-    );
-    assert.ok(petSrc.includes('pickRandomFact'));
-    assert.ok(petSrc.includes('AUTO_SIGNAL_INTERVAL_MS'));
-    console.log('✓ Test 10 passed: Financial Facts Signal engine rotates non-repeating random cards into SpexCompanionPet.');
   }
 
   console.log('\nAll Frontend Audit Contract tests passed!');

@@ -15,11 +15,12 @@ import {
   InvestmentsData,
   StockMarketType,
   StockOrderAction,
+  ExperienceTier,
 } from '../types';
 import { useNotifications } from './useNotifications';
 import { netExpenseOf } from '../lib/finance';
 
-export function useDashboardData(token: string | null) {
+export function useDashboardData(token: string | null, experienceTier?: ExperienceTier) {
   const [kpis, setKpis] = useState<KPI | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [debts, setDebts] = useState<Debt[]>([]);
@@ -40,80 +41,73 @@ export function useDashboardData(token: string | null) {
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
 
   const notifications = useNotifications();
+  const isAdvancedTier = experienceTier === 'advanced';
 
-  const fetchData = useCallback(
-    async (options?: { includeInvestments?: boolean; silent?: boolean }) => {
-      if (!token) return;
-      const includeInvestments = options?.includeInvestments ?? true;
-      if (!options?.silent) {
-        setLoading(true);
-      }
-      try {
-        const bootstrap = await dashboardService.getDashboardBootstrap(token, {
-          includeInvestments: false,
-        });
-        setKpis(bootstrap.kpis || null);
-        setTransactions(bootstrap.transactions || []);
-        setDebts(bootstrap.debts || []);
-        setUserSettings(bootstrap.settings);
-        setBudgets(bootstrap.budgets || []);
-        setPayrolls(bootstrap.payrolls || []);
-        setContexts(bootstrap.contexts || []);
-        setGoals(bootstrap.goals || []);
-        setSubscriptions(bootstrap.subscriptions || []);
+  const fetchData = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const bootstrap = await dashboardService.getDashboardBootstrap(token, 'all');
+      setKpis(bootstrap.kpis || null);
+      setTransactions(bootstrap.transactions || []);
+      setDebts(bootstrap.debts || []);
+      setUserSettings(bootstrap.settings ?? null);
+      setBudgets(bootstrap.budgets || []);
+      setPayrolls(bootstrap.payrolls || []);
+      setGoals(bootstrap.goals || []);
+      setSubscriptions(bootstrap.subscriptions || []);
+      setContexts(isAdvancedTier ? (bootstrap.contexts || []) : []);
+      setInvestmentsData(isAdvancedTier ? (bootstrap.investmentsData || null) : null);
+    } catch (e) {
+      console.error('Error fetching dashboard data:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, isAdvancedTier]);
 
-        if (includeInvestments) {
-          dashboardService
-            .getInvestmentsData(token)
-            .then((invData) => {
-              if (invData) setInvestmentsData(invData);
-            })
-            .catch(() => undefined);
-        }
-      } catch (e) {
-        console.error('Error fetching dashboard data:', e);
-      } finally {
-        if (!options?.silent) {
-          setLoading(false);
-        }
-      }
-    },
-    [token]
-  );
-
-  const refreshCoreLedger = useCallback(async () => {
-    await fetchData({ includeInvestments: false, silent: true });
-  }, [fetchData]);
+  const refreshLedger = useCallback(async () => {
+    if (!token) return;
+    try {
+      const ledger = await dashboardService.getDashboardBootstrap(token, 'ledger');
+      if (ledger.kpis) setKpis(ledger.kpis);
+      if (ledger.transactions) setTransactions(ledger.transactions);
+      if (ledger.debts) setDebts(ledger.debts);
+      if (ledger.payrolls) setPayrolls(ledger.payrolls);
+      if (ledger.budgets) setBudgets(ledger.budgets);
+    } catch (e) {
+      console.error('Error refreshing ledger data:', e);
+    }
+  }, [token]);
 
   // When fresh data arrives, schedule (or re-schedule) the smart notification stream
   useEffect(() => {
     if (!kpis) return;
     const now = new Date();
+    const currentYear = now.getUTCFullYear();
+    const currentMonth = now.getUTCMonth() + 1;
     const monthlyBudgets = budgets.filter(
-      b => b.year === now.getUTCFullYear() && b.month === now.getUTCMonth() + 1,
+      b => b.year === currentYear && b.month === currentMonth,
     );
     const totalBudget = monthlyBudgets.reduce((s, b) => s + parseFloat(b.amount as any), 0);
-    const totalSpent = transactions
-      .filter(tx => {
-        if (tx.type !== 'Expense') return false;
-        const d = new Date(tx.createdAt);
-        return d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() + 1 === now.getUTCMonth() + 1;
-      })
-      .reduce((s, tx) => s + netExpenseOf(tx), 0);
+
+    let totalSpent = 0;
+    const spentByCategory = new Map<string, number>();
+    for (const tx of transactions) {
+      if (tx.type !== 'Expense') continue;
+      const d = new Date(tx.createdAt);
+      if (d.getUTCFullYear() !== currentYear || d.getUTCMonth() + 1 !== currentMonth) continue;
+      const net = netExpenseOf(tx);
+      totalSpent += net;
+      if (tx.category) {
+        spentByCategory.set(tx.category, (spentByCategory.get(tx.category) || 0) + net);
+      }
+    }
+
     const monthlyIncome = parseFloat((kpis as any).monthlyIncome ?? 0);
     const monthlyExpenses = parseFloat((kpis as any).monthlyExpenses ?? 0);
 
     const overspentCategories = monthlyBudgets
-      .filter(b => {
-        const spent = transactions
-          .filter(tx => {
-            const d = new Date(tx.createdAt);
-            return tx.type === 'Expense' && tx.category === b.category &&
-              d.getUTCFullYear() === now.getUTCFullYear() && d.getUTCMonth() + 1 === now.getUTCMonth() + 1;
-          })
-          .reduce((s, tx) => s + netExpenseOf(tx), 0);
-        return spent > parseFloat(b.amount as any);
-      })
+      .filter(b => (spentByCategory.get(b.category) || 0) > parseFloat(b.amount as any))
       .map(b => b.category);
 
     const topCategory =
@@ -173,7 +167,7 @@ export function useDashboardData(token: string | null) {
   const handleSettleDebt = async (debtId: string, amount: number, category?: string, walletId?: string) => {
     try {
       await dashboardService.settleDebt(debtId, amount, token, category, walletId);
-      await refreshCoreLedger();
+      await refreshLedger();
       window.dispatchEvent(
         new CustomEvent('truespend:toast', {
           detail: { message: `Settled ${amount.toFixed(2)} MAD in wallet.`, type: 'success' },
@@ -192,7 +186,7 @@ export function useDashboardData(token: string | null) {
   ) => {
     try {
       await dashboardService.forgiveDebt(debtId, { amount, reason, note }, token);
-      await refreshCoreLedger();
+      await refreshLedger();
       window.dispatchEvent(
         new CustomEvent('truespend:toast', {
           detail: {
@@ -215,7 +209,7 @@ export function useDashboardData(token: string | null) {
   const handleDeleteDebt = async (debtId: string) => {
     try {
       await dashboardService.deleteDebt(debtId, token);
-      await refreshCoreLedger();
+      await refreshLedger();
     } catch (e: any) {
       console.error('Error deleting debt:', e);
       throw e;
@@ -233,7 +227,7 @@ export function useDashboardData(token: string | null) {
         },
         token
       );
-      await refreshCoreLedger();
+      await refreshLedger();
       window.dispatchEvent(new CustomEvent('truespend:toast', { detail: { message: 'Debt record updated successfully.', type: 'success' } }));
     } catch (e: any) {
       console.error('Error updating debt:', e);
@@ -245,7 +239,7 @@ export function useDashboardData(token: string | null) {
   const handleDeleteTransaction = async (txId: string) => {
     try {
       await dashboardService.deleteTransaction(txId, token);
-      await refreshCoreLedger();
+      await refreshLedger();
     } catch (e: any) {
       console.error('Error deleting transaction:', e);
       throw e;
@@ -254,30 +248,30 @@ export function useDashboardData(token: string | null) {
 
   const handleSaveCategoryBudget = async (category: string, year: number, month: number, amount: number) => {
     await dashboardService.saveCategoryBudget({ category, year, month, amount }, token);
-    await refreshCoreLedger();
+    await refreshLedger();
   };
 
   const handleSaveCategoryBudgetsBatch = async (budgets: { category: string; year: number; month: number; amount: number }[]) => {
     await dashboardService.saveCategoryBudgetsBatch(budgets, token);
-    await refreshCoreLedger();
+    await refreshLedger();
   };
 
 
   const handleCopyPreviousMonthBudgets = async (year: number, month: number) => {
     const result = await dashboardService.copyPreviousMonthBudgets(year, month, token);
-    await refreshCoreLedger();
+    await refreshLedger();
     return result.copied;
   };
 
   const handleClearCategoryBudgetsMonth = async (year: number, month: number) => {
     const result = await dashboardService.clearCategoryBudgetsMonth(year, month, token);
-    await refreshCoreLedger();
+    await refreshLedger();
     return result.count;
   };
 
   const handleDeleteCategoryBudget = async (id: string) => {
     await dashboardService.deleteCategoryBudget(id, token);
-    await refreshCoreLedger();
+    await refreshLedger();
   };
 
   const openTransaction = (transactionId: string) => {
@@ -305,7 +299,13 @@ export function useDashboardData(token: string | null) {
     }));
     try {
       await dashboardService.updateSettings(payload, token);
-      await refreshCoreLedger();
+      const [settingsData, ledger] = await Promise.all([
+        dashboardService.getSettings(token),
+        dashboardService.getDashboardBootstrap(token, 'ledger'),
+      ]);
+      setUserSettings(settingsData);
+      if (ledger.kpis) setKpis(ledger.kpis);
+      if (ledger.payrolls) setPayrolls(ledger.payrolls);
       if (notifyUser) {
         window.dispatchEvent(new CustomEvent('truespend:toast', { detail: { message: 'Settings saved successfully!', type: 'success' } }));
       }
@@ -324,7 +324,7 @@ export function useDashboardData(token: string | null) {
       { scheduledFor, amount, ...(walletId ? { walletId } : {}) },
       token
     );
-    await refreshCoreLedger();
+    await refreshLedger();
   };
 
   const handleUpdatePayroll = async (
@@ -332,12 +332,12 @@ export function useDashboardData(token: string | null) {
     payload: { scheduledFor?: string; amount?: number; walletId?: string | null }
   ) => {
     await dashboardService.updatePayroll(payrollId, payload, token);
-    await refreshCoreLedger();
+    await refreshLedger();
   };
 
   const handleDeletePayroll = async (payrollId: string) => {
     await dashboardService.deletePayroll(payrollId, token);
-    await refreshCoreLedger();
+    await refreshLedger();
   };
 
   const handleSeedData = async () => {
@@ -427,7 +427,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const created = await dashboardService.createWallet(payload, token);
-      await refreshCoreLedger();
+      await refreshLedger();
       return created;
     } finally {
       setIsSaving(false);
@@ -439,7 +439,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const updated = await dashboardService.updateWallet(id, payload, token);
-      await refreshCoreLedger();
+      await refreshLedger();
       return updated;
     } finally {
       setIsSaving(false);
@@ -451,7 +451,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.deleteWallet(id, reassignToWalletId, token);
-      await refreshCoreLedger();
+      await refreshLedger();
       return res;
     } finally {
       setIsSaving(false);
@@ -482,8 +482,8 @@ export function useDashboardData(token: string | null) {
     try {
       await dashboardService.deleteContext(id, token);
       setContexts((prev) => prev.filter((c) => c.id !== id));
-      // Re-fetch transactions because some might have had contextId nullified
-      await refreshCoreLedger();
+      // Re-fetch ledger transactions because some might have had contextId nullified
+      await refreshLedger();
     } catch (error) {
       console.error('Error deleting context', error);
       throw error;
@@ -495,7 +495,7 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.linkTransactionsToContext(transactionIds, contextId, token);
-      await refreshCoreLedger();
+      await refreshLedger();
       return res;
     } catch (error) {
       console.error('Error linking transactions to context:', error);
@@ -510,7 +510,8 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.createGoal(payload, token);
-      await refreshCoreLedger();
+      const goalData = await dashboardService.getGoals(token);
+      setGoals(goalData || []);
       return res;
     } catch (error) {
       console.error('Error creating goal:', error);
@@ -525,7 +526,8 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.updateGoal(id, payload, token);
-      await refreshCoreLedger();
+      const goalData = await dashboardService.getGoals(token);
+      setGoals(goalData || []);
       return res;
     } catch (error) {
       console.error('Error updating goal:', error);
@@ -540,7 +542,11 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.contributeToGoal(id, payload, token);
-      await refreshCoreLedger();
+      const [goalData] = await Promise.all([
+        dashboardService.getGoals(token),
+        refreshLedger(),
+      ]);
+      setGoals(goalData || []);
       return res;
     } catch (error) {
       console.error('Error contributing to goal:', error);
@@ -555,7 +561,11 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.withdrawFromGoal(id, payload, token);
-      await refreshCoreLedger();
+      const [goalData] = await Promise.all([
+        dashboardService.getGoals(token),
+        refreshLedger(),
+      ]);
+      setGoals(goalData || []);
       return res;
     } catch (error) {
       console.error('Error withdrawing from goal:', error);
@@ -570,7 +580,8 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.deleteGoal(id, token);
-      await refreshCoreLedger();
+      const goalData = await dashboardService.getGoals(token);
+      setGoals(goalData || []);
       return res;
     } catch (error) {
       console.error('Error deleting goal:', error);
@@ -585,7 +596,8 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.createSubscription(payload, token);
-      await refreshCoreLedger();
+      const subData = await dashboardService.getSubscriptions(token);
+      setSubscriptions(subData || []);
       return res;
     } catch (error) {
       console.error('Error creating subscription:', error);
@@ -600,7 +612,8 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.updateSubscription(id, payload, token);
-      await refreshCoreLedger();
+      const subData = await dashboardService.getSubscriptions(token);
+      setSubscriptions(subData || []);
       return res;
     } catch (error) {
       console.error('Error updating subscription:', error);
@@ -615,7 +628,8 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.deleteSubscription(id, token);
-      await refreshCoreLedger();
+      const subData = await dashboardService.getSubscriptions(token);
+      setSubscriptions(subData || []);
       return res;
     } catch (error) {
       console.error('Error deleting subscription:', error);
@@ -630,7 +644,11 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.paySubscription(id, payload, token);
-      await refreshCoreLedger();
+      const [subData] = await Promise.all([
+        dashboardService.getSubscriptions(token),
+        refreshLedger(),
+      ]);
+      setSubscriptions(subData || []);
       return res;
     } catch (error) {
       console.error('Error paying subscription:', error);
@@ -648,7 +666,11 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.changeSubscriptionPlan(id, payload, token);
-      await refreshCoreLedger();
+      const [subData] = await Promise.all([
+        dashboardService.getSubscriptions(token),
+        refreshLedger(),
+      ]);
+      setSubscriptions(subData || []);
       return res;
     } catch (error) {
       console.error('Error changing subscription plan:', error);
@@ -688,7 +710,11 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.upsertStockPosition(payload, token);
-      await fetchData();
+      const [invData] = await Promise.all([
+        dashboardService.getInvestmentsData(token),
+        payload.syncWithWallet ? refreshLedger() : Promise.resolve(),
+      ]);
+      setInvestmentsData(invData || null);
       return res;
     } finally {
       setIsSaving(false);
@@ -716,7 +742,8 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.updateStockPosition(id, payload, token);
-      await fetchData();
+      const invData = await dashboardService.getInvestmentsData(token);
+      setInvestmentsData(invData || null);
       return res;
     } finally {
       setIsSaving(false);
@@ -728,7 +755,8 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.deleteStockPosition(id, token);
-      await fetchData();
+      const invData = await dashboardService.getInvestmentsData(token);
+      setInvestmentsData(invData || null);
       return res;
     } finally {
       setIsSaving(false);
@@ -750,7 +778,11 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.executeStockOrder(payload, token);
-      await fetchData();
+      const [invData] = await Promise.all([
+        dashboardService.getInvestmentsData(token),
+        refreshLedger(),
+      ]);
+      setInvestmentsData(invData || null);
       return res;
     } finally {
       setIsSaving(false);
@@ -762,7 +794,11 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.deleteStockOrder(id, token);
-      await fetchData();
+      const [invData] = await Promise.all([
+        dashboardService.getInvestmentsData(token),
+        refreshLedger(),
+      ]);
+      setInvestmentsData(invData || null);
       return res;
     } finally {
       setIsSaving(false);
@@ -778,7 +814,11 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.executePaydayAllocation(payload, token);
-      await fetchData();
+      const [invData] = await Promise.all([
+        dashboardService.getInvestmentsData(token),
+        refreshLedger(),
+      ]);
+      setInvestmentsData(invData || null);
       return res;
     } finally {
       setIsSaving(false);
@@ -795,7 +835,11 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.fundInvestmentWallet(payload, token);
-      await fetchData();
+      const [invData] = await Promise.all([
+        dashboardService.getInvestmentsData(token),
+        refreshLedger(),
+      ]);
+      setInvestmentsData(invData || null);
       return res;
     } finally {
       setIsSaving(false);
@@ -815,14 +859,11 @@ export function useDashboardData(token: string | null) {
     if (!token) return null;
     setIsSaving(true);
     try {
-      const [invData, kpiData, txData] = await Promise.all([
+      const [invData] = await Promise.all([
         dashboardService.getInvestmentsData(token, forceRefresh),
-        dashboardService.getKpis(token),
-        dashboardService.getTransactions(token),
+        refreshLedger(),
       ]);
       setInvestmentsData(invData || null);
-      if (kpiData) setKpis(kpiData);
-      if (txData) setTransactions(txData);
       return invData;
     } finally {
       setIsSaving(false);
@@ -837,7 +878,11 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.syncBinanceWallet(payload, token);
-      await fetchData();
+      const [invData] = await Promise.all([
+        dashboardService.getInvestmentsData(token),
+        refreshLedger(),
+      ]);
+      setInvestmentsData(invData || null);
       return res;
     } finally {
       setIsSaving(false);
@@ -855,7 +900,11 @@ export function useDashboardData(token: string | null) {
     setIsSaving(true);
     try {
       const res = await dashboardService.logWalletCapitalTransfer(payload, token);
-      await fetchData();
+      const [invData] = await Promise.all([
+        dashboardService.getInvestmentsData(token),
+        refreshLedger(),
+      ]);
+      setInvestmentsData(invData || null);
       return res;
     } finally {
       setIsSaving(false);
@@ -910,7 +959,6 @@ export function useDashboardData(token: string | null) {
     selectedTransactionId,
     setSelectedTransactionId,
     fetchData,
-    refreshCoreLedger,
     handleSettleDebt,
     handleForgiveDebt,
     handleDeleteDebt,

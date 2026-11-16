@@ -4,13 +4,14 @@ import { MotionConfig, AnimatePresence, motion } from 'motion/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider, useTheme, THEME_PRESETS, type ThemeId } from './context/ThemeContext';
 import { PrivacyProvider, usePrivacy } from './context/PrivacyContext';
-import { Button } from './components/ui/Button';
 import Dashboard from './components/Dashboard';
 import { DesktopHeaderNav } from './components/dashboard/DesktopHeaderNav';
 import { DesktopSidebarNav } from './components/dashboard/DesktopSidebarNav';
+import { AuthPortal } from './components/auth/AuthPortal';
 import type { DashboardTab } from './types';
 import { NAV_GROUP_ORDER, NAV_ITEMS } from './config/navigation';
 import { getOfflineOutbox } from './lib/offlineOutbox';
+import { isTabAvailableForUser } from './lib/entitlements';
 import {
   Menu,
   X,
@@ -33,11 +34,10 @@ import {
   Scale,
 } from 'lucide-react';
 
-import { getApiUrl } from './lib/capacitorBridge';
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png?v=transparent`;
 
 function AppContent() {
-  const { user, loading, signIn, switchUserSession } = useAuth();
+  const { user, loading, switchExperienceTier } = useAuth();
   const { isPrivacyMode, togglePrivacyMode } = usePrivacy();
   const {
     theme,
@@ -47,10 +47,6 @@ function AppContent() {
     setTheme,
     setDesktopNavLayout,
   } = useTheme();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
@@ -66,6 +62,9 @@ function AppContent() {
   const themeMenuRef = useRef<HTMLDivElement>(null);
   const quickMenuRef = useRef<HTMLDivElement>(null);
 
+  const visibleNavItems = NAV_ITEMS.filter((item) =>
+    isTabAvailableForUser(item.id, user?.experienceTier, user?.role)
+  );
   const activeNavMeta = NAV_ITEMS.find((item) => item.id === activeTab);
 
   const handleSelectTab = (tab: DashboardTab) => {
@@ -118,29 +117,6 @@ function AppContent() {
 
   const isChatOnMobile = activeTab === 'chat';
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
-    setIsSubmitting(true);
-
-    try {
-      const res = await fetch(getApiUrl('/api/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Login failed');
-
-      signIn(data.token, data.user);
-    } catch (err: any) {
-      setLoginError(err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
@@ -178,59 +154,10 @@ function AppContent() {
   }
 
   if (!user) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          className="mx-auto w-full max-w-sm text-center"
-        >
-          <div className="mb-8">
-            <img src={appIconSrc} alt="TrueSpend Logo" className="mx-auto h-16 w-16" />
-          </div>
-          <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-            Welcome to TrueSpend
-          </h1>
-          <p className="mb-8 text-gray-500 dark:text-gray-400">
-            Log in to track your true economic consumption.
-          </p>
-
-          <form onSubmit={handleLogin} className="space-y-4 text-left">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Username or Email
-              </label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Username or email address"
-                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-white shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-white shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                required
-              />
-            </div>
-            {loginError && <p className="text-sm text-red-600 dark:text-red-400">{loginError}</p>}
-            <Button type="submit" disabled={isSubmitting} size="lg" className="w-full">
-              {isSubmitting ? 'Signing in...' : 'Sign In'}
-            </Button>
-          </form>
-        </motion.div>
-      </div>
-    );
+    return <AuthPortal appIconSrc={appIconSrc} />;
   }
+
+  const isAdvancedTier = user.experienceTier === 'advanced';
 
   return (
     <div className="min-h-screen flex bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-x-clip">
@@ -245,21 +172,6 @@ function AppContent() {
       )}
 
       <div className="flex-1 min-w-0 flex flex-col">
-        {user?.impersonatedBy && activeTab !== 'users' && activeTab !== 'settings' && (
-          <div className="bg-amber-500 text-amber-950 px-4 py-1.5 text-xs font-medium flex items-center justify-between gap-3">
-            <div className="truncate">
-              Previewing session as <strong>{user.displayName || user.username}</strong> (
-              {(user.role || 'member').toUpperCase()})
-            </div>
-            <button
-              type="button"
-              onClick={() => user.impersonatedBy && switchUserSession(user.impersonatedBy.id)}
-              className="px-2.5 py-0.5 rounded bg-amber-950 text-amber-100 hover:bg-amber-900 font-semibold shrink-0 transition-colors cursor-pointer"
-            >
-              Return to Owner
-            </button>
-          </div>
-        )}
 
         {/* Header — Spacious 3-Zone Architecture (zero right-button clipping/override) */}
         <header
@@ -433,17 +345,19 @@ function AppContent() {
                         <Calculator className="h-3.5 w-3.5 text-indigo-500" />
                         <span>Smart Calculator</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsQuickMenuOpen(false);
-                          handleSelectTab('calculators');
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
-                      >
-                        <Scale className="h-3.5 w-3.5 text-amber-500" />
-                        <span>What-If &amp; Tax Simulators</span>
-                      </button>
+                      {isAdvancedTier && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsQuickMenuOpen(false);
+                            handleSelectTab('calculators');
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                        >
+                          <Scale className="h-3.5 w-3.5 text-amber-500" />
+                          <span>What-If &amp; Tax Simulators</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => {
@@ -489,6 +403,28 @@ function AppContent() {
                   </button>
                 </>
               )}
+
+              {/* Subtle Free Experience Tier Switcher */}
+              <button
+                type="button"
+                onClick={async () => {
+                  const next = isAdvancedTier ? 'basic' : 'advanced';
+                  await switchExperienceTier(next);
+                  window.dispatchEvent(
+                    new CustomEvent('truespend:toast', {
+                      detail: {
+                        message: `Switched to ${next === 'advanced' ? 'Advanced' : 'Basic'} Mode (Free).`,
+                        type: 'info',
+                      },
+                    })
+                  );
+                }}
+                title={`Active Mode: ${isAdvancedTier ? 'Advanced' : 'Basic'} (100% Free). Click to switch experience tier without losing data.`}
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/80 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 text-xs font-medium transition-colors shrink-0 whitespace-nowrap cursor-pointer"
+              >
+                <span className={`h-2 w-2 rounded-full ${isAdvancedTier ? 'bg-indigo-500' : 'bg-emerald-500'}`} />
+                <span>{isAdvancedTier ? 'Advanced' : 'Basic'} · Free</span>
+              </button>
 
               {/* Desktop Menu Layout Quick Toggle (Side <-> Top) */}
               <button
@@ -764,7 +700,7 @@ function AppContent() {
               </div>
               <div className="flex-1 overflow-y-auto ts-scrollbar py-2 space-y-2">
                 {NAV_GROUP_ORDER.map((group) => {
-                  const groupTabs = NAV_ITEMS.filter((item) => item.group === group.id);
+                  const groupTabs = visibleNavItems.filter((item) => item.group === group.id);
                   if (groupTabs.length === 0) return null;
                   return (
                     <div key={group.id}>

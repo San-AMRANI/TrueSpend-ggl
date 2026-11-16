@@ -38,6 +38,8 @@ import {
 } from '../types';
 import { NAV_ITEMS } from '../config/navigation';
 import { useTheme, THEME_PRESETS } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { hasFeatureAccess, isTabAvailableForUser } from '../lib/entitlements';
 import { format } from 'date-fns';
 
 interface CommandPaletteProps {
@@ -151,6 +153,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
+  const tier = user?.experienceTier;
+  const isAdvanced = tier === 'advanced';
   const {
     theme,
     setTheme,
@@ -271,62 +276,74 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           window.dispatchEvent(new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', { detail: 'wallets' }));
         },
       },
-      {
-        id: 'act-review-inbox',
-        group: 'Quick Actions',
-        title: 'Open Financial Review Inbox & Statement Import',
-        subtitle: 'Confirm OCR receipts, CSV bank statement rows & automated rule drafts',
-        badge: 'Inbox',
-        badgeColor: 'text-emerald-600 dark:text-emerald-400',
-        icon: Inbox,
-        keywords: 'review inbox pending approval ocr receipt csv tsv statement import reconcile',
-        onSelect: () => {
-          onClose();
-          window.dispatchEvent(new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', { detail: 'review_inbox' }));
-        },
-      },
-      {
-        id: 'act-ledger-integrity',
-        group: 'Quick Actions',
-        title: 'Double-Entry Journal & Integrity Diagnostics',
-        subtitle: 'Audit Trial Balance parity, unjournaled items & counterparty aliases',
-        badge: 'Ledger',
-        badgeColor: 'text-teal-600 dark:text-teal-400',
-        icon: FileSpreadsheet,
-        keywords: 'double entry journal ledger trial balance integrity audit backfill',
-        onSelect: () => {
-          onClose();
-          window.dispatchEvent(new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', { detail: 'journal_audit' }));
-        },
-      },
-      {
-        id: 'act-networth-bridge',
-        group: 'Quick Actions',
-        title: 'Net Worth Change Bridge & External Assets',
-        subtitle: 'Attribute period wealth delta across Cash, Credit, Debt, Equities & Real Estate',
-        badge: 'Bridge',
-        badgeColor: 'text-indigo-600 dark:text-indigo-400',
-        icon: Scale,
-        keywords: 'net worth bridge change delta external assets liabilities real estate vehicle',
-        onSelect: () => {
-          setActiveTab('reports');
-          onClose();
-        },
-      },
-      {
-        id: 'act-rules-engine',
-        group: 'Quick Actions',
-        title: 'Automated Financial Rules & Execution Logs',
-        subtitle: 'Configure deterministic rules for categorization, review alerts & goal funding',
-        badge: 'Rules',
-        badgeColor: 'text-purple-600 dark:text-purple-400',
-        icon: GitBranch,
-        keywords: 'rules automation triggers conditions execution logs',
-        onSelect: () => {
-          setActiveTab('settings');
-          onClose();
-        },
-      },
+      ...(isAdvanced
+        ? [
+            {
+              id: 'act-review-inbox',
+              group: 'Quick Actions' as const,
+              title: 'Open Financial Review Inbox & Statement Import',
+              subtitle: 'Confirm OCR receipts, CSV bank statement rows & automated rule drafts',
+              badge: 'Inbox',
+              badgeColor: 'text-emerald-600 dark:text-emerald-400',
+              icon: Inbox,
+              keywords: 'review inbox pending approval ocr receipt csv tsv statement import reconcile',
+              onSelect: () => {
+                onClose();
+                window.dispatchEvent(
+                  new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', {
+                    detail: 'review_inbox',
+                  }),
+                );
+              },
+            },
+            {
+              id: 'act-ledger-integrity',
+              group: 'Quick Actions' as const,
+              title: 'Double-Entry Journal & Integrity Diagnostics',
+              subtitle: 'Audit Trial Balance parity, unjournaled items & counterparty aliases',
+              badge: 'Ledger',
+              badgeColor: 'text-teal-600 dark:text-teal-400',
+              icon: FileSpreadsheet,
+              keywords: 'double entry journal ledger trial balance integrity audit backfill',
+              onSelect: () => {
+                onClose();
+                window.dispatchEvent(
+                  new CustomEvent<WalletsWorkbenchSection>('truespend:openAccountsSection', {
+                    detail: 'journal_audit',
+                  }),
+                );
+              },
+            },
+            {
+              id: 'act-networth-bridge',
+              group: 'Quick Actions' as const,
+              title: 'Net Worth Change Bridge & External Assets',
+              subtitle: 'Attribute period wealth delta across Cash, Credit, Debt, Equities & Real Estate',
+              badge: 'Bridge',
+              badgeColor: 'text-indigo-600 dark:text-indigo-400',
+              icon: Scale,
+              keywords: 'net worth bridge change delta external assets liabilities real estate vehicle',
+              onSelect: () => {
+                setActiveTab('reports');
+                onClose();
+              },
+            },
+            {
+              id: 'act-rules-engine',
+              group: 'Quick Actions' as const,
+              title: 'Automated Financial Rules & Execution Logs',
+              subtitle: 'Configure deterministic rules for categorization, review alerts & goal funding',
+              badge: 'Rules',
+              badgeColor: 'text-purple-600 dark:text-purple-400',
+              icon: GitBranch,
+              keywords: 'rules automation triggers conditions execution logs',
+              onSelect: () => {
+                setActiveTab('settings');
+                onClose();
+              },
+            },
+          ]
+        : []),
       {
         id: 'act-spex-audit',
         group: 'Quick Actions',
@@ -412,8 +429,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         },
       })),
 
-      // 2. Navigation (derived from unified NAV_ITEMS registry)
-      ...NAV_ITEMS.map((navItem) => {
+      // 2. Navigation (derived from unified NAV_ITEMS registry, filtered by tier and role)
+      ...NAV_ITEMS.filter((navItem) =>
+        isTabAvailableForUser(navItem.id, tier, user?.role)
+      ).map((navItem) => {
         let subtitle = navItem.description;
         if (navItem.id === 'overview') {
           subtitle = `Safe to Spend: ${(kpis?.safeToSpend ?? 0).toFixed(0)} MAD · Health: ${kpis?.healthScore ?? 0}/100`;
@@ -523,26 +542,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     });
 
-    // 6. Equities
-    (investmentsData?.positions || []).forEach((pos) => {
-      items.push({
-        id: `stock-${pos.id}`,
-        group: 'Equities',
-        title: `${pos.ticker} — ${pos.companyName}`,
-        subtitle: `${pos.sharesNum} shares · Value: ${pos.marketValueMad.toFixed(0)} MAD`,
-        badge: `${pos.unrealizedPnlPercent >= 0 ? '+' : ''}${pos.unrealizedPnlPercent.toFixed(1)}%`,
-        badgeColor:
-          pos.unrealizedPnlPercent >= 0
-            ? 'text-emerald-600 dark:text-emerald-400'
-            : 'text-rose-600 dark:text-rose-400',
-        icon: TrendingUp,
-        keywords: `stock equity ${pos.ticker} ${pos.companyName} ${pos.sector}`,
-        onSelect: () => {
-          setActiveTab('investments');
-          onClose();
-        },
+    // 6. Equities (Advanced mode only)
+    if (hasFeatureAccess(tier, 'investments')) {
+      (investmentsData?.positions || []).forEach((pos) => {
+        items.push({
+          id: `stock-${pos.id}`,
+          group: 'Equities',
+          title: `${pos.ticker} — ${pos.companyName}`,
+          subtitle: `${pos.sharesNum} shares · Value: ${pos.marketValueMad.toFixed(0)} MAD`,
+          badge: `${pos.unrealizedPnlPercent >= 0 ? '+' : ''}${pos.unrealizedPnlPercent.toFixed(1)}%`,
+          badgeColor:
+            pos.unrealizedPnlPercent >= 0
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-rose-600 dark:text-rose-400',
+          icon: TrendingUp,
+          keywords: `stock equity ${pos.ticker} ${pos.companyName} ${pos.sector}`,
+          onSelect: () => {
+            setActiveTab('investments');
+            onClose();
+          },
+        });
       });
-    });
+    }
 
     return items;
   }, [
@@ -557,6 +578,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     sidebarCollapsed,
     mathResult,
     query,
+    tier,
+    isAdvanced,
+    user?.role,
     onClose,
     onOpenQuickTransaction,
     onOpenSmartCalculator,

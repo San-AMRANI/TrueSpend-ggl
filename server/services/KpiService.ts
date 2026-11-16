@@ -1,24 +1,32 @@
+import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { transactionService } from './TransactionService.js';
 import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
 import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
+import { walletRepository } from '../repositories/WalletRepository.js';
 import { walletService } from './WalletService.js';
+import { payrollService } from './PayrollService.js';
 import { computeFinancialState } from '../../src/lib/financialEngine.js';
 
-export interface PreloadedKpiInputs {
+export interface PreloadedLedgerData {
   wallets?: any[];
   transactions?: any[];
   payrolls?: any[];
   debts?: any[];
   budgets?: any[];
+  skipPayrollReconcile?: boolean;
 }
 
 export class KpiService {
-  async getKpisForUser(dbUser: any, preloaded?: PreloadedKpiInputs) {
+  async getKpisForUser(dbUser: any, preloaded?: PreloadedLedgerData) {
     const userId = dbUser.id;
 
-    // Auto-seed default wallets if none exist (or reuse preloaded wallets)
-    const userWallets = preloaded?.wallets || (await walletService.getWallets(userId));
+    // Auto-seed default wallets if none exist
+    const userWallets = preloaded?.wallets ?? (await walletService.getWallets(userId));
+
+    if (!preloaded?.skipPayrollReconcile) {
+      await payrollService.reconcileDuePayrolls(userId);
+    }
 
     // Assign orphaned transactions to default Bank wallet
     const mainBank =
@@ -27,18 +35,51 @@ export class KpiService {
       userWallets[0];
     const defaultCash = userWallets.find((w: any) => w.type === 'Cash') || mainBank;
 
-    const allDebts = preloaded?.debts || (await debtRepository.findAllByUserId(userId));
-    const [allTx, payrolls, allBudgets] = await Promise.all([
-      preloaded?.transactions
-        ? Promise.resolve(preloaded.transactions)
-        : transactionService.getTransactionsForUser(userId, allDebts),
-      preloaded?.payrolls
-        ? Promise.resolve(preloaded.payrolls)
-        : payrollRepository.findAllByUserId(userId),
+    let allTx: any[];
+    let payrolls: any[];
+    let allDebts: any[];
+    let allBudgets: any[];
+
+    if (
+      preloaded?.transactions &&
+      preloaded?.payrolls &&
+      preloaded?.debts &&
       preloaded?.budgets
-        ? Promise.resolve(preloaded.budgets)
-        : categoryBudgetRepository.findAllByUserId(userId),
-    ]);
+    ) {
+      allTx = preloaded.transactions;
+      payrolls = preloaded.payrolls;
+      allDebts = preloaded.debts;
+      allBudgets = preloaded.budgets;
+    } else {
+      const [rawTx, rawSplits, loadedDebts, loadedPayrolls, loadedBudgets] = await Promise.all([
+        preloaded?.transactions
+          ? Promise.resolve(null)
+          : transactionRepository.findAllByUserId(userId),
+        preloaded?.transactions
+          ? Promise.resolve(null)
+          : transactionRepository.findSplitsByUserId(userId),
+        preloaded?.debts
+          ? Promise.resolve(preloaded.debts)
+          : debtRepository.findAllByUserId(userId),
+        preloaded?.payrolls
+          ? Promise.resolve(preloaded.payrolls)
+          : payrollRepository.findAllByUserId(userId),
+        preloaded?.budgets
+          ? Promise.resolve(preloaded.budgets)
+          : categoryBudgetRepository.findAllByUserId(userId),
+      ]);
+
+      allDebts = loadedDebts;
+      payrolls = loadedPayrolls;
+      allBudgets = loadedBudgets;
+      allTx =
+        preloaded?.transactions ??
+        (await transactionService.getTransactionsForUser(userId, {
+          rawTransactions: rawTx!,
+          allSplits: rawSplits!,
+          allDebts,
+        }));
+    }
 
     // Fix legacy transactions without walletId or with text 'Bank'/'Cash'
     const transactions = allTx.map((tx: any) => {

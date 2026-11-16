@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+import { apiClient, getApiAccessToken } from './apiClient';
 import { getApiUrl } from '../../lib/capacitorBridge';
 import {
   CategoryBudget,
@@ -49,34 +49,14 @@ import {
   FinancialPositionSnapshot,
   NetWorthChangeBridge,
   FinancialIntegrityReport,
+  ExperienceTier,
+  AuthSessionInfo,
+  AccountSecurityEventInfo,
+  OnboardingState,
+  StarterTemplate,
 } from '../../types';
 
-export interface DashboardBootstrapPayload {
-  kpis: KPI;
-  transactions: Transaction[];
-  debts: Debt[];
-  payrolls: Payroll[];
-  budgets: CategoryBudget[];
-  contexts: FinancialContext[];
-  goals: Goal[];
-  subscriptions: Subscription[];
-  settings: UserSettings;
-  investmentsData: InvestmentsData | null;
-}
-
 export const dashboardService = {
-  getDashboardBootstrap: (
-    token: string | null,
-    options?: { includeInvestments?: boolean }
-  ) =>
-    apiClient.get<DashboardBootstrapPayload>(
-      `/api/dashboard/bootstrap${
-        options?.includeInvestments === false ? '?includeInvestments=false' : ''
-      }`,
-      token
-    ),
-  getPerformanceReport: (token: string | null) =>
-    apiClient.get<Record<string, unknown>>('/api/audit/performance', token),
   getSubscriptions: (token: string | null) => apiClient.get<Subscription[]>('/api/subscriptions', token),
   createSubscription: (payload: Partial<Subscription>, token: string | null) =>
     apiClient.post<Subscription>('/api/subscriptions', payload, token),
@@ -110,6 +90,19 @@ export const dashboardService = {
     apiClient.delete<{ success: boolean }>(`/api/contexts/${id}`, token),
   linkTransactionsToContext: (transactionIds: string[], contextId: string | null, token: string | null) =>
     apiClient.post<{ success: boolean; count: number }>('/api/contexts/link-transactions', { transactionIds, contextId }, token),
+  getDashboardBootstrap: (token: string | null, scope?: 'all' | 'ledger') =>
+    apiClient.get<{
+      kpis: KPI;
+      transactions: Transaction[];
+      debts: Debt[];
+      payrolls: Payroll[];
+      budgets: CategoryBudget[];
+      settings?: UserSettings;
+      goals?: Goal[];
+      subscriptions?: Subscription[];
+      contexts?: FinancialContext[];
+      investmentsData?: InvestmentsData | null;
+    }>(`/api/dashboard-bootstrap${scope ? `?scope=${scope}` : ''}`, token),
   getKpis: (token: string | null) => apiClient.get<KPI>('/api/kpis', token),
   getWallets: (token: string | null) => apiClient.get<Wallet[]>('/api/wallets', token),
   createWallet: (
@@ -276,8 +269,10 @@ export const dashboardService = {
       token
     ),
   getSqlBlob: async (token: string | null) => {
+    const authToken = token ?? getApiAccessToken();
     const response = await fetch(getApiUrl('/api/settings/export-sql'), {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'include',
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
     });
     if (!response.ok) {
       if (response.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
@@ -286,8 +281,10 @@ export const dashboardService = {
     return await response.blob();
   },
   exportSql: async (token: string | null) => {
+    const authToken = token ?? getApiAccessToken();
     const response = await fetch(getApiUrl('/api/settings/export-sql'), {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: 'include',
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
     });
     if (!response.ok) {
       if (response.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
@@ -511,8 +508,6 @@ export const dashboardService = {
   ) => apiClient.put<ManagedUser>(`/api/users/${id}`, payload, token),
   deleteManagedUser: (id: string, token: string | null) =>
     apiClient.delete<{ deletedId: string }>(`/api/users/${id}`, token),
-  impersonateManagedUser: (id: string, token: string | null) =>
-    apiClient.post<{ token: string; user: User }>(`/api/users/${id}/impersonate`, {}, token),
 
   // Core Audit Recommendations (Items A - P)
   validateBackupSql: (sql: string, token: string | null) =>
@@ -687,4 +682,177 @@ export const dashboardService = {
     apiClient.get<FinancialIntegrityReport>('/api/audit/integrity-report', token),
   simulateAiActions: (actions: unknown[], token: string | null) =>
     apiClient.post<{ impact: AiActionImpactSimulation }>('/api/chat/simulate-actions', { actions }, token),
+
+  // Public Account Auth, Verification, Recovery, Sessions & Invitations
+  registerAccount: (payload: {
+    email: string;
+    username?: string;
+    displayName?: string;
+    password: string;
+    experienceTier?: ExperienceTier;
+    inviteCode?: string;
+    locale?: string;
+    countryCode?: string;
+    timezone?: string;
+    baseCurrency?: string;
+  }) =>
+    apiClient.post<{
+      registrationAccepted: boolean;
+      requiresVerification: boolean;
+      message: string;
+      invitationAccepted?: boolean;
+      invitationWarning?: string;
+      devVerificationToken?: string;
+    }>('/api/auth/register', payload),
+  loginAccount: (payload: { email?: string; username?: string; password: string }) =>
+    apiClient.post<{
+      token: string;
+      accessToken: string;
+      refreshToken?: string;
+      sessionId: string;
+      user: User;
+    }>('/api/auth/login', payload),
+  verifyEmailToken: (token: string) =>
+    apiClient.post<{
+      verified: boolean;
+      isEmailChange: boolean;
+      token: string;
+      accessToken: string;
+      refreshToken?: string;
+      user: User;
+    }>('/api/auth/verify-email', { token }),
+  resendVerificationEmail: (email: string) =>
+    apiClient.post<{ sent: boolean; message: string; devVerificationToken?: string }>(
+      '/api/auth/resend-verification',
+      { email }
+    ),
+  forgotPasswordRequest: (email: string) =>
+    apiClient.post<{ sent: boolean; message: string; devResetToken?: string }>(
+      '/api/auth/forgot-password',
+      { email }
+    ),
+  resetPasswordWithToken: (token: string, newPassword: string) =>
+    apiClient.post<{ reset: boolean; message: string }>('/api/auth/reset-password', {
+      token,
+      newPassword,
+    }),
+  changePassword: (currentPassword: string, newPassword: string, token: string | null) =>
+    apiClient.post<{ changed: boolean; message: string }>(
+      '/api/auth/change-password',
+      { currentPassword, newPassword },
+      token
+    ),
+  changeEmail: (currentPassword: string, newEmail: string, token: string | null) =>
+    apiClient.post<{ pendingEmail: string; message: string; devVerificationToken?: string }>(
+      '/api/auth/change-email',
+      { currentPassword, newEmail },
+      token
+    ),
+  logoutAllSessions: (token: string | null) =>
+    apiClient.post<{ success: boolean }>('/api/auth/logout-all', {}, token),
+  getSessions: (token: string | null) =>
+    apiClient.get<{ sessions: AuthSessionInfo[] }>('/api/auth/sessions', token),
+  revokeSession: (sessionId: string, token: string | null) =>
+    apiClient.delete<{ revokedId: string }>(`/api/auth/sessions/${sessionId}`, token),
+  getSecurityEvents: (token: string | null) =>
+    apiClient.get<{ events: AccountSecurityEventInfo[] }>('/api/auth/security-events', token),
+  validateInvitationCode: (code: string) =>
+    apiClient.get<{ valid: boolean; campaign?: string; reason?: string }>(
+      `/api/invitations/validate?code=${encodeURIComponent(code)}`
+    ),
+  createInvitationCode: (
+    payload: { campaign?: string; maxUses?: number; expiresInDays?: number },
+    token: string | null
+  ) =>
+    apiClient.post<{
+      id: string;
+      inviteCode: string;
+      campaign: string;
+      maxUses: number;
+      expiresAt: string | null;
+    }>('/api/invitations', payload, token),
+
+  // Profile, Experience Tier Switching & Data Rights
+  updateProfile: (
+    payload: {
+      displayName?: string;
+      locale?: string;
+      countryCode?: string;
+      timezone?: string;
+      baseCurrency?: string;
+      avatarColor?: string;
+      payday?: number;
+      salary?: number;
+      emergencyBuffer?: number;
+    },
+    token: string | null
+  ) => apiClient.put<{ user: User }>('/api/profile', payload, token),
+  switchExperienceTier: (experienceTier: ExperienceTier, token: string | null) =>
+    apiClient.put<{
+      user: User;
+      experienceTier: ExperienceTier;
+      preservedDataSummary: {
+        investmentsCount: number;
+        contextsCount: number;
+        rulesCount: number;
+        statementBatchesCount: number;
+      };
+      advancedOnlyFeatures: Array<{ key: string; title: string; description: string }>;
+      message: string;
+    }>('/api/profile/experience', { experienceTier }, token),
+  exportPersonalData: (token: string | null) =>
+    apiClient.get<Record<string, any>>('/api/profile/export', token),
+  deleteOwnAccount: (currentPassword: string, confirmation: string, token: string | null) =>
+    apiClient.post<{ deleted: boolean; message: string }>(
+      '/api/profile/delete-account',
+      { currentPassword, confirmation },
+      token
+    ),
+  disconnectGoogleDrive: (token: string | null) =>
+    apiClient.post<{ success: boolean }>('/api/settings/disconnect-drive', {}, token),
+
+  // Onboarding & Starter Templates
+  getOnboardingState: (token: string | null) =>
+    apiClient.get<OnboardingState>('/api/onboarding', token),
+  updateOnboardingState: (
+    payload: {
+      action?: 'start' | 'save_step' | 'complete' | 'dismiss' | 'relaunch';
+      stepId?: string;
+      experienceTier?: ExperienceTier;
+      displayName?: string;
+      baseCurrency?: string;
+      countryCode?: string;
+      timezone?: string;
+      locale?: string;
+      payday?: number;
+      salary?: number;
+      emergencyBuffer?: number;
+    },
+    token: string | null
+  ) =>
+    apiClient.put<{ onboarding: OnboardingState; user?: User }>('/api/onboarding', payload, token),
+  setupOpeningAccounts: (
+    accounts: Array<{
+      name: string;
+      type: 'Bank' | 'Cash' | 'Savings';
+      openingBalance: number;
+      isMain?: boolean;
+      currency?: string;
+    }>,
+    token: string | null
+  ) => apiClient.post<{ accounts: Wallet[] }>('/api/onboarding/setup-accounts', { accounts }, token),
+  getStarterTemplates: (token: string | null) =>
+    apiClient.get<{ templates: StarterTemplate[]; currentTier: ExperienceTier }>(
+      '/api/templates',
+      token
+    ),
+  previewStarterTemplate: (templateId: string, token: string | null) =>
+    apiClient.get<{ template: StarterTemplate }>(`/api/templates/${templateId}/preview`, token),
+  applyStarterTemplate: (templateId: string, token: string | null) =>
+    apiClient.post<{
+      alreadyApplied: boolean;
+      appliedAt: string;
+      createdResources: Array<{ kind: string; id: string; name: string }>;
+      message: string;
+    }>(`/api/templates/${templateId}/apply`, {}, token),
 };

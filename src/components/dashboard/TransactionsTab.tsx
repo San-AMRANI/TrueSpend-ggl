@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Transaction, Wallet, CategoryBudget, Subscription, Goal, Debt, Payroll, DashboardTab, InvestmentsData, StockOrder } from '../../types';
 import { expenseCategories, incomeAndTransferCategories, normalizeCategory } from '../../lib/categories';
-import { filterTransactions, TransactionFilters, getCategorySpending, netExpenseOf, isReimbursementIncome, isInvestmentTransaction } from '../../lib/finance';
-import { getFinancialMonthRef } from '../../lib/financialMonth';
+import { filterTransactions, TransactionFilters, netExpenseOf, isReimbursementIncome, isInvestmentTransaction } from '../../lib/finance';
+import { getFinancialPeriods } from '../../lib/financialMonth';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -99,6 +99,8 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
   const [quickPreset, setQuickPreset] = useState<QuickPreset>('all');
+  const [pageSize, setPageSize] = useState<25 | 50 | 100 | 'all'>(50);
+  const [visibleCount, setVisibleCount] = useState<number>(50);
 
   // Form states
   const [showForm, setShowForm] = useState(false);
@@ -122,75 +124,93 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [batchError, setBatchError] = useState<string | null>(null);
 
-  // Deep-link selection handling
-  useEffect(() => {
-    if (!selectedTransactionId) return;
-    const transaction = transactions.find((item) => item.id === selectedTransactionId);
-    if (transaction) {
-      setInspectingTx(transaction);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  // O(1) lookup maps for wallets, contexts, and budgets
+  const walletById = useMemo(
+    () => new Map((wallets || []).map((w) => [w.id, w])),
+    [wallets]
+  );
+  const contextById = useMemo(
+    () => new Map((contexts || []).map((c) => [c.id, c])),
+    [contexts]
+  );
+  const budgetByPeriodCat = useMemo(() => {
+    const map = new Map<string, CategoryBudget>();
+    for (const b of budgets) {
+      if (b.category && b.year && b.month) {
+        map.set(`${b.year}-${b.month}-${normalizeCategory(b.category)}`, b);
+      }
     }
-    onSelectionHandled?.();
-  }, [onSelectionHandled, selectedTransactionId, transactions]);
+    return map;
+  }, [budgets]);
 
-  // Helper to determine the financial year and month for a given transaction date
+  // Precompute sorted financial periods once per payroll change instead of per transaction
+  const financialPeriods = useMemo(
+    () => (payrolls && payrolls.length >= 2 ? getFinancialPeriods(payrolls) : []),
+    [payrolls]
+  );
+
+  // Helper to determine the financial year and month for a given transaction date in O(P) without re-sorting
   const getTxPeriod = (txDateStr: string | Date) => {
     const d = new Date(txDateStr);
-    if (payrolls && payrolls.length >= 2) {
-      const ref = getFinancialMonthRef(d, payrolls);
-      if (ref) return ref;
+    if (financialPeriods.length > 0) {
+      const matched = financialPeriods.find((item) => d >= item.start && d <= item.end);
+      if (matched) return { year: matched.year, month: matched.month };
     }
-    // Fallback to calendar year and 1-based month (UTC aligned to avoid timezone shift)
     return {
       year: d.getUTCFullYear(),
       month: d.getUTCMonth() + 1,
     };
   };
 
-  // Precompute spending per category per financial month using canonical getCategorySpending:
+  // Single-pass O(N) calculation of spending per category per financial month:
   // "year-month-normalizedCategory" -> totalSpent
   const categorySpentMap = useMemo(() => {
     const map = new Map<string, number>();
 
-    // Collect all unique year-month-category combinations needed from budgets and transactions
-    const periodCatKeys = new Set<string>();
-
-    for (const b of budgets) {
-      if (b.category && b.year && b.month) {
-        const normCat = normalizeCategory(b.category);
-        periodCatKeys.add(`${b.year}-${b.month}-${normCat}`);
-      }
-    }
-
     for (const tx of transactions) {
-      if ((tx.type === 'Expense' || tx.type === 'Transfer') && tx.category) {
-        const period = getTxPeriod(tx.createdAt);
-        let normCat = normalizeCategory(tx.category);
-        if (tx.type === 'Transfer' && wallets && tx.destinationWalletId) {
-          const dest = wallets.find((w) => w.id === tx.destinationWalletId);
-          const destType = dest?.type?.toLowerCase();
-          if (destType === 'investment') normCat = '📈 Investments';
-          else if (destType === 'savings') normCat = '🛟 Emergency & goals Fund';
-        }
-        if (normCat) {
-          periodCatKeys.add(`${period.year}-${period.month}-${normCat}`);
+      if (tx.type !== 'Expense' && tx.type !== 'Debt Repayment' && tx.type !== 'Transfer') continue;
+
+      let txCategory = normalizeCategory(tx.category);
+      if (tx.type === 'Transfer' && tx.destinationWalletId) {
+        const dest = walletById.get(tx.destinationWalletId);
+        if (dest) {
+          const destType = dest.type?.toLowerCase();
+          if (destType === 'investment') {
+            txCategory = '📈 Investments';
+          } else if (destType === 'savings') {
+            txCategory = '🛟 Emergency & goals Fund';
+          } else {
+            txCategory = '🔄 Transfer';
+          }
         }
       }
-    }
 
-    // Now calculate exact canonical category spending for each needed combination
-    for (const key of periodCatKeys) {
-      const [yStr, mStr, ...catParts] = key.split('-');
-      const y = parseInt(yStr, 10);
-      const m = parseInt(mStr, 10);
-      const normCat = catParts.join('-');
+      if (!txCategory) continue;
 
-      const totalSpent = getCategorySpending(transactions, normCat, y, m, payrolls || [], wallets);
-      map.set(key, totalSpent);
+      let countsAsSpend = false;
+      if (tx.type === 'Expense') {
+        if (tx.walletId) {
+          const sourceWallet = walletById.get(tx.walletId);
+          const sourceType = sourceWallet?.type?.toLowerCase();
+          if (txCategory === '📈 Investments' && sourceType === 'investment') continue;
+          if (txCategory === '🛟 Emergency & goals Fund' && sourceType === 'savings') continue;
+        }
+        countsAsSpend = true;
+      } else if (tx.type === 'Debt Repayment' && txCategory === '💳 Debt & Obligations') {
+        countsAsSpend = true;
+      } else if (tx.type === 'Transfer' && txCategory !== '🔄 Transfer' && txCategory !== 'Transfer') {
+        countsAsSpend = true;
+      }
+
+      if (!countsAsSpend) continue;
+
+      const period = getTxPeriod(tx.createdAt);
+      const key = `${period.year}-${period.month}-${txCategory}`;
+      map.set(key, (map.get(key) || 0) + netExpenseOf(tx));
     }
 
     return map;
-  }, [transactions, budgets, payrolls, wallets]);
+  }, [transactions, financialPeriods, walletById]);
 
   // Active subscriptions normalized lookup
   const activeSubs = useMemo(() => {
@@ -232,23 +252,18 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     return stockOrderByTxId.get(tx.id);
   };
 
-  // Check budget health for an expense transaction
+  // Check budget health for an expense transaction in O(1)
   const getTransactionBudgetHealth = (tx: Transaction) => {
     if (tx.type !== 'Expense' || !tx.category) return null;
     const { year: y, month: m } = getTxPeriod(tx.createdAt);
     const normCat = normalizeCategory(tx.category);
-
-    // Find the corresponding budget entry for this category and period
-    const budget = budgets.find(
-      (b) => b.year === y && b.month === m && normalizeCategory(b.category) === normCat
-    );
-
-    if (!budget) return null;
-    const budgetLimit = parseFloat(budget.amount) || 0;
     const key = `${y}-${m}-${normCat}`;
-    const totalSpent = categorySpentMap.has(key)
-      ? (categorySpentMap.get(key) || 0)
-      : getCategorySpending(transactions, normCat, y, m, payrolls || [], wallets);
+
+    const budget = budgetByPeriodCat.get(key);
+    if (!budget) return null;
+
+    const budgetLimit = parseFloat(budget.amount) || 0;
+    const totalSpent = categorySpentMap.get(key) || 0;
 
     const usagePercent = budgetLimit > 0 ? (totalSpent / budgetLimit) * 100 : 0;
     const isOver = totalSpent > budgetLimit;
@@ -306,7 +321,35 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     }
 
     return result;
-  }, [filters, transactions, quickPreset, budgets, categorySpentMap, stockOrderByTxId, wallets]);
+  }, [filters, transactions, quickPreset, budgetByPeriodCat, categorySpentMap, stockOrderByTxId, wallets]);
+
+  // Reset pagination window when filters, quickPreset, or pageSize change
+  useEffect(() => {
+    if (pageSize !== 'all') {
+      setVisibleCount(pageSize);
+    }
+  }, [filters, quickPreset, pageSize]);
+
+  // Deep-link selection handling (expands pagination window if needed so the target row is visible)
+  useEffect(() => {
+    if (!selectedTransactionId) return;
+    const transaction = transactions.find((item) => item.id === selectedTransactionId);
+    if (transaction) {
+      const idx = visibleTransactions.findIndex((item) => item.id === selectedTransactionId);
+      if (idx >= 0 && pageSize !== 'all' && idx >= visibleCount) {
+        setVisibleCount(Math.ceil((idx + 1) / pageSize) * pageSize);
+      }
+      setInspectingTx(transaction);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    onSelectionHandled?.();
+  }, [onSelectionHandled, selectedTransactionId, transactions, visibleTransactions, pageSize, visibleCount]);
+
+  // Slice transactions for progressive DOM rendering
+  const paginatedTransactions = useMemo(() => {
+    if (pageSize === 'all') return visibleTransactions;
+    return visibleTransactions.slice(0, visibleCount);
+  }, [visibleTransactions, pageSize, visibleCount]);
 
   // Active filter count
   const activeFilterCount = [
@@ -471,11 +514,11 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     ];
 
     const rows = txList.map((tx) => {
-      const srcWallet = wallets?.find((w) => w.id === tx.walletId)?.name || 'Unknown';
+      const srcWallet = (tx.walletId ? walletById.get(tx.walletId)?.name : undefined) || 'Unknown';
       const destWallet = tx.destinationWalletId
-        ? wallets?.find((w) => w.id === tx.destinationWalletId)?.name || 'Unknown'
+        ? walletById.get(tx.destinationWalletId)?.name || 'Unknown'
         : '';
-      const ctxName = tx.contextId ? contexts?.find((c) => c.id === tx.contextId)?.name || '' : '';
+      const ctxName = tx.contextId ? contextById.get(tx.contextId)?.name || '' : '';
       const splitsSummary =
         tx.splits && tx.splits.length > 0
           ? tx.splits.map((s) => `${s.linkedContactName || 'Anonymous'}: ${s.reimbursableAmount}`).join('; ')
@@ -507,12 +550,12 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     document.body.removeChild(link);
   };
 
-  // Group transactions by local date
+  // Group paginated transactions by local date
   const dateGroups = useMemo(() => {
     const groups: { dateKey: string; label: string; date: Date; items: Transaction[]; netDay: number }[] = [];
     const groupMap = new Map<string, { label: string; date: Date; items: Transaction[]; netDay: number }>();
 
-    for (const tx of visibleTransactions) {
+    for (const tx of paginatedTransactions) {
       const d = new Date(tx.createdAt);
       const key = format(d, 'yyyy-MM-dd');
       let g = groupMap.get(key);
@@ -539,7 +582,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     }
 
     return groups;
-  }, [visibleTransactions]);
+  }, [paginatedTransactions]);
 
   return (
     <div className="space-y-6">
@@ -1641,29 +1684,57 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
         </CardHeader>
 
         <CardContent className="space-y-4 pt-4">
-          {/* List Metadata & Selection Toolbar */}
-          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+          {/* List Metadata, Selection Toolbar & Page Size Selector */}
+          <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
             <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 font-medium cursor-pointer">
+              <label className="flex items-center gap-2 font-medium cursor-pointer whitespace-nowrap shrink-0">
                 <input
                   type="checkbox"
                   checked={selectedTxIds.size === visibleTransactions.length && visibleTransactions.length > 0}
                   onChange={toggleSelectAll}
                   className="rounded border-gray-300 text-gray-900 focus:ring-gray-950"
                 />
-                <span>Select All ({visibleTransactions.length})</span>
+                <span className="font-mono tabular-nums">Select All ({visibleTransactions.length})</span>
               </label>
 
               {selectedTxIds.size > 0 && (
-                <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                <span className="font-semibold text-indigo-600 dark:text-indigo-400 font-mono tabular-nums whitespace-nowrap shrink-0">
                   {selectedTxIds.size} selected
                 </span>
               )}
             </div>
 
-            <span>
-              Showing {visibleTransactions.length} of {transactions.length} record{transactions.length === 1 ? '' : 's'}
-            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-gray-400 whitespace-nowrap shrink-0">Rows:</span>
+                <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-0.5">
+                  {([25, 50, 100, 'all'] as const).map((size) => {
+                    const active = pageSize === size;
+                    return (
+                      <button
+                        key={String(size)}
+                        type="button"
+                        onClick={() => setPageSize(size)}
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-mono tabular-nums font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                          active
+                            ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-xs'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+                        }`}
+                      >
+                        {size === 'all' ? 'All' : size}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <span className="font-mono tabular-nums whitespace-nowrap shrink-0">
+                Showing {paginatedTransactions.length === 0 ? 0 : 1}–{paginatedTransactions.length} of{' '}
+                {visibleTransactions.length}
+                {visibleTransactions.length !== transactions.length ? ` (filtered from ${transactions.length})` : ''}{' '}
+                record{visibleTransactions.length === 1 ? '' : 's'}
+              </span>
+            </div>
           </div>
 
           {/* Floating/Sticky Batch Action Bar */}
@@ -1811,9 +1882,9 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                               <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                                 <span className="flex items-center gap-1 font-medium">
                                   <Landmark className="h-3 w-3 text-gray-400" />
-                                  {wallets?.find((w) => w.id === transaction.walletId)?.name || 'Default'}
+                                  {(transaction.walletId ? walletById.get(transaction.walletId)?.name : undefined) || 'Default'}
                                   {transaction.type === 'Transfer' && transaction.destinationWalletId && (
-                                    <> → {wallets?.find((w) => w.id === transaction.destinationWalletId)?.name || 'Default'}</>
+                                    <> → {walletById.get(transaction.destinationWalletId)?.name || 'Default'}</>
                                   )}
                                 </span>
 
@@ -1900,10 +1971,10 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                                 ) : null}
 
                                 {/* Context Badge */}
-                                {transaction.contextId && contexts?.find((c) => c.id === transaction.contextId) && (
+                                {transaction.contextId && contextById.get(transaction.contextId) && (
                                   <span className="flex items-center text-blue-600 dark:text-blue-400">
                                     <Tag className="w-2.5 h-2.5 mr-0.5" />
-                                    {contexts.find((c) => c.id === transaction.contextId)?.name}
+                                    {contextById.get(transaction.contextId)?.name}
                                   </span>
                                 )}
 
@@ -1999,7 +2070,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
           {/* VIEW MODE 2: Compact List Rows */}
           {viewMode === 'compact' && (
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {visibleTransactions.map((transaction) => {
+              {paginatedTransactions.map((transaction) => {
                 const isSelected = selectedTxIds.has(transaction.id);
                 return (
                   <div
@@ -2034,7 +2105,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                         {transaction.notes || transaction.category || transaction.type}
                       </span>
                       <span className="text-[11px] text-gray-400 hidden md:inline truncate">
-                        • {wallets?.find((w) => w.id === transaction.walletId)?.name || 'Default'}
+                        • {(transaction.walletId ? walletById.get(transaction.walletId)?.name : undefined) || 'Default'}
                       </span>
                     </div>
 
@@ -2120,7 +2191,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {visibleTransactions.map((transaction) => {
+                  {paginatedTransactions.map((transaction) => {
                     const isSelected = selectedTxIds.has(transaction.id);
                     return (
                       <tr
@@ -2160,9 +2231,9 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                           {transaction.category || '—'}
                         </td>
                         <td className="p-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                          {wallets?.find((w) => w.id === transaction.walletId)?.name || 'Default'}
+                          {(transaction.walletId ? walletById.get(transaction.walletId)?.name : undefined) || 'Default'}
                           {transaction.type === 'Transfer' && transaction.destinationWalletId && (
-                            <> → {wallets?.find((w) => w.id === transaction.destinationWalletId)?.name}</>
+                            <> → {walletById.get(transaction.destinationWalletId)?.name}</>
                           )}
                         </td>
                         <td
@@ -2224,6 +2295,73 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Progressive Pagination Footer Controls */}
+          {visibleTransactions.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-gray-100 dark:border-gray-800 text-xs">
+              <div className="text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+                Showing <span className="font-semibold text-gray-900 dark:text-gray-100">1–{paginatedTransactions.length}</span> of{' '}
+                <span className="font-semibold text-gray-900 dark:text-gray-100">{visibleTransactions.length}</span> matching records
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {pageSize !== 'all' && paginatedTransactions.length < visibleTransactions.length && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setVisibleCount((prev) =>
+                          Math.min(visibleTransactions.length, prev + (typeof pageSize === 'number' ? pageSize : 50))
+                        )
+                      }
+                      className="font-mono tabular-nums whitespace-nowrap shrink-0"
+                    >
+                      Load More (+
+                      {Math.min(
+                        typeof pageSize === 'number' ? pageSize : 50,
+                        visibleTransactions.length - paginatedTransactions.length
+                      )}
+                      )
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPageSize('all')}
+                      className="text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 whitespace-nowrap shrink-0"
+                    >
+                      Show All ({visibleTransactions.length})
+                    </Button>
+                  </>
+                )}
+
+                <div className="flex items-center gap-1.5 ml-1">
+                  <span className="text-gray-400 whitespace-nowrap shrink-0">Page size:</span>
+                  <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 p-0.5">
+                    {([25, 50, 100, 'all'] as const).map((size) => {
+                      const active = pageSize === size;
+                      return (
+                        <button
+                          key={String(size)}
+                          type="button"
+                          onClick={() => setPageSize(size)}
+                          className={`px-2.5 py-1 rounded-md text-xs font-mono tabular-nums font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                            active
+                              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-xs'
+                              : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+                          }`}
+                        >
+                          {size === 'all' ? 'All' : size}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

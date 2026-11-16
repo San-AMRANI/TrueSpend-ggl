@@ -46,8 +46,15 @@ export class GoalService {
       db.select().from(goalContributionEvents).where(eq(goalContributionEvents.userId, userId)),
     ]);
 
+    const eventsByGoalId = new Map<string, typeof events>();
+    for (const e of events) {
+      const list = eventsByGoalId.get(e.goalId) || [];
+      list.push(e);
+      eventsByGoalId.set(e.goalId, list);
+    }
+
     return goalList.map((g) => {
-      const goalEvents = events.filter((e) => e.goalId === g.id);
+      const goalEvents = eventsByGoalId.get(g.id) || [];
       const auditedNetContributions = goalEvents.reduce(
         (sum, e) =>
           sum +

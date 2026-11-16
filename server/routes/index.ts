@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { ensureDatabaseSchema } from '../../src/db/index.js';
 import authRoutes from './authRoutes.js';
+import onboardingRoutes from './onboardingRoutes.js';
 import kpiRoutes from './kpiRoutes.js';
 import transactionRoutes from './transactionRoutes.js';
 import debtRoutes from './debtRoutes.js';
@@ -18,113 +20,40 @@ import cycleRetrospectiveRoutes from './cycleRetrospectiveRoutes.js';
 import userManagementRoutes from './userManagementRoutes.js';
 import coreAuditRoutes from './coreAuditRoutes.js';
 import { NotificationController } from '../controllers/NotificationController.js';
-import { requireAuth, AuthRequest } from '../../src/middleware/auth.js';
-import { perfRequestMiddleware } from '../../src/lib/perfMonitor.js';
-import { walletService } from '../services/WalletService.js';
-import { debtRepository } from '../repositories/DebtRepository.js';
-import { debtService } from '../services/DebtService.js';
-import { transactionService } from '../services/TransactionService.js';
-import { payrollService } from '../services/PayrollService.js';
-import { categoryBudgetRepository } from '../repositories/CategoryBudgetRepository.js';
-import { getContextsForUser } from '../controllers/ContextController.js';
-import { goalService } from '../services/GoalService.js';
-import { subscriptionService } from '../services/SubscriptionService.js';
-import { settingsService } from '../services/SettingsService.js';
-import { kpiService } from '../services/KpiService.js';
-import { investmentService } from '../services/InvestmentService.js';
+import { requireAuth } from '../../src/middleware/auth.js';
 
 const apiRouter = Router();
 const notificationController = new NotificationController();
 
-// Mount request correlation ID & latency/DB telemetry middleware across all /api routes
-apiRouter.use(perfRequestMiddleware);
-
-apiRouter.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+apiRouter.get('/health', async (_req, res) => {
+  try {
+    await ensureDatabaseSchema();
+    res.json({ status: 'ok', database: 'ready' });
+  } catch (err: any) {
+    console.error('[Health] Database readiness check failed:', err?.cause?.message || err?.message || err);
+    res.status(503).json({
+      status: 'degraded',
+      error: 'Database service unavailable.',
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  }
 });
 
-/**
- * PERF-01 & PERF-10: Unified Dashboard Bootstrap Endpoint
- * Loads all core ledger entities once in parallel, computes KPIs from the loaded entities
- * with zero duplicate table scans, and optionally includes investment telemetry.
- */
-apiRouter.get('/dashboard/bootstrap', requireAuth, async (req: any, res) => {
+apiRouter.use(async (_req, res, next) => {
   try {
-    const authReq = req as AuthRequest;
-    const dbUser = authReq.dbUser;
-    const userId = dbUser.id;
-    const includeInvestments =
-      req.query.includeInvestments !== 'false' &&
-      Boolean(authReq.userPermissions?.canAccessInvestments ?? true);
-
-    const [
-      userWallets,
-      rawDebts,
-      budgets,
-      contexts,
-      goals,
-      subscriptions,
-      settings,
-    ] = await Promise.all([
-      walletService.getWallets(userId),
-      debtRepository.findAllByUserId(userId),
-      categoryBudgetRepository.findAllByUserId(userId),
-      getContextsForUser(userId),
-      goalService.getGoalsForUser(userId),
-      subscriptionService.getSubscriptionsForUser(userId),
-      settingsService.getSettings(dbUser),
-    ]);
-
-    const [transactions, payrolls] = await Promise.all([
-      transactionService.getTransactionsForUser(userId, rawDebts),
-      payrollService.getPayrollsForUser(userId, userWallets),
-    ]);
-
-    const [debts, kpis] = await Promise.all([
-      debtService.getDebtsWithSettlements(userId, {
-        debts: rawDebts,
-        transactions,
-      }),
-      kpiService.getKpisForUser(dbUser, {
-        wallets: userWallets,
-        transactions,
-        payrolls,
-        debts: rawDebts,
-        budgets,
-      }),
-    ]);
-
-    let investmentsData = null;
-    if (includeInvestments) {
-      investmentsData = await investmentService
-        .getInvestmentsData(userId, {
-          preloadedKpis: kpis,
-          preloadedTransactions: transactions,
-          preloadedUser: dbUser,
-          preloadedSubscriptions: subscriptions,
-        })
-        .catch(() => null);
-    }
-
-    res.json({
-      kpis,
-      transactions,
-      debts,
-      payrolls,
-      budgets,
-      contexts,
-      goals,
-      subscriptions,
-      settings,
-      investmentsData,
+    await ensureDatabaseSchema();
+    next();
+  } catch (err: any) {
+    console.error('[DB Schema] Initialization failed:', err?.cause?.message || err?.message || err);
+    res.status(503).json({
+      error: 'Database service is initializing or temporarily unavailable. Please try again shortly.',
+      code: 'SERVICE_UNAVAILABLE',
     });
-  } catch (error: any) {
-    console.error('[DashboardBootstrap] Failed to load bootstrap payload:', error);
-    res.status(500).json({ error: error?.message || 'Failed to load dashboard bootstrap' });
   }
 });
 
 apiRouter.use('/', authRoutes);
+apiRouter.use('/', onboardingRoutes);
 apiRouter.use('/', kpiRoutes);
 apiRouter.use('/', transactionRoutes);
 apiRouter.use('/', debtRoutes);

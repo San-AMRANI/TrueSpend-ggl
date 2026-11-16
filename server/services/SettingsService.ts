@@ -1,7 +1,8 @@
 import crypto from 'crypto';
+import { eq, inArray } from 'drizzle-orm';
 import { userRepository } from '../repositories/UserRepository.js';
-import { userManagementService } from './UserManagementService.js';
 import { createPool, db } from '../../src/db/index.js';
+import { encryptSecret } from './SecurityCrypto.js';
 import {
   categoryBudgets,
   commitmentOccurrences,
@@ -264,6 +265,7 @@ export class SettingsService {
       salary: dbUser.salary || 0,
       baseCurrency: dbUser.baseCurrency || 'MAD',
       automatedDriveBackups: Boolean(dbUser.automatedDriveBackups),
+      googleDriveConnected: Boolean(dbUser.googleDriveToken),
       lastDriveBackupDate: dbUser.lastDriveBackupDate
         ? new Date(dbUser.lastDriveBackupDate).toISOString()
         : null,
@@ -276,6 +278,7 @@ export class SettingsService {
       payday?: number;
       emergencyBuffer?: string;
       salary?: string;
+      baseCurrency?: string;
       automatedDriveBackups?: number;
       lastDriveBackupDate?: Date;
       driveBackupFrequency?: string;
@@ -290,11 +293,23 @@ export class SettingsService {
       updateData.lastDriveBackupDate = new Date(dto.lastDriveBackupDate);
     }
     if (dto.driveBackupFrequency !== undefined) {
+      if (!['daily', '3days', 'weekly'].includes(dto.driveBackupFrequency)) {
+        throw new Error('Invalid drive backup frequency');
+      }
       updateData.driveBackupFrequency = dto.driveBackupFrequency;
     }
     if (dto.googleDriveToken !== undefined) {
-      updateData.googleDriveToken = dto.googleDriveToken;
+      updateData.googleDriveToken = dto.googleDriveToken
+        ? encryptSecret(dto.googleDriveToken)
+        : (null as any);
       updateData.googleDriveTokenExpiry = new Date(Date.now() + 3600 * 1000);
+    }
+    if (dto.baseCurrency !== undefined) {
+      const cleanCurrency = String(dto.baseCurrency).trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(cleanCurrency)) {
+        throw new Error('Invalid base currency code');
+      }
+      updateData.baseCurrency = cleanCurrency;
     }
     if (dto.payday !== undefined) {
       if (dto.payday >= 1 && dto.payday <= 31) {
@@ -322,14 +337,40 @@ export class SettingsService {
 
     if (Object.keys(updateData).length > 0) {
       await userRepository.updateSettings(userId, updateData);
-      userManagementService.invalidateUserAuthCache(userId);
     }
 
-    return { success: true, ...updateData };
+    return {
+      success: true,
+      payday: updateData.payday,
+      emergencyBuffer: updateData.emergencyBuffer,
+      salary: updateData.salary,
+      baseCurrency: updateData.baseCurrency,
+      automatedDriveBackups:
+        updateData.automatedDriveBackups !== undefined
+          ? Boolean(updateData.automatedDriveBackups)
+          : undefined,
+      lastDriveBackupDate: updateData.lastDriveBackupDate
+        ? updateData.lastDriveBackupDate.toISOString()
+        : undefined,
+      driveBackupFrequency: updateData.driveBackupFrequency,
+      googleDriveConnected: dto.googleDriveToken !== undefined ? Boolean(dto.googleDriveToken) : undefined,
+    };
   }
 
-  async backupToGoogleDrive(accessToken: string): Promise<{ fileId: string; lastDriveBackupDate: string }> {
-    const sqlContent = await this.exportSqlDatabase();
+  async disconnectGoogleDrive(userId: string) {
+    await userRepository.updateSettings(userId, {
+      googleDriveToken: null,
+      googleDriveTokenExpiry: null,
+      automatedDriveBackups: 0,
+    });
+    return { success: true, googleDriveConnected: false };
+  }
+
+  async backupToGoogleDrive(
+    userId: string,
+    accessToken: string
+  ): Promise<{ fileId: string; lastDriveBackupDate: string }> {
+    const sqlContent = await this.exportSqlDatabase(userId);
     const filename = `truespend_backup_${new Date().toISOString().slice(0, 10)}.sql`;
 
     const metadata = {
@@ -397,10 +438,10 @@ export class SettingsService {
   }
 
   /**
-   * Audit Fix N: Full-Schema PostgreSQL Backup with SHA-256 Checksum, Schema Manifest,
-   * and Dependency-Aware Export Order across all 24 domain tables.
+   * User-scoped PostgreSQL SQL backup with SHA-256 Checksum & Schema Manifest.
+   * Strictly exports ONLY records owned by `userId` (zero cross-user leakage, zero credentials).
    */
-  async exportSqlDatabase(): Promise<string> {
+  async exportSqlDatabase(userId: string): Promise<string> {
     const [
       allUsers,
       allCounterparties,
@@ -430,33 +471,42 @@ export class SettingsService {
       allExternalValuations,
       allPositionSnapshots,
     ] = await Promise.all([
-      db.select().from(users),
-      db.select().from(counterparties).catch(() => []),
-      db.select().from(wallets),
-      db.select().from(debts),
-      db.select().from(payrolls),
-      db.select().from(financialContexts),
-      db.select().from(transactions),
-      db.select().from(splits),
-      db.select().from(categoryBudgets),
-      db.select().from(goals),
-      db.select().from(goalContributionEvents).catch(() => []),
-      db.select().from(subscriptions),
-      db.select().from(stockPositions),
-      db.select().from(stockOrders),
-      db.select().from(investmentDividendEvents).catch(() => []),
-      db.select().from(investmentSettings).catch(() => []),
-      db.select().from(portfolioDailySnapshots).catch(() => []),
-      db.select().from(notificationPreferences).catch(() => []),
-      db.select().from(journalEntries).catch(() => []),
-      db.select().from(journalLines).catch(() => []),
-      db.select().from(exchangeRates).catch(() => []),
-      db.select().from(commitmentOccurrences).catch(() => []),
-      db.select().from(savedScenarios).catch(() => []),
-      db.select().from(financialRules).catch(() => []),
-      db.select().from(externalWealthItems).catch(() => []),
-      db.select().from(externalWealthValuations).catch(() => []),
-      db.select().from(financialPositionSnapshots).catch(() => []),
+      db.select().from(users).where(eq(users.id, userId)),
+      db.select().from(counterparties).where(eq(counterparties.userId, userId)).catch(() => []),
+      db.select().from(wallets).where(eq(wallets.userId, userId)),
+      db.select().from(debts).where(eq(debts.userId, userId)),
+      db.select().from(payrolls).where(eq(payrolls.userId, userId)),
+      db.select().from(financialContexts).where(eq(financialContexts.userId, userId)),
+      db.select().from(transactions).where(eq(transactions.userId, userId)),
+      db
+        .select({
+          id: splits.id,
+          transactionId: splits.transactionId,
+          reimbursableAmount: splits.reimbursableAmount,
+          linkedContactId: splits.linkedContactId,
+        })
+        .from(splits)
+        .innerJoin(transactions, eq(splits.transactionId, transactions.id))
+        .where(eq(transactions.userId, userId)),
+      db.select().from(categoryBudgets).where(eq(categoryBudgets.userId, userId)),
+      db.select().from(goals).where(eq(goals.userId, userId)),
+      db.select().from(goalContributionEvents).where(eq(goalContributionEvents.userId, userId)).catch(() => []),
+      db.select().from(subscriptions).where(eq(subscriptions.userId, userId)),
+      db.select().from(stockPositions).where(eq(stockPositions.userId, userId)),
+      db.select().from(stockOrders).where(eq(stockOrders.userId, userId)),
+      db.select().from(investmentDividendEvents).where(eq(investmentDividendEvents.userId, userId)).catch(() => []),
+      db.select().from(investmentSettings).where(eq(investmentSettings.userId, userId)).catch(() => []),
+      db.select().from(portfolioDailySnapshots).where(eq(portfolioDailySnapshots.userId, userId)).catch(() => []),
+      db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)).catch(() => []),
+      db.select().from(journalEntries).where(eq(journalEntries.userId, userId)).catch(() => []),
+      db.select().from(journalLines).where(eq(journalLines.userId, userId)).catch(() => []),
+      db.select().from(exchangeRates).where(eq(exchangeRates.userId, userId)).catch(() => []),
+      db.select().from(commitmentOccurrences).where(eq(commitmentOccurrences.userId, userId)).catch(() => []),
+      db.select().from(savedScenarios).where(eq(savedScenarios.userId, userId)).catch(() => []),
+      db.select().from(financialRules).where(eq(financialRules.userId, userId)).catch(() => []),
+      db.select().from(externalWealthItems).where(eq(externalWealthItems.userId, userId)).catch(() => []),
+      db.select().from(externalWealthValuations).where(eq(externalWealthValuations.userId, userId)).catch(() => []),
+      db.select().from(financialPositionSnapshots).where(eq(financialPositionSnapshots.userId, userId)).catch(() => []),
     ]);
 
     const bodyLines: string[] = [];
@@ -1000,10 +1050,7 @@ export class SettingsService {
     return `${headerLines.join('\n')}\n${bodyString}\n`;
   }
 
-  /**
-   * Non-destructive restore validation & preview drill (Audit Item N).
-   */
-  async validateBackupPreview(sqlContent: unknown) {
+  async validateBackupPreview(userId: string, sqlContent: unknown) {
     const { rows, schemaVersion, checksumVerified, manifest } = parseBackupRows(sqlContent);
     const countsByTable: Record<string, number> = {};
     for (const table of restoreOrder) countsByTable[table] = 0;
@@ -1011,7 +1058,15 @@ export class SettingsService {
       countsByTable[r.table] = (countsByTable[r.table] || 0) + 1;
     }
 
-    // Referential integrity check on parsed IDs
+    const foreignRows = rows.filter((r) => {
+      if (r.table === 'users') {
+        const idIdx = r.columns.indexOf('id');
+        return idIdx !== -1 && r.values[idIdx] !== userId;
+      }
+      const uidIdx = r.columns.indexOf('user_id');
+      return uidIdx !== -1 && r.values[uidIdx] && r.values[uidIdx] !== userId;
+    }).length;
+
     const userIds = new Set(
       rows
         .filter((r) => r.table === 'users')
@@ -1027,7 +1082,7 @@ export class SettingsService {
     }).length;
 
     return {
-      valid: orphanCount === 0,
+      valid: orphanCount === 0 && foreignRows === 0,
       schemaVersion,
       checksumVerified,
       totalRows: rows.length,
@@ -1035,14 +1090,30 @@ export class SettingsService {
         .filter(([, count]) => count > 0)
         .map(([table, count]) => ({ table, count })),
       countsByTable,
-      referentialIntegrityOk: orphanCount === 0,
-      orphanRecordsDetected: orphanCount,
+      referentialIntegrityOk: orphanCount === 0 && foreignRows === 0,
+      orphanRecordsDetected: orphanCount + foreignRows,
       manifest,
     };
   }
 
-  async importSqlDatabase(sqlContent: unknown) {
+  async importSqlDatabase(userId: string, sqlContent: unknown) {
     const { rows: backupRows } = parseBackupRows(sqlContent);
+
+    // Strictly refuse any backup containing another account's rows
+    for (const row of backupRows) {
+      if (row.table === 'users') {
+        const idIdx = row.columns.indexOf('id');
+        if (idIdx === -1 || row.values[idIdx] !== userId) {
+          throw new Error('You can only restore a backup owned by your own account.');
+        }
+      } else {
+        const uidIdx = row.columns.indexOf('user_id');
+        if (uidIdx !== -1 && row.values[uidIdx] !== userId) {
+          throw new Error('You can only restore a backup owned by your own account.');
+        }
+      }
+    }
+
     const rowsByTable = new Map<BackupTable, BackupRow[]>();
     for (const table of restoreOrder) rowsByTable.set(table, []);
     for (const row of backupRows) rowsByTable.get(row.table)!.push(row);
@@ -1051,13 +1122,45 @@ export class SettingsService {
     try {
       await client.query('BEGIN');
 
-      // Delete in reverse dependency order so foreign keys never fail
+      // Delete ONLY authenticated user's records in reverse dependency order (never touch other users!)
       const deleteOrder = [...restoreOrder].reverse();
       for (const table of deleteOrder) {
-        await client.query(`DELETE FROM ${table}`);
+        if (table === 'users') continue;
+        if (table === 'splits') {
+          await client.query(
+            `DELETE FROM splits WHERE transaction_id IN (SELECT id FROM transactions WHERE user_id = $1)`,
+            [userId]
+          );
+        } else {
+          await client.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
+        }
       }
 
       for (const table of restoreOrder) {
+        if (table === 'users') {
+          // Only restore safe preference columns for this user; never overwrite role, status, email, or passwordHash
+          for (const row of rowsByTable.get('users')!) {
+            const safeCols = ['payday', 'emergency_buffer', 'salary', 'base_currency'];
+            const sets: string[] = [];
+            const params: any[] = [];
+            for (const col of safeCols) {
+              const idx = row.columns.indexOf(col);
+              if (idx !== -1 && row.values[idx] !== null) {
+                params.push(row.values[idx]);
+                sets.push(`"${col}" = $${params.length}`);
+              }
+            }
+            if (sets.length > 0) {
+              params.push(userId);
+              await client.query(
+                `UPDATE users SET ${sets.join(', ')} WHERE id = $${params.length}`,
+                params
+              );
+            }
+          }
+          continue;
+        }
+
         for (const row of rowsByTable.get(table)!) {
           const placeholders = row.values.map((_, index) => `$${index + 1}`).join(', ');
           await client.query(
@@ -1068,7 +1171,6 @@ export class SettingsService {
       }
 
       await client.query('COMMIT');
-      userManagementService.invalidateUserAuthCache();
       return Object.fromEntries(
         restoreOrder.map((table) => [table, rowsByTable.get(table)!.length])
       );
@@ -1078,6 +1180,130 @@ export class SettingsService {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Self-service user-scoped JSON personal data export (Section 11.2).
+   * Explicitly allowlists safe profile fields and excludes all auth secrets, hashes, and integration tokens.
+   */
+  async exportPersonalDataJson(userId: string) {
+    const userRows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (userRows.length === 0) {
+      throw new Error('User account not found.');
+    }
+    const u = userRows[0];
+    const isAdvanced = (u.experienceTier || 'advanced') === 'advanced';
+
+    const userTxs = await db.select().from(transactions).where(eq(transactions.userId, userId));
+    const txIds = userTxs.map((t) => t.id);
+
+    const [
+      userWallets,
+      userSplits,
+      userBudgets,
+      userDebts,
+      userPayrolls,
+      userGoals,
+      userGoalEvents,
+      userSubscriptions,
+      userOccurrences,
+      userContexts,
+      userNotifPrefs,
+      userStockPositions,
+      userStockOrders,
+      userDividends,
+      userExternalWealth,
+      userScenarios,
+      userRules,
+    ] = await Promise.all([
+      db.select().from(wallets).where(eq(wallets.userId, userId)),
+      txIds.length > 0 ? db.select().from(splits).where(inArray(splits.transactionId, txIds)) : Promise.resolve([]),
+      db.select().from(categoryBudgets).where(eq(categoryBudgets.userId, userId)),
+      db.select().from(debts).where(eq(debts.userId, userId)),
+      db.select().from(payrolls).where(eq(payrolls.userId, userId)),
+      db.select().from(goals).where(eq(goals.userId, userId)),
+      db.select().from(goalContributionEvents).where(eq(goalContributionEvents.userId, userId)).catch(() => []),
+      db.select().from(subscriptions).where(eq(subscriptions.userId, userId)),
+      db.select().from(commitmentOccurrences).where(eq(commitmentOccurrences.userId, userId)).catch(() => []),
+      db.select().from(financialContexts).where(eq(financialContexts.userId, userId)),
+      db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)).catch(() => []),
+      isAdvanced ? db.select().from(stockPositions).where(eq(stockPositions.userId, userId)) : Promise.resolve([]),
+      isAdvanced ? db.select().from(stockOrders).where(eq(stockOrders.userId, userId)) : Promise.resolve([]),
+      isAdvanced ? db.select().from(investmentDividendEvents).where(eq(investmentDividendEvents.userId, userId)).catch(() => []) : Promise.resolve([]),
+      isAdvanced ? db.select().from(externalWealthItems).where(eq(externalWealthItems.userId, userId)).catch(() => []) : Promise.resolve([]),
+      isAdvanced ? db.select().from(savedScenarios).where(eq(savedScenarios.userId, userId)).catch(() => []) : Promise.resolve([]),
+      isAdvanced ? db.select().from(financialRules).where(eq(financialRules.userId, userId)).catch(() => []) : Promise.resolve([]),
+    ]);
+
+    return {
+      manifest: {
+        format: 'truespend.personal-export.v1',
+        exportedAt: new Date().toISOString(),
+        userId: u.id,
+        experienceTier: u.experienceTier || 'advanced',
+        counts: {
+          wallets: userWallets.length,
+          transactions: userTxs.length,
+          splits: userSplits.length,
+          categoryBudgets: userBudgets.length,
+          debts: userDebts.length,
+          payrolls: userPayrolls.length,
+          goals: userGoals.length,
+          subscriptions: userSubscriptions.length,
+          financialContexts: userContexts.length,
+          ...(isAdvanced
+            ? {
+                stockPositions: userStockPositions.length,
+                stockOrders: userStockOrders.length,
+                investmentDividends: userDividends.length,
+                externalWealthItems: userExternalWealth.length,
+                savedScenarios: userScenarios.length,
+                financialRules: userRules.length,
+              }
+            : {}),
+        },
+      },
+      profile: {
+        id: u.id,
+        email: u.email,
+        username: u.username,
+        displayName: u.displayName,
+        experienceTier: u.experienceTier,
+        locale: u.locale,
+        countryCode: u.countryCode,
+        timezone: u.timezone,
+        baseCurrency: u.baseCurrency,
+        payday: u.payday,
+        salary: Number(u.salary || 0),
+        emergencyBuffer: Number(u.emergencyBuffer || 0),
+        createdAt: u.createdAt,
+        emailVerifiedAt: u.emailVerifiedAt,
+      },
+      accounts: userWallets,
+      transactions: userTxs,
+      splits: userSplits,
+      budgets: userBudgets,
+      debts: userDebts,
+      payrolls: userPayrolls,
+      goals: userGoals,
+      goalContributions: userGoalEvents,
+      subscriptions: userSubscriptions,
+      commitments: userOccurrences,
+      contexts: userContexts,
+      notificationPreferences: userNotifPrefs,
+      ...(isAdvanced
+        ? {
+            investments: {
+              positions: userStockPositions,
+              orders: userStockOrders,
+              dividends: userDividends,
+              externalWealth: userExternalWealth,
+            },
+            savedScenarios: userScenarios,
+            financialRules: userRules,
+          }
+        : {}),
+    };
   }
 }
 

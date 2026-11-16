@@ -241,9 +241,21 @@ export const getExpensesForMonth = (
     includeBudgetTransfers?: boolean;
     wallets?: Array<{ id: string; type?: string }>;
   },
-) =>
-  transactions.filter((transaction) => {
-    if (!isInMonth(transaction, year, month, payrolls)) return false;
+) => {
+  const bounds = getFinancialMonthBounds(payrolls, year, month);
+  const walletMap = options?.wallets ? new Map(options.wallets.map((w) => [w.id, w])) : null;
+  const matchesMonth = (date: Date) => {
+    if (!bounds) {
+      return (
+        (date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month) ||
+        (date.getFullYear() === year && date.getMonth() + 1 === month)
+      );
+    }
+    return date >= bounds.start && date <= bounds.end;
+  };
+
+  return transactions.filter((transaction) => {
+    if (!matchesMonth(transactionDate(transaction))) return false;
     if (transaction.type === 'Expense') {
       if (options?.excludeInvestments && isInvestmentTransaction(transaction, options.wallets)) return false;
       if (options?.excludeWealthAllocations && (isInvestmentTransaction(transaction, options.wallets) || isSavingsRetentionCategory(transaction.category))) {
@@ -253,8 +265,8 @@ export const getExpensesForMonth = (
     }
     if (options?.includeBudgetTransfers && transaction.type === 'Transfer') {
       let norm = normalizeCategory(transaction.category);
-      if (options?.wallets && transaction.destinationWalletId) {
-        const dest = options.wallets.find((w) => w.id === transaction.destinationWalletId);
+      if (walletMap && transaction.destinationWalletId) {
+        const dest = walletMap.get(transaction.destinationWalletId);
         if (dest) {
           const destType = dest.type?.toLowerCase();
           if (destType === 'investment') norm = '📈 Investments';
@@ -267,6 +279,7 @@ export const getExpensesForMonth = (
     }
     return false;
   });
+};
 
 export const getCategorySpending = (
   transactions: Transaction[],
@@ -277,48 +290,57 @@ export const getCategorySpending = (
   wallets?: Array<{ id: string; type?: string }>,
 ) => {
   const normCategory = normalizeCategory(category);
-  return transactions
-    .filter((transaction) => {
-      if (!isInMonth(transaction, year, month, payrolls)) return false;
+  const bounds = getFinancialMonthBounds(payrolls, year, month);
+  const walletMap = wallets ? new Map(wallets.map((w) => [w.id, w])) : null;
+  const matchesMonth = (date: Date) => {
+    if (!bounds) {
+      return (
+        (date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month) ||
+        (date.getFullYear() === year && date.getMonth() + 1 === month)
+      );
+    }
+    return date >= bounds.start && date <= bounds.end;
+  };
 
-      let txCategory = normalizeCategory(transaction.category);
-      if (transaction.type === 'Transfer' && wallets && transaction.destinationWalletId) {
-        const dest = wallets.find((w) => w.id === transaction.destinationWalletId);
-        if (dest) {
-          const destType = dest.type?.toLowerCase();
-          if (destType === 'investment') {
-            txCategory = '📈 Investments';
-          } else if (destType === 'savings') {
-            txCategory = '🛟 Emergency & goals Fund';
-          } else {
-            txCategory = '🔄 Transfer';
-          }
+  let total = 0;
+  for (const transaction of transactions) {
+    if (!matchesMonth(transactionDate(transaction))) continue;
+
+    let txCategory = normalizeCategory(transaction.category);
+    if (transaction.type === 'Transfer' && walletMap && transaction.destinationWalletId) {
+      const dest = walletMap.get(transaction.destinationWalletId);
+      if (dest) {
+        const destType = dest.type?.toLowerCase();
+        if (destType === 'investment') {
+          txCategory = '📈 Investments';
+        } else if (destType === 'savings') {
+          txCategory = '🛟 Emergency & goals Fund';
+        } else {
+          txCategory = '🔄 Transfer';
         }
       }
+    }
 
-      if (txCategory !== normCategory) return false;
-      if (transaction.type === 'Expense') {
-        if (wallets && transaction.walletId) {
-          const sourceWallet = wallets.find((w) => w.id === transaction.walletId);
-          const sourceType = sourceWallet?.type?.toLowerCase();
-          if (normCategory === '📈 Investments' && sourceType === 'investment') {
-            return false;
-          }
-          if (normCategory === '🛟 Emergency & goals Fund' && sourceType === 'savings') {
-            return false;
-          }
+    if (txCategory !== normCategory) continue;
+    if (transaction.type === 'Expense') {
+      if (walletMap && transaction.walletId) {
+        const sourceWallet = walletMap.get(transaction.walletId);
+        const sourceType = sourceWallet?.type?.toLowerCase();
+        if (normCategory === '📈 Investments' && sourceType === 'investment') {
+          continue;
         }
-        return true;
+        if (normCategory === '🛟 Emergency & goals Fund' && sourceType === 'savings') {
+          continue;
+        }
       }
-      if (transaction.type === 'Debt Repayment' && normCategory === '💳 Debt & Obligations') {
-        return true;
-      }
-      if (transaction.type === 'Transfer') {
-        return Boolean(txCategory && txCategory !== '🔄 Transfer' && txCategory !== 'Transfer');
-      }
-      return false;
-    })
-    .reduce((total, transaction) => total + netExpenseOf(transaction), 0);
+      total += netExpenseOf(transaction);
+    } else if (transaction.type === 'Debt Repayment' && normCategory === '💳 Debt & Obligations') {
+      total += netExpenseOf(transaction);
+    } else if (transaction.type === 'Transfer' && txCategory && txCategory !== '🔄 Transfer' && txCategory !== 'Transfer') {
+      total += netExpenseOf(transaction);
+    }
+  }
+  return total;
 };
 
 /**
@@ -741,15 +763,22 @@ const dateKey = (date: Date) => date.toISOString().slice(0, 10);
 export const filterTransactions = (transactions: Transaction[], filters: TransactionFilters, now = new Date()) => {
   const query = filters.query?.trim().toLowerCase();
   const today = dateKey(now);
-  const weekStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7)));
+  const weekStartKey = dateKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7))));
   const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
   const previous = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
   const previousMonth = `${previous.getUTCFullYear()}-${String(previous.getUTCMonth() + 1).padStart(2, '0')}`;
+  const typeSet = filters.types?.length ? new Set(filters.types) : null;
+  const categorySet = filters.categories?.length ? new Set(filters.categories.map(normalizeCategory)) : null;
+  const walletSet = filters.wallets?.length ? new Set(filters.wallets) : null;
+
   const matchesDate = (transaction: Transaction) => {
-    const key = dateKey(transactionDate(transaction));
+    if (!filters.datePreset || filters.datePreset === 'all') return true;
+    const key = typeof transaction.createdAt === 'string' && transaction.createdAt.length >= 10
+      ? transaction.createdAt.slice(0, 10)
+      : dateKey(transactionDate(transaction));
     switch (filters.datePreset) {
       case 'today': return key === today;
-      case 'week': return key >= dateKey(weekStart) && key <= today;
+      case 'week': return key >= weekStartKey && key <= today;
       case 'month': return key.slice(0, 7) === currentMonth;
       case 'last-month': return key.slice(0, 7) === previousMonth;
       case 'custom': return (!filters.startDate || key >= filters.startDate) && (!filters.endDate || key <= filters.endDate);
@@ -757,9 +786,33 @@ export const filterTransactions = (transactions: Transaction[], filters: Transac
     }
   };
   return transactions.filter((transaction) => {
-    const haystack = [transaction.category, transaction.notes, transaction.linkedContactName].filter(Boolean).join(' ').toLowerCase();
+    if (typeSet && !typeSet.has(transaction.type)) return false;
+    if (walletSet && !walletSet.has(transaction.walletId)) return false;
+    if (categorySet && !categorySet.has(normalizeCategory(transaction.category))) return false;
+    if (!matchesDate(transaction)) return false;
+
     const amount = amountOf(transaction);
-    return (!query || haystack.includes(query)) && matchesDate(transaction) && (!filters.types?.length || filters.types.includes(transaction.type)) && (!filters.categories?.length || filters.categories.map(normalizeCategory).includes(normalizeCategory(transaction.category))) && (!filters.wallets?.length || filters.wallets.includes(transaction.walletId)) && (filters.minAmount === undefined || amount >= filters.minAmount) && (filters.maxAmount === undefined || amount <= filters.maxAmount) && (filters.reimbursable === undefined || filters.reimbursable === 'all' || (filters.reimbursable === 'reimbursable') === Boolean(transaction.reimbursableAmount && amountOf({ amount: transaction.reimbursableAmount }) > 0)) && (filters.debtRelationship === undefined || filters.debtRelationship === 'all' || (filters.debtRelationship === 'debt-linked') === Boolean(transaction.linkedContactId));
+    if (filters.minAmount !== undefined && amount < filters.minAmount) return false;
+    if (filters.maxAmount !== undefined && amount > filters.maxAmount) return false;
+    if (
+      filters.reimbursable !== undefined &&
+      filters.reimbursable !== 'all' &&
+      (filters.reimbursable === 'reimbursable') !== Boolean(transaction.reimbursableAmount && amountOf({ amount: transaction.reimbursableAmount }) > 0)
+    ) {
+      return false;
+    }
+    if (
+      filters.debtRelationship !== undefined &&
+      filters.debtRelationship !== 'all' &&
+      (filters.debtRelationship === 'debt-linked') !== Boolean(transaction.linkedContactId)
+    ) {
+      return false;
+    }
+    if (query) {
+      const haystack = [transaction.category, transaction.notes, transaction.linkedContactName].filter(Boolean).join(' ').toLowerCase();
+      if (!haystack.includes(query)) return false;
+    }
+    return true;
   }).sort((a, b) => filters.sort === 'oldest' ? transactionDate(a).getTime() - transactionDate(b).getTime() : filters.sort === 'highest' ? amountOf(b) - amountOf(a) : filters.sort === 'lowest' ? amountOf(a) - amountOf(b) : transactionDate(b).getTime() - transactionDate(a).getTime());
 };
 

@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { isNativePlatform } from '../lib/capacitorBridge';
+import { getApiAccessToken } from '../services/api/apiClient';
 import type {
   CategoryBudget,
   DashboardTab,
@@ -1297,14 +1298,14 @@ export function useNotifications() {
   }, [shuffleFeed]);
 
   const subscribeToServer = async () => {
-    const token = localStorage.getItem('auth_token');
+    const token = getApiAccessToken();
     if (!token) return;
     try {
       if (!('serviceWorker' in navigator)) return;
       const reg = await navigator.serviceWorker.ready;
       let subscription = await reg.pushManager.getSubscription();
       if (!subscription) {
-        const response = await fetch('/api/notifications/vapid-public-key');
+        const response = await fetch('/api/notifications/vapid-public-key', { credentials: 'include' });
         if (!response.ok) return;
         const { publicKey } = await response.json();
         if (!publicKey) return;
@@ -1316,6 +1317,7 @@ export function useNotifications() {
       }
       await fetch('/api/notifications/subscribe', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
@@ -1343,10 +1345,11 @@ export function useNotifications() {
   }, [native]);
 
   const fetchServerPreferences = useCallback(async () => {
-    const token = localStorage.getItem('auth_token');
+    const token = getApiAccessToken();
     if (!token) return;
     try {
       const res = await fetch('/api/notifications/preferences', {
+        credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -1375,7 +1378,7 @@ export function useNotifications() {
 
   const updateServerPreferences = useCallback(
     async (patch: Partial<ServerNotifSettings>) => {
-      const token = localStorage.getItem('auth_token');
+      const token = getApiAccessToken();
       if (typeof patch.enabled === 'boolean' || typeof patch.deliveryTime === 'string') {
         setSettings((prev) => {
           const next = {
@@ -1393,6 +1396,7 @@ export function useNotifications() {
       try {
         const res = await fetch('/api/notifications/preferences', {
           method: 'PUT',
+          credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,

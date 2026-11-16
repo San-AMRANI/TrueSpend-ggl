@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { DashboardNav } from './dashboard/DashboardNav';
@@ -8,10 +8,16 @@ import TransactionForm from './TransactionForm';
 import { CommandPalette } from './CommandPalette';
 import { SpexCompanionPet } from './common/SpexCompanionPet';
 import { SmartNotificationCenter } from './dashboard/SmartNotificationCenter';
+import { FeatureUnavailableCard } from './dashboard/FeatureUnavailableCard';
+import { OnboardingFlow } from './onboarding/OnboardingFlow';
 import { PageTransition, MotionModal } from './ui/MotionPrimitives';
 import { AnimatePresence, motion } from 'motion/react';
 import { X, CheckCircle2, AlertCircle, Info, Calculator } from 'lucide-react';
-import { generateFacts, selectFacts } from '../lib/financialFacts';
+import {
+  FEATURE_METADATA,
+  getTabRequiredFeature,
+  isTabAvailableForUser,
+} from '../lib/entitlements';
 import type { DashboardTab, WalletsWorkbenchSection } from '../types';
 
 const TransactionsTab = lazy(() =>
@@ -82,7 +88,8 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ onTabChange, activeTab: propActiveTab }: DashboardProps = {}) {
-  const { token } = useAuth();
+  const { token, user, onboarding, refreshUserProfile, refreshOnboarding } = useAuth();
+  const tier = user?.experienceTier;
   const {
     kpis,
     transactions,
@@ -155,18 +162,15 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     handleLinkTransactionsToContext,
     userSettings,
     notifications,
-  } = useDashboardData(token);
-
-  const financialFacts = useMemo(
-    () => selectFacts(generateFacts(kpis, transactions, debts, budgets, payrolls, investmentsData)),
-    [kpis, transactions, debts, budgets, payrolls, investmentsData],
-  );
+  } = useDashboardData(token, tier);
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   const [quickTxModalType, setQuickTxModalType] = useState<'Expense' | 'Income' | 'Transfer' | null>(null);
   const [isSmartCalcModalOpen, setIsSmartCalcModalOpen] = useState(false);
   const [isWalletsModalOpen, setIsWalletsModalOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const hasAutoOpenedWizard = React.useRef(false);
   const [accountsSection, setAccountsSection] = useState<WalletsWorkbenchSection>('wallets');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -249,12 +253,21 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       }
     };
 
+    const handleOpenOnboarding = () => {
+      setIsOnboardingOpen(true);
+    };
+    const handleTierChanged = () => {
+      fetchData();
+      refreshOnboarding();
+    };
     window.addEventListener('truespend:setTab', handleSetTab);
     window.addEventListener('truespend:openAccountsSection', handleOpenAccountsSection);
     window.addEventListener('truespend:openCommandPalette', handleOpenCommandPalette);
     window.addEventListener('truespend:openNotifications', handleOpenNotifications);
     window.addEventListener('truespend:openQuickTransaction', handleOpenQuickTransaction);
     window.addEventListener('truespend:openSmartCalculator', handleOpenSmartCalculator);
+    window.addEventListener('truespend:openOnboarding', handleOpenOnboarding);
+    window.addEventListener('truespend:tier-changed', handleTierChanged);
     window.addEventListener('truespend:toast', handleToast);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
@@ -264,10 +277,19 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       window.removeEventListener('truespend:openNotifications', handleOpenNotifications);
       window.removeEventListener('truespend:openQuickTransaction', handleOpenQuickTransaction);
       window.removeEventListener('truespend:openSmartCalculator', handleOpenSmartCalculator);
+      window.removeEventListener('truespend:openOnboarding', handleOpenOnboarding);
+      window.removeEventListener('truespend:tier-changed', handleTierChanged);
       window.removeEventListener('truespend:toast', handleToast);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
+
+  useEffect(() => {
+    if (!hasAutoOpenedWizard.current && onboarding?.shouldShowWizard && user?.emailVerified !== false) {
+      hasAutoOpenedWizard.current = true;
+      setIsOnboardingOpen(true);
+    }
+  }, [onboarding?.shouldShowWizard, user?.emailVerified]);
 
   useEffect(() => {
     if (!toast) return;
@@ -325,6 +347,27 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       ) : (
         <Suspense fallback={<TabLoadingSkeleton />}>
           <PageTransition pageKey={activeTab}>
+            {!isTabAvailableForUser(activeTab, tier, user?.role) ? (
+              (() => {
+                const reqFeature = getTabRequiredFeature(activeTab);
+                const meta = reqFeature ? FEATURE_METADATA[reqFeature] : null;
+                return (
+                  <FeatureUnavailableCard
+                    title={meta?.title || 'Advanced Experience Tool'}
+                    description={
+                      meta?.description ||
+                      'This workspace view is included in TrueSpend Advanced Mode.'
+                    }
+                    targetTab={activeTab}
+                    onReturnOverview={() => setActiveTab('overview')}
+                    onSwitched={() => {
+                      fetchData();
+                    }}
+                  />
+                );
+              })()
+            ) : (
+              <>
             {activeTab === 'overview' && (
             <OverviewTab
               kpis={kpis}
@@ -594,6 +637,8 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
           )}
 
             {activeTab === 'chat' && <AIChat onDataChange={fetchData} />}
+              </>
+            )}
           </PageTransition>
         </Suspense>
       )}
@@ -739,8 +784,20 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       <SpexCompanionPet
         activeTab={activeTab}
         kpis={kpis}
-        facts={financialFacts}
         onOpenChat={() => setActiveTab('chat')}
+      />
+
+      {/* Interactive Setup & Onboarding Wizard */}
+      <OnboardingFlow
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        onComplete={async (jumpTab) => {
+          setIsOnboardingOpen(false);
+          await Promise.all([fetchData(), refreshUserProfile(), refreshOnboarding()]);
+          if (jumpTab && isTabAvailableForUser(jumpTab, user?.experienceTier, user?.role)) {
+            setActiveTab(jumpTab);
+          }
+        }}
       />
     </div>
   );

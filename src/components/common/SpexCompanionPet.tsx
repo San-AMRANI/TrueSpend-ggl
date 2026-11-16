@@ -1,41 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  Activity,
-  AlertTriangle,
-  ArrowDownRight,
-  ArrowRight,
-  ArrowUpRight,
-  Award,
-  Banknote,
-  BarChart2,
-  Calendar,
-  Clock,
-  Coffee,
-  Compass,
-  HandCoins,
-  Landmark,
-  Layers,
-  MessageSquare,
-  Minimize2,
-  Pause,
-  Percent,
-  PieChart,
-  PiggyBank,
-  Play,
-  Receipt,
-  Repeat,
-  ShieldCheck,
-  ShoppingBag,
-  Shuffle,
   Sparkles,
-  Target,
-  TrendingDown,
-  TrendingUp,
-  Users,
-  Utensils,
-  Wallet,
+  Compass,
+  Minimize2,
+  Play,
+  Pause,
   X,
-  Zap,
+  MessageSquare,
+  ShieldCheck,
+  TrendingUp,
+  AlertTriangle,
+  ArrowRight,
 } from 'lucide-react';
 import {
   SpexSprite,
@@ -45,148 +20,16 @@ import {
 } from './SpexSprite';
 import { useTheme } from '../../context/ThemeContext';
 import { usePrivacy } from '../../context/PrivacyContext';
-import {
-  pickRandomFact,
-  type FactIcon,
-  type FinancialFact,
-} from '../../lib/financialFacts';
 import type { DashboardTab, KPI } from '../../types';
 
 const PET_STORAGE_KEY = 'truespend_spex_companion_mode_v1';
-const AUTO_SIGNAL_INITIAL_DELAY_MS = 5000;
-const AUTO_SIGNAL_INTERVAL_MS = 20000;
-const SIGNAL_DISPLAY_DURATION_MS = 7500;
 
 type PetDisplayMode = 'perched' | 'roaming' | 'minimized';
 
 interface SpexCompanionPetProps {
   activeTab: DashboardTab;
   kpis?: KPI | null;
-  facts?: FinancialFact[];
   onOpenChat: () => void;
-}
-
-const FACT_ICON_MAP: Record<FactIcon, React.ComponentType<{ className?: string }>> = {
-  'trending-up': TrendingUp,
-  'trending-down': TrendingDown,
-  wallet: Wallet,
-  calendar: Calendar,
-  coffee: Coffee,
-  'shopping-bag': ShoppingBag,
-  landmark: Landmark,
-  banknote: Banknote,
-  'piggy-bank': PiggyBank,
-  receipt: Receipt,
-  'alert-triangle': AlertTriangle,
-  'bar-chart': BarChart2,
-  activity: Activity,
-  clock: Clock,
-  repeat: Repeat,
-  zap: Zap,
-  target: Target,
-  'arrow-up-right': ArrowUpRight,
-  'arrow-down-right': ArrowDownRight,
-  'shield-check': ShieldCheck,
-  users: Users,
-  'hand-coins': HandCoins,
-  layers: Layers,
-  utensils: Utensils,
-  award: Award,
-  sparkles: Sparkles,
-  percent: Percent,
-  'pie-chart': PieChart,
-};
-
-const FACT_ACCENT_STYLES: Record<
-  FinancialFact['type'],
-  { bubble: string; badge: string; value: string; label: string }
-> = {
-  spending: {
-    bubble: 'bg-rose-50/95 dark:bg-rose-950/95 border-rose-200 dark:border-rose-800/80',
-    badge: 'text-rose-700 dark:text-rose-300 bg-rose-100/90 dark:bg-rose-900/60',
-    value: 'text-rose-700 dark:text-rose-300',
-    label: 'Spending Signal',
-  },
-  budget: {
-    bubble: 'bg-violet-50/95 dark:bg-violet-950/95 border-violet-200 dark:border-violet-800/80',
-    badge: 'text-violet-700 dark:text-violet-300 bg-violet-100/90 dark:bg-violet-900/60',
-    value: 'text-violet-700 dark:text-violet-300',
-    label: 'Budget Signal',
-  },
-  liquidity: {
-    bubble: 'bg-sky-50/95 dark:bg-sky-950/95 border-sky-200 dark:border-sky-800/80',
-    badge: 'text-sky-700 dark:text-sky-300 bg-sky-100/90 dark:bg-sky-900/60',
-    value: 'text-sky-700 dark:text-sky-300',
-    label: 'Liquidity Signal',
-  },
-  debt: {
-    bubble: 'bg-amber-50/95 dark:bg-amber-950/95 border-amber-200 dark:border-amber-800/80',
-    badge: 'text-amber-700 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-900/60',
-    value: 'text-amber-700 dark:text-amber-300',
-    label: 'Debt Signal',
-  },
-  reimbursement: {
-    bubble: 'bg-teal-50/95 dark:bg-teal-950/95 border-teal-200 dark:border-teal-800/80',
-    badge: 'text-teal-700 dark:text-teal-300 bg-teal-100/90 dark:bg-teal-900/60',
-    value: 'text-teal-700 dark:text-teal-300',
-    label: 'Reimbursement',
-  },
-  income: {
-    bubble: 'bg-emerald-50/95 dark:bg-emerald-950/95 border-emerald-200 dark:border-emerald-800/80',
-    badge: 'text-emerald-700 dark:text-emerald-300 bg-emerald-100/90 dark:bg-emerald-900/60',
-    value: 'text-emerald-700 dark:text-emerald-300',
-    label: 'Income Signal',
-  },
-  savings: {
-    bubble: 'bg-emerald-50/95 dark:bg-emerald-950/95 border-emerald-200 dark:border-emerald-800/80',
-    badge: 'text-emerald-700 dark:text-emerald-300 bg-emerald-100/90 dark:bg-emerald-900/60',
-    value: 'text-emerald-700 dark:text-emerald-300',
-    label: 'Wealth Signal',
-  },
-  milestone: {
-    bubble: 'bg-amber-50/95 dark:bg-amber-950/95 border-amber-200 dark:border-amber-800/80',
-    badge: 'text-amber-700 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-900/60',
-    value: 'text-amber-700 dark:text-amber-300',
-    label: 'Milestone',
-  },
-  behavioral: {
-    bubble: 'bg-orange-50/95 dark:bg-orange-950/95 border-orange-200 dark:border-orange-800/80',
-    badge: 'text-orange-700 dark:text-orange-300 bg-orange-100/90 dark:bg-orange-900/60',
-    value: 'text-orange-700 dark:text-orange-300',
-    label: 'Behavior Signal',
-  },
-  daily: {
-    bubble: 'bg-indigo-50/95 dark:bg-indigo-950/95 border-indigo-200 dark:border-indigo-800/80',
-    badge: 'text-indigo-700 dark:text-indigo-300 bg-indigo-100/90 dark:bg-indigo-900/60',
-    value: 'text-indigo-700 dark:text-indigo-300',
-    label: 'Daily Signal',
-  },
-};
-
-function factToSpriteState(fact: FinancialFact): SpexAnimationState {
-  if (fact.icon === 'alert-triangle' || (fact.priority === 1 && fact.type !== 'income' && fact.type !== 'savings')) {
-    return 'failed';
-  }
-  if (
-    fact.type === 'milestone' ||
-    fact.type === 'savings' ||
-    fact.type === 'income' ||
-    fact.icon === 'award' ||
-    fact.icon === 'sparkles'
-  ) {
-    return 'jumping';
-  }
-  if (fact.type === 'behavioral' || fact.type === 'budget' || fact.type === 'debt') {
-    return 'review';
-  }
-  return 'waving';
-}
-
-function maskSensitiveAmounts(text: string, isPrivacyMode: boolean): string {
-  if (!isPrivacyMode) return text;
-  return text.replace(/[+\-~]?\d[\d,.]*(?:\s*MAD\b)?/g, (match) =>
-    match.includes('MAD') ? '•••• MAD' : '••••',
-  );
 }
 
 const TAB_REACTIONS: Partial<
@@ -237,7 +80,6 @@ const TAB_REACTIONS: Partial<
 export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
   activeTab,
   kpis,
-  facts = [],
   onOpenChat,
 }) => {
   const [mode, setMode] = useState<PetDisplayMode>(() => {
@@ -251,9 +93,6 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
 
   const [animState, setAnimState] = useState<SpexAnimationState>('idle');
   const [speechBubble, setSpeechBubble] = useState<string | null>(null);
-  const [activeSignalFact, setActiveSignalFact] = useState<FinancialFact | null>(null);
-  const [menuSignalFact, setMenuSignalFact] = useState<FinancialFact | null>(null);
-  const [isBubbleHovered, setIsBubbleHovered] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [lookSpec, setLookSpec] = useState<LookDirectionSpec | null>(null);
   const { desktopNavLayout, sidebarCollapsed } = useTheme();
@@ -275,7 +114,7 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
     isDesktopViewport && desktopNavLayout === 'side' ? (sidebarCollapsed ? 92 : 272) : 16;
   const roamMinVw = isDesktopViewport && desktopNavLayout === 'side' ? (sidebarCollapsed ? 8 : 20) : 4;
 
-  // Live Financial Pulse Diagnostic
+  // Live Financial Pulse Diagnostic (migrated from the removed Overview AI Pulse Banner)
   const pulse = useMemo(() => {
     const safeToSpend = kpis?.safeToSpend ?? 0;
     const dailyRemaining = kpis?.dailyRemaining ?? 0;
@@ -294,7 +133,7 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
         tone: 'positive' as const,
         state: 'idle' as SpexAnimationState,
         headline: 'SPEX AI Companion ready across your workspace.',
-        subtext: 'Click me anytime for health audits, signals, or What-If scenarios.',
+        subtext: 'Click me anytime for health audits, allowance checks, or What-If scenarios.',
       };
     }
 
@@ -324,9 +163,7 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
   const roamPauseRef = useRef<boolean>(false);
   const reactionTimeoutRef = useRef<number | null>(null);
   const speechTimeoutRef = useRef<number | null>(null);
-  const signalDismissTimeoutRef = useRef<number | null>(null);
   const lastTabRef = useRef<DashboardTab | null>(null);
-  const seenFactIdsRef = useRef<string[]>([]);
 
   const updateMode = useCallback((nextMode: PetDisplayMode) => {
     setMode(nextMode);
@@ -352,7 +189,6 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
       }, durationMs);
 
       if (message) {
-        setActiveSignalFact(null);
         setSpeechBubble(message);
         if (speechTimeoutRef.current) {
           window.clearTimeout(speechTimeoutRef.current);
@@ -365,112 +201,6 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
     [mode],
   );
 
-  // Pick and display a random Financial Fact / Signal on the floating avatar
-  const triggerRandomSignal = useCallback(
-    (showFloatingBubble = true) => {
-      if (!facts || facts.length === 0) return null;
-
-      if (seenFactIdsRef.current.length >= facts.length) {
-        const last = seenFactIdsRef.current[seenFactIdsRef.current.length - 1];
-        seenFactIdsRef.current = last ? [last] : [];
-      }
-
-      const nextFact = pickRandomFact(facts, seenFactIdsRef.current);
-      if (!nextFact) return null;
-
-      seenFactIdsRef.current = [...seenFactIdsRef.current, nextFact.id];
-      setMenuSignalFact(nextFact);
-
-      if (showFloatingBubble) {
-        setSpeechBubble(null);
-        setActiveSignalFact(nextFact);
-        const spriteState = factToSpriteState(nextFact);
-        setAnimState(spriteState);
-
-        if (reactionTimeoutRef.current) {
-          window.clearTimeout(reactionTimeoutRef.current);
-        }
-        reactionTimeoutRef.current = window.setTimeout(() => {
-          setAnimState(
-            mode === 'roaming'
-              ? roamDirRef.current === 1
-                ? 'running-right'
-                : 'running-left'
-              : 'idle',
-          );
-        }, 3600);
-      }
-
-      return nextFact;
-    },
-    [facts, mode],
-  );
-
-  // Auto-dismiss floating signal bubble after SIGNAL_DISPLAY_DURATION_MS (pauses while hovered)
-  useEffect(() => {
-    if (!activeSignalFact || isBubbleHovered || isMenuOpen) {
-      if (signalDismissTimeoutRef.current) {
-        window.clearTimeout(signalDismissTimeoutRef.current);
-        signalDismissTimeoutRef.current = null;
-      }
-      return;
-    }
-
-    signalDismissTimeoutRef.current = window.setTimeout(() => {
-      setActiveSignalFact(null);
-    }, SIGNAL_DISPLAY_DURATION_MS);
-
-    return () => {
-      if (signalDismissTimeoutRef.current) {
-        window.clearTimeout(signalDismissTimeoutRef.current);
-        signalDismissTimeoutRef.current = null;
-      }
-    };
-  }, [activeSignalFact, isBubbleHovered, isMenuOpen]);
-
-  // Seed a default signal card for the popover menu whenever facts update
-  useEffect(() => {
-    if (!facts || facts.length === 0) {
-      setMenuSignalFact(null);
-      setActiveSignalFact(null);
-      return;
-    }
-    setMenuSignalFact((prev) => {
-      if (prev && facts.some((f) => f.id === prev.id)) return prev;
-      return pickRandomFact(facts, seenFactIdsRef.current);
-    });
-  }, [facts]);
-
-  // Periodically surface a random Financial Fact / Signal from the engine every while
-  useEffect(() => {
-    if (
-      mode === 'minimized' ||
-      activeTab === 'chat' ||
-      isMenuOpen ||
-      isBubbleHovered ||
-      facts.length === 0
-    ) {
-      return;
-    }
-
-    const initialTimer = window.setTimeout(() => {
-      setSpeechBubble((currentSpeech) => {
-        if (currentSpeech) return currentSpeech;
-        triggerRandomSignal(true);
-        return null;
-      });
-    }, AUTO_SIGNAL_INITIAL_DELAY_MS);
-
-    const periodicInterval = window.setInterval(() => {
-      triggerRandomSignal(true);
-    }, AUTO_SIGNAL_INTERVAL_MS);
-
-    return () => {
-      window.clearTimeout(initialTimer);
-      window.clearInterval(periodicInterval);
-    };
-  }, [mode, activeTab, isMenuOpen, isBubbleHovered, facts.length, triggerRandomSignal]);
-
   // React to tab changes with live financial pulse on Overview & contextual hints elsewhere
   useEffect(() => {
     if (mode === 'minimized' || activeTab === 'chat') return;
@@ -478,11 +208,7 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
     lastTabRef.current = activeTab;
 
     if (activeTab === 'overview') {
-      if (facts.length > 0) {
-        triggerRandomSignal(true);
-      } else {
-        triggerReaction(pulse.state, pulse.headline, 3600);
-      }
+      triggerReaction(pulse.state, pulse.headline, 3600);
       return;
     }
 
@@ -490,7 +216,7 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
     if (reaction) {
       triggerReaction(reaction.state, reaction.message, 2800);
     }
-  }, [activeTab, mode, pulse.headline, pulse.state, facts.length, triggerRandomSignal, triggerReaction]);
+  }, [activeTab, mode, pulse.headline, pulse.state, triggerReaction]);
 
   // Also surface a hint whenever an alert/warning state triggers while perched
   useEffect(() => {
@@ -594,7 +320,6 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
   const handleLaunchPrompt = (prompt: string) => {
     setIsMenuOpen(false);
     setSpeechBubble(null);
-    setActiveSignalFact(null);
     onOpenChat();
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent('truespend:sendChatPrompt', { detail: { prompt } }));
@@ -608,11 +333,7 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
         type="button"
         onClick={() => {
           updateMode('perched');
-          if (facts.length > 0) {
-            triggerRandomSignal(true);
-          } else {
-            triggerReaction(pulse.state, pulse.headline, 3400);
-          }
+          triggerReaction(pulse.state, pulse.headline, 3400);
         }}
         style={{ left: `${sidebarSideOffsetPx}px` }}
         className="fixed bottom-20 md:bottom-4 z-40 inline-flex items-center gap-1.5 rounded-full bg-white/95 dark:bg-gray-900/95 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 shadow-lg backdrop-blur-md hover:scale-105 transition-all group cursor-pointer"
@@ -644,12 +365,6 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
     { id: 'look', label: '16° Gaze', msg: 'Move your cursor around—I track all 16 angles!' },
   ];
 
-  const displayedSignal = activeSignalFact || menuSignalFact;
-  const activeFactAccent = activeSignalFact ? FACT_ACCENT_STYLES[activeSignalFact.type] : null;
-  const ActiveFactIcon = activeSignalFact ? FACT_ICON_MAP[activeSignalFact.icon] ?? Activity : Activity;
-  const menuFactAccent = menuSignalFact ? FACT_ACCENT_STYLES[menuSignalFact.type] : null;
-  const MenuFactIcon = menuSignalFact ? FACT_ICON_MAP[menuSignalFact.icon] ?? Activity : Activity;
-
   return (
     <div
       className="fixed bottom-20 md:bottom-4 z-40 select-none transition-[left] duration-200"
@@ -657,14 +372,14 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
         left: mode === 'roaming' ? `${Math.max(roamMinVw, roamX)}vw` : `${sidebarSideOffsetPx}px`,
       }}
     >
-      {/* Interactive AI Pulse + Financial Signal Card + Controls Popover */}
+      {/* Interactive AI Pulse + Companion Controls Popover */}
       {isMenuOpen && (
         <div className="mb-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl bg-white/98 dark:bg-gray-900/98 border border-gray-200 dark:border-gray-700 shadow-2xl p-3.5 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150">
           <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-gray-100 dark:border-gray-800">
             <div className="flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               <span className="text-xs font-bold text-gray-900 dark:text-white">
-                Spex AI &amp; Financial Signals
+                Spex AI Assistant
               </span>
             </div>
             <div className="flex items-center gap-1">
@@ -692,7 +407,7 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
 
           {/* Live Financial Pulse Hint Card */}
           <div
-            className={`rounded-xl border p-2.5 mb-2 ${
+            className={`rounded-xl border p-2.5 mb-2.5 ${
               pulse.tone === 'alert'
                 ? 'border-rose-200 bg-rose-50/70 dark:border-rose-900/60 dark:bg-rose-950/30'
                 : pulse.tone === 'warning'
@@ -721,52 +436,7 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
             </div>
           </div>
 
-          {/* Random Financial Facts Signal Card */}
-          {menuSignalFact && menuFactAccent && (
-            <div className={`rounded-xl border p-2.5 mb-2.5 ${menuFactAccent.bubble}`}>
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${menuFactAccent.badge}`}>
-                  <MenuFactIcon className="h-3 w-3" />
-                  {menuFactAccent.label}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => triggerRandomSignal(false)}
-                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-gray-600 dark:text-gray-300 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer"
-                  title="Show another random signal"
-                >
-                  <Shuffle className="h-3 w-3" />
-                  Shuffle ({facts.length})
-                </button>
-              </div>
-              <div className="flex items-baseline justify-between gap-2">
-                <p className="text-xs font-semibold text-gray-900 dark:text-white leading-snug">
-                  {menuSignalFact.title}
-                </p>
-                <span className={`text-xs font-bold font-mono tabular-nums shrink-0 ${menuFactAccent.value}`}>
-                  {maskSensitiveAmounts(menuSignalFact.value, isPrivacyMode)}
-                </span>
-              </div>
-              <p className="text-[11px] text-gray-600 dark:text-gray-300 mt-1 leading-snug">
-                {maskSensitiveAmounts(menuSignalFact.message, isPrivacyMode)}
-              </p>
-              <div className="mt-1.5 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleLaunchPrompt(
-                      `Analyze this financial signal and recommend action: ${menuSignalFact.title} (${menuSignalFact.value}) — ${menuSignalFact.message}`,
-                    )
-                  }
-                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-                >
-                  Ask Spex about this signal <ArrowRight className="h-2.5 w-2.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Quick AI Prompts */}
+          {/* Quick AI Prompts (previously in Pulse Banner) */}
           <div className="grid grid-cols-2 gap-1.5 mb-2.5">
             <button
               type="button"
@@ -870,93 +540,8 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
         </div>
       )}
 
-      {/* Rich Floating Financial Signal Bubble (randomly surfaced periodically from financialFacts) */}
-      {activeSignalFact && activeFactAccent && !isMenuOpen && (
-        <div
-          onMouseEnter={() => setIsBubbleHovered(true)}
-          onMouseLeave={() => setIsBubbleHovered(false)}
-          className={`mb-1.5 w-[290px] sm:w-[310px] max-w-[calc(100vw-2rem)] rounded-2xl rounded-bl-xs border p-3 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-1 duration-200 ${activeFactAccent.bubble}`}
-        >
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <span
-              className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${activeFactAccent.badge}`}
-            >
-              <ActiveFactIcon className="h-3 w-3" />
-              {activeFactAccent.label}
-            </span>
-            <div className="flex items-center gap-1">
-              {facts.length > 1 && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerRandomSignal(true);
-                  }}
-                  title="Next random signal"
-                  aria-label="Next random signal"
-                  className="p-1 rounded-md text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
-                >
-                  <Shuffle className="h-3 w-3" />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveSignalFact(null);
-                }}
-                aria-label="Dismiss signal"
-                className="p-1 rounded-md text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-
-          <div
-            onClick={() => setIsMenuOpen(true)}
-            className="cursor-pointer space-y-1"
-          >
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="text-xs font-bold text-gray-900 dark:text-white leading-tight">
-                {activeSignalFact.title}
-              </p>
-              <span
-                className={`text-xs font-extrabold font-mono tabular-nums shrink-0 ${activeFactAccent.value}`}
-              >
-                {maskSensitiveAmounts(activeSignalFact.value, isPrivacyMode)}
-              </span>
-            </div>
-            <p className="text-[11px] text-gray-700 dark:text-gray-300 leading-snug">
-              {maskSensitiveAmounts(activeSignalFact.message, isPrivacyMode)}
-            </p>
-          </div>
-
-          <div className="mt-2 pt-1.5 border-t border-black/5 dark:border-white/10 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => setIsMenuOpen(true)}
-              className="text-[10px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 cursor-pointer"
-            >
-              Open Companion
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                handleLaunchPrompt(
-                  `Explain this financial signal and suggest concrete actions: ${activeSignalFact.title} (${activeSignalFact.value}) — ${activeSignalFact.message}`,
-                )
-              }
-              className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
-            >
-              Ask Spex <ArrowRight className="h-2.5 w-2.5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Floating Speech Hint Bubble (pulse alerts, tab navigation, toast feedback) */}
-      {speechBubble && !activeSignalFact && !isMenuOpen && (
+      {/* Floating Speech Hint Bubble (replaces the removed AI Pulse Banner cleanly) */}
+      {speechBubble && !isMenuOpen && (
         <div
           className={`mb-1.5 max-w-[260px] rounded-2xl rounded-bl-xs border px-3 py-2 text-[11px] font-medium shadow-lg backdrop-blur-md animate-in fade-in slide-in-from-bottom-1 duration-150 flex items-start gap-2 ${
             pulse.tone === 'alert'
@@ -993,27 +578,16 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
           onClick={() => {
             setIsMenuOpen((prev) => !prev);
             if (!isMenuOpen && mode !== 'roaming') {
-              if (displayedSignal) {
-                setMenuSignalFact(displayedSignal);
-              }
-              triggerReaction(pulse.state, undefined, 2600);
+              triggerReaction(pulse.state, pulse.headline, 3000);
             }
           }}
           onMouseEnter={() => {
-            if (mode === 'perched' && animState === 'idle' && !isMenuOpen && !activeSignalFact) {
-              if (facts.length > 0) {
-                triggerRandomSignal(true);
-              } else {
-                triggerReaction('waving', pulse.headline, 2400);
-              }
+            if (mode === 'perched' && animState === 'idle' && !isMenuOpen) {
+              triggerReaction('waving', pulse.headline, 2400);
             }
           }}
           className="relative w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center focus:outline-none transition-transform duration-200 hover:scale-105 active:scale-95 cursor-pointer"
-          title={
-            displayedSignal
-              ? `${displayedSignal.title}: ${maskSensitiveAmounts(displayedSignal.value, isPrivacyMode)}`
-              : `${pulse.headline} — Click to open Spex AI controls`
-          }
+          title={`${pulse.headline} — Click to open Spex AI controls`}
         >
           <SpexSprite
             state={animState}

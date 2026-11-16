@@ -125,11 +125,13 @@ function advanceDateByCycle(baseDate: Date, cycleRaw?: string | null): Date {
 }
 
 export class SubscriptionService {
-  async getSubscriptionsForUser(userId: string) {
-    const subs = await subscriptionRepository.findAllByUserId(userId);
-    const wallets = await walletRepository.findAllByUserId(userId);
+  async getSubscriptionsForUser(userId: string, preloadedWallets?: any[]) {
+    const [subs, wallets] = await Promise.all([
+      subscriptionRepository.findAllByUserId(userId),
+      preloadedWallets ? Promise.resolve(preloadedWallets) : walletRepository.findAllByUserId(userId),
+    ]);
     const walletMap = new Map<string, string>();
-    wallets.forEach((w) => walletMap.set(w.id, w.name));
+    wallets.forEach((w: any) => walletMap.set(w.id, w.name));
 
     return subs.map((s) => ({
       ...s,

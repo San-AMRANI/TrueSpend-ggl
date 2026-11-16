@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../../src/middleware/auth.js';
 import { settingsService } from '../services/SettingsService.js';
+import { decryptSecret } from '../services/SecurityCrypto.js';
 
 export class SettingsController {
   async getSettings(req: AuthRequest, res: Response) {
@@ -27,16 +28,26 @@ export class SettingsController {
     }
   }
 
+  async disconnectGoogleDrive(req: AuthRequest, res: Response) {
+    try {
+      const result = await settingsService.disconnectGoogleDrive(req.dbUser.id);
+      res.json(result);
+    } catch (e: any) {
+      console.error('Error disconnecting Google Drive:', e);
+      res.status(500).json({ error: 'Failed to disconnect Google Drive' });
+    }
+  }
+
   async backupToGoogleDrive(req: AuthRequest, res: Response) {
     try {
-      const accessToken = req.body?.accessToken || req.dbUser?.googleDriveToken;
+      const storedToken = decryptSecret(req.dbUser?.googleDriveToken);
+      const accessToken = req.body?.accessToken || storedToken;
       if (!accessToken) {
         return res.status(400).json({ error: 'No Google Drive access token provided' });
       }
 
-      const backupResult = await settingsService.backupToGoogleDrive(accessToken);
+      const backupResult = await settingsService.backupToGoogleDrive(req.dbUser.id, accessToken);
 
-      // Persist backup date in database
       await settingsService.updateSettings(req.dbUser.id, {
         lastDriveBackupDate: backupResult.lastDriveBackupDate,
       });
@@ -50,7 +61,7 @@ export class SettingsController {
 
   async exportSql(req: AuthRequest, res: Response) {
     try {
-      const sqlContent = await settingsService.exportSqlDatabase();
+      const sqlContent = await settingsService.exportSqlDatabase(req.dbUser.id);
       res.setHeader('Content-Type', 'application/sql');
       res.setHeader('Content-Disposition', 'attachment; filename="truespend_database_backup.sql"');
       res.send(sqlContent);
@@ -62,20 +73,26 @@ export class SettingsController {
 
   async importSql(req: AuthRequest, res: Response) {
     try {
-      const restored = await settingsService.importSqlDatabase(req.body?.sql);
+      const restored = await settingsService.importSqlDatabase(req.dbUser.id, req.body?.sql);
       const recordCount = Object.values(restored).reduce((total, count) => total + Number(count), 0);
       res.json({ success: true, restored, message: `Restore complete: ${recordCount} records imported.` });
     } catch (e: any) {
       console.error('Error importing SQL backup:', e);
       const message = e?.message || 'Failed to import the SQL backup';
-      const isValidationError = message.startsWith('Please select') || message.startsWith('This backup') || message.startsWith('Invalid TrueSpend');
-      res.status(isValidationError ? 400 : 500).json({ error: isValidationError ? message : 'Failed to import the SQL backup' });
+      const isValidationError =
+        message.startsWith('Please select') ||
+        message.startsWith('This backup') ||
+        message.startsWith('Invalid TrueSpend') ||
+        message.startsWith('You can only restore');
+      res.status(isValidationError ? 400 : 500).json({
+        error: isValidationError ? message : 'Failed to import the SQL backup',
+      });
     }
   }
 
   async validateBackup(req: AuthRequest, res: Response) {
     try {
-      const preview = settingsService.validateBackupPreview(req.body?.sql);
+      const preview = await settingsService.validateBackupPreview(req.dbUser.id, req.body?.sql);
       res.json(preview);
     } catch (e: any) {
       res.status(400).json({ error: e?.message || 'Failed to validate backup file' });

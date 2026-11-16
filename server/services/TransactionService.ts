@@ -1,11 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../src/db/index.js';
-import { counterparties, transactions } from '../../src/db/schema.js';
-import {
-  transactionRepository,
-  DbExecutor,
-  CursorPaginationParams,
-} from '../repositories/TransactionRepository.js';
+import { counterparties, financialContexts, transactions } from '../../src/db/schema.js';
+import { transactionRepository, DbExecutor } from '../repositories/TransactionRepository.js';
 import { debtRepository } from '../repositories/DebtRepository.js';
 import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { walletService } from './WalletService.js';
@@ -48,26 +44,25 @@ export interface UpdateTransactionDTO extends Omit<CreateTransactionDTO, 'type'>
 }
 
 export class TransactionService {
-  async enrichTransactionsWithSplitsAndDebts(
+  async getTransactionsForUser(
     userId: string,
-    txList: any[],
-    preloadedDebts?: any[]
+    preloaded?: {
+      rawTransactions?: any[];
+      allSplits?: any[];
+      allDebts?: any[];
+    }
   ) {
-    if (txList.length === 0) return [];
-
-    const allSplits = await transactionRepository.findSplitsByTransactionIds(
-      txList.map((transaction) => transaction.id)
-    );
-
-    const linkedDebtIds = Array.from(
-      new Set(allSplits.map((split) => split.linkedContactId).filter(Boolean) as string[])
-    );
-
-    const relevantDebts = preloadedDebts
-      ? preloadedDebts
-      : linkedDebtIds.length > 0
-      ? await debtRepository.findByIdsAndUserId(linkedDebtIds, userId)
-      : [];
+    const [transactions, allSplits, allDebts] = await Promise.all([
+      preloaded?.rawTransactions
+        ? Promise.resolve(preloaded.rawTransactions)
+        : transactionRepository.findAllByUserId(userId),
+      preloaded?.allSplits
+        ? Promise.resolve(preloaded.allSplits)
+        : transactionRepository.findSplitsByUserId(userId),
+      preloaded?.allDebts
+        ? Promise.resolve(preloaded.allDebts)
+        : debtRepository.findAllByUserId(userId),
+    ]);
 
     const splitsByTxId = new Map<string, typeof allSplits>();
     for (const split of allSplits) {
@@ -75,9 +70,9 @@ export class TransactionService {
       list.push(split);
       splitsByTxId.set(split.transactionId, list);
     }
-    const debtById = new Map(relevantDebts.map((debt) => [debt.id, debt]));
+    const debtById = new Map(allDebts.map((debt) => [debt.id, debt]));
 
-    return txList.map((transaction) => {
+    return transactions.map((transaction) => {
       const txSplits = splitsByTxId.get(transaction.id) || [];
       const mappedSplits = txSplits.map((split) => {
         const linkedDebt = split.linkedContactId ? debtById.get(split.linkedContactId) : null;
@@ -162,96 +157,93 @@ export class TransactionService {
     });
   }
 
-  async getTransactionsForUser(userId: string, preloadedDebts?: any[]) {
-    const txList = await transactionRepository.findAllByUserId(userId);
-    return this.enrichTransactionsWithSplitsAndDebts(userId, txList, preloadedDebts);
-  }
-
-  async getPaginatedTransactionsForUser(
-    userId: string,
-    params: CursorPaginationParams
-  ) {
-    const page = await transactionRepository.findPaginatedByUserId(userId, params);
-    const enrichedItems = await this.enrichTransactionsWithSplitsAndDebts(userId, page.items);
-    return {
-      items: enrichedItems,
-      nextCursor: page.nextCursor,
-      hasMore: page.hasMore,
-    };
-  }
-
-  async getPeriodSummaryForUser(userId: string, startDate: Date, endDate: Date) {
-    return transactionRepository.aggregatePeriodSummaryByUserId(userId, startDate, endDate);
-  }
-
-  async resolveWalletId(
-    userId: string,
-    requestedWalletId?: string | null,
-    fallbackType: 'Bank' | 'Cash' = 'Bank',
-    preloadedWallets?: any[]
-  ): Promise<string> {
+  async resolveWalletId(userId: string, requestedWalletId?: string | null, fallbackType: 'Bank' | 'Cash' = 'Bank'): Promise<string> {
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    try {
-      const wallets = preloadedWallets || (await walletService.getWallets(userId));
-      if (requestedWalletId && uuidPattern.test(requestedWalletId)) {
-        const match = wallets.find((w) => w.id === requestedWalletId);
-        if (match) return match.id;
+    const wallets = await walletService.getWallets(userId);
+    if (requestedWalletId && uuidPattern.test(requestedWalletId)) {
+      const match = wallets.find((w) => w.id === requestedWalletId);
+      if (!match) {
+        throw new Error('Selected wallet does not belong to your account.');
       }
+      return match.id;
+    }
 
-      if (requestedWalletId === 'Cash' || fallbackType === 'Cash') {
-        const cashWallet = wallets.find((w) => w.type === 'Cash') || wallets[0];
-        if (cashWallet) return cashWallet.id;
+    if (requestedWalletId === 'Cash' || fallbackType === 'Cash') {
+      const cashWallet = wallets.find((w) => w.type === 'Cash') || wallets[0];
+      if (cashWallet) return cashWallet.id;
+    }
+
+    const mainBank =
+      wallets.find((w) => w.type === 'Bank' && w.isMain) ||
+      wallets.find((w) => w.type === 'Bank') ||
+      wallets[0];
+    if (!mainBank) {
+      throw new Error('No wallet found for your account.');
+    }
+    return mainBank.id;
+  }
+
+  async resolveOptionalWalletId(userId: string, requestedWalletId?: string | null): Promise<string | null> {
+    if (!requestedWalletId) return null;
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const wallets = await walletService.getWallets(userId);
+    if (uuidPattern.test(requestedWalletId)) {
+      const match = wallets.find((w) => w.id === requestedWalletId);
+      if (!match) {
+        throw new Error('Destination wallet does not belong to your account.');
       }
-
-      const mainBank =
+      return match.id;
+    }
+    if (requestedWalletId === 'Cash') {
+      const cashWallet = wallets.find((w) => w.type === 'Cash') || wallets[0];
+      return cashWallet ? cashWallet.id : null;
+    }
+    if (requestedWalletId === 'Bank') {
+      const bankWallet =
         wallets.find((w) => w.type === 'Bank' && w.isMain) ||
         wallets.find((w) => w.type === 'Bank') ||
         wallets[0];
-      return mainBank?.id || requestedWalletId || '';
-    } catch {
-      return requestedWalletId || '';
-    }
-  }
-
-  async resolveOptionalWalletId(
-    userId: string,
-    requestedWalletId?: string | null,
-    preloadedWallets?: any[]
-  ): Promise<string | null> {
-    if (!requestedWalletId) return null;
-    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (uuidPattern.test(requestedWalletId)) {
-      return requestedWalletId;
-    }
-    try {
-      const wallets = preloadedWallets || (await walletService.getWallets(userId));
-      if (requestedWalletId === 'Cash') {
-        const cashWallet = wallets.find((w) => w.type === 'Cash') || wallets[0];
-        return cashWallet ? cashWallet.id : null;
-      }
-      if (requestedWalletId === 'Bank') {
-        const bankWallet =
-          wallets.find((w) => w.type === 'Bank' && w.isMain) ||
-          wallets.find((w) => w.type === 'Bank') ||
-          wallets[0];
-        return bankWallet ? bankWallet.id : null;
-      }
-    } catch {
-      return null;
+      return bankWallet ? bankWallet.id : null;
     }
     return null;
   }
 
-  private matchCounterpartyFromList(
-    userCounterparties: Array<{ id: string; canonicalName: string; aliasesJson: string | null }>,
-    text?: string | null,
-    explicitId?: string | null
-  ): string | null {
-    if (explicitId) return explicitId;
+  private async validateOptionalContextOwnership(
+    userId: string,
+    contextId?: string | null,
+    exec: DbExecutor = db
+  ): Promise<string | null> {
+    if (!contextId) return null;
+    const rows = await exec
+      .select({ id: financialContexts.id })
+      .from(financialContexts)
+      .where(and(eq(financialContexts.id, contextId), eq(financialContexts.userId, userId)))
+      .limit(1);
+    if (rows.length === 0) {
+      throw new Error('Selected financial context does not belong to your account.');
+    }
+    return rows[0].id;
+  }
+
+  private async resolveMatchingCounterpartyId(userId: string, text?: string | null, explicitId?: string | null, exec: DbExecutor = db): Promise<string | null> {
+    if (explicitId) {
+      const owned = await exec
+        .select({ id: counterparties.id })
+        .from(counterparties)
+        .where(and(eq(counterparties.id, explicitId), eq(counterparties.userId, userId)))
+        .limit(1);
+      if (owned.length === 0) {
+        throw new Error('Selected counterparty does not belong to your account.');
+      }
+      return owned[0].id;
+    }
     if (!text || !text.trim()) return null;
     const normNotes = coreAuditService.normalizeCounterpartyName(text);
     if (!normNotes) return null;
-
+    const userCounterparties = await exec
+      .select()
+      .from(counterparties)
+      .where(eq(counterparties.userId, userId));
     for (const cp of userCounterparties) {
       const aliases: string[] = (() => {
         try {
@@ -260,9 +252,7 @@ export class TransactionService {
           return [];
         }
       })();
-      const candidates = [cp.canonicalName, ...aliases]
-        .map((s) => coreAuditService.normalizeCounterpartyName(s))
-        .filter(Boolean);
+      const candidates = [cp.canonicalName, ...aliases].map((s) => coreAuditService.normalizeCounterpartyName(s)).filter(Boolean);
       if (candidates.some((c) => normNotes.includes(c))) {
         return cp.id;
       }
@@ -336,36 +326,30 @@ export class TransactionService {
 
     const createdAt = this.parseTransactionDate(dto.transaction_date);
     const unpaidDueDate = this.parseTransactionDate(dto.unpaid_due_date);
-
-    // Load wallets and counterparties once per createTransaction call
-    const [userWallets, userCounterparties] = await Promise.all([
-      walletService.getWallets(userId),
-      db.select().from(counterparties).where(eq(counterparties.userId, userId)),
-    ]);
-
-    const resolvedWalletId = await this.resolveWalletId(userId, dto.walletId, 'Bank', userWallets);
-    const resolvedDestWalletId = await this.resolveOptionalWalletId(
-      userId,
-      dto.destinationWalletId,
-      userWallets
-    );
+    const resolvedWalletId = await this.resolveWalletId(userId, dto.walletId);
+    const resolvedDestWalletId = await this.resolveOptionalWalletId(userId, dto.destinationWalletId);
 
     let assignedCategory = dto.category;
     if (loanContactName) {
       assignedCategory = '🤝 Loan Received';
     } else if (dto.type === 'Transfer' && resolvedDestWalletId) {
-      const destWallet = userWallets.find((w) => w.id === resolvedDestWalletId);
-      const destType = destWallet?.type?.toLowerCase();
-      if (destType === 'investment') {
-        assignedCategory = '📈 Investments';
-      } else if (destType === 'savings') {
-        assignedCategory = '🛟 Emergency & goals Fund';
-      } else if (
-        !assignedCategory ||
-        assignedCategory === '📈 Investments' ||
-        assignedCategory === '🛟 Emergency & goals Fund'
-      ) {
-        assignedCategory = '🔄 Transfer';
+      try {
+        const wallets = await walletService.getWallets(userId);
+        const destWallet = wallets.find((w) => w.id === resolvedDestWalletId);
+        const destType = destWallet?.type?.toLowerCase();
+        if (destType === 'investment') {
+          assignedCategory = '📈 Investments';
+        } else if (destType === 'savings') {
+          assignedCategory = '🛟 Emergency & goals Fund';
+        } else if (
+          !assignedCategory ||
+          assignedCategory === '📈 Investments' ||
+          assignedCategory === '🛟 Emergency & goals Fund'
+        ) {
+          assignedCategory = '🔄 Transfer';
+        }
+      } catch {
+        if (!assignedCategory) assignedCategory = '🔄 Transfer';
       }
     }
 
@@ -395,10 +379,17 @@ export class TransactionService {
     let createdTx: any;
     try {
       createdTx = await db.transaction(async (txDb) => {
-        const matchedCpId = this.matchCounterpartyFromList(
-          userCounterparties,
+        const matchedCpId = await this.resolveMatchingCounterpartyId(
+          userId,
           dto.notes || loanContactName || unpaidContactName || '',
-          dto.counterpartyId
+          dto.counterpartyId,
+          txDb
+        );
+
+        const validatedContextId = await this.validateOptionalContextOwnership(
+          userId,
+          dto.contextId,
+          txDb
         );
 
         const newTx = await transactionRepository.create(
@@ -408,7 +399,7 @@ export class TransactionService {
             nativeAmount: String(nativeAmountNum),
             currency: requestedCurrency,
             exchangeRateUsed: String(fxRate),
-            fxSource: fxSource as any,
+            fxSource,
             idempotencyKey: cleanIdempKey,
             type: dto.type,
             walletId: resolvedWalletId,
@@ -416,24 +407,14 @@ export class TransactionService {
             category: normalizedCat,
             notes: dto.notes,
             createdAt,
-            contextId: dto.contextId || null,
+            contextId: validatedContextId,
             counterpartyId: matchedCpId,
           },
           txDb
         );
 
-        const pendingSplitInserts: Array<{
-          transactionId: string;
-          reimbursableAmount: string;
-          linkedContactId: string;
-        }> = [];
-
         for (const split of splitList) {
-          const splitCpId = this.matchCounterpartyFromList(
-            userCounterparties,
-            split.linked_contact_name,
-            null
-          );
+          const splitCpId = await this.resolveMatchingCounterpartyId(userId, split.linked_contact_name, null, txDb);
           const newDebt = await debtRepository.create(
             {
               userId,
@@ -448,19 +429,18 @@ export class TransactionService {
             txDb
           );
 
-          pendingSplitInserts.push({
-            transactionId: newTx.id,
-            reimbursableAmount: String(split.reimbursable_amount),
-            linkedContactId: newDebt.id,
-          });
+          await transactionRepository.createSplit(
+            {
+              transactionId: newTx.id,
+              reimbursableAmount: String(split.reimbursable_amount),
+              linkedContactId: newDebt.id,
+            },
+            txDb
+          );
         }
 
         if (unpaidAmount > 0 && unpaidContactName) {
-          const unpaidCpId = this.matchCounterpartyFromList(
-            userCounterparties,
-            unpaidContactName,
-            null
-          );
+          const unpaidCpId = await this.resolveMatchingCounterpartyId(userId, unpaidContactName, null, txDb);
           const newPayableDebt = await debtRepository.create(
             {
               userId,
@@ -476,19 +456,18 @@ export class TransactionService {
             txDb
           );
 
-          pendingSplitInserts.push({
-            transactionId: newTx.id,
-            reimbursableAmount: String(unpaidAmount),
-            linkedContactId: newPayableDebt.id,
-          });
+          await transactionRepository.createSplit(
+            {
+              transactionId: newTx.id,
+              reimbursableAmount: String(unpaidAmount),
+              linkedContactId: newPayableDebt.id,
+            },
+            txDb
+          );
         }
 
         if (loanContactName) {
-          const loanCpId = this.matchCounterpartyFromList(
-            userCounterparties,
-            loanContactName,
-            null
-          );
+          const loanCpId = await this.resolveMatchingCounterpartyId(userId, loanContactName, null, txDb);
           const newDebt = await debtRepository.create(
             {
               userId,
@@ -502,15 +481,14 @@ export class TransactionService {
             },
             txDb
           );
-          pendingSplitInserts.push({
-            transactionId: newTx.id,
-            reimbursableAmount: String(amountMadNum),
-            linkedContactId: newDebt.id,
-          });
-        }
-
-        if (pendingSplitInserts.length > 0) {
-          await transactionRepository.createSplitsBatch(pendingSplitInserts, txDb);
+          await transactionRepository.createSplit(
+            {
+              transactionId: newTx.id,
+              reimbursableAmount: String(amountMadNum),
+              linkedContactId: newDebt.id,
+            },
+            txDb
+          );
         }
 
         // Mandatory balanced journal posting inside the exact same PostgreSQL transaction
@@ -519,7 +497,6 @@ export class TransactionService {
           newTx,
           {
             idempotencyKey: cleanIdempKey ? `tx-post-${cleanIdempKey}` : `tx-post-${newTx.id}`,
-            preloadedWallets: userWallets,
           },
           txDb
         );
@@ -577,11 +554,6 @@ export class TransactionService {
     const createdAt = this.parseTransactionDate(dto.transaction_date);
     const unpaidDueDate = this.parseTransactionDate(dto.unpaid_due_date);
 
-    const [userWallets, userCounterparties] = await Promise.all([
-      walletService.getWallets(userId),
-      db.select().from(counterparties).where(eq(counterparties.userId, userId)),
-    ]);
-
     let assignedCategory = dto.category;
     const loanContactName = dto.loan_contact_name?.trim();
     if (loanContactName) {
@@ -589,33 +561,34 @@ export class TransactionService {
     } else if (current.type === 'Transfer' && (dto.destinationWalletId !== undefined || !assignedCategory)) {
       const targetDestId =
         dto.destinationWalletId !== undefined
-          ? await this.resolveOptionalWalletId(userId, dto.destinationWalletId, userWallets)
+          ? await this.resolveOptionalWalletId(userId, dto.destinationWalletId)
           : current.destinationWalletId;
       if (targetDestId) {
-        const destWallet = userWallets.find((w) => w.id === targetDestId);
-        const destType = destWallet?.type?.toLowerCase();
-        if (destType === 'investment') {
-          assignedCategory = '📈 Investments';
-        } else if (destType === 'savings') {
-          assignedCategory = '🛟 Emergency & goals Fund';
-        } else if (
-          !assignedCategory ||
-          assignedCategory === '📈 Investments' ||
-          assignedCategory === '🛟 Emergency & goals Fund'
-        ) {
-          assignedCategory = '🔄 Transfer';
+        try {
+          const wallets = await walletService.getWallets(userId);
+          const destWallet = wallets.find((w) => w.id === targetDestId);
+          const destType = destWallet?.type?.toLowerCase();
+          if (destType === 'investment') {
+            assignedCategory = '📈 Investments';
+          } else if (destType === 'savings') {
+            assignedCategory = '🛟 Emergency & goals Fund';
+          } else if (
+            !assignedCategory ||
+            assignedCategory === '📈 Investments' ||
+            assignedCategory === '🛟 Emergency & goals Fund'
+          ) {
+            assignedCategory = '🔄 Transfer';
+          }
+        } catch {
+          if (!assignedCategory) assignedCategory = '🔄 Transfer';
         }
       }
     }
 
     const resolvedUpdateWalletId =
-      dto.walletId !== undefined
-        ? await this.resolveWalletId(userId, dto.walletId, 'Bank', userWallets)
-        : undefined;
+      dto.walletId !== undefined ? await this.resolveWalletId(userId, dto.walletId) : undefined;
     const resolvedUpdateDestId =
-      dto.destinationWalletId !== undefined
-        ? await this.resolveOptionalWalletId(userId, dto.destinationWalletId, userWallets)
-        : undefined;
+      dto.destinationWalletId !== undefined ? await this.resolveOptionalWalletId(userId, dto.destinationWalletId) : undefined;
 
     const updatedTx = await db.transaction(async (txDb) => {
       if (current.payrollId) {
@@ -623,26 +596,8 @@ export class TransactionService {
       }
 
       const existingSplits = await transactionRepository.findSplitsByTransactionId(transactionId, txDb);
-      const linkedDebtIds = Array.from(
-        new Set(existingSplits.map((s) => s.linkedContactId).filter(Boolean) as string[])
-      );
-      const [linkedDebts, allSplitsForLinkedDebts] = await Promise.all([
-        linkedDebtIds.length > 0
-          ? debtRepository.findByIdsAndUserId(linkedDebtIds, userId, txDb)
-          : Promise.resolve([]),
-        linkedDebtIds.length > 0
-          ? transactionRepository.findSplitsByDebtIds(linkedDebtIds, txDb)
-          : Promise.resolve([]),
-      ]);
-
-      const debtById = new Map(linkedDebts.map((d) => [d.id, d]));
-      const splitsByDebtId = new Map<string, typeof allSplitsForLinkedDebts>();
-      for (const sp of allSplitsForLinkedDebts) {
-        if (!sp.linkedContactId) continue;
-        const arr = splitsByDebtId.get(sp.linkedContactId) || [];
-        arr.push(sp);
-        splitsByDebtId.set(sp.linkedContactId, arr);
-      }
+      const allUserDebts = await debtRepository.findAllByUserId(userId, txDb);
+      const debtById = new Map(allUserDebts.map((d) => [d.id, d]));
 
       const existingReceivableSplits = existingSplits.filter((s) => {
         const d = s.linkedContactId ? debtById.get(s.linkedContactId) : null;
@@ -697,7 +652,7 @@ export class TransactionService {
         for (const existingSplit of existingReceivableSplits) {
           if (!updatedSplitIds.has(existingSplit.id)) {
             if (existingSplit.linkedContactId) {
-              const debt = debtById.get(existingSplit.linkedContactId);
+              const debt = await debtRepository.findByIdAndUserId(existingSplit.linkedContactId, userId, txDb);
               if (debt) {
                 const originalAmount = parseFloat(debt.originalAmount as unknown as string);
                 const remainingBalance = parseFloat(debt.remainingBalance as unknown as string);
@@ -707,7 +662,7 @@ export class TransactionService {
                     `Cannot remove split for ${debt.contactName} because a settlement of ${settledAmount.toFixed(2)} MAD has already been recorded.`
                   );
                 }
-                const linkedSplits = splitsByDebtId.get(debt.id) || [];
+                const linkedSplits = await transactionRepository.findSplitsByDebtId(debt.id, txDb);
                 if (linkedSplits.some((s) => s.transactionId !== transactionId)) {
                   throw new Error(
                     `This reimbursement for ${debt.contactName} has settlements. Adjust the debt before removing it.`
@@ -728,7 +683,7 @@ export class TransactionService {
           if (splitDto.id) {
             const existingSplit = existingReceivableSplits.find((s) => s.id === splitDto.id);
             if (existingSplit && existingSplit.linkedContactId) {
-              const debt = debtById.get(existingSplit.linkedContactId);
+              const debt = await debtRepository.findByIdAndUserId(existingSplit.linkedContactId, userId, txDb);
               if (debt) {
                 const oldReimbursableAmount = parseFloat(existingSplit.reimbursableAmount as unknown as string);
                 const originalAmount = parseFloat(debt.originalAmount as unknown as string);
@@ -793,7 +748,11 @@ export class TransactionService {
             throw new Error('Please specify who you still owe for the remaining unpaid balance');
           }
           if (existingPartialPayableSplit && existingPartialPayableSplit.linkedContactId) {
-            const debt = debtById.get(existingPartialPayableSplit.linkedContactId);
+            const debt = await debtRepository.findByIdAndUserId(
+              existingPartialPayableSplit.linkedContactId,
+              userId,
+              txDb
+            );
             if (debt) {
               const origAmt = parseFloat(debt.originalAmount as unknown as string) || 0;
               const remAmt = parseFloat(debt.remainingBalance as unknown as string) || 0;
@@ -847,7 +806,11 @@ export class TransactionService {
           }
         } else if (existingPartialPayableSplit) {
           if (existingPartialPayableSplit.linkedContactId) {
-            const debt = debtById.get(existingPartialPayableSplit.linkedContactId);
+            const debt = await debtRepository.findByIdAndUserId(
+              existingPartialPayableSplit.linkedContactId,
+              userId,
+              txDb
+            );
             if (debt) {
               const origAmt = parseFloat(debt.originalAmount as unknown as string) || 0;
               const remAmt = parseFloat(debt.remainingBalance as unknown as string) || 0;
@@ -873,7 +836,7 @@ export class TransactionService {
         if (current.type !== 'Income' || !loanSplit?.linkedContactId) {
           throw new Error('This transaction is not a loan received');
         }
-        const debt = debtById.get(loanSplit.linkedContactId);
+        const debt = await debtRepository.findByIdAndUserId(loanSplit.linkedContactId, userId, txDb);
         if (!debt || debt.type !== 'Payable') throw new Error('Linked loan debt not found');
         const originalAmount = parseFloat(debt.originalAmount as unknown as string);
         const remainingAmount = parseFloat(debt.remainingBalance as unknown as string);
@@ -897,19 +860,20 @@ export class TransactionService {
 
       const matchedCpId =
         dto.counterpartyId !== undefined
-          ? dto.counterpartyId
-          : this.matchCounterpartyFromList(
-              userCounterparties,
-              dto.notes || current.notes || '',
-              current.counterpartyId
-            );
+          ? await this.resolveMatchingCounterpartyId(userId, dto.notes || current.notes || '', dto.counterpartyId, txDb)
+          : await this.resolveMatchingCounterpartyId(userId, dto.notes || current.notes || '', current.counterpartyId, txDb);
+
+      const validatedUpdateContextId =
+        dto.contextId !== undefined
+          ? await this.validateOptionalContextOwnership(userId, dto.contextId, txDb)
+          : undefined;
 
       const updatePayload: any = {
         amount: String(dto.amount),
         category: normalizeCategory(assignedCategory),
         notes: dto.notes,
         ...(createdAt ? { createdAt } : {}),
-        ...(dto.contextId !== undefined ? { contextId: dto.contextId || null } : {}),
+        ...(validatedUpdateContextId !== undefined ? { contextId: validatedUpdateContextId } : {}),
         ...(resolvedUpdateWalletId !== undefined ? { walletId: resolvedUpdateWalletId } : {}),
         ...(resolvedUpdateDestId !== undefined ? { destinationWalletId: resolvedUpdateDestId } : {}),
         ...(matchedCpId !== undefined ? { counterpartyId: matchedCpId } : {}),
@@ -931,7 +895,6 @@ export class TransactionService {
         {
           idempotencyKey: `tx-edit-${updated.id}-${Date.now()}`,
           memo: `[Corrected] ${updated.notes || updated.category || updated.type}`,
-          preloadedWallets: userWallets,
         },
         txDb
       );
@@ -980,31 +943,10 @@ export class TransactionService {
       );
 
       const relatedSplits = await transactionRepository.findSplitsByTransactionId(transactionId, txDb);
-      const linkedDebtIds = Array.from(
-        new Set(relatedSplits.map((s) => s.linkedContactId).filter(Boolean) as string[])
-      );
-
-      const [linkedDebts, allSplitsForLinkedDebts] = await Promise.all([
-        linkedDebtIds.length > 0
-          ? debtRepository.findByIdsAndUserId(linkedDebtIds, userId, txDb)
-          : Promise.resolve([]),
-        linkedDebtIds.length > 0
-          ? transactionRepository.findSplitsByDebtIds(linkedDebtIds, txDb)
-          : Promise.resolve([]),
-      ]);
-
-      const debtById = new Map(linkedDebts.map((d) => [d.id, d]));
-      const splitsByDebtId = new Map<string, typeof allSplitsForLinkedDebts>();
-      for (const sp of allSplitsForLinkedDebts) {
-        if (!sp.linkedContactId) continue;
-        const arr = splitsByDebtId.get(sp.linkedContactId) || [];
-        arr.push(sp);
-        splitsByDebtId.set(sp.linkedContactId, arr);
-      }
 
       for (const split of relatedSplits) {
         if (split.linkedContactId) {
-          const debt = debtById.get(split.linkedContactId);
+          const debt = await debtRepository.findByIdAndUserId(split.linkedContactId, userId, txDb);
           if (debt) {
             const splitReimbNum = parseFloat(split.reimbursableAmount as unknown as string) || 0;
             const isOriginalTransaction =
@@ -1012,7 +954,7 @@ export class TransactionService {
               (debt.type === 'Payable' && transaction.type === 'Income') ||
               (debt.type === 'Payable' && transaction.type === 'Expense' && splitReimbNum > 0);
             if (isOriginalTransaction) {
-              const linkedSplits = splitsByDebtId.get(debt.id) || [];
+              const linkedSplits = await transactionRepository.findSplitsByDebtId(debt.id, txDb);
               for (const linkedSplit of linkedSplits) {
                 if (linkedSplit.transactionId !== transactionId) {
                   await coreAuditService.reverseJournalEntriesForTransaction(
