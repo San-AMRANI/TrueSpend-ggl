@@ -968,14 +968,13 @@ export class InvestmentService {
         monthlyIncomeMad =
           kpis.currentFinancialAmount && kpis.currentFinancialAmount > 0
             ? kpis.currentFinancialAmount
-            : kpis.monthlyIncome || parseFloat((dbUser.salary as any) || '0') || 0;
+            : kpis.monthlyIncome || kpis.salary || 0;
         monthlyInvestmentBudgetMad = Math.round(((kpis as any).totalInvestmentBudget || 0) * 100) / 100;
         investedThisCycleMad = Math.round(((kpis as any).monthlyInvestmentFunded || 0) * 100) / 100;
         daysUntilPayday = kpis.daysUntilPayday || 0;
         pendingPayablesMad = Math.round((kpis.pendingPayables || 0) * 100) / 100;
 
-        const targetBuffer = parseFloat((dbUser.emergencyBuffer as any) || '0') || 0;
-        emergencyDeficitMad = Math.max(0, Math.round((targetBuffer - (kpis.emergencyBuffer || 0)) * 100) / 100);
+        emergencyDeficitMad = (kpis.safeToSpend || 0) < 0 ? Math.abs(Math.round((kpis.safeToSpend || 0) * 100) / 100) : 0;
         emergencyBufferIntact = emergencyDeficitMad <= 0;
 
         fixedObligationsMad = Math.round(((kpis as any).totalFixedBudget || kpis.monthlyFixedExpenses || 0) * 100) / 100;

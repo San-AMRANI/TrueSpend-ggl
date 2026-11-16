@@ -19,9 +19,9 @@ export interface FinancialEngineInput {
   payrolls: Payroll[];
   debts: Debt[];
   budgets: CategoryBudget[];
-  userSettings: {
-    emergencyBuffer: number;
-    salary: number;
+  userSettings?: {
+    emergencyBuffer?: number;
+    salary?: number;
     payday?: number;
   };
   wallets?: FinancialEngineWalletInput[];
@@ -256,7 +256,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
   const openingSavingsBalance = userWallets.length > 0
     ? savingsWallets.reduce((sum, w) => sum + (openingWalletBalances[w.id] || 0), 0)
     : openingWalletBalances.Savings || 0;
-  const configuredBuffer = parseFloat(input.userSettings.emergencyBuffer as unknown as string) || 0;
+  const configuredBuffer = parseFloat((input.userSettings?.emergencyBuffer ?? 0) as unknown as string) || 0;
   const emergencyBuffer = savingsBalance > 0
     ? savingsBalance
     : configuredBuffer;
@@ -384,7 +384,11 @@ export function computeFinancialState(input: FinancialEngineInput) {
   const dailyStatus = dailyRemaining < 0 || dailyUsagePercent >= 100 ? 'critical' : dailyUsagePercent >= 80 ? 'warning' : 'on_track';
 
   // Compute Health Score
-  const salary = input.userSettings.salary || 0;
+  const derivedPayrollSalary =
+    (nextPayroll ? parseFloat(nextPayroll.amount as string) : 0) ||
+    (currentFm ? parseFloat(currentFm.startPayroll.amount as string) : 0) ||
+    (input.userSettings?.salary || 0);
+  const salary = derivedPayrollSalary;
   const health = computeHealthScore({
     totalLiquidity,
     emergencyBuffer,
@@ -443,10 +447,12 @@ export function computeFinancialState(input: FinancialEngineInput) {
     dailyRemaining,
     dailyUsagePercent,
     dailyStatus,
-    payday: nextPayday ? nextPayday.getDate() : ((input.userSettings as any)?.payday || null),
-    salary: (input.userSettings?.salary && input.userSettings.salary > 0 ? input.userSettings.salary : 0) ||
-      (nextPayroll ? parseFloat(nextPayroll.amount as string) : 0) ||
-      (currentFm ? parseFloat(currentFm.startPayroll.amount as string) : 0),
+    payday: nextPayday
+      ? nextPayday.getDate()
+      : currentFm
+      ? new Date(currentFm.endPayroll.scheduledFor).getDate()
+      : ((input.userSettings as any)?.payday || null),
+    salary: derivedPayrollSalary,
     currentFinancialAmount: currentFm ? Number(currentFm.startPayroll.amount) : 0,
     financialPeriodStart: currentFm ? currentFm.start.toISOString() : null,
     financialPeriodEnd: currentFm ? currentFm.end.toISOString() : null,

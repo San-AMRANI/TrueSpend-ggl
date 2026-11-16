@@ -260,13 +260,9 @@ export function computeHolisticForecast(params: {
 
   const upcomingAmt = upcomingPayroll ? parseFloat(upcomingPayroll.amount) || 0 : 0;
   const latestAmt = latestPayroll ? parseFloat(latestPayroll.amount) || 0 : 0;
-  const configuredSalary =
-    (userSettings?.salary && parseFloat(String(userSettings.salary)) > 0
-      ? parseFloat(String(userSettings.salary))
-      : 0) ||
-    (kpis?.salary && kpis.salary > 0 ? kpis.salary : 0);
+  const configuredSalary = kpis?.salary && kpis.salary > 0 ? kpis.salary : 0;
 
-  // Active verified salary from user's actual scheduled payrolls / settings:
+  // Active verified salary from user's actual scheduled payrolls:
   const activeSalary =
     (upcomingAmt > 0 ? upcomingAmt : 0) ||
     (latestAmt > 0 ? latestAmt : 0) ||
@@ -277,14 +273,11 @@ export function computeHolisticForecast(params: {
       ? activeSalary
       : (kpis?.monthlyIncome && kpis.monthlyIncome > 0 ? kpis.monthlyIncome : 6000);
 
-  // Inferred standard payday day-of-month (strictly grounded on user records)
+  // Inferred standard payday day-of-month (strictly grounded on user payroll records)
   const inferredPaydayDayOfMonth =
-    (userSettings?.payday && Number(userSettings.payday) >= 1 && Number(userSettings.payday) <= 31
-      ? Number(userSettings.payday)
-      : null) ||
-    (kpis?.payday && kpis.payday >= 1 && kpis.payday <= 31 ? kpis.payday : null) ||
     (upcomingPayroll ? new Date(upcomingPayroll.scheduledFor).getDate() : null) ||
     (latestPayroll ? new Date(latestPayroll.scheduledFor).getDate() : null) ||
+    (kpis?.payday && kpis.payday >= 1 && kpis.payday <= 31 ? kpis.payday : null) ||
     25;
 
   // 3. Subscriptions Burn
@@ -490,9 +483,7 @@ export function computeHolisticForecast(params: {
     });
 
   // 7. Day-by-Day 30-Day Forward Cash Flow & Liquidity Stress Simulation
-  const emergencyFloor =
-    kpis?.emergencyBuffer ??
-    (userSettings?.emergencyBuffer ? parseFloat(String(userSettings.emergencyBuffer)) : 1000);
+  const emergencyFloor = kpis?.emergencyBuffer ?? 0;
   const dailyCashFlow30d: DailyCashFlowPoint[] = [];
   let runningBaseline = currentLiquidity;
   let runningSimulated = currentLiquidity + whatIf.oneTimeShockMad;

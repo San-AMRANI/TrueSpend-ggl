@@ -40,11 +40,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
   const [currency, setCurrency] = useState(user?.baseCurrency || 'MAD');
   const [countryCode, setCountryCode] = useState(user?.countryCode || 'MA');
   const [timezone, setTimezone] = useState(user?.timezone || 'Africa/Casablanca');
-  const [payday, setPayday] = useState<number>(user?.payday ?? 25);
-  const [salary, setSalary] = useState<string>(user?.salary ? String(user.salary) : '');
-  const [emergencyBuffer, setEmergencyBuffer] = useState<string>(
-    user?.emergencyBuffer ? String(user.emergencyBuffer) : ''
-  );
 
   const [accounts, setAccounts] = useState<
     Array<{ name: string; type: 'Bank' | 'Cash' | 'Savings'; openingBalance: string; isMain: boolean }>
@@ -77,9 +72,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           baseCurrency: currency,
           countryCode,
           timezone,
-          payday,
-          salary: salary ? Number(salary) : 0,
-          emergencyBuffer: emergencyBuffer ? Number(emergencyBuffer) : 0,
         },
         token
       );
@@ -196,7 +188,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
               {step === 1 && 'Welcome to Your Private TrueSpend Workspace'}
               {step === 2 && 'Account Security & Email Verification'}
               {step === 3 && 'Choose Your Experience Mode (Both Free)'}
-              {step === 4 && 'Currency, Payday & Planning Anchor'}
+              {step === 4 && 'Regional & Currency Preferences'}
               {step === 5 && 'Set Up Accounts & Opening Balances'}
               {step === 6 && 'Apply a Starter Template'}
               {step === 7 && 'First Savings Goal & Recurring Bill'}
@@ -360,7 +352,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
           )}
 
           {step === 4 && (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                   Main Currency
@@ -376,20 +368,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   <option value="GBP">GBP (British Pound)</option>
                   <option value="CAD">CAD (Canadian Dollar)</option>
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Payday / Cycle Reset Day (1–31)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={31}
-                  value={payday}
-                  onChange={(e) => setPayday(Number(e.target.value) || 1)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
-                />
               </div>
 
               <div>
@@ -413,34 +391,6 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({
                   type="text"
                   value={timezone}
                   onChange={(e) => setTimezone(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Expected Monthly Income (optional)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={salary}
-                  onChange={(e) => setSalary(e.target.value)}
-                  placeholder="0"
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Minimum Safety Buffer (optional)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={emergencyBuffer}
-                  onChange={(e) => setEmergencyBuffer(e.target.value)}
-                  placeholder="0"
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
                 />
               </div>

@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { DashboardNav } from './dashboard/DashboardNav';
@@ -13,6 +13,7 @@ import { OnboardingFlow } from './onboarding/OnboardingFlow';
 import { PageTransition, MotionModal } from './ui/MotionPrimitives';
 import { AnimatePresence, motion } from 'motion/react';
 import { X, CheckCircle2, AlertCircle, Info, Calculator } from 'lucide-react';
+import { generateFacts, selectFacts } from '../lib/financialFacts';
 import {
   FEATURE_METADATA,
   getTabRequiredFeature,
@@ -163,6 +164,11 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     userSettings,
     notifications,
   } = useDashboardData(token, tier);
+
+  const financialFacts = useMemo(
+    () => selectFacts(generateFacts(kpis, transactions, debts, budgets, payrolls, investmentsData)),
+    [kpis, transactions, debts, budgets, payrolls, investmentsData],
+  );
 
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
@@ -531,7 +537,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               subscriptions={subscriptions}
               wallets={kpis?.accounts || []}
               goals={goals}
-              monthlySalary={userSettings?.salary}
+              monthlySalary={kpis?.currentFinancialAmount || kpis?.monthlyIncome || kpis?.salary || 0}
               avgDailySpend={kpis?.avgDailySpend}
               onCreateSubscription={handleCreateSubscription}
               onUpdateSubscription={handleUpdateSubscription}
@@ -784,6 +790,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       <SpexCompanionPet
         activeTab={activeTab}
         kpis={kpis}
+        facts={financialFacts}
         onOpenChat={() => setActiveTab('chat')}
       />
 

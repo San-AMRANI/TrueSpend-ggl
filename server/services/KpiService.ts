@@ -105,9 +105,9 @@ export class KpiService {
         initialBalance: w.initialBalance,
       })),
       userSettings: {
-        emergencyBuffer: parseFloat(dbUser.emergencyBuffer as unknown as string) || 0,
-        salary: parseFloat(dbUser.salary as unknown as string) || 0,
-        payday: dbUser.payday ? Number(dbUser.payday) : undefined,
+        emergencyBuffer: 0,
+        salary: 0,
+        payday: undefined,
       },
     };
 

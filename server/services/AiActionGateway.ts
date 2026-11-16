@@ -100,7 +100,7 @@ export async function simulateAiActionsImpact(
   const kpis = await kpiService.getKpisForUser(userRow);
   const baselineSafeToSpend = Number(kpis.safeToSpend || 0);
   const daysUntilPayday = Math.max(1, Number(kpis.daysUntilPayday || 1));
-  const emergencyBuffer = Number(userRow.emergencyBuffer || 0);
+  const emergencyBuffer = Number(kpis.emergencyBuffer || 0);
   const accounts = (kpis.accounts || []) as Array<{ id: string; name: string; balance: number; type: string }>;
 
   let runningSafeToSpend = baselineSafeToSpend;

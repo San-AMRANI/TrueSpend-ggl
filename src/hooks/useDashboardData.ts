@@ -136,11 +136,11 @@ export function useDashboardData(token: string | null, experienceTier?: Experien
       goals,
       payrolls,
       budgets,
-      emergencyBuffer: Number(userSettings?.emergencyBuffer || 0),
+      emergencyBuffer: Number((kpis as any)?.emergencyBuffer || 0),
       totalLiquidBalance,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kpis, budgets, transactions, subscriptions, investmentsData, debts, goals, payrolls, userSettings]);
+  }, [kpis, budgets, transactions, subscriptions, investmentsData, debts, goals, payrolls]);
 
   useEffect(() => {
     fetchData();

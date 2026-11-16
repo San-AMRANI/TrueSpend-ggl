@@ -1316,12 +1316,12 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
               {/* External Assets & Liabilities */}
               <div className="space-y-2.5">
                 <h4 className="text-sm font-bold text-gray-900 dark:text-white">
-                  External Assets &amp; Liabilities (Real Estate, Vehicles, Metals, Loans)
+                  External Assets &amp; Liabilities (Real Estate, Vehicles, Metals, Devise / Cash Currency, Loans)
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <Input
                     type="text"
-                    placeholder="Item name (e.g. Apartment)"
+                    placeholder="Item name (e.g. EUR Devise Cash, Apartment)"
                     value={wealthName}
                     onChange={(e) => setWealthName(e.target.value)}
                     className="text-xs col-span-2"
@@ -1330,10 +1330,29 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                     <option value="Asset">Asset</option>
                     <option value="Liability">Liability</option>
                   </Select>
-                  <Select value={wealthCategory} onChange={(e) => setWealthCategory(e.target.value)} className="text-xs">
-                    <option value="Property">Property</option>
+                  <Select
+                    value={wealthCategory}
+                    onChange={(e) => {
+                      const nextCat = e.target.value;
+                      setWealthCategory(nextCat);
+                      if (nextCat === 'ForeignCurrency' || nextCat === 'CurrencyCollection') {
+                        setWealthType('Asset');
+                        setWealthIsLiquid(true);
+                        if (wealthCurrency === 'MAD') {
+                          setWealthCurrency('EUR');
+                        }
+                      } else if (nextCat === 'Mortgage' || nextCat === 'ExternalLoan') {
+                        setWealthType('Liability');
+                        setWealthIsLiquid(false);
+                      }
+                    }}
+                    className="text-xs"
+                  >
+                    <option value="Property">Property / Real Estate</option>
                     <option value="Vehicle">Vehicle</option>
                     <option value="PreciousMetals">Precious Metals</option>
+                    <option value="ForeignCurrency">Foreign Currency / Devise (Cash)</option>
+                    <option value="CurrencyCollection">Cash / Numismatic Collection</option>
                     <option value="PrivateInvestment">Private Equity</option>
                     <option value="Mortgage">Mortgage</option>
                     <option value="ExternalLoan">External Loan</option>
@@ -1342,16 +1361,28 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <Input
                     type="number"
-                    placeholder="Estimated Valuation"
+                    placeholder={
+                      wealthCategory === 'ForeignCurrency' || wealthCategory === 'CurrencyCollection'
+                        ? `Amount in ${wealthCurrency}`
+                        : 'Estimated Valuation'
+                    }
                     value={wealthAmountMad}
                     onChange={(e) => setWealthAmountMad(e.target.value)}
                     className="text-xs flex-1 min-w-[120px]"
                   />
-                  <Select value={wealthCurrency} onChange={(e) => setWealthCurrency(e.target.value)} className="text-xs w-20">
+                  <Select value={wealthCurrency} onChange={(e) => setWealthCurrency(e.target.value)} className="text-xs w-24">
                     <option value="MAD">MAD</option>
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                    <option value="GBP">GBP</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="CHF">CHF</option>
+                    <option value="CAD">CAD</option>
+                    <option value="AED">AED</option>
+                    <option value="SAR">SAR</option>
+                    <option value="QAR">QAR</option>
+                    <option value="KWD">KWD</option>
+                    <option value="JPY">JPY (¥)</option>
+                    <option value="TRY">TRY (₺)</option>
                   </Select>
                   <label className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
                     <input
@@ -1389,38 +1420,51 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                   </Button>
                 </div>
                 <div className="space-y-1 max-h-48 overflow-y-auto">
-                  {workbench.externalWealth.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-gray-50 dark:bg-gray-800">
-                      <div className="min-w-0 pr-2">
-                        <span className="font-bold text-gray-900 dark:text-white">{item.name}</span>{' '}
-                        <span className="text-[11px] text-gray-500">
-                          ({item.itemClass} · {item.isLiquid ? 'Liquid' : 'Illiquid'} · {item.valuationDate})
-                        </span>
-                        {item.isStaleEstimate && (
-                          <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] font-semibold">
-                            Stale ({item.ageDays}d)
+                  {workbench.externalWealth.map((item) => {
+                    const classLabels: Record<string, string> = {
+                      Property: '🏠 Property',
+                      Vehicle: '🚗 Vehicle',
+                      PreciousMetals: '🥇 Precious Metals',
+                      ForeignCurrency: '💱 Foreign Currency / Devise',
+                      CurrencyCollection: '🪙 Cash Currency Collection',
+                      PrivateInvestment: '📈 Private Equity',
+                      Mortgage: '🏦 Mortgage',
+                      ExternalLoan: '💳 External Loan',
+                    };
+                    const classDisplay = classLabels[item.itemClass] || item.itemClass;
+                    return (
+                      <div key={item.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-gray-50 dark:bg-gray-800">
+                        <div className="min-w-0 pr-2">
+                          <span className="font-bold text-gray-900 dark:text-white">{item.name}</span>{' '}
+                          <span className="text-[11px] text-gray-500">
+                            ({classDisplay} · {item.isLiquid ? 'Liquid' : 'Illiquid'} · {item.valuationDate})
                           </span>
-                        )}
+                          {item.isStaleEstimate && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] font-semibold">
+                              Stale ({item.ageDays}d)
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`font-mono font-bold ${!item.isLiability ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {!item.isLiability ? '+' : '-'}
+                            {Number(item.valueMad ?? item.estimatedValue).toLocaleString()} MAD
+                            {item.currency !== 'MAD' ? ` (${Number(item.estimatedValue).toLocaleString()} ${item.currency})` : ''}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await dashboardService.deleteExternalWealthItem(item.id, token);
+                              await workbench.loadSection('external_wealth_fx');
+                            }}
+                            className="text-gray-400 hover:text-rose-600"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className={`font-mono font-bold ${!item.isLiability ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {!item.isLiability ? '+' : '-'}
-                          {Number(item.valueMad ?? item.estimatedValue).toLocaleString()} MAD
-                          {item.currency !== 'MAD' ? ` (${Number(item.estimatedValue).toLocaleString()} ${item.currency})` : ''}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            await dashboardService.deleteExternalWealthItem(item.id, token);
-                            await workbench.loadSection('external_wealth_fx');
-                          }}
-                          className="text-gray-400 hover:text-rose-600"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1430,10 +1474,18 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                   Historical Multi-Currency FX Rates (to MAD)
                 </h4>
                 <div className="flex items-center gap-2">
-                  <Select value={fxBaseCurrency} onChange={(e) => setFxBaseCurrency(e.target.value)} className="text-xs w-28">
-                    <option value="USD">USD → MAD</option>
+                  <Select value={fxBaseCurrency} onChange={(e) => setFxBaseCurrency(e.target.value)} className="text-xs w-32">
                     <option value="EUR">EUR → MAD</option>
+                    <option value="USD">USD → MAD</option>
                     <option value="GBP">GBP → MAD</option>
+                    <option value="CHF">CHF → MAD</option>
+                    <option value="CAD">CAD → MAD</option>
+                    <option value="AED">AED → MAD</option>
+                    <option value="SAR">SAR → MAD</option>
+                    <option value="QAR">QAR → MAD</option>
+                    <option value="KWD">KWD → MAD</option>
+                    <option value="JPY">JPY → MAD</option>
+                    <option value="TRY">TRY → MAD</option>
                   </Select>
                   <Input
                     type="number"

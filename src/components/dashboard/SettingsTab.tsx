@@ -154,21 +154,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [countryCode, setCountryCode] = useState(user?.countryCode || 'MA');
   const [timezone, setTimezone] = useState(user?.timezone || 'Africa/Casablanca');
   const [locale, setLocale] = useState(user?.locale || 'en');
-  const [payday, setPayday] = useState<string>(user?.payday ? String(user.payday) : '');
-  const [salary, setSalary] = useState<string>(
-    userSettings?.salary !== undefined
-      ? String(userSettings.salary)
-      : user?.salary !== undefined
-      ? String(user.salary)
-      : ''
-  );
-  const [emergencyBuffer, setEmergencyBuffer] = useState<string>(
-    userSettings?.emergencyBuffer !== undefined
-      ? String(userSettings.emergencyBuffer)
-      : user?.emergencyBuffer !== undefined
-      ? String(user.emergencyBuffer)
-      : ''
-  );
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileNotice, setProfileNotice] = useState<string | null>(null);
 
@@ -216,15 +201,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     setCountryCode(user?.countryCode || 'MA');
     setTimezone(user?.timezone || 'Africa/Casablanca');
     setLocale(user?.locale || 'en');
-    setPayday(user?.payday ? String(user.payday) : '');
-    if (userSettings?.salary !== undefined) setSalary(String(userSettings.salary));
-    else if (user?.salary !== undefined) setSalary(String(user.salary));
-    if (userSettings?.emergencyBuffer !== undefined) {
-      setEmergencyBuffer(String(userSettings.emergencyBuffer));
-    } else if (user?.emergencyBuffer !== undefined) {
-      setEmergencyBuffer(String(user.emergencyBuffer));
-    }
-  }, [user, userSettings]);
+  }, [user]);
 
   const loadSecurityData = React.useCallback(async () => {
     if (!token) return;
@@ -298,10 +275,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           countryCode: countryCode.trim().toUpperCase() || 'MA',
           timezone: timezone.trim() || 'Africa/Casablanca',
           locale: locale.trim() || 'en',
-          payday: payday ? Math.min(31, Math.max(1, Number(payday))) : undefined,
-          salary: salary !== '' ? Math.max(0, Number(salary) || 0) : undefined,
-          emergencyBuffer:
-            emergencyBuffer !== '' ? Math.max(0, Number(emergencyBuffer) || 0) : undefined,
         },
         token
       );
@@ -785,42 +758,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 value={timezone}
                 onChange={(e) => setTimezone(e.target.value)}
                 placeholder="Africa/Casablanca"
-                className="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Payday (Day of Month)</label>
-              <input
-                type="number"
-                min={1}
-                max={31}
-                value={payday}
-                onChange={(e) => setPayday(e.target.value)}
-                placeholder="e.g. 28"
-                className="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Monthly Income Baseline</label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={salary}
-                onChange={(e) => setSalary(e.target.value)}
-                placeholder="0"
-                className="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Emergency Buffer Target</label>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={emergencyBuffer}
-                onChange={(e) => setEmergencyBuffer(e.target.value)}
-                placeholder="0"
                 className="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
             </div>

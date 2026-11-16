@@ -40,6 +40,10 @@ const DEFAULT_FX_TO_MAD: Record<string, number> = {
   AED: 2.71,
   SAR: 2.65,
   CHF: 11.2,
+  QAR: 2.73,
+  KWD: 32.4,
+  JPY: 0.066,
+  TRY: 0.29,
 };
 
 export interface JournalLineInput {

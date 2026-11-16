@@ -58,8 +58,10 @@ export class CycleRetrospectiveService {
       }).reverse(); // Most recent first
     }
 
-    // Fallback: Synthesize periods using configured payday (default 25th)
-    const paydayDay = Number(dbUser?.payday) || 25;
+    // Fallback: Synthesize periods using latest payroll day-of-month (or default 25th)
+    const latestPayrollDay =
+      payrolls.length > 0 ? new Date(payrolls[0].scheduledFor).getDate() : 25;
+    const paydayDay = latestPayrollDay >= 1 && latestPayrollDay <= 31 ? latestPayrollDay : 25;
     const summaries: CyclePeriodSummary[] = [];
 
     // Current, Previous, and 2-months-ago periods
@@ -109,7 +111,7 @@ export class CycleRetrospectiveService {
     const availableCycles = await this.getAvailableCycles(userId, dbUser);
 
     if (availableCycles.length === 0) {
-      throw new Error('No financial cycles available. Please configure your salary and payday.');
+      throw new Error('No financial cycles available. Please schedule your payroll in the Financial Calendar.');
     }
 
     const selectedCycle = cycleId
@@ -159,16 +161,13 @@ export class CycleRetrospectiveService {
     const categorySpendMap = new Map<string, number>();
     const dailySpendMap = new Map<string, number>();
 
-    // Initial salary from userSettings or payroll scheduled amount
-    const configuredSalary = Number(dbUser?.salary) || 0;
+    // Initial salary from payroll scheduled amount
     const cyclePayroll = payrolls.find((p) => {
       const pDate = new Date(p.scheduledFor);
       return pDate >= cycleStart && pDate <= cycleEnd;
     });
     if (cyclePayroll && Number(cyclePayroll.amount) > 0) {
       totalInflow += Number(cyclePayroll.amount);
-    } else if (configuredSalary > 0) {
-      totalInflow += configuredSalary;
     }
 
     for (const tx of cycleTransactions) {
@@ -182,7 +181,7 @@ export class CycleRetrospectiveService {
 
       if (tx.type === 'Income') {
         // Only count real non-reimbursement income if not duplicate of already counted payroll
-        if (!isReimbursementIncome(tx) && (!tx.payrollId || (!cyclePayroll && configuredSalary === 0))) {
+        if (!isReimbursementIncome(tx) && (!tx.payrollId || !cyclePayroll)) {
           totalInflow += amount;
         }
       } else if (tx.type === 'Transfer') {
@@ -480,12 +479,16 @@ export class CycleRetrospectiveService {
         return d >= prevStart && d <= prevEnd;
       });
 
+      const prevPayroll = payrolls.find((p) => {
+        const pDate = new Date(p.scheduledFor);
+        return pDate >= prevStart && pDate <= prevEnd;
+      });
       let prevOutflow = 0;
-      let prevInflow = configuredSalary;
+      let prevInflow = prevPayroll && Number(prevPayroll.amount) > 0 ? Number(prevPayroll.amount) : 0;
       for (const t of prevTx) {
         if (t.type === 'Expense' && !isInvestmentCategory(t.category)) {
           prevOutflow += netExpenseOf(t);
-        } else if (t.type === 'Income' && !isReimbursementIncome(t)) {
+        } else if (t.type === 'Income' && !isReimbursementIncome(t) && (!t.payrollId || !prevPayroll)) {
           prevInflow += Number(t.amount) || 0;
         }
       }
