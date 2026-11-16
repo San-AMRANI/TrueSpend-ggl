@@ -6,6 +6,7 @@ import {
   isOriginAllowed,
   isProductionEnv,
 } from '../server/services/SecurityCrypto.js';
+import { httpCompressionMiddleware } from '../server/middleware/compression.js';
 
 // Fail closed in production if security secrets are missing or weak
 validateAuthConfig();
@@ -15,6 +16,7 @@ const GITHUB_APK_URL =
   'https://github.com/San-AMRANI/TrueSpend-ggl/releases/latest/download/TrueSpend.apk';
 
 app.set('trust proxy', 1);
+app.use(httpCompressionMiddleware);
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { startTransition, useDeferredValue, useState, useMemo, useEffect } from 'react';
 import {
   InvestmentsData,
   StockMarketType,
@@ -65,6 +65,7 @@ import {
 import { usePrivacy } from '../../context/PrivacyContext';
 import { FundingStocksDashboard } from './FundingStocksDashboard';
 import { classifyAssetClass } from '../../lib/stockCategories';
+import { ProgressiveSection } from '../ui/ProgressiveSection';
 
 interface InvestmentsTabProps {
   investmentsData: InvestmentsData | null;
@@ -281,6 +282,16 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
   const [catalogMarketFilter, setCatalogMarketFilter] = useState<'ALL' | StockMarketType>('ALL');
   const [catalogExplorerSearch, setCatalogExplorerSearch] = useState<string>('');
 
+  const deferredSpotSearch = useDeferredValue(spotSearch);
+  const deferredTradeSearch = useDeferredValue(tradeSearch);
+  const deferredCatalogExplorerSearch = useDeferredValue(catalogExplorerSearch);
+
+  const switchSubView = (nextView: ActiveSubView) => {
+    startTransition(() => {
+      setActiveSubView(nextView);
+    });
+  };
+
   const binance = investmentsData?.binance;
   const usdToMadRate = investmentsData?.rates?.USD_TO_MAD || 9.95;
   const reconciliation = investmentsData?.capitalReconciliation;
@@ -394,8 +405,8 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
     return (sourceTrades || []).filter((trade) => {
       if (tradeSideFilter === 'BUY' && trade.side !== 'BUY') return false;
       if (tradeSideFilter === 'SELL' && trade.side !== 'SELL') return false;
-      if (tradeSearch.trim()) {
-        const q = tradeSearch.trim().toLowerCase();
+      if (deferredTradeSearch.trim()) {
+        const q = deferredTradeSearch.trim().toLowerCase();
         const matchSymbol = trade.symbol.toLowerCase().includes(q);
         const matchBase = trade.baseAsset.toLowerCase().includes(q);
         const matchOrder = String(trade.orderId).includes(q);
@@ -404,7 +415,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       }
       return true;
     });
-  }, [liveSymbolData, binance?.recentTrades, selectedSymbol, tradeSideFilter, tradeSearch]);
+  }, [liveSymbolData, binance?.recentTrades, selectedSymbol, tradeSideFilter, deferredTradeSearch]);
 
   const activeInspectedTrade: BinancePersonalTrade | null = useMemo(() => {
     if (displayedTrades.length === 0) return null;
@@ -438,8 +449,8 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       if (spotFilter === 'STABLECOIN' && !b.isStablecoinOrFiat) return false;
       if (spotFilter === 'LOCKED' && b.locked <= 0 && (b.earnTotal ?? 0) <= 0) return false;
 
-      if (spotSearch.trim()) {
-        const q = spotSearch.trim().toLowerCase();
+      if (deferredSpotSearch.trim()) {
+        const q = deferredSpotSearch.trim().toLowerCase();
         return (
           b.asset.toLowerCase().includes(q) ||
           b.assetName.toLowerCase().includes(q) ||
@@ -464,7 +475,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       }
       return b.valueUsd - a.valueUsd;
     });
-  }, [binance?.balances, walletScopeFilter, spotFilter, spotSearch, holdingsSortBy]);
+  }, [binance?.balances, walletScopeFilter, spotFilter, deferredSpotSearch, holdingsSortBy]);
 
   const manualPositions = useMemo(
     () => (investmentsData?.positions || []).filter((p) => p.source !== 'binance'),
@@ -475,8 +486,8 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
     const items = investmentsData?.catalog || [];
     return items.filter((item) => {
       if (catalogMarketFilter !== 'ALL' && item.market !== catalogMarketFilter) return false;
-      if (catalogExplorerSearch.trim()) {
-        const q = catalogExplorerSearch.trim().toLowerCase();
+      if (deferredCatalogExplorerSearch.trim()) {
+        const q = deferredCatalogExplorerSearch.trim().toLowerCase();
         return (
           item.ticker.toLowerCase().includes(q) ||
           item.companyName.toLowerCase().includes(q) ||
@@ -485,7 +496,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
       }
       return true;
     });
-  }, [investmentsData?.catalog, catalogMarketFilter, catalogExplorerSearch]);
+  }, [investmentsData?.catalog, catalogMarketFilter, deferredCatalogExplorerSearch]);
 
   const portfolioHealthMetrics = useMemo(() => {
     const activePositions = (investmentsData?.positions || []).filter(
@@ -1417,6 +1428,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           INTERACTIVE INVESTMENT ANALYTICS & BALANCE TRAJECTORY CHART SUITE
          =================================================================== */}
       {showAnalyticsPanel && (
+        <ProgressiveSection minHeight={360} priorityDelayMs={60} label="Portfolio Trajectory & Attribution Charts">
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-5">
           <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4">
             <div>
@@ -1832,6 +1844,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
             </div>
           </div>
         </div>
+        </ProgressiveSection>
       )}
 
       {/* ===================================================================
@@ -1841,7 +1854,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
         <div className="inline-flex flex-wrap items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-900 border border-gray-200/80 dark:border-gray-800">
           <button
             type="button"
-            onClick={() => setActiveSubView('stocks')}
+            onClick={() => switchSubView('stocks')}
             className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors inline-flex items-center gap-1.5 ${
               activeSubView === 'stocks'
                 ? 'bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
@@ -1854,7 +1867,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           <button
             type="button"
             onClick={() => {
-              setActiveSubView('spot');
+              switchSubView('spot');
               if (spotFilter === 'STOCKS') setSpotFilter('CRYPTO');
             }}
             className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
@@ -1867,7 +1880,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setActiveSubView('trades')}
+            onClick={() => switchSubView('trades')}
             className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
               activeSubView === 'trades'
                 ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-xs'
@@ -1878,7 +1891,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setActiveSubView('wallets')}
+            onClick={() => switchSubView('wallets')}
             className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
               activeSubView === 'wallets'
                 ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-xs'
@@ -1889,7 +1902,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setActiveSubView('ledger')}
+            onClick={() => switchSubView('ledger')}
             className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors ${
               activeSubView === 'ledger'
                 ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-xs'
@@ -1903,7 +1916,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setActiveSubView(activeSubView === 'stocks' ? 'spot' : 'stocks')}
+            onClick={() => switchSubView(activeSubView === 'stocks' ? 'spot' : 'stocks')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/80 transition-colors"
           >
             <TrendingUp className="h-3.5 w-3.5" />
@@ -1911,7 +1924,7 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setActiveSubView('wallets')}
+            onClick={() => switchSubView('wallets')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/80 transition-colors"
           >
             <ArrowRightLeft className="h-3.5 w-3.5" />

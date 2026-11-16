@@ -157,13 +157,15 @@ export class CoreAuditService {
       category?: string | null;
       notes?: string | null;
     },
-    txDb: DbExecutor = db
+    txDb: DbExecutor = db,
+    preloadedWallets?: any[]
   ): Promise<{ entryType: string; lines: JournalLineInput[] }> {
     const amountMad = Math.abs(Number(tx.amount) || 0);
     const nativeCurrency = (tx.currency || 'MAD').toUpperCase();
     const nativeAmount = Math.abs(Number(tx.nativeAmount ?? tx.amount) || 0);
 
-    const userWallets = await txDb.select().from(wallets).where(eq(wallets.userId, userId));
+    const userWallets =
+      preloadedWallets ?? (await txDb.select().from(wallets).where(eq(wallets.userId, userId)));
     const walletMap = new Map(userWallets.map((w) => [w.id, w]));
 
     const sourceWallet = tx.walletId ? walletMap.get(tx.walletId) : undefined;
@@ -312,11 +314,22 @@ export class CoreAuditService {
   async postJournalEntryForTransaction(
     userId: string,
     tx: any,
-    options: { isEstimatedBackfill?: boolean; idempotencyKey?: string; memo?: string } = {},
+    options: {
+      isEstimatedBackfill?: boolean;
+      idempotencyKey?: string;
+      memo?: string;
+      preloadedWallets?: any[];
+      skipLiabilitySync?: boolean;
+    } = {},
     txDb?: DbExecutor
   ) {
     const runInExecutor = async (exec: DbExecutor) => {
-      const { entryType, lines } = await this.buildBalancedLinesForTransaction(userId, tx, exec);
+      const { entryType, lines } = await this.buildBalancedLinesForTransaction(
+        userId,
+        tx,
+        exec,
+        options.preloadedWallets
+      );
 
       const totalDebit = lines.reduce((sum, l) => sum + Number(l.debitMad || 0), 0);
       const totalCredit = lines.reduce((sum, l) => sum + Number(l.creditMad || 0), 0);
@@ -367,7 +380,9 @@ export class CoreAuditService {
         }))
       );
 
-      await this.syncCreditWalletLiabilityBalances(userId, exec);
+      if (!options.skipLiabilitySync) {
+        await this.syncCreditWalletLiabilityBalances(userId, exec);
+      }
       return entry;
     };
 
@@ -540,15 +555,27 @@ export class CoreAuditService {
       existingEntries.filter((e) => e.transactionId && e.status === 'posted').map((e) => e.transactionId!)
     );
 
+    const unposted = allTx.filter((tx) => !postedTxIds.has(tx.id));
+    if (unposted.length === 0) {
+      return { backfilledCount: 0, totalTransactions: allTx.length };
+    }
+
+    const userWallets = await db.select().from(wallets).where(eq(wallets.userId, userId));
+
     let backfilledCount = 0;
-    for (const tx of allTx) {
-      if (postedTxIds.has(tx.id)) continue;
+    for (const tx of unposted) {
       await this.postJournalEntryForTransaction(userId, tx, {
         isEstimatedBackfill: true,
         idempotencyKey: `backfill-${tx.id}`,
         memo: `[Backfilled] ${tx.notes || tx.category || tx.type}`,
+        preloadedWallets: userWallets,
+        skipLiabilitySync: true,
       });
       backfilledCount++;
+    }
+
+    if (backfilledCount > 0) {
+      await this.syncCreditWalletLiabilityBalances(userId);
     }
 
     return { backfilledCount, totalTransactions: allTx.length };
@@ -569,7 +596,9 @@ export class CoreAuditService {
       db.select().from(transactions).where(eq(transactions.userId, userId)),
     ]);
 
+    const postedEntryIds = new Set(entries.filter((e) => e.status === 'posted').map((e) => e.id));
     const linesByEntry = new Map<string, typeof lines>();
+    const postedLinesByWallet = new Map<string, typeof lines>();
     let totalDebitsMad = 0;
     let totalCreditsMad = 0;
 
@@ -579,6 +608,28 @@ export class CoreAuditService {
       linesByEntry.set(l.journalEntryId, list);
       totalDebitsMad += Number(l.debitMad || 0);
       totalCreditsMad += Number(l.creditMad || 0);
+
+      if (l.walletId && postedEntryIds.has(l.journalEntryId)) {
+        const wList = postedLinesByWallet.get(l.walletId) || [];
+        wList.push(l);
+        postedLinesByWallet.set(l.walletId, wList);
+      }
+    }
+
+    const legacyDeltaByWallet = new Map<string, number>();
+    for (const tx of userTx) {
+      const amt = Number(tx.amount || 0);
+      if (tx.walletId) {
+        const prev = legacyDeltaByWallet.get(tx.walletId) || 0;
+        if (tx.type === 'Income') legacyDeltaByWallet.set(tx.walletId, prev + amt);
+        else if (tx.type === 'Expense' || tx.type === 'Transfer' || tx.type === 'Debt Repayment') {
+          legacyDeltaByWallet.set(tx.walletId, prev - amt);
+        }
+      }
+      if (tx.destinationWalletId && tx.type === 'Transfer') {
+        const prev = legacyDeltaByWallet.get(tx.destinationWalletId) || 0;
+        legacyDeltaByWallet.set(tx.destinationWalletId, prev + amt);
+      }
     }
 
     const enrichedEntries = entries.slice(0, 60).map((e) => {
@@ -604,14 +655,11 @@ export class CoreAuditService {
       }
     }
 
-    // Side-by-side wallet balance comparison (Legacy vs Double-Entry Journal)
+    // Side-by-side wallet balance comparison (Legacy vs Double-Entry Journal) in O(1) per wallet
     const walletComparison = userWallets.map((w) => {
       const initBal = Number(w.initialBalance || 0);
       const isCredit = w.accountSubtype === 'CreditCard' || w.accountSubtype === 'Overdraft';
-      const walletLines = lines.filter((l) => {
-        const parentEntry = entries.find((e) => e.id === l.journalEntryId);
-        return l.walletId === w.id && parentEntry?.status === 'posted';
-      });
+      const walletLines = postedLinesByWallet.get(w.id) || [];
       const netJournalDelta = walletLines.reduce(
         (s, l) =>
           s +
@@ -622,18 +670,7 @@ export class CoreAuditService {
       );
       const journalBalance = isCredit ? netJournalDelta : initBal + netJournalDelta;
 
-      let legacyDelta = 0;
-      for (const tx of userTx) {
-        const amt = Number(tx.amount || 0);
-        if (tx.walletId === w.id) {
-          if (tx.type === 'Income') legacyDelta += amt;
-          else if (tx.type === 'Expense' || tx.type === 'Transfer' || tx.type === 'Debt Repayment')
-            legacyDelta -= amt;
-        }
-        if (tx.destinationWalletId === w.id && tx.type === 'Transfer') {
-          legacyDelta += amt;
-        }
-      }
+      const legacyDelta = legacyDeltaByWallet.get(w.id) || 0;
       const legacyBalance = isCredit ? Math.abs(legacyDelta) : initBal + legacyDelta;
 
       const legacyBalanceMad = Number(legacyBalance.toFixed(2));
@@ -1429,26 +1466,40 @@ export class CoreAuditService {
       }
     }
 
-    // Concurrency-safe insert via DB unique constraint on (user_id, source_type, source_id, expected_date)
-    for (const row of rowsToInsert) {
-      await db.insert(commitmentOccurrences).values(row).onConflictDoNothing();
+    // Concurrency-safe batched insert via DB unique constraint on (user_id, source_type, source_id, expected_date)
+    if (rowsToInsert.length > 0) {
+      await db.insert(commitmentOccurrences).values(rowsToInsert).onConflictDoNothing();
     }
 
-    // Promote any past-due 'scheduled' occurrences to 'overdue' and trigger commitment_approaching rules
-    const allOccurrences = await db
-      .select()
-      .from(commitmentOccurrences)
-      .where(eq(commitmentOccurrences.userId, userId))
-      .orderBy(desc(commitmentOccurrences.expectedDate));
+    // Promote any past-due 'scheduled' occurrences to 'overdue' in a single batched UPDATE
+    const [allOccurrences, approachingRules] = await Promise.all([
+      db
+        .select()
+        .from(commitmentOccurrences)
+        .where(eq(commitmentOccurrences.userId, userId))
+        .orderBy(desc(commitmentOccurrences.expectedDate)),
+      db
+        .select({ id: financialRules.id })
+        .from(financialRules)
+        .where(
+          and(
+            eq(financialRules.userId, userId),
+            eq(financialRules.enabled, true),
+            eq(financialRules.triggerType, 'commitment_approaching')
+          )
+        )
+        .limit(1)
+        .catch(() => []),
+    ]);
+
+    const overdueIds: string[] = [];
+    const hasApproachingRules = approachingRules.length > 0;
 
     for (const occ of allOccurrences) {
       if (occ.status === 'scheduled' && occ.expectedDate < todayStr) {
-        await db
-          .update(commitmentOccurrences)
-          .set({ status: 'overdue', updatedAt: new Date() })
-          .where(eq(commitmentOccurrences.id, occ.id));
+        overdueIds.push(occ.id);
         occ.status = 'overdue';
-      } else if (occ.status === 'scheduled') {
+      } else if (occ.status === 'scheduled' && hasApproachingRules) {
         const diffDays = Math.ceil((new Date(occ.expectedDate).getTime() - Date.now()) / 86400000);
         if (diffDays >= 0 && diffDays <= 7) {
           await this.evaluateRulesForTrigger(userId, 'commitment_approaching', {
@@ -1459,6 +1510,13 @@ export class CoreAuditService {
           }).catch(() => undefined);
         }
       }
+    }
+
+    if (overdueIds.length > 0) {
+      await db
+        .update(commitmentOccurrences)
+        .set({ status: 'overdue', updatedAt: new Date() })
+        .where(inArray(commitmentOccurrences.id, overdueIds));
     }
 
     return allOccurrences;
@@ -2297,11 +2355,18 @@ export class CoreAuditService {
       this.getExchangeRates(userId),
     ]);
 
+    const valuationsByItemId = new Map<string, typeof valuations>();
+    for (const v of valuations) {
+      const list = valuationsByItemId.get(v.itemId) || [];
+      list.push(v);
+      valuationsByItemId.set(v.itemId, list);
+    }
+
     const now = Date.now();
     const enriched = items.map((item) => {
       const valDate = new Date(item.valuationDate).getTime();
       const ageDays = Number.isNaN(valDate) ? 0 : Math.floor((now - valDate) / (1000 * 60 * 60 * 24));
-      const itemHistory = valuations.filter((v) => v.itemId === item.id);
+      const itemHistory = valuationsByItemId.get(item.id) || [];
       const latestHist = itemHistory[0];
       const fxRate = latestHist
         ? Number(latestHist.fxRateUsed)

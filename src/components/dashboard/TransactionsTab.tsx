@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Transaction, Wallet, CategoryBudget, Subscription, Goal, Debt, Payroll, DashboardTab, InvestmentsData, StockOrder } from '../../types';
 import { expenseCategories, incomeAndTransferCategories, normalizeCategory } from '../../lib/categories';
 import { filterTransactions, TransactionFilters, netExpenseOf, isReimbursementIncome, isInvestmentTransaction } from '../../lib/finance';
@@ -101,6 +101,8 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   const [quickPreset, setQuickPreset] = useState<QuickPreset>('all');
   const [pageSize, setPageSize] = useState<25 | 50 | 100 | 'all'>(50);
   const [visibleCount, setVisibleCount] = useState<number>(50);
+  const deferredFilters = useDeferredValue(filters);
+  const deferredQuickPreset = useDeferredValue(quickPreset);
 
   // Form states
   const [showForm, setShowForm] = useState(false);
@@ -286,16 +288,16 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
 
   // Filter transactions
   const visibleTransactions = useMemo(() => {
-    let result = filterTransactions(transactions, filters);
+    let result = filterTransactions(transactions, deferredFilters);
 
     // Apply quick presets if active
-    if (quickPreset === 'expense') {
+    if (deferredQuickPreset === 'expense') {
       result = result.filter((tx) => tx.type === 'Expense');
-    } else if (quickPreset === 'income') {
+    } else if (deferredQuickPreset === 'income') {
       result = result.filter((tx) => tx.type === 'Income');
-    } else if (quickPreset === 'transfer') {
+    } else if (deferredQuickPreset === 'transfer') {
       result = result.filter((tx) => tx.type === 'Transfer');
-    } else if (quickPreset === 'stocks') {
+    } else if (deferredQuickPreset === 'stocks') {
       result = result.filter(
         (tx) =>
           stockOrderByTxId.has(tx.id) ||
@@ -303,17 +305,17 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
           normalizeCategory(tx.category) === '📈 Investments' ||
           normalizeCategory(tx.category) === '📈 Investment Returns / Dividends'
       );
-    } else if (quickPreset === 'split') {
+    } else if (deferredQuickPreset === 'split') {
       result = result.filter(
         (tx) => (tx.splits && tx.splits.length > 0) || (parseFloat(tx.reimbursableAmount || '0') > 0)
       );
-    } else if (quickPreset === 'partial') {
+    } else if (deferredQuickPreset === 'partial') {
       result = result.filter(
         (tx) => Boolean(tx.isPartialPayment) || parseFloat(tx.unpaidAmount || '0') > 0
       );
-    } else if (quickPreset === 'high_value') {
+    } else if (deferredQuickPreset === 'high_value') {
       result = result.filter((tx) => parseFloat(tx.amount) >= 500);
-    } else if (quickPreset === 'over_budget') {
+    } else if (deferredQuickPreset === 'over_budget') {
       result = result.filter((tx) => {
         const bh = getTransactionBudgetHealth(tx);
         return bh && bh.isOver;
@@ -321,7 +323,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     }
 
     return result;
-  }, [filters, transactions, quickPreset, budgetByPeriodCat, categorySpentMap, stockOrderByTxId, wallets]);
+  }, [deferredFilters, transactions, deferredQuickPreset, budgetByPeriodCat, categorySpentMap, stockOrderByTxId, wallets]);
 
   // Reset pagination window when filters, quickPreset, or pageSize change
   useEffect(() => {

@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { startTransition, useDeferredValue, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Debt, Payroll, Transaction, Wallet, CategoryBudget, Goal, Subscription, DashboardTab, InvestmentsData, KPI } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
+import { ProgressiveSection } from '../ui/ProgressiveSection';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
 import {
@@ -122,6 +123,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 }) => {
   const [subView, setSubView] = useState<AnalyticsSubView>('overview');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const deferredAnalyticsMonth = useDeferredValue(analyticsMonth);
 
   const currentTotalLiquidity = useMemo(() => {
     if (kpis && typeof kpis.totalLiquidity === 'number') {
@@ -144,10 +146,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
 
   const selectedPeriodEntry = useMemo(
     () =>
-      analyticsMonth !== 'All Time'
-        ? periodsLedger.find((p) => p.label === analyticsMonth) || null
+      deferredAnalyticsMonth !== 'All Time'
+        ? periodsLedger.find((p) => p.label === deferredAnalyticsMonth) || null
         : null,
-    [analyticsMonth, periodsLedger]
+    [deferredAnalyticsMonth, periodsLedger]
   );
 
   // Last completed period (e.g. Sep 24 – Oct 22, 2026) and the one before it (Aug 27 – Sep 23, 2026)
@@ -166,8 +168,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
   }, [availableMonthRefs]);
 
   const filteredTransactions = useMemo(() => {
-    if (analyticsMonth === 'All Time') return transactions;
-    const ref = availableMonthRefs.find((m) => financialPeriodLabel(m) === analyticsMonth);
+    if (deferredAnalyticsMonth === 'All Time') return transactions;
+    const ref = availableMonthRefs.find((m) => financialPeriodLabel(m) === deferredAnalyticsMonth);
     if (!ref) return transactions;
     const startKey = format(ref.start, 'yyyy-MM-dd');
     const endKey = format(ref.end, 'yyyy-MM-dd');
@@ -180,7 +182,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
         return txDate >= ref.start && txDate <= ref.end;
       }
     });
-  }, [transactions, analyticsMonth, availableMonthRefs]);
+  }, [transactions, deferredAnalyticsMonth, availableMonthRefs]);
 
   // Expenses by Category (living expenses + investments, excluding internal savings transfers)
   const categoryData = useMemo(() => {
@@ -985,8 +987,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               key={tab.id}
               type="button"
               onClick={() => {
-                setSubView(tab.id);
-                if (tab.id !== 'categories') setSelectedCategory(null);
+                startTransition(() => {
+                  setSubView(tab.id);
+                  if (tab.id !== 'categories') setSelectedCategory(null);
+                });
               }}
               className={`relative flex items-center gap-2 px-3.5 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 isActive
@@ -1621,6 +1625,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           )}
 
           {/* Cumulative Trajectory Burn Chart */}
+          <ProgressiveSection minHeight={340} priorityDelayMs={80} label="Day-by-Day Cumulative Spending Trajectory">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
@@ -1681,8 +1686,10 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               )}
             </CardContent>
           </Card>
+          </ProgressiveSection>
 
           {/* Cash Flow Outflow Waterfall & Wallet Split */}
+          <ProgressiveSection minHeight={300} priorityDelayMs={140} label="Cash Flow Allocation Charts">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card className="lg:col-span-2">
               <CardHeader>
@@ -1741,6 +1748,7 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               </CardContent>
             </Card>
           </div>
+          </ProgressiveSection>
 
           {/* Adjusted True Spend Details */}
           <Card>

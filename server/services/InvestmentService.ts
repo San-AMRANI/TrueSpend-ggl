@@ -616,9 +616,18 @@ const quoteCache: Record<
 > = {};
 
 export class InvestmentService {
-  async getExchangeRates(): Promise<{ USD_TO_MAD: number; EUR_TO_MAD: number; USD_TO_EUR: number }> {
+  async getExchangeRates(fastMode = false): Promise<{ USD_TO_MAD: number; EUR_TO_MAD: number; USD_TO_EUR: number }> {
     const now = Date.now();
     if (now - cachedRates.lastFetched < 5 * 60 * 1000) {
+      return {
+        USD_TO_MAD: cachedRates.USD_TO_MAD,
+        EUR_TO_MAD: cachedRates.EUR_TO_MAD,
+        USD_TO_EUR: cachedRates.USD_TO_EUR,
+      };
+    }
+
+    if (fastMode) {
+      void this.getExchangeRates(false).catch(() => {});
       return {
         USD_TO_MAD: cachedRates.USD_TO_MAD,
         EUR_TO_MAD: cachedRates.EUR_TO_MAD,
@@ -671,7 +680,11 @@ export class InvestmentService {
   /**
    * Fetch live stock prices from Yahoo Finance for non-BVC tickers, with instant catalog fallback
    */
-  async fetchLiveStockQuotes(tickers: string[], forceRefresh = false): Promise<ExternalStockQuoteMap> {
+  async fetchLiveStockQuotes(
+    tickers: string[],
+    forceRefresh = false,
+    fastMode = false
+  ): Promise<ExternalStockQuoteMap> {
     const result: ExternalStockQuoteMap = {};
     if (!tickers || tickers.length === 0) return result;
 
@@ -683,11 +696,12 @@ export class InvestmentService {
       )
     );
     const now = Date.now();
+    const uncachedTickersForBackground: string[] = [];
 
     await Promise.all(
       uniqueTickers.map(async (ticker) => {
         const cached = quoteCache[ticker];
-        if (!forceRefresh && cached && now - cached.lastUpdated < 30 * 1000) {
+        if (!forceRefresh && cached && (now - cached.lastUpdated < 120 * 1000 || fastMode)) {
           result[ticker] = {
             price: cached.price,
             change24hPercent: cached.change24hPercent,
@@ -698,6 +712,9 @@ export class InvestmentService {
             dividendYieldPercent: cached.dividendYieldPercent,
             annualDividendPerShare: cached.annualDividendPerShare,
           };
+          if (fastMode && now - cached.lastUpdated >= 120 * 1000) {
+            uncachedTickersForBackground.push(ticker);
+          }
           return;
         }
 
@@ -714,6 +731,22 @@ export class InvestmentService {
             lastUpdated: now,
           };
           result[ticker] = quoteCache[ticker];
+          return;
+        }
+
+        if (fastMode) {
+          uncachedTickersForBackground.push(ticker);
+          if (catalogItem) {
+            result[ticker] = {
+              price: catalogItem.price,
+              change24hPercent: catalogItem.change24hPercent,
+              currency: catalogItem.currency,
+              companyName: catalogItem.companyName,
+              sector: catalogItem.sector,
+              dividendYieldPercent: catalogItem.dividendYieldPercent,
+              annualDividendPerShare: catalogItem.annualDividendPerShare,
+            };
+          }
           return;
         }
 
@@ -825,6 +858,10 @@ export class InvestmentService {
       })
     );
 
+    if (fastMode && uncachedTickersForBackground.length > 0) {
+      void this.fetchLiveStockQuotes(uncachedTickersForBackground, false, false).catch(() => {});
+    }
+
     return result;
   }
 
@@ -921,6 +958,7 @@ export class InvestmentService {
     userId: string,
     options?: {
       forceRefresh?: boolean;
+      fastMode?: boolean;
       preloaded?: {
         dbUser?: any;
         kpis?: any;
@@ -930,10 +968,11 @@ export class InvestmentService {
     }
   ) {
     const pre = options?.preloaded;
+    const isFastMode = Boolean(options?.fastMode) && !options?.forceRefresh;
     const [rawPositions, rawOrders, rates, dbUser, subscriptions, allTransactions] = await Promise.all([
       investmentRepository.findAllPositionsByUserId(userId),
       investmentRepository.findAllOrdersByUserId(userId),
-      this.getExchangeRates(),
+      this.getExchangeRates(isFastMode),
       pre?.dbUser ? Promise.resolve(pre.dbUser) : userRepository.findById(userId),
       pre?.subscriptions ? Promise.resolve(pre.subscriptions) : subscriptionRepository.findAllByUserId(userId),
       pre?.transactions ? Promise.resolve(pre.transactions) : transactionRepository.findAllByUserId(userId),
@@ -942,7 +981,11 @@ export class InvestmentService {
     // Fetch live quotes for manual user positions AND common Binance tokenized stocks in parallel
     const userTickers = rawPositions.map((p) => normalizeStockTicker(p.ticker) || p.ticker);
     const allLookupTickers = Array.from(new Set([...userTickers, ...COMMON_BINANCE_STOCK_TICKERS]));
-    const liveQuotes = await this.fetchLiveStockQuotes(allLookupTickers, options?.forceRefresh);
+    const liveQuotes = await this.fetchLiveStockQuotes(
+      allLookupTickers,
+      options?.forceRefresh,
+      isFastMode
+    );
 
     // Compute TrueSpend Buying Power from KPIs, Wallets, and Category Budgets
     let safeToSpendMad = 0;
@@ -1114,6 +1157,7 @@ export class InvestmentService {
     const allowServerBinance = dbUser?.role === 'owner';
     const binanceOverview = await binanceService.getAccountOverview(rates, {
       forceRefresh: options?.forceRefresh,
+      fastMode: isFastMode,
       linkedWallet: linkedBinanceAcc
         ? {
             id: linkedBinanceAcc.id,

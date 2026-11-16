@@ -78,7 +78,21 @@ import {
   StaggerItem,
   StaggerList,
 } from '../ui/MotionPrimitives';
+import { ProgressiveSection } from '../ui/ProgressiveSection';
 import { AnimatePresence, motion } from 'motion/react';
+
+export interface OperationalRadarPayload {
+  upcomingCommitments: CommitmentOccurrence[];
+  pendingReviews: FinancialReviewItem[];
+  integritySummary: FinancialIntegrityReport | null;
+  externalWealthSummary: {
+    items: ExternalWealthItem[];
+    totalExternalAssetsMad: number;
+    totalExternalLiabilitiesMad: number;
+    netExternalWealthMad: number;
+    staleCount: number;
+  } | null;
+}
 
 interface OverviewTabProps {
   kpis: KPI | null;
@@ -88,6 +102,7 @@ interface OverviewTabProps {
   goals?: Goal[];
   subscriptions?: Subscription[];
   investmentsData?: InvestmentsData | null;
+  initialOperationalRadar?: OperationalRadarPayload | null;
   setActiveTab: (tab: DashboardTab) => void;
   openTransaction: (transactionId: string) => void;
   handleSettle: (
@@ -127,6 +142,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   goals = [],
   subscriptions = [],
   investmentsData = null,
+  initialOperationalRadar = null,
   payrolls,
   setActiveTab,
   openTransaction,
@@ -141,18 +157,21 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const [insightModalType, setInsightModalType] = useState<'forecast' | 'health' | null>(null);
   const [wealthTab, setWealthTab] = useState<'pillars' | 'allocation'>('pillars');
 
-  // Live Operational Radar state (Commitments, Review Inbox, Ledger Integrity, External Wealth)
-  const [upcomingCommitments, setUpcomingCommitments] = useState<CommitmentOccurrence[]>([]);
-  const [pendingReviews, setPendingReviews] = useState<FinancialReviewItem[]>([]);
-  const [integritySummary, setIntegritySummary] = useState<FinancialIntegrityReport | null>(null);
-  const [externalWealthSummary, setExternalWealthSummary] = useState<{
-    items: ExternalWealthItem[];
-    totalExternalAssetsMad: number;
-    totalExternalLiabilitiesMad: number;
-    netExternalWealthMad: number;
-    staleCount: number;
-  } | null>(null);
+  // Live Operational Radar state (seeded from single /api/dashboard-bootstrap payload)
+  const [upcomingCommitments, setUpcomingCommitments] = useState<CommitmentOccurrence[]>(
+    () => initialOperationalRadar?.upcomingCommitments ?? []
+  );
+  const [pendingReviews, setPendingReviews] = useState<FinancialReviewItem[]>(
+    () => initialOperationalRadar?.pendingReviews ?? []
+  );
+  const [integritySummary, setIntegritySummary] = useState<FinancialIntegrityReport | null>(
+    () => initialOperationalRadar?.integritySummary ?? null
+  );
+  const [externalWealthSummary, setExternalWealthSummary] = useState<
+    OperationalRadarPayload['externalWealthSummary']
+  >(() => initialOperationalRadar?.externalWealthSummary ?? null);
   const [busyActionId, setBusyActionId] = useState<string | null>(null);
+  const hasConsumedInitialRadar = React.useRef(Boolean(initialOperationalRadar));
 
   // Commitment settlement confirmation modal state
   const [settlingOccurrence, setSettlingOccurrence] = useState<CommitmentOccurrence | null>(null);
@@ -214,6 +233,19 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   }, [token, isAdvanced]);
 
   useEffect(() => {
+    if (initialOperationalRadar) {
+      setUpcomingCommitments(initialOperationalRadar.upcomingCommitments ?? []);
+      setPendingReviews(initialOperationalRadar.pendingReviews ?? []);
+      setIntegritySummary(initialOperationalRadar.integritySummary ?? null);
+      setExternalWealthSummary(initialOperationalRadar.externalWealthSummary ?? null);
+    }
+  }, [initialOperationalRadar]);
+
+  useEffect(() => {
+    if (hasConsumedInitialRadar.current) {
+      hasConsumedInitialRadar.current = false;
+      return;
+    }
     loadOperationalRadar();
   }, [loadOperationalRadar, transactions.length]);
 
@@ -955,6 +987,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       {/* ═════════════════════════════════════════════════════════════════════
           BAND 2 — CATEGORY PRESSURE, FORECAST SCENARIOS & FINANCIAL HEALTH
           ═════════════════════════════════════════════════════════════════════ */}
+      <ProgressiveSection minHeight={310} priorityDelayMs={50} label="Category Burn & Financial Health">
       <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-12">
         {/* Top Spending Categories vs Budget */}
         <Card className="min-w-0 lg:col-span-4 flex flex-col justify-between">
@@ -1269,12 +1302,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CardContent>
         </Card>
       </div>
+      </ProgressiveSection>
 
       {/* ═════════════════════════════════════════════════════════════════════
           BAND 3 — WEALTH STRUCTURE & MULTI-CYCLE TRAJECTORY
           Left (5 cols): 4-Pillar Flow + 50/30/20 + Asset Allocation Donut
           Right (7 cols): Multi-Cycle Cashflow Chart + 90d/12m Predictive Signals
           ═════════════════════════════════════════════════════════════════════ */}
+      <ProgressiveSection minHeight={340} priorityDelayMs={110} label="Wealth Structure & Multi-Cycle Trajectory">
       <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-12 items-stretch">
         {/* Wealth Structure & 4 Pillars */}
         <Card className="min-w-0 lg:col-span-5 flex flex-col justify-between">
@@ -1479,11 +1514,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CardContent>
         </Card>
       </div>
+      </ProgressiveSection>
 
       {/* ═════════════════════════════════════════════════════════════════════
           BAND 4 — LIVE OPERATIONS, REVIEW INBOX & INTEGRITY/ANOMALY RADAR (Advanced)
           ═════════════════════════════════════════════════════════════════════ */}
       {isAdvanced && (
+      <ProgressiveSection minHeight={230} priorityDelayMs={160} label="Live Operations & Integrity Radar">
       <StaggerList className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-3">
         {/* 1. Upcoming 14-Day Commitment Occurrences */}
         <StaggerItem className="min-w-0">
@@ -1683,11 +1720,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </Card>
         </StaggerItem>
       </StaggerList>
+      </ProgressiveSection>
       )}
 
       {/* ═════════════════════════════════════════════════════════════════════
           BAND 5 — ACTIVITY STREAM + RECEIVABLES / RECURRING / BINANCE
           ═════════════════════════════════════════════════════════════════════ */}
+      <ProgressiveSection minHeight={320} priorityDelayMs={200} label="Activity Stream & Receivables">
       <div className="grid min-w-0 gap-4 lg:grid-cols-12 items-stretch">
         {/* Recent Transactions */}
         <Card className="min-w-0 lg:col-span-7 flex flex-col justify-between">
@@ -1923,10 +1962,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </Card>
         </div>
       </div>
+      </ProgressiveSection>
 
       {/* ═════════════════════════════════════════════════════════════════════
           BAND 6 — SAVINGS GOALS & FINANCIAL FACTS CAROUSEL
           ═════════════════════════════════════════════════════════════════════ */}
+      <ProgressiveSection minHeight={260} priorityDelayMs={240} label="Savings Goals & Financial Signals">
       <div className="grid min-w-0 gap-4 lg:grid-cols-12 items-stretch">
         {/* Savings Goals */}
         <Card className="min-w-0 lg:col-span-5 flex flex-col justify-between">
@@ -2025,6 +2066,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CardContent>
         </Card>
       </div>
+      </ProgressiveSection>
 
       {/* Modals */}
       <SettleDebtModal

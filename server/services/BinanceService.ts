@@ -1298,6 +1298,7 @@ export class BinanceService {
       externalStockQuotes?: ExternalStockQuoteMap;
       initialCapitalMad?: number;
       allowServerCredentials?: boolean;
+      fastMode?: boolean;
     }
   ): Promise<BinanceAccountOverview> {
     const configured = Boolean(options?.allowServerCredentials) && this.isConfigured();
@@ -1369,12 +1370,16 @@ export class BinanceService {
     }
 
     const now = Date.now();
-    // 5-second cache TTL for near-instant responsiveness without stale balances
+    const cacheAgeMs = now - this.accountOverviewCache.fetchedAt;
+    // 30-second fresh cache TTL; in fastMode serve any cached snapshot immediately (stale-while-revalidate)
     if (
       !options?.forceRefresh &&
       this.accountOverviewCache.data &&
-      now - this.accountOverviewCache.fetchedAt < 5 * 1000
+      (cacheAgeMs < 30 * 1000 || options?.fastMode)
     ) {
+      if (options?.fastMode && cacheAgeMs >= 30 * 1000) {
+        void this.getAccountOverview(rates, { ...options, fastMode: false }).catch(() => {});
+      }
       const cached = this.accountOverviewCache.data;
       return {
         ...cached,
@@ -1383,6 +1388,68 @@ export class BinanceService {
         linkedWalletBalanceMad,
         walletSyncDiscrepancyMad:
           Math.round((cached.totalCombinedValueMad - linkedWalletBalanceMad) * 100) / 100,
+      };
+    }
+
+    // In fastMode on a cold cache, kick off background sync and return immediately without blocking initial bootstrap
+    if (options?.fastMode && !this.accountOverviewCache.data) {
+      void this.getAccountOverview(rates, { ...options, fastMode: false }).catch(() => {});
+      return {
+        isConfigured: true,
+        connected: true,
+        statusMessage: 'Synchronizing live Binance Spot, Funding & Earn balances in background…',
+        accountType: 'SPOT',
+        permissions: {
+          canRead: true,
+          canTrade: false,
+          canWithdraw: false,
+          canDeposit: false,
+          isReadOnlySafe: true,
+        },
+        lastSyncedAt: new Date(now).toISOString(),
+        syncLatencyMs: 1,
+        totalSpotValueUsd: 0,
+        totalSpotValueMad: 0,
+        totalFundingValueUsd: 0,
+        totalFundingValueMad: 0,
+        totalEarnValueUsd: 0,
+        totalEarnValueMad: 0,
+        totalOtherWalletsUsd: 0,
+        totalOtherWalletsMad: 0,
+        officialWalletBalanceUsd: 0,
+        officialWalletBalanceMad: 0,
+        totalCombinedValueUsd: Math.round((linkedWalletBalanceMad / (rates.USD_TO_MAD || 9.95)) * 100) / 100,
+        totalCombinedValueMad: linkedWalletBalanceMad,
+        stockEquityUsd: 0,
+        stockEquityMad: 0,
+        cryptoEquityUsd: 0,
+        cryptoEquityMad: 0,
+        stablecoinReserveUsd: 0,
+        stablecoinReserveMad: 0,
+        lockedValueUsd: 0,
+        lockedValueMad: 0,
+        change24hUsd: 0,
+        change24hMad: 0,
+        change24hPercent: 0,
+        totalTrackedCostBasisMad: linkedWalletBalanceMad,
+        totalTrackedUnrealizedPnlMad: 0,
+        totalTrackedUnrealizedPnlPercent: 0,
+        totalRealizedPnlMad: 0,
+        totalFeesPaidMad: 0,
+        totalFeesPaidUsd: 0,
+        totalEstimatedExitFeesMad: 0,
+        totalEstimatedExitFeesUsd: 0,
+        balances: [],
+        fundingBalances: [],
+        walletBreakdown: [],
+        assetDividends: [],
+        recentTrades: [],
+        symbolSummaries: [],
+        availableSymbols: DEFAULT_POPULAR_SYMBOLS,
+        linkedWalletId,
+        linkedWalletName,
+        linkedWalletBalanceMad,
+        walletSyncDiscrepancyMad: 0,
       };
     }
 

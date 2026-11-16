@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, startTransition, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { DashboardNav } from './dashboard/DashboardNav';
@@ -134,6 +134,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     goals,
     subscriptions,
     investmentsData,
+    operationalRadar,
     handleCreateGoal,
     handleUpdateGoal,
     handleContributeToGoal,
@@ -181,15 +182,52 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const setActiveTab = (tab: DashboardTab) => {
-    setActiveTabRaw(tab);
-    onTabChange?.(tab);
+    startTransition(() => {
+      setActiveTabRaw(tab);
+      onTabChange?.(tab);
+    });
   };
 
   useEffect(() => {
     if (propActiveTab && propActiveTab !== activeTab) {
-      setActiveTabRaw(propActiveTab);
+      startTransition(() => {
+        setActiveTabRaw(propActiveTab);
+      });
     }
   }, [propActiveTab]);
+
+  // Pre-warm lazy tab chunks during browser idle frames once initial overview settles
+  useEffect(() => {
+    if (loading || !kpis) return;
+    let cancelled = false;
+    const warmTabs = () => {
+      if (cancelled) return;
+      void import('./dashboard/TransactionsTab');
+      void import('./dashboard/AnalyticsTab');
+      void import('./dashboard/WalletsManager');
+      if (tier === 'advanced') {
+        void import('./dashboard/InvestmentsTab');
+      }
+      void import('./dashboard/DebtsTab');
+      void import('./dashboard/BudgetsTab');
+    };
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(warmTabs, { timeout: 1500 });
+      return () => {
+        cancelled = true;
+        w.cancelIdleCallback?.(id);
+      };
+    }
+    const t = setTimeout(warmTabs, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [loading, kpis, tier]);
 
   useEffect(() => {
     window.dispatchEvent(
@@ -383,6 +421,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               goals={goals}
               subscriptions={subscriptions}
               investmentsData={investmentsData}
+              initialOperationalRadar={operationalRadar}
               setActiveTab={setActiveTab}
               openTransaction={openTransaction}
               handleSettle={handleSettleDebt}

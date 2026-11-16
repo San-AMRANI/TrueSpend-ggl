@@ -15,6 +15,7 @@ import { settingsService } from '../services/SettingsService.js';
 import { subscriptionService } from '../services/SubscriptionService.js';
 import { transactionService } from '../services/TransactionService.js';
 import { walletService } from '../services/WalletService.js';
+import { coreAuditService } from '../services/CoreAuditService.js';
 import { resolveContextStatusFromDates } from './ContextController.js';
 
 export class KpiController {
@@ -33,11 +34,14 @@ export class KpiController {
       const dbUser = req.dbUser;
       const userId = dbUser.id;
       const scope = String(req.query.scope || 'all').toLowerCase();
+      const liveMarket = req.query.liveMarket === '1';
       const isAdvanced = (dbUser.experienceTier || 'advanced') === 'advanced';
 
-      // 1. Ensure default wallets and reconcile any due payrolls once
-      const userWallets = await walletService.getWallets(userId);
-      await payrollService.reconcileDuePayrolls(userId);
+      // 1. Ensure default wallets and reconcile any due payrolls in parallel
+      const [userWallets] = await Promise.all([
+        walletService.getWallets(userId),
+        payrollService.reconcileDuePayrolls(userId),
+      ]);
 
       if (scope === 'ledger') {
         const [rawTransactions, allSplits, debts, payrolls, budgets] = await Promise.all([
@@ -148,6 +152,7 @@ export class KpiController {
       const investmentsPromise = isAdvanced
         ? investmentService
             .getInvestmentsData(userId, {
+              fastMode: !liveMarket,
               preloaded: {
                 dbUser,
                 kpis,
@@ -158,7 +163,54 @@ export class KpiController {
             .catch(() => null)
         : Promise.resolve(null);
 
-      const [contexts, investmentsData] = await Promise.all([contextsPromise, investmentsPromise]);
+      // Preload operational radar in parallel to eliminate 4 client round-trips on Overview mount
+      const operationalRadarPromise = isAdvanced
+        ? (async () => {
+            const todayIso = now.toISOString().slice(0, 10);
+            const twoWeeksIso = new Date(now.getTime() + 14 * 86400000).toISOString().slice(0, 10);
+            const [occList, revList, integritySummary, extWealth] = await Promise.all([
+              coreAuditService.syncAndGetCommitmentOccurrences(userId).catch(() => []),
+              coreAuditService.getReviewInbox(userId).catch(() => []),
+              coreAuditService.getFinancialIntegrityReport(userId).catch(() => null),
+              coreAuditService.getExternalWealthItems(userId).catch(() => null),
+            ]);
+            const upcomingCommitments = (Array.isArray(occList) ? occList : [])
+              .filter(
+                (o: any) =>
+                  (o.status === 'scheduled' || o.status === 'overdue' || o.status === 'partial') &&
+                  o.expectedDate >= todayIso &&
+                  o.expectedDate <= twoWeeksIso
+              )
+              .sort((a: any, b: any) => String(a.expectedDate).localeCompare(String(b.expectedDate)));
+            const pendingReviews = (Array.isArray(revList) ? revList : []).filter(
+              (item: any) => item.status === 'Captured' || item.status === 'Needs Review'
+            );
+            const externalWealthSummary = extWealth
+              ? (() => {
+                  const items = Array.isArray((extWealth as any).items) ? (extWealth as any).items : [];
+                  return {
+                    items,
+                    totalExternalAssetsMad: Number((extWealth as any).totalExternalAssetsMad) || 0,
+                    totalExternalLiabilitiesMad: Number((extWealth as any).totalExternalLiabilitiesMad) || 0,
+                    netExternalWealthMad: Number((extWealth as any).netExternalWealthMad) || 0,
+                    staleCount: items.filter((item: any) => item.isStaleEstimate).length,
+                  };
+                })()
+              : null;
+            return {
+              upcomingCommitments,
+              pendingReviews,
+              integritySummary,
+              externalWealthSummary,
+            };
+          })()
+        : Promise.resolve(null);
+
+      const [contexts, investmentsData, operationalRadar] = await Promise.all([
+        contextsPromise,
+        investmentsPromise,
+        operationalRadarPromise,
+      ]);
 
       return res.json({
         kpis,
@@ -171,6 +223,7 @@ export class KpiController {
         subscriptions,
         contexts,
         investmentsData,
+        operationalRadar,
       });
     } catch (e: any) {
       console.error('[Bootstrap] Error loading dashboard bootstrap:', e);

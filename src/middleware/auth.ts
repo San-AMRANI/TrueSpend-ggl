@@ -38,6 +38,58 @@ function isPreVerificationAllowedPath(fullPath: string): boolean {
   );
 }
 
+const AUTH_USER_CACHE_TTL_MS = 8_000;
+const authUserCache = new Map<string, { user: any; expiresAt: number }>();
+const authUserInFlight = new Map<string, Promise<any | null>>();
+
+export function invalidateAuthUserCache(userId?: string) {
+  if (!userId) {
+    authUserCache.clear();
+    return;
+  }
+  authUserCache.delete(userId);
+}
+
+async function loadAuthenticatedUser(userId: string, bypassCache: boolean): Promise<any | null> {
+  const now = Date.now();
+  if (!bypassCache && process.env.NODE_ENV !== 'test') {
+    const cached = authUserCache.get(userId);
+    if (cached && cached.expiresAt > now) {
+      return cached.user;
+    }
+  }
+
+  const inflight = authUserInFlight.get(userId);
+  if (inflight && !bypassCache) {
+    return inflight;
+  }
+
+  const lookupPromise = (async () => {
+    try {
+      const foundRows = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      const row = foundRows[0] || null;
+      if (row) {
+        if (authUserCache.size > 500) {
+          authUserCache.clear();
+        }
+        authUserCache.set(userId, { user: row, expiresAt: Date.now() + AUTH_USER_CACHE_TTL_MS });
+      } else {
+        authUserCache.delete(userId);
+      }
+      return row;
+    } finally {
+      authUserInFlight.delete(userId);
+    }
+  })();
+
+  authUserInFlight.set(userId, lookupPromise);
+  return lookupPromise;
+}
+
 export const requireAuth = async (
   req: AuthRequest,
   res: Response,
@@ -60,17 +112,26 @@ export const requireAuth = async (
       return res.status(401).json({ error: 'Unauthorized: Invalid token type', code: 'UNAUTHORIZED' });
     }
 
-    const foundRows = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, decodedToken.userId))
-      .limit(1);
+    const fullReqPath = `${req.baseUrl || ''}${req.path || ''}`;
+    const isMutatingOrIdentityEndpoint =
+      req.method.toUpperCase() !== 'GET' ||
+      fullReqPath.includes('/auth/') ||
+      fullReqPath.includes('/profile') ||
+      fullReqPath.includes('/onboarding') ||
+      fullReqPath.includes('/users');
 
-    if (foundRows.length === 0) {
-      return res.status(401).json({ error: 'Unauthorized: Account not found', code: 'UNAUTHORIZED' });
+    if (req.method.toUpperCase() !== 'GET') {
+      invalidateAuthUserCache(decodedToken.userId);
     }
 
-    const authenticatedUser = foundRows[0];
+    const authenticatedUser = await loadAuthenticatedUser(
+      decodedToken.userId,
+      isMutatingOrIdentityEndpoint
+    );
+
+    if (!authenticatedUser) {
+      return res.status(401).json({ error: 'Unauthorized: Account not found', code: 'UNAUTHORIZED' });
+    }
 
     if (authenticatedUser.status === 'deleted' || authenticatedUser.status === 'legacy_hidden' || authenticatedUser.deletedAt) {
       return res.status(401).json({

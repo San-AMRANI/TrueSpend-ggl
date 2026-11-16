@@ -30,6 +30,18 @@ export function useDashboardData(token: string | null, experienceTier?: Experien
   const [goals, setGoals] = useState<Goal[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [investmentsData, setInvestmentsData] = useState<InvestmentsData | null>(null);
+  const [operationalRadar, setOperationalRadar] = useState<{
+    upcomingCommitments: import('../types').CommitmentOccurrence[];
+    pendingReviews: import('../types').FinancialReviewItem[];
+    integritySummary: import('../types').FinancialIntegrityReport | null;
+    externalWealthSummary: {
+      items: import('../types').ExternalWealthItem[];
+      totalExternalAssetsMad: number;
+      totalExternalLiabilitiesMad: number;
+      netExternalWealthMad: number;
+      staleCount: number;
+    } | null;
+  } | null>(null);
   const [userSettings, setUserSettings] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -58,6 +70,19 @@ export function useDashboardData(token: string | null, experienceTier?: Experien
       setSubscriptions(bootstrap.subscriptions || []);
       setContexts(isAdvancedTier ? (bootstrap.contexts || []) : []);
       setInvestmentsData(isAdvancedTier ? (bootstrap.investmentsData || null) : null);
+      setOperationalRadar(isAdvancedTier ? (bootstrap.operationalRadar ?? null) : null);
+
+      // Non-blocking background live market hydration after fast bootstrap renders
+      if (isAdvancedTier) {
+        setTimeout(() => {
+          dashboardService
+            .getInvestmentsData(token, false)
+            .then((freshInv) => {
+              if (freshInv) setInvestmentsData(freshInv);
+            })
+            .catch(() => {});
+        }, 180);
+      }
     } catch (e) {
       console.error('Error fetching dashboard data:', e);
     } finally {
@@ -945,6 +970,7 @@ export function useDashboardData(token: string | null, experienceTier?: Experien
     goals: syncedGoals,
     subscriptions,
     investmentsData,
+    operationalRadar,
     userSettings,
     loading,
     isSaving,

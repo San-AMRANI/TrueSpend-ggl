@@ -102,6 +102,18 @@ export const dashboardService = {
       subscriptions?: Subscription[];
       contexts?: FinancialContext[];
       investmentsData?: InvestmentsData | null;
+      operationalRadar?: {
+        upcomingCommitments: CommitmentOccurrence[];
+        pendingReviews: FinancialReviewItem[];
+        integritySummary: FinancialIntegrityReport | null;
+        externalWealthSummary: {
+          items: ExternalWealthItem[];
+          totalExternalAssetsMad: number;
+          totalExternalLiabilitiesMad: number;
+          netExternalWealthMad: number;
+          staleCount: number;
+        } | null;
+      } | null;
     }>(`/api/dashboard-bootstrap${scope ? `?scope=${scope}` : ''}`, token),
   getKpis: (token: string | null) => apiClient.get<KPI>('/api/kpis', token),
   getWallets: (token: string | null) => apiClient.get<Wallet[]>('/api/wallets', token),

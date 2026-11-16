@@ -98,8 +98,11 @@ export const createPool = () => {
       if (connectionString) {
         global._postgresPool = new Pool({
           connectionString,
-          max: 10,
+          max: 12,
+          idleTimeoutMillis: 30000,
           connectionTimeoutMillis: 15000,
+          keepAlive: true,
+          keepAliveInitialDelayMillis: 10000,
           ssl: {
             rejectUnauthorized: false,
           },
@@ -110,8 +113,11 @@ export const createPool = () => {
           user: process.env.SQL_USER,
           password: process.env.SQL_PASSWORD,
           database: process.env.SQL_DB_NAME,
-          max: 10,
+          max: 12,
+          idleTimeoutMillis: 30000,
           connectionTimeoutMillis: 15000,
+          keepAlive: true,
+          keepAliveInitialDelayMillis: 10000,
         });
       }
 
@@ -1257,6 +1263,23 @@ const CORE_DDL_STATEMENTS: Array<{ sql: string; optional?: boolean; label: strin
   { label: 'idx category_budgets_user_year_month_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "category_budgets_user_year_month_idx" ON "category_budgets"("user_id", "year", "month")` },
   { label: 'idx stock_orders_linked_tx_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "stock_orders_linked_tx_idx" ON "stock_orders"("linked_transaction_id")` },
   { label: 'idx journal_lines_user_id_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "journal_lines_user_id_idx" ON "journal_lines"("user_id")` },
+  { label: 'idx journal_lines_user_wallet_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "journal_lines_user_wallet_idx" ON "journal_lines"("user_id", "wallet_id")` },
+  { label: 'idx journal_entries_user_posted_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "journal_entries_user_posted_idx" ON "journal_entries"("user_id", "posted_at" DESC)` },
+  { label: 'idx journal_entries_user_tx_status_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "journal_entries_user_tx_status_idx" ON "journal_entries"("user_id", "transaction_id", "status")` },
+  { label: 'idx exchange_rates_user_base_date_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "exchange_rates_user_base_date_idx" ON "exchange_rates"("user_id", "base_currency", "effective_date" DESC)` },
+  { label: 'idx statement_import_batches_user_created_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "statement_import_batches_user_created_idx" ON "statement_import_batches"("user_id", "created_at" DESC)` },
+  { label: 'idx statement_import_rows_user_batch_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "statement_import_rows_user_batch_idx" ON "statement_import_rows"("user_id", "batch_id")` },
+  { label: 'idx statement_import_rows_user_linked_tx_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "statement_import_rows_user_linked_tx_idx" ON "statement_import_rows"("user_id", "linked_transaction_id")` },
+  { label: 'idx financial_review_items_user_status_created_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "financial_review_items_user_status_created_idx" ON "financial_review_items"("user_id", "status", "created_at" DESC)` },
+  { label: 'idx commitment_occurrences_user_expected_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "commitment_occurrences_user_expected_idx" ON "commitment_occurrences"("user_id", "expected_date" DESC)` },
+  { label: 'idx commitment_occurrences_user_status_expected_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "commitment_occurrences_user_status_expected_idx" ON "commitment_occurrences"("user_id", "status", "expected_date")` },
+  { label: 'idx goal_contribution_events_user_goal_date_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "goal_contribution_events_user_goal_date_idx" ON "goal_contribution_events"("user_id", "goal_id", "event_date" DESC)` },
+  { label: 'idx saved_scenarios_user_updated_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "saved_scenarios_user_updated_idx" ON "saved_scenarios"("user_id", "updated_at" DESC)` },
+  { label: 'idx financial_rules_user_enabled_trigger_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "financial_rules_user_enabled_trigger_idx" ON "financial_rules"("user_id", "enabled", "trigger_type")` },
+  { label: 'idx financial_rule_logs_user_created_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "financial_rule_logs_user_created_idx" ON "financial_rule_logs"("user_id", "created_at" DESC)` },
+  { label: 'idx external_wealth_items_user_valdate_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "external_wealth_items_user_valdate_idx" ON "external_wealth_items"("user_id", "valuation_date" DESC)` },
+  { label: 'idx external_wealth_valuations_user_item_date_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "external_wealth_valuations_user_item_date_idx" ON "external_wealth_valuations"("user_id", "item_id", "valuation_date" DESC)` },
+  { label: 'idx transactions_user_dest_wallet_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "transactions_user_dest_wallet_idx" ON "transactions"("user_id", "destination_wallet_id")` },
   { label: 'idx domain_event_outbox_user_status_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "domain_event_outbox_user_status_idx" ON "domain_event_outbox"("user_id", "status")` },
 ];
 

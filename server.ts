@@ -12,6 +12,7 @@ import {
   isOriginAllowed,
   isProductionEnv,
 } from './server/services/SecurityCrypto.js';
+import { httpCompressionMiddleware } from './server/middleware/compression.js';
 
 async function startServer() {
   // Fail fast in production if required security secrets are missing or weak
@@ -27,6 +28,7 @@ async function startServer() {
   const PORT = 3000;
 
   app.set('trust proxy', 1);
+  app.use(httpCompressionMiddleware);
   app.use(express.json({ limit: '10mb' }));
   app.use(cookieParser());
 

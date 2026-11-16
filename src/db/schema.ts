@@ -608,6 +608,8 @@ export const journalEntries = pgTable('journal_entries', {
 }, (table) => [
   uniqueIndex('journal_entries_user_idempotency_unique').on(table.userId, table.idempotencyKey),
   index('journal_entries_user_id_idx').on(table.userId),
+  index('journal_entries_user_posted_idx').on(table.userId, table.postedAt),
+  index('journal_entries_user_tx_status_idx').on(table.userId, table.transactionId, table.status),
   index('journal_entries_tx_id_idx').on(table.transactionId),
 ]);
 
@@ -628,6 +630,7 @@ export const journalLines = pgTable('journal_lines', {
 }, (table) => [
   index('journal_lines_entry_id_idx').on(table.journalEntryId),
   index('journal_lines_user_id_idx').on(table.userId),
+  index('journal_lines_user_wallet_idx').on(table.userId, table.walletId),
 ]);
 
 /** C. Historical Exchange Rates */
@@ -640,7 +643,9 @@ export const exchangeRates = pgTable('exchange_rates', {
   source: text('source').default('reference_feed').notNull(), // 'reference_feed' | 'manual' | 'locked_posting'
   effectiveDate: text('effective_date').notNull(), // YYYY-MM-DD
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('exchange_rates_user_base_date_idx').on(table.userId, table.baseCurrency, table.effectiveDate),
+]);
 
 /** D. Statement Import Batches */
 export const statementImportBatches = pgTable('statement_import_batches', {
@@ -659,7 +664,9 @@ export const statementImportBatches = pgTable('statement_import_batches', {
   duplicateCount: integer('duplicate_count').default(0).notNull(),
   status: text('status').default('pending_review').notNull(), // 'pending_review' | 'reconciled'
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('statement_import_batches_user_created_idx').on(table.userId, table.createdAt),
+]);
 
 /** D. Statement Import Rows */
 export const statementImportRows = pgTable('statement_import_rows', {
@@ -680,7 +687,10 @@ export const statementImportRows = pgTable('statement_import_rows', {
   counterpartyId: uuid('counterparty_id'),
   candidateTransactionIdsJson: text('candidate_transaction_ids_json'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('statement_import_rows_user_batch_idx').on(table.userId, table.batchId),
+  index('statement_import_rows_user_linked_tx_idx').on(table.userId, table.linkedTransactionId),
+]);
 
 /** E. Persistent Financial Review Inbox */
 export const financialReviewItems = pgTable('financial_review_items', {
@@ -702,7 +712,9 @@ export const financialReviewItems = pgTable('financial_review_items', {
   decisionNotes: text('decision_notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('financial_review_items_user_status_created_idx').on(table.userId, table.status, table.createdAt),
+]);
 
 /** F. Reusable Commitment Occurrences */
 export const commitmentOccurrences = pgTable('commitment_occurrences', {
@@ -736,6 +748,8 @@ export const commitmentOccurrences = pgTable('commitment_occurrences', {
     table.sourceId,
     table.expectedDate
   ),
+  index('commitment_occurrences_user_expected_idx').on(table.userId, table.expectedDate),
+  index('commitment_occurrences_user_status_expected_idx').on(table.userId, table.status, table.expectedDate),
 ]);
 
 /** I. Auditable Goal & Sinking-Fund Contribution Events */
@@ -751,7 +765,9 @@ export const goalContributionEvents = pgTable('goal_contribution_events', {
   eventDate: text('event_date').notNull(), // YYYY-MM-DD
   notes: text('notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('goal_contribution_events_user_goal_date_idx').on(table.userId, table.goalId, table.eventDate),
+]);
 
 /** J. Saved & Comparable Multi-Event What-If Scenarios */
 export const savedScenarios = pgTable('saved_scenarios', {
@@ -766,7 +782,9 @@ export const savedScenarios = pgTable('saved_scenarios', {
   isApprovedPlan: boolean('is_approved_plan').default(false).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('saved_scenarios_user_updated_idx').on(table.userId, table.updatedAt),
+]);
 
 /** K. User-Configurable Financial Rules */
 export const financialRules = pgTable('financial_rules', {
@@ -783,7 +801,9 @@ export const financialRules = pgTable('financial_rules', {
   lastTriggeredAt: timestamp('last_triggered_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('financial_rules_user_enabled_trigger_idx').on(table.userId, table.enabled, table.triggerType),
+]);
 
 /** K. Financial Rule Execution Audit Logs */
 export const financialRuleLogs = pgTable('financial_rule_logs', {
@@ -796,7 +816,9 @@ export const financialRuleLogs = pgTable('financial_rule_logs', {
   outcomeStatus: text('outcome_status').default('executed').notNull(), // 'notified' | 'draft_created' | 'awaiting_approval' | 'approved' | 'rate_limited'
   idempotencyKey: text('idempotency_key').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('financial_rule_logs_user_created_idx').on(table.userId, table.createdAt),
+]);
 
 /** L. External Assets & Liabilities for Unified Net Worth */
 export const externalWealthItems = pgTable('external_wealth_items', {
@@ -815,7 +837,9 @@ export const externalWealthItems = pgTable('external_wealth_items', {
   notes: text('notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('external_wealth_items_user_valdate_idx').on(table.userId, table.valuationDate),
+]);
 
 // ─── Next-Update Extensions (Position History, Counterparties, Outbox) ───────
 
@@ -881,7 +905,9 @@ export const externalWealthValuations = pgTable('external_wealth_valuations', {
   confidenceLevel: text('confidence_level').default('medium').notNull(),
   notes: text('notes'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
-});
+}, (table) => [
+  index('external_wealth_valuations_user_item_date_idx').on(table.userId, table.itemId, table.valuationDate),
+]);
 
 /** 4. Normalized Counterparty & Merchant Identity Registry */
 export const counterparties = pgTable('counterparties', {
