@@ -13,8 +13,8 @@ const router = Router();
 router.post('/', requireAuth, requireFeature('ai.basic'), chatWithAi as any);
 router.get('/models', requireAuth, getChatModels as any);
 router.post('/reset-cooldown', requireAuth, resetModelCooldowns as any);
-router.post('/actions', requireAuth, requireFeature('ai.advanced'), approveAiActions as any);
-router.post('/simulate-actions', requireAuth, requireFeature('ai.advanced'), simulateAiActions as any);
+router.post('/actions', requireAuth, requireFeature('ai.basic'), approveAiActions as any);
+router.post('/simulate-actions', requireAuth, requireFeature('ai.basic'), simulateAiActions as any);
 router.post('/tts', requireAuth, requireFeature('ai.basic'), speakAiText as any);
 
 export default router;

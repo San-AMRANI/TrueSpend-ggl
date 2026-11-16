@@ -26,8 +26,8 @@ router.post('/audit/journal/backfill', requireAuth, requireFeature('analytics.ad
   }
 });
 
-// Item C: Multi-Currency Historical Exchange Rates (Advanced Analytics)
-router.get('/audit/fx-rates', requireAuth, requireFeature('analytics.advanced'), async (req: any, res) => {
+// Item C: Multi-Currency Historical Exchange Rates
+router.get('/audit/fx-rates', requireAuth, requireFeature('accounts.core'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const rates = await coreAuditService.getExchangeRates(authReq.dbUser.id);
@@ -37,7 +37,7 @@ router.get('/audit/fx-rates', requireAuth, requireFeature('analytics.advanced'),
   }
 });
 
-router.post('/audit/fx-rates', requireAuth, requireFeature('analytics.advanced'), async (req: any, res) => {
+router.post('/audit/fx-rates', requireAuth, requireFeature('accounts.core'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const rate = await coreAuditService.upsertExchangeRate(authReq.dbUser.id, req.body);
@@ -112,7 +112,7 @@ router.post('/audit/review-inbox/:id/decide', requireAuth, requireFeature('revie
 });
 
 // Item F: Commitment Occurrences
-router.get('/audit/occurrences', requireAuth, requireFeature('commitments.advanced'), async (req: any, res) => {
+router.get('/audit/occurrences', requireAuth, requireFeature('calendar.core'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const occurrences = await coreAuditService.syncAndGetCommitmentOccurrences(authReq.dbUser.id);
@@ -122,7 +122,7 @@ router.get('/audit/occurrences', requireAuth, requireFeature('commitments.advanc
   }
 });
 
-router.post('/audit/occurrences/:id/settle', requireAuth, requireFeature('commitments.advanced'), async (req: any, res) => {
+router.post('/audit/occurrences/:id/settle', requireAuth, requireFeature('calendar.core'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const result = await coreAuditService.settleCommitmentOccurrence(authReq.dbUser.id, req.params.id, req.body);
@@ -132,7 +132,7 @@ router.post('/audit/occurrences/:id/settle', requireAuth, requireFeature('commit
   }
 });
 
-router.post('/audit/occurrences/income', requireAuth, requireFeature('commitments.advanced'), async (req: any, res) => {
+router.post('/audit/occurrences/income', requireAuth, requireFeature('calendar.core'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const created = await coreAuditService.createRecurringIncomeCommitment(authReq.dbUser.id, req.body);
@@ -143,7 +143,7 @@ router.post('/audit/occurrences/income', requireAuth, requireFeature('commitment
 });
 
 // Item I: Goal Contribution Events
-router.get('/audit/goal-events', requireAuth, requireFeature('goals.contributions'), async (req: any, res) => {
+router.get('/audit/goal-events', requireAuth, requireFeature('goals.core'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const goalId = typeof req.query.goalId === 'string' ? req.query.goalId : undefined;
@@ -227,7 +227,7 @@ router.post('/audit/rules/dry-run', requireAuth, requireFeature('rules.automatio
 });
 
 // Item L: External Wealth Items (Unified Net Worth)
-router.get('/audit/external-wealth', requireAuth, requireFeature('investments'), async (req: any, res) => {
+router.get('/audit/external-wealth', requireAuth, requireFeature('accounts.core'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const items = await coreAuditService.getExternalWealthItems(authReq.dbUser.id);
@@ -237,7 +237,7 @@ router.get('/audit/external-wealth', requireAuth, requireFeature('investments'),
   }
 });
 
-router.post('/audit/external-wealth', requireAuth, requireFeature('investments'), async (req: any, res) => {
+router.post('/audit/external-wealth', requireAuth, requireFeature('accounts.core'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const item = await coreAuditService.upsertExternalWealthItem(authReq.dbUser.id, req.body);
@@ -247,7 +247,7 @@ router.post('/audit/external-wealth', requireAuth, requireFeature('investments')
   }
 });
 
-router.delete('/audit/external-wealth/:id', requireAuth, requireFeature('investments'), async (req: any, res) => {
+router.delete('/audit/external-wealth/:id', requireAuth, requireFeature('accounts.core'), async (req: any, res) => {
   try {
     const authReq = req as AuthRequest;
     const result = await coreAuditService.deleteExternalWealthItem(authReq.dbUser.id, req.params.id);

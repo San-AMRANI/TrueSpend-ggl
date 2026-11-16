@@ -30,12 +30,14 @@ function setRefreshCookie(req: Request, res: Response, cookieValue: string) {
   const origin = req.headers.origin || '';
   const isCrossOriginCapacitor =
     origin === 'https://localhost' || origin === 'capacitor://localhost' || origin === 'ionic://localhost';
-  const secure = isProductionEnv() || Boolean(req.secure) || isCrossOriginCapacitor;
+  const isHttpsForwarded =
+    String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
+  const secure = isProductionEnv() || Boolean(req.secure) || isHttpsForwarded || isCrossOriginCapacitor;
 
   res.cookie(REFRESH_COOKIE_NAME, cookieValue, {
     httpOnly: true,
     secure,
-    sameSite: isCrossOriginCapacitor ? 'none' : 'lax',
+    sameSite: secure ? 'none' : 'lax',
     path: '/api/auth',
     maxAge: REFRESH_SESSION_TTL_MS,
   });
@@ -45,12 +47,14 @@ function clearRefreshCookie(req: Request, res: Response) {
   const origin = req.headers.origin || '';
   const isCrossOriginCapacitor =
     origin === 'https://localhost' || origin === 'capacitor://localhost' || origin === 'ionic://localhost';
-  const secure = isProductionEnv() || Boolean(req.secure) || isCrossOriginCapacitor;
+  const isHttpsForwarded =
+    String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
+  const secure = isProductionEnv() || Boolean(req.secure) || isHttpsForwarded || isCrossOriginCapacitor;
 
   res.clearCookie(REFRESH_COOKIE_NAME, {
     httpOnly: true,
     secure,
-    sameSite: isCrossOriginCapacitor ? 'none' : 'lax',
+    sameSite: secure ? 'none' : 'lax',
     path: '/api/auth',
   });
 }

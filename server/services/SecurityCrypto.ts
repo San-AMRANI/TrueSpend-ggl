@@ -291,6 +291,10 @@ export function getAllowedOrigins(): string[] {
   const envOrigins = [
     process.env.APP_URL,
     process.env.FRONTEND_URL,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : undefined,
     ...(process.env.ALLOWED_ORIGINS || '').split(','),
   ];
 
@@ -325,7 +329,7 @@ export function isOriginAllowed(origin: string | undefined | null): boolean {
       // Ignore invalid URL
     }
   }
-  if (!isProductionEnv() && /^https:\/\/[a-z0-9.-]+\.run\.app$/i.test(normalized)) {
+  if (/^https:\/\/[a-z0-9.-]+\.(run\.app|vercel\.app)$/i.test(normalized)) {
     return true;
   }
   return false;

@@ -299,9 +299,22 @@ export const requireTrustedOriginForCookieAuth = (
   // Only enforce strict browser origin check when a cookie is present and browser sent Origin/Referer
   const origin = req.headers.origin as string | undefined;
   const referer = req.headers.referer as string | undefined;
+  const rawHost = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+
+  const isSameHostOrigin = (candidateOrigin: string): boolean => {
+    if (!rawHost) return false;
+    try {
+      return new URL(candidateOrigin).host.toLowerCase() === rawHost;
+    } catch {
+      return false;
+    }
+  };
 
   if (origin) {
-    if (!isOriginAllowed(origin)) {
+    if (!isOriginAllowed(origin) && !isSameHostOrigin(origin)) {
       return res.status(403).json({
         error: 'Blocked request from untrusted origin.',
         code: 'CSRF_ORIGIN_DENIED',
@@ -313,7 +326,7 @@ export const requireTrustedOriginForCookieAuth = (
   if (referer) {
     try {
       const refOrigin = new URL(referer).origin;
-      if (!isOriginAllowed(refOrigin)) {
+      if (!isOriginAllowed(refOrigin) && !isSameHostOrigin(refOrigin)) {
         return res.status(403).json({
           error: 'Blocked request from untrusted referer.',
           code: 'CSRF_ORIGIN_DENIED',
