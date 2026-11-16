@@ -342,7 +342,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
   }, [toast]);
 
   return (
-    <div className="space-y-8 relative">
+    <div className={activeTab === 'chat' ? 'relative flex-1 min-h-0 flex flex-col' : 'space-y-8 relative'}>
       <DashboardNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Global Toast Notification */}
@@ -390,7 +390,10 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
         </div>
       ) : (
         <Suspense fallback={<TabLoadingSkeleton />}>
-          <PageTransition pageKey={activeTab}>
+          <PageTransition
+            pageKey={activeTab}
+            className={activeTab === 'chat' ? 'flex-1 min-h-0 flex flex-col' : ''}
+          >
             {!isTabAvailableForUser(activeTab, tier, user?.role) ? (
               (() => {
                 const reqFeature = getTabRequiredFeature(activeTab);

@@ -160,7 +160,11 @@ function AppContent() {
   const isAdvancedTier = user.experienceTier === 'advanced';
 
   return (
-    <div className="min-h-screen flex bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-x-clip">
+    <div
+      className={`${
+        isChatOnMobile ? 'h-dvh overflow-hidden' : 'min-h-screen overflow-x-clip'
+      } flex bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100`}
+    >
       {/* Optional Desktop Side Menu Rail */}
       {desktopNavLayout === 'side' && (
         <DesktopSidebarNav
@@ -171,11 +175,11 @@ function AppContent() {
         />
       )}
 
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
 
         {/* Header — Spacious 3-Zone Architecture (zero right-button clipping/override) */}
         <header
-          className={`sticky top-0 z-30 border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md px-3 sm:px-6 lg:px-8 h-14 flex items-center ${
+          className={`sticky top-0 z-30 shrink-0 border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md px-3 sm:px-6 lg:px-8 h-14 flex items-center ${
             isChatOnMobile ? 'hidden sm:flex' : ''
           }`}
         >
@@ -652,9 +656,9 @@ function AppContent() {
         </header>
 
         <main
-          className={`flex-1 mx-auto w-full min-w-0 ${
+          className={`flex-1 min-h-0 mx-auto w-full min-w-0 ${
             isChatOnMobile
-              ? 'max-w-none p-0 sm:px-3 sm:py-3 sm:pb-24 md:pb-4 lg:px-5'
+              ? 'flex flex-col max-w-6xl p-0 sm:px-6 sm:py-3 lg:px-8'
               : 'max-w-[1440px] p-3 pb-24 sm:p-6 sm:pb-24 md:pb-8 lg:px-8'
           }`}
         >
