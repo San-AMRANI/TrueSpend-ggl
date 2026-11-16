@@ -209,10 +209,10 @@ export class EmailService {
     const ctaSectionHtml =
       model.actionUrl && model.actionLabel
         ? `
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px 0;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" class="cta-wrap" style="margin:0 0 18px 0;">
             <tr>
-              <td align="center" style="border-radius:12px;background:linear-gradient(135deg,#4f46e5 0%,#4338ca 100%);box-shadow:0 4px 12px rgba(79,70,229,0.24);">
-                <a href="${model.actionUrl}" target="_blank" style="display:inline-block;padding:13px 26px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:12px;letter-spacing:0.01em;">
+              <td align="center" class="cta-cell" style="border-radius:10px;background-color:#4f46e5;background:linear-gradient(135deg,#4f46e5 0%,#4338ca 100%);">
+                <a href="${model.actionUrl}" target="_blank" class="cta-btn" style="display:inline-block;padding:11px 20px;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.2;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;white-space:nowrap;">
                   ${model.actionLabel} &rarr;
                 </a>
               </td>
@@ -223,13 +223,13 @@ export class EmailService {
 
     const tokenSectionHtml = model.token
       ? `
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;margin:0 0 22px 0;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;margin:0 0 18px 0;">
             <tr>
-              <td style="padding:14px 18px;">
-                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:6px;">
+              <td style="padding:12px 14px;">
+                <div style="font-size:10px;line-height:1.3;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:4px;">
                   Verification / Recovery Code
                 </div>
-                <div style="font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:16px;font-weight:700;color:#0f172a;letter-spacing:0.06em;word-break:break-all;">
+                <div style="font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:14px;line-height:1.4;font-weight:700;color:#0f172a;letter-spacing:0.05em;word-break:break-all;">
                   ${model.token}
                 </div>
               </td>
@@ -240,7 +240,7 @@ export class EmailService {
 
     const fallbackLinkHtml = model.actionUrl
       ? `
-          <div style="font-size:12px;line-height:1.6;color:#94a3b8;word-break:break-all;">
+          <div style="font-size:11px;line-height:1.5;color:#94a3b8;word-break:break-all;">
             Button not working? Paste this URL into your browser:<br />
             <a href="${model.actionUrl}" style="color:#4f46e5;text-decoration:underline;">${model.actionUrl}</a>
           </div>
@@ -253,35 +253,85 @@ export class EmailService {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />
   <title>${escapeHtml(model.subject)}</title>
+  <style type="text/css">
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      -webkit-text-size-adjust: 100% !important;
+      -ms-text-size-adjust: 100% !important;
+    }
+    table, td {
+      mso-table-lspace: 0pt !important;
+      mso-table-rspace: 0pt !important;
+      border-collapse: collapse !important;
+    }
+    img {
+      -ms-interpolation-mode: bicubic;
+      border: 0;
+      outline: none;
+      text-decoration: none;
+    }
+    @media only screen and (min-width: 600px) {
+      .outer-pad { padding: 28px 16px !important; }
+      .section-pad-header { padding: 22px 28px 18px 28px !important; }
+      .section-pad-spex { padding: 20px 28px 6px 28px !important; }
+      .section-pad-body { padding: 18px 28px 24px 28px !important; }
+      .section-pad-footer { padding: 18px 28px 22px 28px !important; }
+      .email-heading { font-size: 20px !important; }
+      .email-body { font-size: 14px !important; }
+    }
+    @media only screen and (max-width: 480px) {
+      .header-stack {
+        display: block !important;
+        width: 100% !important;
+        text-align: left !important;
+      }
+      .header-badge-cell {
+        padding-top: 10px !important;
+      }
+      .cta-wrap, .cta-cell {
+        width: 100% !important;
+      }
+      .cta-btn {
+        display: block !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+      }
+    }
+  </style>
 </head>
-<body style="margin:0;padding:0;background-color:#f8fafc;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;-webkit-font-smoothing:antialiased;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;padding:32px 16px;">
+<body style="margin:0;padding:0;background-color:#f8fafc;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background-color:#f8fafc;">
     <tr>
-      <td align="center">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;box-shadow:0 12px 32px -8px rgba(15,23,42,0.06);">
+      <td align="center" class="outer-pad" style="padding:14px 10px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:540px;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;box-shadow:0 8px 24px -6px rgba(15,23,42,0.06);">
           <tr>
-            <td style="height:5px;background:linear-gradient(90deg,#4f46e5 0%,#0d9488 100%);font-size:0;line-height:0;">&nbsp;</td>
+            <td style="height:4px;background-color:#4f46e5;background:linear-gradient(90deg,#4f46e5 0%,#0d9488 100%);font-size:0;line-height:0;">&nbsp;</td>
           </tr>
           <tr>
-            <td style="padding:28px 32px 20px 32px;border-bottom:1px solid #f1f5f9;">
+            <td class="section-pad-header" style="padding:16px 18px 14px 18px;border-bottom:1px solid #f1f5f9;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td valign="middle">
+                  <td valign="middle" class="header-stack">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
-                        <td valign="middle" style="padding-right:10px;">
-                          <img src="${APP_ICON_URL}" alt="TrueSpend" width="32" height="32" style="display:block;width:32px;height:32px;border-radius:8px;border:1px solid #e2e8f0;" />
+                        <td valign="middle" width="36" style="width:36px;padding-right:10px;">
+                          <img src="${APP_ICON_URL}" alt="TrueSpend" width="28" height="28" style="display:block;width:28px;height:28px;border-radius:7px;border:1px solid #e2e8f0;" />
                         </td>
                         <td valign="middle">
-                          <span style="font-size:17px;font-weight:800;letter-spacing:-0.02em;color:#0f172a;display:block;line-height:1.1;">TrueSpend</span>
-                          <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;display:block;margin-top:2px;">Private Financial Intelligence</span>
+                          <span style="font-size:15px;font-weight:800;letter-spacing:-0.02em;color:#0f172a;display:block;line-height:1.15;">TrueSpend</span>
+                          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;display:block;line-height:1.25;margin-top:2px;">Private Financial Intelligence</span>
                         </td>
                       </tr>
                     </table>
                   </td>
-                  <td align="right" valign="middle">
-                    <span style="display:inline-block;padding:5px 10px;border-radius:999px;background-color:#eef2ff;border:1px solid #c7d2fe;color:#4f46e5;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">
+                  <td align="right" valign="middle" class="header-stack header-badge-cell" style="white-space:nowrap;">
+                    <span style="display:inline-block;padding:4px 9px;border-radius:999px;background-color:#eef2ff;border:1px solid #c7d2fe;color:#4f46e5;font-size:10px;line-height:1.2;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;">
                       ${escapeHtml(model.badgeLabel)}
                     </span>
                   </td>
@@ -290,50 +340,56 @@ export class EmailService {
             </td>
           </tr>
           <tr>
-            <td style="padding:24px 32px 8px 32px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:16px;padding:16px;">
+            <td class="section-pad-spex" style="padding:16px 18px 6px 18px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
                 <tr>
-                  <td width="60" valign="middle" style="padding-right:14px;">
-                    <img src="${SPEX_AVATAR_URL}" alt="Spex Companion" width="54" height="54" style="display:block;width:54px;height:54px;border-radius:14px;background-color:#ffffff;border:1px solid #cbd5e1;object-fit:cover;" />
-                  </td>
-                  <td valign="middle">
-                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#0d9488;margin-bottom:3px;">
-                      Spex Security Guardian
-                    </div>
-                    <div style="font-size:14px;font-weight:600;color:#0f172a;line-height:1.4;">
-                      Hi ${model.displayName}, here is an important update for your TrueSpend workspace.
-                    </div>
+                  <td style="padding:12px 14px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td width="48" valign="top" style="width:48px;padding-right:12px;">
+                          <img src="${SPEX_AVATAR_URL}" alt="Spex Companion" width="40" height="40" style="display:block;width:40px;height:40px;border-radius:10px;background-color:#ffffff;border:1px solid #cbd5e1;object-fit:cover;" />
+                        </td>
+                        <td valign="middle">
+                          <div style="font-size:10px;line-height:1.3;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#0d9488;margin-bottom:2px;">
+                            Spex Security Guardian
+                          </div>
+                          <div style="font-size:13px;line-height:1.45;font-weight:600;color:#0f172a;">
+                            Hi ${model.displayName}, here is an important update for your TrueSpend workspace.
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
           <tr>
-            <td style="padding:20px 32px 28px 32px;">
-              <h1 style="margin:0 0 12px 0;font-size:21px;font-weight:800;letter-spacing:-0.02em;color:#0f172a;line-height:1.3;">
+            <td class="section-pad-body" style="padding:14px 18px 20px 18px;">
+              <h1 class="email-heading" style="margin:0 0 10px 0;font-size:18px;font-weight:800;letter-spacing:-0.02em;color:#0f172a;line-height:1.3;">
                 ${model.heading}
               </h1>
-              <p style="margin:0 0 22px 0;font-size:15px;line-height:1.65;color:#475569;">
+              <p class="email-body" style="margin:0 0 18px 0;font-size:13.5px;line-height:1.55;color:#475569;">
                 ${model.bodyHtml}
               </p>
               ${ctaSectionHtml}
               ${tokenSectionHtml}
-              <p style="margin:0;font-size:13px;line-height:1.6;color:#64748b;">
+              <p style="margin:0;font-size:12px;line-height:1.5;color:#64748b;">
                 ${escapeHtml(model.expiryNotice)}
               </p>
             </td>
           </tr>
           <tr>
-            <td style="padding:20px 32px 26px 32px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+            <td class="section-pad-footer" style="padding:14px 18px 18px 18px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td style="font-size:12px;line-height:1.6;color:#64748b;">
+                  <td style="font-size:11.5px;line-height:1.5;color:#64748b;">
                     <strong style="color:#0f172a;">TrueSpend Security</strong> &middot; Zero-Trust Personal Finance Ledger<br />
                     You can review active devices and sessions anytime in <strong style="color:#334155;">Settings &rarr; Security</strong>.
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding-top:12px;">
+                  <td style="padding-top:10px;">
                     ${fallbackLinkHtml}
                   </td>
                 </tr>
@@ -341,9 +397,9 @@ export class EmailService {
             </td>
           </tr>
         </table>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;margin-top:16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:540px;margin-top:12px;">
           <tr>
-            <td align="center" style="font-size:11px;color:#94a3b8;line-height:1.5;">
+            <td align="center" style="font-size:11px;color:#94a3b8;line-height:1.4;padding:0 8px;">
               &copy; 2026 TrueSpend. Automated security message &mdash; please do not reply directly to this email.
             </td>
           </tr>
