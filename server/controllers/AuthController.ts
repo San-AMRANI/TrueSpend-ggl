@@ -134,11 +134,19 @@ export class AuthController {
       const bodyRefresh = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : undefined;
       const rawToken = cookieVal || bodyRefresh;
       const result = await authService.refreshSession(rawToken, ctx);
-      setRefreshCookie(req, res, result.refreshCookieValue);
-      const { refreshCookieValue: _omitCookie, ...safePayload } = result;
+      if (result.refreshCookieValue && !result.skipCookieUpdate) {
+        setRefreshCookie(req, res, result.refreshCookieValue);
+      }
+      const {
+        refreshCookieValue: _omitCookie,
+        skipCookieUpdate: _omitSkip,
+        ...safePayload
+      } = result;
       res.json(safePayload);
     } catch (e: any) {
-      clearRefreshCookie(req, res);
+      if (e instanceof AuthError) {
+        clearRefreshCookie(req, res);
+      }
       handleAuthError(res, e, 401);
     }
   }

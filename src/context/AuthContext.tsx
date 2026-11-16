@@ -5,6 +5,8 @@ import {
   setApiAccessToken,
   setStoredNativeRefreshToken,
   getStoredNativeRefreshToken,
+  saveTabSessionCache,
+  loadTabSessionCache,
 } from '../services/api/apiClient';
 import { getApiUrl, isNativePlatform } from '../lib/capacitorBridge';
 import type { ExperienceTier, OnboardingState, User } from '../types';
@@ -48,6 +50,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const res = await dashboardService.getAuthMe(activeToken);
         if (res?.user) {
           setUser(res.user);
+          saveTabSessionCache(activeToken, res.user);
           if (res.user.emailVerified && res.user.status === 'active') {
             await loadOnboardingForToken(activeToken);
           }
@@ -62,6 +65,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const clearSessionState = useCallback(() => {
     setApiAccessToken(null);
     setStoredNativeRefreshToken(null);
+    saveTabSessionCache(null, null);
     try {
       localStorage.removeItem(SESSION_HINT_KEY);
       localStorage.removeItem('auth_token');
@@ -82,20 +86,50 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let cancelled = false;
     (async () => {
       try {
+        // Fast-boot restore from same-tab session cache when 7-day JWT is still valid
+        const cachedTab = loadTabSessionCache();
+        if (cachedTab?.token && cachedTab?.user) {
+          setApiAccessToken(cachedTab.token);
+          if (!cancelled) {
+            setToken(cachedTab.token);
+            setUser(cachedTab.user);
+            setLoading(false);
+          }
+          try {
+            const meRes = await dashboardService.getAuthMe(cachedTab.token);
+            if (!cancelled && meRes?.user) {
+              setUser(meRes.user);
+              saveTabSessionCache(cachedTab.token, meRes.user);
+              if (meRes.user.emailVerified && meRes.user.status === 'active') {
+                await loadOnboardingForToken(cachedTab.token);
+              }
+            }
+          } catch {
+            // Transient offline or expired token will be handled lazily on next request
+          }
+          return;
+        }
+
         const hasHint =
           (typeof localStorage !== 'undefined' && localStorage.getItem(SESSION_HINT_KEY) === '1') ||
           Boolean(getStoredNativeRefreshToken());
         if (hasHint) {
           const refreshed = await refreshAccessSession();
-          if (!cancelled && refreshed?.token && refreshed?.user) {
+          if (cancelled) return;
+          if (refreshed.status === 'ok' && refreshed.token) {
             setToken(refreshed.token);
-            setUser(refreshed.user);
-            if (refreshed.user.emailVerified && refreshed.user.status === 'active') {
-              await loadOnboardingForToken(refreshed.token);
+            if (refreshed.user) {
+              setUser(refreshed.user);
+              if (refreshed.user.emailVerified && refreshed.user.status === 'active') {
+                await loadOnboardingForToken(refreshed.token);
+              }
+            } else {
+              await syncMe(refreshed.token);
             }
-          } else if (!cancelled) {
+          } else if (refreshed.status === 'rejected') {
             clearSessionState();
           }
+          // On 'transient_error' (offline / cold-start 503), preserve hint & native token so next retry recovers
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -106,7 +140,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.token) {
         setToken(detail.token);
-        if (detail.user) setUser(detail.user);
+        if (detail.user) {
+          setUser(detail.user);
+          saveTabSessionCache(detail.token, detail.user);
+        }
       }
     };
 
@@ -121,10 +158,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       window.removeEventListener('auth:refreshed', handleRefreshed);
       window.removeEventListener('auth:unauthorized', handleUnauthorized);
     };
-  }, [clearSessionState, loadOnboardingForToken]);
+  }, [clearSessionState, loadOnboardingForToken, syncMe]);
 
   const signIn = (newToken: string, newUser: User, nativeRefreshToken?: string | null) => {
     setApiAccessToken(newToken);
+    saveTabSessionCache(newToken, newUser);
     if (nativeRefreshToken) {
       setStoredNativeRefreshToken(nativeRefreshToken);
     }
@@ -175,6 +213,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const result = await dashboardService.switchExperienceTier(tier, token);
     if (result?.user) {
       setUser(result.user);
+      saveTabSessionCache(token, result.user);
     }
     await loadOnboardingForToken(token);
     window.dispatchEvent(new CustomEvent('truespend:tier-changed', { detail: tier }));
@@ -193,7 +232,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         refreshUserProfile,
         refreshOnboarding,
         switchExperienceTier,
-        setUserDirect: setUser,
+        setUserDirect: (nextUser: User) => {
+          setUser(nextUser);
+          saveTabSessionCache(token, nextUser);
+        },
         setOnboardingDirect: setOnboarding,
       }}
     >

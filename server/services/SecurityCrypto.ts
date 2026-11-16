@@ -41,6 +41,17 @@ export function isProductionEnv(): boolean {
   return process.env.NODE_ENV === 'production';
 }
 
+function getOrCreateStableDevSecret(): string {
+  if (!ephemeralDevSecret) {
+    const seed = `${process.env.DATABASE_URL || ''}|${process.cwd()}|truespend-dev-jwt-v1`;
+    ephemeralDevSecret = crypto
+      .createHmac('sha256', 'truespend-local-dev-ephemeral-secret')
+      .update(seed)
+      .digest('hex');
+  }
+  return ephemeralDevSecret;
+}
+
 export function validateAuthConfig(): { ok: boolean; mode: 'env' | 'ephemeral_dev' } {
   const configured = (process.env.JWT_SECRET || '').trim();
   const isWeakOrDefault =
@@ -55,9 +66,7 @@ export function validateAuthConfig(): { ok: boolean; mode: 'env' | 'ephemeral_de
   }
 
   if (isWeakOrDefault) {
-    if (!ephemeralDevSecret) {
-      ephemeralDevSecret = crypto.randomBytes(48).toString('hex');
-    }
+    getOrCreateStableDevSecret();
     return { ok: true, mode: 'ephemeral_dev' };
   }
 
@@ -70,10 +79,7 @@ export function getJwtSecret(): string {
   if (configured && configured.length >= 32 && !HARDCODED_INSECURE_SECRETS.has(configured.toLowerCase())) {
     return configured;
   }
-  if (!ephemeralDevSecret) {
-    ephemeralDevSecret = crypto.randomBytes(48).toString('hex');
-  }
-  return ephemeralDevSecret;
+  return getOrCreateStableDevSecret();
 }
 
 export function getJwtKeyId(): string {

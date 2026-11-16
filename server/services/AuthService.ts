@@ -38,8 +38,9 @@ import type {
   AccountSecurityEventInfo,
 } from '../../src/types/index.js';
 
-export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
-export const REFRESH_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+export const ACCESS_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days (once-per-week login)
+export const REFRESH_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days sliding refresh window
+const REFRESH_ROTATION_GRACE_MS = 20_000; // 20s grace window for concurrent multi-tab/StrictMode refreshes
 export const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const PASSWORD_RESET_TTL_MS = 30 * 60 * 1000; // 30 minutes
 export const REFRESH_COOKIE_NAME = 'truespend_refresh';
@@ -633,8 +634,47 @@ export class AuthService {
       throw new AuthError('Invalid refresh credentials.', 401, 'INVALID_REFRESH_TOKEN');
     }
 
-    // Reuse detection: token already rotated or revoked -> revoke ENTIRE family!
+    // Check concurrent rotation grace window before declaring reuse attack
     if (session.revokedAt || session.replacedBySessionId) {
+      const revokedAgoMs = session.revokedAt
+        ? Date.now() - new Date(session.revokedAt).getTime()
+        : Number.POSITIVE_INFINITY;
+
+      if (session.replacedBySessionId && revokedAgoMs >= 0 && revokedAgoMs <= REFRESH_ROTATION_GRACE_MS) {
+        const replacementRows = await db
+          .select()
+          .from(authSessions)
+          .where(eq(authSessions.id, session.replacedBySessionId))
+          .limit(1);
+        const replacement = replacementRows[0];
+        if (
+          replacement &&
+          !replacement.revokedAt &&
+          new Date(replacement.expiresAt).getTime() > Date.now()
+        ) {
+          const userRows = await db.select().from(users).where(eq(users.id, session.userId)).limit(1);
+          const userRow = userRows[0];
+          if (
+            userRow &&
+            userRow.status !== 'deleted' &&
+            userRow.status !== 'legacy_hidden' &&
+            userRow.status !== 'suspended' &&
+            userRow.status !== 'deletion_pending'
+          ) {
+            const accessToken = this.signAccessToken(userRow, replacement.id);
+            return {
+              token: accessToken,
+              accessToken,
+              refreshCookieValue: undefined,
+              skipCookieUpdate: true,
+              sessionId: replacement.id,
+              user: this.formatAuthUser(userRow),
+            };
+          }
+        }
+      }
+
+      // True reuse outside grace window or explicitly revoked session -> revoke ENTIRE family!
       await db
         .update(authSessions)
         .set({ revokedAt: new Date() })
@@ -682,7 +722,7 @@ export class AuthService {
     const newHash = hashOpaqueToken(newRawSecret);
     const newExpiresAt = new Date(Date.now() + REFRESH_SESSION_TTL_MS);
 
-    const rotatedSession = await db.transaction(async (txDb) => {
+    const rotationResult = await db.transaction(async (txDb) => {
       const [created] = await txDb
         .insert(authSessions)
         .values({
@@ -707,7 +747,25 @@ export class AuthService {
         .returning();
 
       if (updatedOld.length === 0) {
-        // Concurrent race condition -> revoke entire family
+        // Another concurrent request rotated this row milliseconds earlier — delete our unused candidate
+        await txDb.delete(authSessions).where(eq(authSessions.id, created.id));
+        const [latestOld] = await txDb
+          .select()
+          .from(authSessions)
+          .where(eq(authSessions.id, session.id))
+          .limit(1);
+
+        if (latestOld?.replacedBySessionId) {
+          const [winner] = await txDb
+            .select()
+            .from(authSessions)
+            .where(eq(authSessions.id, latestOld.replacedBySessionId))
+            .limit(1);
+          if (winner && !winner.revokedAt && new Date(winner.expiresAt).getTime() > Date.now()) {
+            return { session: winner, skipCookieUpdate: true };
+          }
+        }
+
         await txDb
           .update(authSessions)
           .set({ revokedAt: new Date() })
@@ -719,18 +777,30 @@ export class AuthService {
         );
       }
 
-      return created;
+      return { session: created, skipCookieUpdate: false };
     });
 
-    const accessToken = this.signAccessToken(userRow, rotatedSession.id);
-    const refreshCookieValue = `${rotatedSession.id}.${newRawSecret}`;
+    const accessToken = this.signAccessToken(userRow, rotationResult.session.id);
+    if (rotationResult.skipCookieUpdate) {
+      return {
+        token: accessToken,
+        accessToken,
+        refreshCookieValue: undefined,
+        skipCookieUpdate: true,
+        sessionId: rotationResult.session.id,
+        user: this.formatAuthUser(userRow),
+      };
+    }
+
+    const refreshCookieValue = `${rotationResult.session.id}.${newRawSecret}`;
 
     return {
       token: accessToken,
       accessToken,
       refreshCookieValue,
+      skipCookieUpdate: false,
       ...(ctx.isCapacitorNative ? { refreshToken: refreshCookieValue } : {}),
-      sessionId: rotatedSession.id,
+      sessionId: rotationResult.session.id,
       user: this.formatAuthUser(userRow),
     };
   }
