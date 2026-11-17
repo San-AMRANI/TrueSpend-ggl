@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, LayoutGrid, X } from 'lucide-react';
 import { NAV_GROUP_ORDER, NAV_ITEMS } from '../../config/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { isTabAvailableForUser } from '../../lib/entitlements';
+import { prefetchTabChunk } from '../../lib/tabPrefetch';
 
 interface DashboardNavProps {
   activeTab: DashboardTab;
@@ -56,6 +57,9 @@ export const DashboardNav: React.FC<DashboardNavProps> = ({ activeTab, setActive
         key={tab.id}
         type="button"
         aria-current={isActive ? 'page' : undefined}
+        onMouseEnter={() => prefetchTabChunk(tab.id)}
+        onFocus={() => prefetchTabChunk(tab.id)}
+        onTouchStart={() => prefetchTabChunk(tab.id)}
         onClick={() => chooseTab(tab.id)}
         className={`flex min-h-[54px] flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-1.5 text-[10px] font-medium leading-tight transition-colors ${
           isActive

@@ -1,6 +1,6 @@
 import { googleSignIn, getGoogleAccessToken } from '../lib/googleAuth';
 import { uploadToGoogleDrive } from '../lib/driveUpload';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { dashboardService } from '../services/api/dashboardService';
 import {
   CategoryBudget,
@@ -19,6 +19,11 @@ import {
 } from '../types';
 import { useNotifications } from './useNotifications';
 import { netExpenseOf } from '../lib/finance';
+import {
+  getRequiredSlicesForTab,
+  mergeTransactionsSlice,
+  type TransactionsWindowMeta,
+} from '../lib/bootstrapScopes';
 
 export function useDashboardData(token: string | null, experienceTier?: ExperienceTier) {
   const [kpis, setKpis] = useState<KPI | null>(null);
@@ -52,57 +57,205 @@ export function useDashboardData(token: string | null, experienceTier?: Experien
   const [whatIfAmount, setWhatIfAmount] = useState<number>(0);
   const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
 
+  // Partial / on-demand slice hydration flags
+  const [transactionsWindow, setTransactionsWindow] = useState<TransactionsWindowMeta | null>(null);
+  const [hasFullHistory, setHasFullHistory] = useState<boolean>(false);
+  const [hasContexts, setHasContexts] = useState<boolean>(false);
+  const [hasInvestments, setHasInvestments] = useState<boolean>(false);
+  const [hasRadar, setHasRadar] = useState<boolean>(false);
+  const [isHydratingHistory, setIsHydratingHistory] = useState<boolean>(false);
+  const [isHydratingInvestments, setIsHydratingInvestments] = useState<boolean>(false);
+  const [isHydratingRadar, setIsHydratingRadar] = useState<boolean>(false);
+
+  const corePromiseRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  const historyPromiseRef = useRef<Promise<void> | null>(null);
+  const investmentsPromiseRef = useRef<Promise<void> | null>(null);
+  const radarPromiseRef = useRef<Promise<void> | null>(null);
+
   const notifications = useNotifications();
   const isAdvancedTier = experienceTier === 'advanced';
 
+  const ensureHistoryLoaded = useCallback(
+    async (force = false) => {
+      if (!token) return;
+      if (!force && hasFullHistory && (!isAdvancedTier || hasContexts)) return;
+      if (historyPromiseRef.current) return historyPromiseRef.current;
+
+      setIsHydratingHistory(true);
+      const promise = (async () => {
+        try {
+          const hist = await dashboardService.getDashboardBootstrap(token, 'history');
+          if (hist.transactions) {
+            setTransactions(hist.transactions);
+          }
+          if (hist.transactionsWindow) {
+            setTransactionsWindow(hist.transactionsWindow);
+          }
+          if (isAdvancedTier && hist.contexts) {
+            setContexts(hist.contexts);
+          }
+          setHasFullHistory(true);
+          setHasContexts(true);
+        } catch (e) {
+          console.error('Error hydrating transaction history:', e);
+        } finally {
+          setIsHydratingHistory(false);
+          historyPromiseRef.current = null;
+        }
+      })();
+      historyPromiseRef.current = promise;
+      return promise;
+    },
+    [token, hasFullHistory, hasContexts, isAdvancedTier]
+  );
+
+  const ensureInvestmentsLoaded = useCallback(
+    async (forceRefresh = false) => {
+      if (!token || !isAdvancedTier) return;
+      if (!forceRefresh && hasInvestments && investmentsData) return;
+      if (investmentsPromiseRef.current && !forceRefresh) return investmentsPromiseRef.current;
+
+      setIsHydratingInvestments(true);
+      const promise = (async () => {
+        try {
+          const invData = await dashboardService.getInvestmentsData(token, forceRefresh);
+          setInvestmentsData(invData || null);
+          setHasInvestments(true);
+        } catch (e) {
+          console.error('Error hydrating investments data:', e);
+        } finally {
+          setIsHydratingInvestments(false);
+          investmentsPromiseRef.current = null;
+        }
+      })();
+      investmentsPromiseRef.current = promise;
+      return promise;
+    },
+    [token, isAdvancedTier, hasInvestments, investmentsData]
+  );
+
+  const ensureRadarLoaded = useCallback(
+    async (force = false) => {
+      if (!token || !isAdvancedTier) return;
+      if (!force && hasRadar && operationalRadar) return;
+      if (radarPromiseRef.current && !force) return radarPromiseRef.current;
+
+      setIsHydratingRadar(true);
+      const promise = (async () => {
+        try {
+          const res = await dashboardService.getDashboardBootstrap(token, 'radar');
+          setOperationalRadar(res.operationalRadar ?? null);
+          setHasRadar(true);
+        } catch (e) {
+          console.error('Error hydrating operational radar:', e);
+        } finally {
+          setIsHydratingRadar(false);
+          radarPromiseRef.current = null;
+        }
+      })();
+      radarPromiseRef.current = promise;
+      return promise;
+    },
+    [token, isAdvancedTier, hasRadar, operationalRadar]
+  );
+
   const fetchData = useCallback(async () => {
     if (!token) return;
-    setLoading(true);
-    try {
-      const bootstrap = await dashboardService.getDashboardBootstrap(token, 'all');
-      setKpis(bootstrap.kpis || null);
-      setTransactions(bootstrap.transactions || []);
-      setDebts(bootstrap.debts || []);
-      setUserSettings(bootstrap.settings ?? null);
-      setBudgets(bootstrap.budgets || []);
-      setPayrolls(bootstrap.payrolls || []);
-      setGoals(bootstrap.goals || []);
-      setSubscriptions(bootstrap.subscriptions || []);
-      setContexts(isAdvancedTier ? (bootstrap.contexts || []) : []);
-      setInvestmentsData(isAdvancedTier ? (bootstrap.investmentsData || null) : null);
-      setOperationalRadar(isAdvancedTier ? (bootstrap.operationalRadar ?? null) : null);
-
-      // Non-blocking background live market hydration after fast bootstrap renders
-      if (isAdvancedTier) {
-        setTimeout(() => {
-          dashboardService
-            .getInvestmentsData(token, false)
-            .then((freshInv) => {
-              if (freshInv) setInvestmentsData(freshInv);
-            })
-            .catch(() => {});
-        }, 180);
-      }
-    } catch (e) {
-      console.error('Error fetching dashboard data:', e);
-    } finally {
-      setLoading(false);
+    const reqKey = `${token}:${isAdvancedTier ? 'adv' : 'basic'}`;
+    if (corePromiseRef.current?.key === reqKey) {
+      return corePromiseRef.current.promise;
     }
+
+    setLoading(true);
+    const promise = (async () => {
+      try {
+        const bootstrap = await dashboardService.getDashboardBootstrap(token, 'core');
+        setKpis(bootstrap.kpis || null);
+        const incomingPartial = Boolean(bootstrap.transactionsWindow?.isPartial);
+        setTransactions(bootstrap.transactions || []);
+        setTransactionsWindow(bootstrap.transactionsWindow ?? null);
+        setHasFullHistory(!incomingPartial);
+        setDebts(bootstrap.debts || []);
+        setUserSettings(bootstrap.settings ?? null);
+        setBudgets(bootstrap.budgets || []);
+        setPayrolls(bootstrap.payrolls || []);
+        setGoals(bootstrap.goals || []);
+        setSubscriptions(bootstrap.subscriptions || []);
+        // Reset lazy secondary flags so on-demand tabs/bands re-sync cleanly when needed
+        setHasContexts(false);
+        setHasRadar(false);
+        setHasInvestments(false);
+        if (!isAdvancedTier) {
+          setContexts([]);
+          setInvestmentsData(null);
+          setOperationalRadar(null);
+        }
+      } catch (e) {
+        console.error('Error fetching dashboard data:', e);
+      } finally {
+        setLoading(false);
+        if (corePromiseRef.current?.key === reqKey) {
+          corePromiseRef.current = null;
+        }
+      }
+    })();
+
+    corePromiseRef.current = { key: reqKey, promise };
+    return promise;
   }, [token, isAdvancedTier]);
 
   const refreshLedger = useCallback(async () => {
     if (!token) return;
     try {
-      const ledger = await dashboardService.getDashboardBootstrap(token, 'ledger');
+      const ledger = await dashboardService.getDashboardBootstrap(token, 'ledger', {
+        full: hasFullHistory,
+      });
       if (ledger.kpis) setKpis(ledger.kpis);
-      if (ledger.transactions) setTransactions(ledger.transactions);
+      if (ledger.transactions) {
+        const isPartial = Boolean(ledger.transactionsWindow?.isPartial);
+        setTransactions((prev) => mergeTransactionsSlice(prev, ledger.transactions!, isPartial));
+        if (ledger.transactionsWindow) {
+          setTransactionsWindow(ledger.transactionsWindow);
+        }
+      }
       if (ledger.debts) setDebts(ledger.debts);
       if (ledger.payrolls) setPayrolls(ledger.payrolls);
       if (ledger.budgets) setBudgets(ledger.budgets);
+      if (hasRadar) {
+        void ensureRadarLoaded(true);
+      }
     } catch (e) {
       console.error('Error refreshing ledger data:', e);
     }
-  }, [token]);
+  }, [token, hasFullHistory, hasRadar, ensureRadarLoaded]);
+
+  // Hydrate full history / investments strictly on demand when switching to a tab that requires them
+  useEffect(() => {
+    if (loading || !kpis || !token) return;
+    const { needHistory, needInvestments } = getRequiredSlicesForTab(activeTab, {
+      hasFullHistory,
+      hasContexts,
+      hasInvestments,
+      isAdvanced: isAdvancedTier,
+    });
+    if (needHistory) {
+      void ensureHistoryLoaded();
+    }
+    if (needInvestments) {
+      void ensureInvestmentsLoaded();
+    }
+  }, [
+    activeTab,
+    loading,
+    kpis,
+    token,
+    hasFullHistory,
+    hasContexts,
+    hasInvestments,
+    isAdvancedTier,
+    ensureHistoryLoaded,
+    ensureInvestmentsLoaded,
+  ]);
 
   // When fresh data arrives, schedule (or re-schedule) the smart notification stream
   useEffect(() => {
@@ -976,6 +1129,14 @@ export function useDashboardData(token: string | null, experienceTier?: Experien
     isSaving,
     isExporting,
     isImporting,
+    transactionsWindow,
+    hasFullHistory,
+    isHydratingHistory,
+    isHydratingInvestments,
+    isHydratingRadar,
+    ensureHistoryLoaded,
+    ensureInvestmentsLoaded,
+    ensureRadarLoaded,
     analyticsMonth,
     setAnalyticsMonth,
     activeTab,

@@ -46,11 +46,21 @@ import {
 import { useTheme } from '../../context/ThemeContext';
 import { usePrivacy } from '../../context/PrivacyContext';
 import {
+  generateFacts,
   pickRandomFact,
+  selectFacts,
   type FactIcon,
   type FinancialFact,
 } from '../../lib/financialFacts';
-import type { DashboardTab, KPI } from '../../types';
+import type {
+  CategoryBudget,
+  DashboardTab,
+  Debt,
+  InvestmentsData,
+  KPI,
+  Payroll,
+  Transaction,
+} from '../../types';
 
 const PET_STORAGE_KEY = 'truespend_spex_companion_mode_v1';
 const AUTO_SIGNAL_INITIAL_DELAY_MS = 5000;
@@ -63,6 +73,11 @@ interface SpexCompanionPetProps {
   activeTab: DashboardTab;
   kpis?: KPI | null;
   facts?: FinancialFact[];
+  transactions?: Transaction[];
+  debts?: Debt[];
+  budgets?: CategoryBudget[];
+  payrolls?: Payroll[];
+  investmentsData?: InvestmentsData | null;
   onOpenChat: () => void;
 }
 
@@ -237,9 +252,21 @@ const TAB_REACTIONS: Partial<
 export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
   activeTab,
   kpis,
-  facts = [],
+  facts: propFacts,
+  transactions = [],
+  debts = [],
+  budgets = [],
+  payrolls = [],
+  investmentsData = null,
   onOpenChat,
 }) => {
+  const facts = useMemo(() => {
+    if (propFacts) return propFacts;
+    if (!kpis) return [];
+    return selectFacts(
+      generateFacts(kpis, transactions, debts, budgets, payrolls, investmentsData)
+    );
+  }, [propFacts, kpis, transactions, debts, budgets, payrolls, investmentsData]);
   const [mode, setMode] = useState<PetDisplayMode>(() => {
     if (typeof window === 'undefined') return 'perched';
     const saved = localStorage.getItem(PET_STORAGE_KEY);

@@ -10,6 +10,8 @@ import { Select } from '../ui/Select';
 import TransactionForm from '../TransactionForm';
 import { useAuth } from '../../context/AuthContext';
 import { dashboardService } from '../../services/api/dashboardService';
+import { useProgressiveItems } from '../ui/ProgressiveSection';
+import type { TransactionsWindowMeta } from '../../lib/bootstrapScopes';
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -58,6 +60,8 @@ interface TransactionsTabProps {
   debts?: Debt[];
   payrolls?: Payroll[];
   investmentsData?: InvestmentsData | null;
+  isHydratingHistory?: boolean;
+  transactionsWindow?: TransactionsWindowMeta | null;
   setActiveTab?: (tab: DashboardTab) => void;
   handleDeleteTx: (id: string) => Promise<void> | void;
   fetchData: () => void;
@@ -88,6 +92,8 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   debts = [],
   payrolls = [],
   investmentsData = null,
+  isHydratingHistory = false,
+  transactionsWindow = null,
   setActiveTab,
   handleDeleteTx,
   fetchData,
@@ -353,6 +359,10 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     return visibleTransactions.slice(0, visibleCount);
   }, [visibleTransactions, pageSize, visibleCount]);
 
+  // Progressive frame-by-frame DOM hydration prevents main-thread freezes when rendering 50-500+ rows
+  const { visibleItems: progressiveTransactions, isComplete: isListRenderComplete } =
+    useProgressiveItems(paginatedTransactions, 24, 36);
+
   // Active filter count
   const activeFilterCount = [
     filters.datePreset !== 'all',
@@ -552,12 +562,12 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     document.body.removeChild(link);
   };
 
-  // Group paginated transactions by local date
+  // Group progressively-hydrated transactions by local date
   const dateGroups = useMemo(() => {
     const groups: { dateKey: string; label: string; date: Date; items: Transaction[]; netDay: number }[] = [];
     const groupMap = new Map<string, { label: string; date: Date; items: Transaction[]; netDay: number }>();
 
-    for (const tx of paginatedTransactions) {
+    for (const tx of progressiveTransactions) {
       const d = new Date(tx.createdAt);
       const key = format(d, 'yyyy-MM-dd');
       let g = groupMap.get(key);
@@ -584,7 +594,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     }
 
     return groups;
-  }, [paginatedTransactions]);
+  }, [progressiveTransactions]);
 
   return (
     <div className="space-y-6">
@@ -1730,12 +1740,27 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                 </div>
               </div>
 
-              <span className="font-mono tabular-nums whitespace-nowrap shrink-0">
-                Showing {paginatedTransactions.length === 0 ? 0 : 1}–{paginatedTransactions.length} of{' '}
-                {visibleTransactions.length}
-                {visibleTransactions.length !== transactions.length ? ` (filtered from ${transactions.length})` : ''}{' '}
-                record{visibleTransactions.length === 1 ? '' : 's'}
-              </span>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {(isHydratingHistory || transactionsWindow?.isPartial) && (
+                  <span className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/80 dark:bg-indigo-950/40 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:text-indigo-300">
+                    <RefreshCw className={`h-3 w-3 ${isHydratingHistory ? 'animate-spin' : ''}`} />
+                    {isHydratingHistory
+                      ? 'Syncing full archive...'
+                      : `Showing recent ${transactionsWindow?.loadedCount ?? transactions.length} of ${transactionsWindow?.totalCount ?? transactions.length}`}
+                  </span>
+                )}
+                {!isListRenderComplete && (
+                  <span className="text-[11px] font-mono tabular-nums text-gray-400">
+                    Rendering {progressiveTransactions.length}/{paginatedTransactions.length}...
+                  </span>
+                )}
+                <span className="font-mono tabular-nums whitespace-nowrap shrink-0">
+                  Showing {paginatedTransactions.length === 0 ? 0 : 1}–{paginatedTransactions.length} of{' '}
+                  {visibleTransactions.length}
+                  {visibleTransactions.length !== transactions.length ? ` (filtered from ${transactions.length})` : ''}{' '}
+                  record{visibleTransactions.length === 1 ? '' : 's'}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -2072,7 +2097,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
           {/* VIEW MODE 2: Compact List Rows */}
           {viewMode === 'compact' && (
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {paginatedTransactions.map((transaction) => {
+              {progressiveTransactions.map((transaction) => {
                 const isSelected = selectedTxIds.has(transaction.id);
                 return (
                   <div
@@ -2193,7 +2218,7 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {paginatedTransactions.map((transaction) => {
+                  {progressiveTransactions.map((transaction) => {
                     const isSelected = selectedTxIds.has(transaction.id);
                     return (
                       <tr
