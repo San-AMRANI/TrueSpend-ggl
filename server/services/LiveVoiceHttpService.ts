@@ -9,7 +9,6 @@ import {
   MODEL_FLASH_TTS,
   MODEL_LIVE,
   MODEL_TTS,
-  isModelQuotaExhausted,
   isModelUnavailable,
   markModelQuotaExhausted,
   markModelTemporaryOverload,
@@ -215,34 +214,104 @@ async function tryGeminiLiveBurstTurn(
   });
 }
 
-async function synthesizeVoicePcm(text: string, voiceName: LiveVoiceName): Promise<Buffer | null> {
-  const ttsModels = [MODEL_FLASH_TTS, MODEL_TTS].filter((m) => !isModelQuotaExhausted(m));
-  for (const model of ttsModels) {
+interface SynthesizedVoiceResult {
+  pcmBuffer: Buffer;
+  mimeType: string;
+  model: string;
+}
+
+async function synthesizeVoicePcm(
+  text: string,
+  voiceName: LiveVoiceName,
+  signal?: AbortSignal,
+): Promise<{ result: SynthesizedVoiceResult | null; failureReason?: string }> {
+  const spokenText = text.trim().slice(0, 1200);
+  if (!spokenText) return { result: null, failureReason: 'EMPTY_TEXT' };
+
+  const allTtsModels = [MODEL_TTS, MODEL_FLASH_TTS];
+  const candidateModels = allTtsModels.filter((m) => !isModelUnavailable(m));
+  const modelsToTry = candidateModels.length > 0 ? candidateModels : allTtsModels;
+  let lastReason = 'TTS_UNAVAILABLE';
+
+  for (const model of modelsToTry) {
+    if (signal?.aborted) return { result: null, failureReason: 'ABORTED' };
+    const contents = [{ role: 'user', parts: [{ text: spokenText }] }];
+    const config = {
+      responseModalities: ['AUDIO'],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName },
+        },
+      },
+    };
+
     try {
       const response = await gemini.models.generateContent({
         model,
-        contents: text.slice(0, 900),
-        config: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName },
-            },
-          },
-        },
+        contents,
+        config,
       });
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (!base64Audio) continue;
-      const rawBuf = Buffer.from(base64Audio, 'base64');
-      return stripWavHeaderIfPresent(rawBuf);
+
+      const parts = response.candidates?.[0]?.content?.parts ?? [];
+      const audioParts = parts.filter(
+        (p: any) => typeof p?.inlineData?.data === 'string' && p.inlineData.data.length > 0,
+      );
+      if (audioParts.length > 0) {
+        const pcmBuffers = audioParts.map((p: any) =>
+          stripWavHeaderIfPresent(Buffer.from(p.inlineData.data, 'base64')),
+        );
+        const merged = Buffer.concat(pcmBuffers);
+        if (merged.length > 0) {
+          return {
+            result: {
+              pcmBuffer: merged,
+              mimeType: 'audio/pcm;rate=24000',
+              model,
+            },
+          };
+        }
+      }
+
+      // If unary returned no inline audio, try streaming TTS (raw L16 PCM)
+      const stream = await gemini.models.generateContentStream({
+        model,
+        contents,
+        config,
+      });
+      const streamChunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        if (signal?.aborted) break;
+        const cParts = chunk.candidates?.[0]?.content?.parts ?? [];
+        for (const p of cParts) {
+          if (p?.inlineData?.data) {
+            streamChunks.push(stripWavHeaderIfPresent(Buffer.from(p.inlineData.data, 'base64')));
+          }
+        }
+      }
+      const streamMerged = Buffer.concat(streamChunks);
+      if (streamMerged.length > 0) {
+        return {
+          result: {
+            pcmBuffer: streamMerged,
+            mimeType: 'audio/pcm;rate=24000',
+            model,
+          },
+        };
+      }
     } catch (err: any) {
-      const msg = String(err?.message || '').toLowerCase();
+      const rawMsg = String(err?.message || err || '');
+      const msg = rawMsg.toLowerCase();
+      lastReason = formatFriendlyGeminiError(err);
+      console.warn(`[LiveVoiceHttp] TTS failed on ${model}:`, rawMsg.slice(0, 220));
       if (err?.status === 429 || msg.includes('quota') || msg.includes('resource_exhausted')) {
         markModelQuotaExhausted(model, 1000 * 60 * 60);
+      } else if (err?.status === 503 || msg.includes('503') || msg.includes('unavailable')) {
+        markModelTemporaryOverload(model, 1000 * 60 * 2);
       }
     }
   }
-  return null;
+
+  return { result: null, failureReason: lastReason };
 }
 
 async function runHttpModelAndTtsFallback(
@@ -337,17 +406,25 @@ async function runHttpModelAndTtsFallback(
 
   if (params.signal?.aborted) return;
 
-  const pcmOut = await synthesizeVoicePcm(spokenReply, params.voiceName);
-  if (pcmOut && pcmOut.length > 0 && !params.signal?.aborted) {
+  const ttsOutcome = await synthesizeVoicePcm(spokenReply, params.voiceName, params.signal);
+  if (ttsOutcome.result && ttsOutcome.result.pcmBuffer.length > 0 && !params.signal?.aborted) {
+    const pcmOut = ttsOutcome.result.pcmBuffer;
     const CHUNK_SIZE = 24_000;
     for (let offset = 0; offset < pcmOut.length; offset += CHUNK_SIZE) {
       const slice = pcmOut.subarray(offset, Math.min(offset + CHUNK_SIZE, pcmOut.length));
       onEvent({
         type: 'audio',
         audio: slice.toString('base64'),
-        mimeType: 'audio/pcm;rate=24000',
+        mimeType: ttsOutcome.result.mimeType,
+        model: ttsOutcome.result.model,
       });
     }
+  } else if (!params.signal?.aborted) {
+    onEvent({
+      type: 'audio_status',
+      audioAvailable: false,
+      reason: ttsOutcome.failureReason || 'TTS_UNAVAILABLE',
+    });
   }
 
   onEvent({ type: 'turn_complete', turnComplete: true });

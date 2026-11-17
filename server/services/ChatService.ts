@@ -258,7 +258,7 @@ function chunkTextForTts(text: string, maxChunkLen = 500): string[] {
 }
 
 async function synthesizeSingleChunk(chunk: string): Promise<Buffer> {
-  const modelsToTry = [MODEL_FLASH_TTS, MODEL_TTS].filter((m) => !isModelQuotaExhausted(m));
+  const modelsToTry = [MODEL_TTS, MODEL_FLASH_TTS].filter((m) => !isModelQuotaExhausted(m));
 
   if (modelsToTry.length === 0) {
     throw new Error('All Gemini TTS models have reached quota limits. Falling back to browser speech.');
@@ -270,7 +270,7 @@ async function synthesizeSingleChunk(chunk: string): Promise<Buffer> {
     try {
       const response = await gemini.models.generateContent({
         model,
-        contents: chunk,
+        contents: [{ role: 'user', parts: [{ text: chunk }] }],
         config: {
           responseModalities: ['AUDIO'],
           speechConfig: {

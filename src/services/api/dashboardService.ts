@@ -731,6 +731,9 @@ export const dashboardService = {
       message: string;
       invitationAccepted?: boolean;
       invitationWarning?: string;
+      emailDelivered?: boolean;
+      deliveryStatus?: string;
+      emailDeliveryWarning?: string;
       devVerificationToken?: string;
     }>('/api/auth/register', payload),
   loginAccount: (payload: { email?: string; username?: string; password: string }) =>
@@ -751,12 +754,26 @@ export const dashboardService = {
       user: User;
     }>('/api/auth/verify-email', { token }),
   resendVerificationEmail: (email: string) =>
-    apiClient.post<{ sent: boolean; message: string; devVerificationToken?: string }>(
+    apiClient.post<{
+      sent: boolean;
+      message: string;
+      emailDelivered?: boolean;
+      deliveryStatus?: string;
+      emailDeliveryWarning?: string;
+      devVerificationToken?: string;
+    }>(
       '/api/auth/resend-verification',
       { email }
     ),
   forgotPasswordRequest: (email: string) =>
-    apiClient.post<{ sent: boolean; message: string; devResetToken?: string }>(
+    apiClient.post<{
+      sent: boolean;
+      message: string;
+      emailDelivered?: boolean;
+      deliveryStatus?: string;
+      emailDeliveryWarning?: string;
+      devResetToken?: string;
+    }>(
       '/api/auth/forgot-password',
       { email }
     ),
@@ -772,7 +789,14 @@ export const dashboardService = {
       token
     ),
   changeEmail: (currentPassword: string, newEmail: string, token: string | null) =>
-    apiClient.post<{ pendingEmail: string; message: string; devVerificationToken?: string }>(
+    apiClient.post<{
+      pendingEmail: string;
+      message: string;
+      emailDelivered?: boolean;
+      deliveryStatus?: string;
+      emailDeliveryWarning?: string;
+      devVerificationToken?: string;
+    }>(
       '/api/auth/change-email',
       { currentPassword, newEmail },
       token

@@ -313,7 +313,10 @@ export class AuthController {
 
   async testEmail(req: Request, res: Response) {
     try {
-      const email = String(req.body?.email || req.query?.email || 'frank.ctl35@gmail.com').trim();
+      const email = String(req.body?.email || req.query?.email || '').trim();
+      if (!email) {
+        return res.status(400).json({ error: 'Target email address is required.' });
+      }
       const templateName = (req.body?.templateName ||
         req.query?.templateName ||
         'email_verification') as EmailTemplateName;
@@ -329,7 +332,7 @@ export class AuthController {
       });
       res.json(result);
     } catch (e: any) {
-      res.status(500).json({ error: e?.message || 'Test email failed' });
+      res.status(400).json({ error: e?.message || 'Test email failed' });
     }
   }
 }

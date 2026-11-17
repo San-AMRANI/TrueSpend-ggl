@@ -67,6 +67,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
   const [resetTokenInput, setResetTokenInput] = useState('');
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState('');
   const [devPreviewToken, setDevPreviewToken] = useState<string | null>(null);
+  const [deliveryWarning, setDeliveryWarning] = useState<string | null>(null);
 
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -104,6 +105,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
   const clearFeedback = () => {
     setError('');
     setNotice('');
+    setDeliveryWarning(null);
   };
 
   const switchMode = (next: AuthMode) => {
@@ -193,6 +195,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
           ? `${res.message} ${res.invitationWarning}`
           : res.message
       );
+      setDeliveryWarning(res.emailDeliveryWarning || null);
       setDevPreviewToken(res.devVerificationToken || null);
       setVerifyTokenInput(res.devVerificationToken || '');
       setPassword('');
@@ -238,6 +241,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
     try {
       const res = await dashboardService.resendVerificationEmail(targetEmail);
       setNotice(res.message);
+      setDeliveryWarning(res.emailDeliveryWarning || null);
       if (res.devVerificationToken) {
         setDevPreviewToken(res.devVerificationToken);
         setVerifyTokenInput(res.devVerificationToken);
@@ -256,6 +260,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
     try {
       const res = await dashboardService.forgotPasswordRequest(email.trim());
       setNotice(res.message);
+      setDeliveryWarning(res.emailDeliveryWarning || null);
       if (res.devResetToken) {
         setDevPreviewToken(res.devResetToken);
         setResetTokenInput(res.devResetToken);
@@ -652,6 +657,11 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
                 Open the verification link sent to your email or paste the verification code below to
                 activate your account.
               </p>
+              {deliveryWarning && (
+                <div className="mt-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 px-2.5 py-2 text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed">
+                  {deliveryWarning}
+                </div>
+              )}
               {devPreviewToken && (
                 <div className="mt-2 rounded bg-white dark:bg-gray-900 border border-indigo-200 dark:border-indigo-800 px-2.5 py-1.5 font-mono text-[11px] break-all">
                   Local dev code: <strong>{devPreviewToken}</strong>
@@ -717,6 +727,12 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
                 required
               />
             </div>
+
+            {deliveryWarning && (
+              <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 p-3 text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
+                {deliveryWarning}
+              </div>
+            )}
 
             {devPreviewToken && (
               <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 p-3 text-xs space-y-2">
