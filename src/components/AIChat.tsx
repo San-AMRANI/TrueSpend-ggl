@@ -38,6 +38,7 @@ import {
   Search,
   FolderOpen,
   AlertTriangle,
+  AudioLines,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -54,6 +55,7 @@ import {
 import { playAudioBlob, playBrowserSpeech } from '../lib/speechEngine';
 import type { AiActionImpactSimulation } from '../types';
 import { getApiUrl } from '../lib/capacitorBridge';
+import { LiveVoiceSessionModal } from './chat/LiveVoiceSessionModal';
 
 /**
  * Ensures Markdown tables have a blank line before the header row and valid GFM separator rows
@@ -1156,6 +1158,33 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
   const [isVoiceMode, setIsVoiceMode] = useState<boolean>(() => {
     return localStorage.getItem('truespend_voice_mode') === 'true';
   });
+  const [showLiveVoiceModal, setShowLiveVoiceModal] = useState(false);
+
+  const handleLiveTurnCommitted = useCallback(
+    (userTranscript: string, assistantTranscript: string) => {
+      const now = Date.now();
+      setMessages((prev) => {
+        const next = [...prev];
+        if (userTranscript.trim()) {
+          next.push({
+            role: 'user',
+            content: `🎙️ ${userTranscript.trim()}`,
+            timestamp: now - 1000,
+          });
+        }
+        if (assistantTranscript.trim()) {
+          next.push({
+            role: 'assistant',
+            content: assistantTranscript.trim(),
+            modelUsed: 'gemini-3.8-live',
+            timestamp: now,
+          });
+        }
+        return next;
+      });
+    },
+    [setMessages],
+  );
 
   // Persist all conversations and keep legacy key synced with active thread
   useEffect(() => {
@@ -2092,6 +2121,16 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           <div className="flex items-center gap-1 shrink-0">
             <button
               type="button"
+              onClick={() => setShowLiveVoiceModal(true)}
+              title="Start real-time Gemini Live voice conversation"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700 transition-colors"
+            >
+              <AudioLines className="w-3.5 h-3.5 shrink-0" />
+              <span>Live</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => handleCreateNewConversation()}
               title="New conversation"
               className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors"
@@ -2505,6 +2544,16 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
             >
               <Plus className="w-3.5 h-3.5 shrink-0" />
               <span>New Chat</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowLiveVoiceModal(true)}
+              title="Start real-time Gemini Live voice conversation with Spex"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-gray-900 dark:bg-white hover:opacity-90 text-white dark:text-gray-900 px-2.5 py-1 text-xs font-semibold transition-opacity whitespace-nowrap shrink-0"
+            >
+              <AudioLines className="w-3.5 h-3.5 shrink-0 text-indigo-400 dark:text-indigo-600" />
+              <span>Live Voice</span>
             </button>
           </div>
 
@@ -3219,6 +3268,16 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
                 <button
                   type="button"
+                  onClick={() => setShowLiveVoiceModal(true)}
+                  title="Start real-time Gemini Live voice conversation"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
+                >
+                  <AudioLines className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden sm:inline">Live</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => handleSend()}
                   disabled={(!input.trim() && !selectedImage) || isLoading}
                   className="p-2 rounded-full bg-indigo-600 dark:bg-indigo-700 text-white hover:bg-indigo-700 dark:hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -3234,6 +3293,16 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
           </div>
         </div>
       </div>
+
+      {/* ─── Real-Time Gemini Live Voice Session Modal ─────────────── */}
+      <LiveVoiceSessionModal
+        isOpen={showLiveVoiceModal}
+        onClose={() => setShowLiveVoiceModal(false)}
+        token={token}
+        aiContext={aiContext}
+        focusScopes={focusScopes}
+        onTurnCommitted={handleLiveTurnCommitted}
+      />
 
       {/* ─── Gemini Quotas & Model Routing Modal ──────────────────────── */}
       {showQuotaModal && (

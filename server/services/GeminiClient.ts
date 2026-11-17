@@ -22,6 +22,7 @@ export const MODEL_FLASH_LITE_PREVIEW = 'gemini-3.1-flash-lite-preview'; // High
 export const MODEL_FLASH_LATEST = 'gemini-flash-latest';       // Standard fallback
 export const MODEL_TTS = 'gemini-3.8-flash-lite-tts';          // 10 requests/day (primary)
 export const MODEL_FLASH_TTS = 'gemini-3.8-flash-tts';         // Standard Flash TTS fallback
+export const MODEL_LIVE = 'gemini-3.8-live';                   // Real-time bidirectional voice (Live API)
 
 export const PRIMARY_GEMINI_MODEL = MODEL_FLASH_FAST;
 export const FALLBACK_GEMINI_MODEL = MODEL_FLASH_DEEP;

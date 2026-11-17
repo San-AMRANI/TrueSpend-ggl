@@ -55,6 +55,26 @@ export function getApiUrl(path: string): string {
   return isNativePlatform() ? `${getCapacitorApiBaseUrl()}${path}` : path;
 }
 
+export function getWebSocketUrl(path: string, token?: string | null): string {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  let baseWsUrl: string;
+
+  if (isNativePlatform()) {
+    const httpBase = getCapacitorApiBaseUrl();
+    baseWsUrl = httpBase.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:');
+  } else if (typeof window !== 'undefined') {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    baseWsUrl = `${proto}//${window.location.host}`;
+  } else {
+    baseWsUrl = 'ws://localhost:3000';
+  }
+
+  const sep = cleanPath.includes('?') ? '&' : '?';
+  return token
+    ? `${baseWsUrl}${cleanPath}${sep}token=${encodeURIComponent(token)}`
+    : `${baseWsUrl}${cleanPath}`;
+}
+
 export function setCapacitorApiBaseUrl(url: string): void {
   try {
     const cleaned = url.trim().replace(/\/+$/, '');

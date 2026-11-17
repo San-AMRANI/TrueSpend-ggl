@@ -28,9 +28,10 @@
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.4",
     "@electric-sql/pglite": "^0.5.16",
-    "@google/genai": "^2.4.0",
+    "@google/genai": "^3.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/nodemailer": "^8.0.2",
+    "@types/ws": "^8.18.2",
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
     "cookie-parser": "^1.4.7",
@@ -56,7 +57,8 @@
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.6.0",
     "tesseract.js": "^7.0.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "ws": "^8.23.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",

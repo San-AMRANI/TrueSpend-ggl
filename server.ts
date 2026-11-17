@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import http from 'http';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -13,6 +14,7 @@ import {
   isProductionEnv,
 } from './server/services/SecurityCrypto.js';
 import { httpCompressionMiddleware } from './server/middleware/compression.js';
+import { attachLiveVoiceGateway } from './server/services/LiveVoiceGateway.js';
 
 async function startServer() {
   // Fail fast in production if required security secrets are missing or weak
@@ -110,7 +112,10 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const httpServer = http.createServer(app);
+  attachLiveVoiceGateway(httpServer);
+
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
