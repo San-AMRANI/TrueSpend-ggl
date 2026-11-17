@@ -18,7 +18,6 @@ import {
   Settings,
 } from 'lucide-react';
 import type { DashboardTab } from '../types';
-import { SpexAvatar } from '../components/common/SpexAvatar';
 
 export type NavGroupId =
   | 'home'
@@ -45,7 +44,12 @@ const SpexNavIcon: React.FC<{ className?: string }> = ({ className = 'h-4 w-4' }
   React.createElement(
     'span',
     { className: `inline-flex items-center justify-center shrink-0 pointer-events-none ${className}` },
-    React.createElement(SpexAvatar, { className: 'w-full h-full', clickable: false })
+    React.createElement('img', {
+      src: '/spex-avatar.jpg',
+      alt: 'Spex AI',
+      className: 'w-full h-full rounded-full object-cover',
+      draggable: false,
+    })
   );
 
 export const NAV_GROUP_ORDER: { id: NavGroupId; label: string }[] = [

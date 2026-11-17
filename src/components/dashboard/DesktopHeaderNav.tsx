@@ -5,6 +5,7 @@ import { ChevronDown, LayoutGrid, Check } from 'lucide-react';
 import { NAV_GROUP_ORDER, NAV_ITEMS } from '../../config/navigation';
 import { useAuth } from '../../context/AuthContext';
 import { isTabAvailableForUser } from '../../lib/entitlements';
+import { prefetchTabChunk } from '../../lib/tabPrefetch';
 
 interface DesktopHeaderNavProps {
   activeTab: DashboardTab;
@@ -76,6 +77,8 @@ export const DesktopHeaderNav: React.FC<DesktopHeaderNavProps> = ({
             type="button"
             aria-current={isActive ? 'page' : undefined}
             title={tab.description}
+            onMouseEnter={() => prefetchTabChunk(tab.id)}
+            onFocus={() => prefetchTabChunk(tab.id)}
             onClick={() => {
               setIsExploreOpen(false);
               onSelectTab(tab.id);
@@ -180,6 +183,8 @@ export const DesktopHeaderNav: React.FC<DesktopHeaderNavProps> = ({
                           <button
                             key={tab.id}
                             type="button"
+                            onMouseEnter={() => prefetchTabChunk(tab.id)}
+                            onFocus={() => prefetchTabChunk(tab.id)}
                             onClick={() => {
                               onSelectTab(tab.id);
                               setIsExploreOpen(false);

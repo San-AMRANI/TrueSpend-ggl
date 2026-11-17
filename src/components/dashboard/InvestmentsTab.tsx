@@ -1428,8 +1428,11 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
           INTERACTIVE INVESTMENT ANALYTICS & BALANCE TRAJECTORY CHART SUITE
          =================================================================== */}
       {showAnalyticsPanel && (
-        <ProgressiveSection minHeight={360} priorityDelayMs={60} label="Portfolio Trajectory & Attribution Charts">
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-5">
+        <ProgressiveSection
+          minHeight={360}
+          label="Portfolio Trajectory & Attribution Charts"
+          render={() => (
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-5">
           <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 border-b border-gray-100 dark:border-gray-800 pb-4">
             <div>
               <div className="flex items-center gap-2">
@@ -1844,7 +1847,8 @@ export const InvestmentsTab: React.FC<InvestmentsTabProps> = ({
             </div>
           </div>
         </div>
-        </ProgressiveSection>
+          )}
+        />
       )}
 
       {/* ===================================================================

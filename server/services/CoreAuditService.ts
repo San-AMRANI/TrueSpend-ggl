@@ -1332,7 +1332,31 @@ export class CoreAuditService {
     return schedule;
   }
 
-  async syncAndGetCommitmentOccurrences(userId: string, horizonDays = 90) {
+  private commitmentSyncAt = new Map<string, number>();
+
+  invalidateCommitmentSync(userId?: string) {
+    if (userId) {
+      this.commitmentSyncAt.delete(userId);
+    } else {
+      this.commitmentSyncAt.clear();
+    }
+  }
+
+  async syncAndGetCommitmentOccurrences(
+    userId: string,
+    horizonDays = 90,
+    options?: { forceSync?: boolean }
+  ) {
+    const lastSynced = this.commitmentSyncAt.get(userId) || 0;
+    const isFresh = !options?.forceSync && Date.now() - lastSynced < 180_000;
+    if (isFresh) {
+      return db
+        .select()
+        .from(commitmentOccurrences)
+        .where(eq(commitmentOccurrences.userId, userId))
+        .orderBy(desc(commitmentOccurrences.expectedDate));
+    }
+
     const [userSubs, userDebts, userPayrolls, userWallets, existingOccs] = await Promise.all([
       db.select().from(subscriptions).where(eq(subscriptions.userId, userId)),
       db.select().from(debts).where(eq(debts.userId, userId)),
@@ -1564,6 +1588,7 @@ export class CoreAuditService {
         .where(inArray(commitmentOccurrences.id, overdueIds));
     }
 
+    this.commitmentSyncAt.set(userId, Date.now());
     return allOccurrences;
   }
 
@@ -2920,7 +2945,10 @@ export class CoreAuditService {
 
   // ─── 7. Operational Diagnostics & Financial Integrity Report ───────────────
 
-  async getFinancialIntegrityReport(userId: string) {
+  async getFinancialIntegrityReport(
+    userId: string,
+    options?: { preloadedExternalWealth?: Awaited<ReturnType<CoreAuditService['getExternalWealthItems']>> | null }
+  ) {
     const [userTx, entries, lines, userWallets, occurrences, stmtRows, userGoals, goalEvents, extWealth] =
       await Promise.all([
         db.select().from(transactions).where(eq(transactions.userId, userId)),
@@ -2931,7 +2959,9 @@ export class CoreAuditService {
         db.select().from(statementImportRows).where(eq(statementImportRows.userId, userId)),
         db.select().from(goals).where(eq(goals.userId, userId)),
         db.select().from(goalContributionEvents).where(eq(goalContributionEvents.userId, userId)),
-        this.getExternalWealthItems(userId),
+        options?.preloadedExternalWealth
+          ? Promise.resolve(options.preloadedExternalWealth)
+          : this.getExternalWealthItems(userId),
       ]);
 
     const txIds = new Set(userTx.map((t) => t.id));
