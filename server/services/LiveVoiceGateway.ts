@@ -4,28 +4,22 @@ import { LiveServerMessage, Modality } from '@google/genai';
 import jwt from 'jsonwebtoken';
 import { gemini, MODEL_LIVE } from './GeminiClient.js';
 import { getJwtSecret } from './SecurityCrypto.js';
+import { compactLiveContext } from '../../src/lib/liveVoiceHelpers.js';
 
 export const LIVE_VOICE_OPTIONS = ['Zephyr', 'Puck', 'Kore', 'Fenrir', 'Charon'] as const;
 export type LiveVoiceName = (typeof LIVE_VOICE_OPTIONS)[number];
 
-const MAX_LIVE_CONTEXT_CHARS = 75_000;
+const MAX_LIVE_CONTEXT_CHARS = 24_000;
+let liveWebSocketGatewayActive = false;
 
-function serializeLiveContext(contextData: unknown): string {
-  if (!contextData) return 'No financial snapshot provided yet.';
-  try {
-    const raw = JSON.stringify(contextData);
-    return raw.length > MAX_LIVE_CONTEXT_CHARS
-      ? `${raw.slice(0, MAX_LIVE_CONTEXT_CHARS)}...[truncated]`
-      : raw;
-  } catch {
-    return 'No financial snapshot provided yet.';
-  }
+export function isLiveWebSocketGatewayActive(): boolean {
+  return liveWebSocketGatewayActive && !process.env.VERCEL;
 }
 
-function buildLiveVoiceSystemInstruction(contextData?: unknown, focusScopes?: string[]): string {
+export function buildLiveVoiceSystemInstruction(contextData?: unknown, focusScopes?: string[]): string {
   const scopesLabel =
     Array.isArray(focusScopes) && focusScopes.length > 0 ? focusScopes.join(', ') : 'all';
-  const serializedContext = serializeLiveContext(contextData);
+  const serializedContext = compactLiveContext(contextData, MAX_LIVE_CONTEXT_CHARS);
 
   return `You are Spex, TrueSpend's real-time voice financial and investment strategist powered by Google Gemini Live.
 You are speaking directly with the user in a live, natural voice conversation.
@@ -65,6 +59,7 @@ function verifySocketToken(req: IncomingMessage): { userId: string } | null {
 
 export function attachLiveVoiceGateway(server: HttpServer): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
+  liveWebSocketGatewayActive = true;
 
   server.on('upgrade', (req, socket, head) => {
     try {
@@ -92,6 +87,13 @@ export function attachLiveVoiceGateway(server: HttpServer): WebSocketServer {
     let sessionPromise: Promise<any> | null = null;
     let activeSession: any = null;
     let isClosed = false;
+
+    const heartbeatTimer = setInterval(() => {
+      if (isClosed || clientWs.readyState !== WebSocket.OPEN) return;
+      try {
+        clientWs.ping();
+      } catch {}
+    }, 25_000);
 
     const safeSend = (payload: Record<string, unknown>) => {
       if (isClosed || clientWs.readyState !== WebSocket.OPEN) return;
@@ -137,6 +139,8 @@ export function attachLiveVoiceGateway(server: HttpServer): WebSocketServer {
         opts?.focusScopes,
       );
 
+      let geminiLiveOpened = false;
+
       sessionPromise = gemini.live
         .connect({
           model: MODEL_LIVE,
@@ -155,13 +159,19 @@ export function attachLiveVoiceGateway(server: HttpServer): WebSocketServer {
           },
           callbacks: {
             onopen: () => {
+              geminiLiveOpened = true;
               safeSend({
                 type: 'ready',
+                transport: 'websocket',
                 model: MODEL_LIVE,
                 voiceName: validVoice,
               });
             },
             onmessage: (message: LiveServerMessage) => {
+              if (message.setupComplete) {
+                safeSend({ type: 'setup_complete' });
+              }
+
               const content = message.serverContent;
               if (!content) return;
 
@@ -213,6 +223,13 @@ export function attachLiveVoiceGateway(server: HttpServer): WebSocketServer {
               const message =
                 err?.message || err?.error?.message || 'Gemini Live connection error occurred.';
               console.error('[LiveVoiceGateway] Gemini Live error:', message);
+              if (!geminiLiveOpened) {
+                safeSend({
+                  type: 'fallback_to_sse',
+                  error: message,
+                });
+                return;
+              }
               safeSend({
                 type: 'error',
                 error: message,
@@ -239,6 +256,13 @@ export function attachLiveVoiceGateway(server: HttpServer): WebSocketServer {
           const msg =
             err?.message || 'Failed to establish Gemini Live voice session. Please try again.';
           console.error('[LiveVoiceGateway] Failed to connect to Gemini Live:', msg);
+          if (!geminiLiveOpened) {
+            safeSend({
+              type: 'fallback_to_sse',
+              error: msg,
+            });
+            return null;
+          }
           safeSend({
             type: 'error',
             error: msg,
@@ -268,6 +292,7 @@ export function attachLiveVoiceGateway(server: HttpServer): WebSocketServer {
 
         if (msg.audio || (msg.type === 'audio' && msg.data)) {
           const audioBase64 = msg.audio || msg.data;
+          if (typeof audioBase64 !== 'string' || !audioBase64) return;
           sessionPromise?.then((session) => {
             if (!session) return;
             try {
@@ -309,11 +334,13 @@ export function attachLiveVoiceGateway(server: HttpServer): WebSocketServer {
 
     clientWs.on('close', () => {
       isClosed = true;
+      clearInterval(heartbeatTimer);
       closeGeminiSession();
     });
 
     clientWs.on('error', () => {
       isClosed = true;
+      clearInterval(heartbeatTimer);
       closeGeminiSession();
     });
   });

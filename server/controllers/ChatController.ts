@@ -7,6 +7,8 @@ import {
   MODEL_FLASH_FAST,
   MODEL_FLASH_LITE_PREVIEW,
 } from '../services/GeminiClient.js';
+import { isLiveWebSocketGatewayActive, LIVE_VOICE_OPTIONS } from '../services/LiveVoiceGateway.js';
+import { streamLiveVoiceTurn } from '../services/LiveVoiceHttpService.js';
 
 export const chatWithAi = async (req: Request, res: Response) => {
   try {
@@ -109,5 +111,76 @@ export const speakAiText = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('TTS error:', error);
     res.status(500).json({ error: error.message || 'Failed to synthesize speech' });
+  }
+};
+
+export const getLiveVoiceCapabilities = (_req: Request, res: Response) => {
+  const websocketSupported = isLiveWebSocketGatewayActive();
+  res.json({
+    websocketSupported,
+    sseVoiceSupported: true,
+    geminiConfigured: Boolean(process.env.GEMINI_API_KEY),
+    recommendedTransport: websocketSupported ? 'websocket' : 'sse',
+    wsPath: '/api/live',
+    sseTurnPath: '/api/chat/live-turn',
+    voices: LIVE_VOICE_OPTIONS,
+  });
+};
+
+export const streamLiveVoiceTurnHandler = async (req: Request, res: Response) => {
+  const abortController = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      abortController.abort();
+    }
+  });
+
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  (res as any).flushHeaders?.();
+
+  const writeSse = (payload: unknown) => {
+    if (res.writableEnded || abortController.signal.aborted) return;
+    try {
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch {}
+  };
+
+  try {
+    const {
+      audioBase64,
+      audioMimeType,
+      text,
+      voiceName,
+      contextData,
+      focusScopes,
+      history,
+    } = req.body || {};
+
+    await streamLiveVoiceTurn(
+      {
+        audioBase64,
+        audioMimeType,
+        text,
+        voiceName,
+        contextData,
+        focusScopes,
+        history,
+        signal: abortController.signal,
+      },
+      writeSse,
+    );
+  } catch (err: any) {
+    writeSse({
+      type: 'error',
+      error: err?.message || 'Unable to process live voice turn.',
+    });
+  } finally {
+    if (!res.writableEnded) {
+      res.end();
+    }
   }
 };

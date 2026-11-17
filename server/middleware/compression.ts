@@ -10,7 +10,13 @@ const MIN_COMPRESS_BYTES = 1024;
  * Avoids adding external dependencies while cutting large JSON bootstrap & static payloads by ~70-80%.
  */
 export function httpCompressionMiddleware(req: Request, res: Response, next: NextFunction) {
-  if (req.method === 'HEAD' || req.path === '/api/download-apk' || req.path === '/download-apk') {
+  if (
+    req.method === 'HEAD' ||
+    req.path === '/api/download-apk' ||
+    req.path === '/download-apk' ||
+    req.path === '/api/chat/live-turn' ||
+    req.path === '/chat/live-turn'
+  ) {
     next();
     return;
   }
