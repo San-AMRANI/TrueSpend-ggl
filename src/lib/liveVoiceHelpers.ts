@@ -19,12 +19,15 @@ export interface LiveSseEvent {
     | 'output_transcript'
     | 'text'
     | 'audio'
+    | 'audio_status'
     | 'interrupted'
     | 'turn_complete'
     | 'session_closed'
     | 'error'
     | 'pong';
   audio?: string;
+  audioAvailable?: boolean;
+  reason?: string;
   mimeType?: string;
   text?: string;
   error?: string;
@@ -174,6 +177,86 @@ export function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
   }
   return btoa(binary);
+}
+
+export function parseSampleRateFromMimeType(
+  mimeType?: string,
+  defaultRate: number = 24000,
+): number {
+  if (!mimeType) return defaultRate;
+  const match = String(mimeType).match(/rate\s*=\s*(\d{4,6})/i);
+  if (!match) return defaultRate;
+  const parsed = Number(match[1]);
+  if (!Number.isFinite(parsed) || parsed < 8000 || parsed > 96000) return defaultRate;
+  return parsed;
+}
+
+/**
+ * Decodes base64 PCM16 (or RIFF/WAVE-wrapped PCM16) audio into normalized Float32 samples
+ * plus the resolved sample rate. Prevents WAV-header clicks if a provider sends a RIFF header.
+ */
+export function decodeBase64AudioToPcmFloat32(
+  base64: string,
+  defaultSampleRate: number = 24000,
+  mimeType?: string,
+): { samples: Float32Array; sampleRate: number } {
+  const clean = String(base64 || '').replace(/^data:[^;]+;base64,/, '').trim();
+  if (!clean) {
+    return { samples: new Float32Array(0), sampleRate: defaultSampleRate };
+  }
+  const binary = atob(clean);
+  const rawBytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    rawBytes[i] = binary.charCodeAt(i);
+  }
+
+  let sampleRate = parseSampleRateFromMimeType(mimeType, defaultSampleRate);
+  let pcmSlice = rawBytes;
+
+  // Detect optional RIFF/WAVE header (e.g., unary Gemini TTS response)
+  if (
+    rawBytes.byteLength > 44 &&
+    rawBytes[0] === 0x52 && // R
+    rawBytes[1] === 0x49 && // I
+    rawBytes[2] === 0x46 && // F
+    rawBytes[3] === 0x46 && // F
+    rawBytes[8] === 0x57 && // W
+    rawBytes[9] === 0x41 && // A
+    rawBytes[10] === 0x56 && // V
+    rawBytes[11] === 0x45 // E
+  ) {
+    const headerView = new DataView(rawBytes.buffer, rawBytes.byteOffset, rawBytes.byteLength);
+    const wavRate = headerView.getUint32(24, true);
+    if (wavRate >= 8000 && wavRate <= 96000) {
+      sampleRate = wavRate;
+    }
+    let dataOffset = 44;
+    let dataLength = rawBytes.byteLength - 44;
+    for (let i = 12; i <= rawBytes.byteLength - 8; i++) {
+      if (
+        rawBytes[i] === 0x64 && // d
+        rawBytes[i + 1] === 0x61 && // a
+        rawBytes[i + 2] === 0x74 && // t
+        rawBytes[i + 3] === 0x61 // a
+      ) {
+        dataOffset = i + 8;
+        const declaredLen = headerView.getUint32(i + 4, true);
+        dataLength = Math.min(declaredLen, rawBytes.byteLength - dataOffset);
+        break;
+      }
+    }
+    pcmSlice = rawBytes.subarray(dataOffset, dataOffset + dataLength);
+  }
+
+  const usableBytes = pcmSlice.byteLength - (pcmSlice.byteLength % 2);
+  const numSamples = usableBytes / 2;
+  const float32 = new Float32Array(numSamples);
+  const view = new DataView(pcmSlice.buffer, pcmSlice.byteOffset, usableBytes);
+  for (let i = 0; i < numSamples; i++) {
+    float32[i] = view.getInt16(i * 2, true) / 32768;
+  }
+
+  return { samples: float32, sampleRate };
 }
 
 /**

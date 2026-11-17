@@ -344,9 +344,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       const devNote = res.devVerificationToken
         ? ` Verification token (dev): ${res.devVerificationToken}`
         : '';
+      const warningNote = res.emailDeliveryWarning ? ` ${res.emailDeliveryWarning}` : '';
       setEmailFeedback({
-        type: 'ok',
-        text: `${res.message}${devNote}`,
+        type: res.emailDeliveryWarning ? 'err' : 'ok',
+        text: `${res.message}${warningNote}${devNote}`,
       });
       setCurrentPwForEmail('');
       setNewEmailInput('');

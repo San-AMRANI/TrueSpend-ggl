@@ -1,7 +1,19 @@
 import crypto from 'crypto';
+import nodemailer from 'nodemailer';
 import { db } from '../../src/db/index.js';
 import { emailOutbox } from '../../src/db/schema.js';
 import { eq } from 'drizzle-orm';
+import {
+  DEFAULT_RESEND_FROM,
+  EmailDeliveryFailureReason,
+  EmailTransportChannel,
+  SmtpConfig,
+  formatEmailDeliveryWarning,
+  isResendSandboxRecipientRestriction,
+  parseSmtpConfig,
+  resolveEmailFromAddress,
+  selectEmailTransportOrder,
+} from './emailDeliveryHelpers.js';
 
 export type EmailTemplateName =
   | 'email_verification'
@@ -18,6 +30,7 @@ export interface EnqueueEmailParams {
   templateName: EmailTemplateName;
   subject: string;
   payload: Record<string, any>;
+  skipOutboxDb?: boolean;
 }
 
 export interface EmailTemplateViewModel {
@@ -33,7 +46,17 @@ export interface EmailTemplateViewModel {
   textFallback: string;
 }
 
-const DEFAULT_RESEND_FROM = 'TrueSpend Security <onboarding@resend.dev>';
+export interface EmailDeliveryResult {
+  outboxId: string;
+  status: string;
+  transportUsed?: EmailTransportChannel;
+  errorCode?: EmailDeliveryFailureReason;
+  warning?: string;
+  providerStatus?: number;
+  providerResponse?: string;
+  fromUsed?: string;
+}
+
 const SPEX_AVATAR_URL =
   'https://raw.githubusercontent.com/San-AMRANI/TrueSpend-ggl/main/public/spex-avatar.jpg';
 const APP_ICON_URL =
@@ -57,12 +80,8 @@ export class EmailService {
     ).replace(/\/$/, '');
   }
 
-  private resolveFromAddress(): string {
-    const configured = (process.env.EMAIL_FROM || '').trim();
-    if (!configured || configured.toLowerCase().includes('@truespend.app')) {
-      return DEFAULT_RESEND_FROM;
-    }
-    return configured;
+  private resolveFromAddress(smtpConfig: SmtpConfig | null = parseSmtpConfig()): string {
+    return resolveEmailFromAddress(process.env, smtpConfig);
   }
 
   private buildTemplateModel(
@@ -345,30 +364,32 @@ export class EmailService {
   }
 
   /**
-   * Transactional outbox write + asynchronous delivery attempt.
-   * Email delivery failure never rolls back database state and remains retryable.
+   * Transactional outbox write + direct delivery attempt strictly to recipientEmail.
+   * Never redirects external users' security emails to another address.
    */
-  async enqueueAndSend(params: EnqueueEmailParams): Promise<{ outboxId: string; status: string }> {
+  async enqueueAndSend(params: EnqueueEmailParams): Promise<EmailDeliveryResult> {
     let outboxId = '';
-    try {
-      const [inserted] = await db
-        .insert(emailOutbox)
-        .values({
-          userId: params.userId || null,
-          recipientEmail: params.recipientEmail.trim().toLowerCase(),
-          templateName: params.templateName,
-          subject: params.subject,
-          payloadJson: JSON.stringify(params.payload),
-          status: 'pending',
-          attempts: 0,
-        })
-        .returning();
-      outboxId = inserted.id;
-    } catch (err) {
-      console.warn(
-        '[EmailService] Outbox DB insert warning (proceeding with direct Resend delivery):',
-        (err as any)?.message || err
-      );
+    if (!params.skipOutboxDb) {
+      try {
+        const [inserted] = await db
+          .insert(emailOutbox)
+          .values({
+            userId: params.userId || null,
+            recipientEmail: params.recipientEmail.trim().toLowerCase(),
+            templateName: params.templateName,
+            subject: params.subject,
+            payloadJson: JSON.stringify(params.payload),
+            status: 'pending',
+            attempts: 0,
+          })
+          .returning();
+        outboxId = inserted.id;
+      } catch (err) {
+        console.warn(
+          '[EmailService] Outbox DB insert warning (proceeding with direct mail delivery):',
+          (err as any)?.message || err
+        );
+      }
     }
 
     return await this.deliverOutboxEntry(
@@ -408,6 +429,49 @@ export class EmailService {
     });
   }
 
+  private async sendViaSmtp(
+    smtpConfig: SmtpConfig,
+    fromAddress: string,
+    recipientEmail: string,
+    subject: string,
+    html: string,
+    textFallback: string,
+    entityRefId: string = crypto.randomUUID()
+  ): Promise<{ messageId: string; response: string }> {
+    const transporter = smtpConfig.url
+      ? nodemailer.createTransport(smtpConfig.url)
+      : nodemailer.createTransport({
+          host: smtpConfig.host,
+          port: smtpConfig.port,
+          secure: smtpConfig.secure,
+          auth: {
+            user: smtpConfig.user,
+            pass: smtpConfig.pass,
+          },
+        });
+
+    const smtpFrom =
+      fromAddress.toLowerCase().includes('onboarding@resend.dev') && smtpConfig.user.includes('@')
+        ? `TrueSpend Security <${smtpConfig.user}>`
+        : fromAddress;
+
+    const info = await transporter.sendMail({
+      from: smtpFrom,
+      to: recipientEmail.trim(),
+      subject,
+      html,
+      text: textFallback,
+      headers: {
+        'X-Entity-Ref-ID': entityRefId,
+      },
+    });
+
+    return {
+      messageId: String(info?.messageId || entityRefId),
+      response: String(info?.response || '250 OK'),
+    };
+  }
+
   private getResendApiKey(): string {
     return (
       process.env.RESEND_API_KEY ||
@@ -419,200 +483,195 @@ export class EmailService {
       .replace(/^["']|["']$/g, '');
   }
 
+  private async updateOutboxStatus(
+    outboxId: string,
+    fields: { status: string; attempts: number; sentAt?: Date | null; lastError?: string | null }
+  ) {
+    if (!outboxId) return;
+    await db
+      .update(emailOutbox)
+      .set(fields)
+      .where(eq(emailOutbox.id, outboxId))
+      .catch(() => undefined);
+  }
+
   private async deliverOutboxEntry(
     outboxId: string,
     recipientEmail: string,
     subject: string,
     templateName: EmailTemplateName,
     payload: Record<string, any>
-  ): Promise<{
-    outboxId: string;
-    status: string;
-    providerStatus?: number;
-    providerResponse?: string;
-    fromUsed?: string;
-  }> {
+  ): Promise<EmailDeliveryResult> {
+    const cleanRecipient = recipientEmail.trim();
     const rawKey = this.getResendApiKey();
-    let emailFrom = this.resolveFromAddress().replace(/^["']|["']$/g, '');
+    const smtpConfig = parseSmtpConfig(process.env);
+    const transportOrder = selectEmailTransportOrder(process.env, smtpConfig, Boolean(rawKey));
+    const configuredFrom = this.resolveFromAddress(smtpConfig);
     const entityRefId = outboxId || crypto.randomUUID();
     const shortRef = entityRefId.slice(0, 8).toUpperCase();
     const model = this.buildTemplateModel(templateName, subject, payload);
     const html = this.renderHtml(templateName, payload, subject, shortRef);
 
-    try {
-      if (rawKey) {
-        let res = await this.sendViaResend(
-          rawKey,
-          emailFrom,
-          recipientEmail,
-          subject,
-          html,
-          model.textFallback
-        );
-        let resBody = await res.text().catch(() => '');
+    if (transportOrder.length === 0) {
+      const warning = formatEmailDeliveryWarning('NO_EMAIL_PROVIDER', cleanRecipient);
+      console.info(
+        `[EmailService] Outbox queued (${templateName}) -> ${cleanRecipient} (no SMTP or RESEND_API_KEY configured).`
+      );
+      await this.updateOutboxStatus(outboxId, {
+        status: 'failed',
+        attempts: 1,
+        lastError: warning.slice(0, 240),
+      });
+      return {
+        outboxId,
+        status: 'queued_no_api_key',
+        errorCode: 'NO_EMAIL_PROVIDER',
+        warning,
+        fromUsed: configuredFrom,
+      };
+    }
 
-        // If custom EMAIL_FROM fails with 403 or 422 (domain not verified / invalid from),
-        // automatically retry with Resend's default verified sender.
-        if (!res.ok && (res.status === 403 || res.status === 422)) {
-          console.warn(
-            `[EmailService] Primary sender "${emailFrom}" returned ${res.status} (${resBody.slice(0, 160)}); retrying with "${DEFAULT_RESEND_FROM}".`
+    let attempts = 0;
+    let lastErrorMessage = 'Email delivery failed';
+    let lastErrorCode: EmailDeliveryFailureReason = 'PROVIDER_ERROR';
+    let lastProviderStatus: number | undefined;
+
+    for (const channel of transportOrder) {
+      attempts += 1;
+
+      if (channel === 'smtp' && smtpConfig) {
+        try {
+          const smtpFrom =
+            configuredFrom.toLowerCase().includes('onboarding@resend.dev') &&
+            smtpConfig.user.includes('@')
+              ? `TrueSpend Security <${smtpConfig.user}>`
+              : configuredFrom;
+
+          const info = await this.sendViaSmtp(
+            smtpConfig,
+            smtpFrom,
+            cleanRecipient,
+            subject,
+            html,
+            model.textFallback,
+            entityRefId
           );
-          if (emailFrom !== DEFAULT_RESEND_FROM) {
+
+          await this.updateOutboxStatus(outboxId, {
+            status: 'sent',
+            attempts,
+            sentAt: new Date(),
+            lastError: null,
+          });
+
+          return {
+            outboxId,
+            status: 'sent',
+            transportUsed: 'smtp',
+            providerStatus: 250,
+            providerResponse: `${info.messageId}: ${info.response}`.slice(0, 240),
+            fromUsed: smtpFrom,
+          };
+        } catch (smtpErr: any) {
+          lastErrorMessage = String(smtpErr?.message || 'SMTP send failed');
+          lastErrorCode = 'PROVIDER_ERROR';
+          console.error(
+            `[EmailService] SMTP delivery error (${smtpConfig.providerLabel}) -> ${cleanRecipient}:`,
+            lastErrorMessage
+          );
+          continue;
+        }
+      }
+
+      if (channel === 'resend' && rawKey) {
+        let emailFrom = configuredFrom;
+        try {
+          let res = await this.sendViaResend(
+            rawKey,
+            emailFrom,
+            cleanRecipient,
+            subject,
+            html,
+            model.textFallback,
+            entityRefId
+          );
+          let resBody = await res.text().catch(() => '');
+
+          // Only retry with Resend's default sender if the configured From address itself is invalid/unverified,
+          // NOT when Resend already rejected external recipients due to sandbox account restrictions.
+          if (
+            !res.ok &&
+            (res.status === 403 || res.status === 422) &&
+            !isResendSandboxRecipientRestriction(res.status, resBody) &&
+            emailFrom !== DEFAULT_RESEND_FROM
+          ) {
+            console.warn(
+              `[EmailService] Primary sender "${emailFrom}" returned ${res.status} (${resBody.slice(0, 160)}); retrying with "${DEFAULT_RESEND_FROM}".`
+            );
             emailFrom = DEFAULT_RESEND_FROM;
             res = await this.sendViaResend(
               rawKey,
               emailFrom,
-              recipientEmail,
+              cleanRecipient,
               subject,
               html,
-              model.textFallback
+              model.textFallback,
+              entityRefId
             );
             resBody = await res.text().catch(() => '');
           }
-          if (!res.ok && (res.status === 403 || res.status === 422) && emailFrom !== 'onboarding@resend.dev') {
-            emailFrom = 'onboarding@resend.dev';
-            res = await this.sendViaResend(
-              rawKey,
-              emailFrom,
-              recipientEmail,
-              subject,
-              html,
-              model.textFallback
-            );
-            resBody = await res.text().catch(() => '');
-          }
-        }
 
-        // If Resend sandbox mode (403) restricts sending only to the Resend account owner's email
-        // when sending to an external recipient (e.g. frank.ctl35@gmail.com) before a custom domain is verified,
-        // extract the owner email from Resend's message and also deliver to delivered@resend.dev + owner email
-        // so the email is never lost and always logs a 200 OK delivery in Resend.
-        if (!res.ok && res.status === 403 && /only send testing emails to your own email address/i.test(resBody)) {
-          const ownerMatch = resBody.match(/\(([^)\s]+@[^)\s]+)\)/);
-          const ownerEmail = ownerMatch?.[1] || 'delivered@resend.dev';
-          console.warn(
-            `[EmailService] Resend sandbox mode active for recipient "${recipientEmail}". Forwarding copy to "${ownerEmail}" and "delivered@resend.dev".`
-          );
-          const sandboxSubject = `[For: ${recipientEmail}] ${subject}`;
-          const fallbackRes = await this.sendViaResend(
-            rawKey,
-            emailFrom,
-            ownerEmail,
-            sandboxSubject,
-            html,
-            model.textFallback
-          );
-          const fallbackBody = await fallbackRes.text().catch(() => '');
-          await this.sendViaResend(
-            rawKey,
-            emailFrom,
-            'delivered@resend.dev',
-            sandboxSubject,
-            html,
-            model.textFallback
-          ).catch(() => undefined);
-
-          if (fallbackRes.ok) {
-            res = fallbackRes;
-            resBody = fallbackBody;
-          }
-        }
-
-        if (!res.ok) {
-          throw new Error(`Email provider error (${res.status}): ${resBody.slice(0, 220)}`);
-        }
-
-        if (outboxId) {
-          await db
-            .update(emailOutbox)
-            .set({
+          if (res.ok) {
+            await this.updateOutboxStatus(outboxId, {
               status: 'sent',
-              attempts: 1,
+              attempts,
               sentAt: new Date(),
               lastError: null,
-            })
-            .where(eq(emailOutbox.id, outboxId));
-        }
-        return {
-          outboxId,
-          status: 'sent',
-          providerStatus: res.status,
-          providerResponse: resBody.slice(0, 240),
-          fromUsed: emailFrom,
-        };
-      } else {
-        // If running inside AI Studio preview where RESEND_API_KEY is only configured on Vercel,
-        // relay the email request through the deployed Vercel production endpoint so Resend still receives it.
-        const vercelRelayUrl = 'https://true-spend-ggl.vercel.app/api/auth/test-email';
-        const currentAppUrl = (process.env.APP_URL || '').toLowerCase();
-        if (!currentAppUrl.includes('true-spend-ggl.vercel.app') && !process.env.VERCEL) {
-          try {
-            const relayRes = await fetch(vercelRelayUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: recipientEmail,
-                templateName,
-                subject,
-                payload,
-              }),
             });
-            const relayText = await relayRes.text().catch(() => '');
-            if (relayRes.ok) {
-              if (outboxId) {
-                await db
-                  .update(emailOutbox)
-                  .set({
-                    status: 'sent',
-                    attempts: 1,
-                    sentAt: new Date(),
-                    lastError: null,
-                  })
-                  .where(eq(emailOutbox.id, outboxId))
-                  .catch(() => undefined);
-              }
-              return {
-                outboxId,
-                status: 'sent_via_vercel_relay',
-                providerStatus: relayRes.status,
-                providerResponse: relayText.slice(0, 240),
-                fromUsed: emailFrom,
-              };
-            }
-          } catch (relayErr: any) {
-            console.warn('[EmailService] Vercel relay attempt failed:', relayErr?.message || relayErr);
+            return {
+              outboxId,
+              status: 'sent',
+              transportUsed: 'resend',
+              providerStatus: res.status,
+              providerResponse: resBody.slice(0, 240),
+              fromUsed: emailFrom,
+            };
           }
-        }
 
-        console.info(
-          `[EmailService] Outbox queued (${templateName}) -> ${recipientEmail} (no RESEND_API_KEY configured).`
-        );
-        return {
-          outboxId,
-          status: 'queued_no_api_key',
-          fromUsed: emailFrom,
-        };
+          lastProviderStatus = res.status;
+          if (isResendSandboxRecipientRestriction(res.status, resBody)) {
+            lastErrorCode = 'RESEND_DOMAIN_NOT_VERIFIED';
+            lastErrorMessage = `Resend sandbox restriction for recipient "${cleanRecipient}": ${resBody.slice(0, 180)}`;
+            console.warn(`[EmailService] ${lastErrorMessage}`);
+          } else {
+            lastErrorCode = 'PROVIDER_ERROR';
+            lastErrorMessage = `Email provider error (${res.status}): ${resBody.slice(0, 200)}`;
+            console.error(`[EmailService] Resend delivery failed -> ${cleanRecipient}:`, lastErrorMessage);
+          }
+        } catch (resendErr: any) {
+          lastErrorCode = 'PROVIDER_ERROR';
+          lastErrorMessage = String(resendErr?.message || 'Resend send failed');
+          console.error('[EmailService] Resend request error:', lastErrorMessage);
+        }
       }
-    } catch (err: any) {
-      console.error('[EmailService] Delivery error:', err?.message || err);
-      if (outboxId) {
-        await db
-          .update(emailOutbox)
-          .set({
-            status: 'failed',
-            attempts: 1,
-            lastError: String(err?.message || 'Send failed').slice(0, 240),
-          })
-          .where(eq(emailOutbox.id, outboxId))
-          .catch(() => undefined);
-      }
-      return {
-        outboxId,
-        status: 'failed',
-        providerResponse: String(err?.message || 'Send failed').slice(0, 240),
-        fromUsed: emailFrom,
-      };
     }
+
+    const warning = formatEmailDeliveryWarning(lastErrorCode, cleanRecipient);
+    await this.updateOutboxStatus(outboxId, {
+      status: 'failed',
+      attempts,
+      lastError: lastErrorMessage.slice(0, 240),
+    });
+
+    return {
+      outboxId,
+      status: lastErrorCode === 'RESEND_DOMAIN_NOT_VERIFIED' ? 'sandbox_blocked' : 'failed',
+      errorCode: lastErrorCode,
+      warning,
+      providerStatus: lastProviderStatus,
+      providerResponse: lastErrorMessage.slice(0, 240),
+      fromUsed: configuredFrom,
+    };
   }
 
   async sendTestEmailWithDiagnostics(params: {
@@ -621,13 +680,19 @@ export class EmailService {
     subject?: string;
     payload?: Record<string, any>;
   }) {
+    const targetEmail = String(params.email || '').trim();
+    if (!targetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
+      throw new Error('A valid target email address is required.');
+    }
+
     const rawKey = this.getResendApiKey();
-    const targetEmail = (params.email || 'frank.ctl35@gmail.com').trim();
+    const smtpConfig = parseSmtpConfig(process.env);
+    const transportOrder = selectEmailTransportOrder(process.env, smtpConfig, Boolean(rawKey));
     const templateName: EmailTemplateName = params.templateName || 'email_verification';
     const subject = params.subject || 'Verify your TrueSpend email address';
     const payload = params.payload || {
       displayName: targetEmail.split('@')[0] || 'TrueSpend User',
-      token: 'TS-VERIFY-849201',
+      token: 'TS-VERIFY-SAMPLE',
       deviceLabel: 'TrueSpend Web & Android Suite',
     };
 
@@ -637,28 +702,6 @@ export class EmailService {
       subject,
       payload,
     });
-
-    // Also send to Resend's official test address (`delivered@resend.dev`) per
-    // https://resend.com/docs/dashboard/emails/send-test-emails
-    let resendTestAddressResult: { status: number; body: string } | null = null;
-    if (rawKey && targetEmail.toLowerCase() !== 'delivered@resend.dev') {
-      try {
-        const model = this.buildTemplateModel(templateName, subject, payload);
-        const html = this.renderHtml(templateName, payload, subject);
-        const testRes = await this.sendViaResend(
-          rawKey,
-          this.resolveFromAddress().replace(/^["']|["']$/g, ''),
-          'delivered+truespend@resend.dev',
-          `[Test] ${subject}`,
-          html,
-          model.textFallback
-        );
-        const testBody = await testRes.text().catch(() => '');
-        resendTestAddressResult = { status: testRes.status, body: testBody.slice(0, 240) };
-      } catch (e: any) {
-        resendTestAddressResult = { status: 0, body: String(e?.message || e) };
-      }
-    }
 
     let recentOutbox: any[] = [];
     try {
@@ -679,11 +722,13 @@ export class EmailService {
     return {
       hasResendApiKey: Boolean(rawKey),
       resendKeyPrefix: rawKey ? `${rawKey.slice(0, 6)}...` : null,
+      hasSmtpConfig: Boolean(smtpConfig),
+      smtpProvider: smtpConfig?.providerLabel || null,
+      transportOrder,
       configuredEmailFrom: process.env.EMAIL_FROM || null,
-      resolvedEmailFrom: this.resolveFromAddress(),
+      resolvedEmailFrom: this.resolveFromAddress(smtpConfig),
       targetEmail,
       primaryResult,
-      resendTestAddressResult,
       recentOutbox,
     };
   }

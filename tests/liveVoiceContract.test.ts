@@ -2,10 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildWavBytesFromPcm16,
+  bytesToBase64,
   compactLiveContext,
   concatUint8Arrays,
+  decodeBase64AudioToPcmFloat32,
   float32ToPcm16Bytes,
   isJwtTokenExpiringSoon,
+  parseSampleRateFromMimeType,
   parseSseEventChunk,
   selectLiveTransport,
   shouldFallbackFromWebSocketToSse,
@@ -133,4 +136,33 @@ test('compactLiveContext bounds large context payloads cleanly to valid JSON wit
   assert.equal(parsed.kpis.safeToSpend, 3420);
   assert.ok(Array.isArray(parsed.currentPeriodTransactions));
   assert.ok(parsed.currentPeriodTransactions.length < largeTx.length);
+});
+
+test('parseSampleRateFromMimeType extracts valid rates and falls back safely', () => {
+  assert.equal(parseSampleRateFromMimeType('audio/pcm;rate=24000'), 24000);
+  assert.equal(parseSampleRateFromMimeType('audio/l16; rate=16000', 24000), 16000);
+  assert.equal(parseSampleRateFromMimeType('audio/wav', 24000), 24000);
+  assert.equal(parseSampleRateFromMimeType(undefined, 24000), 24000);
+});
+
+test('decodeBase64AudioToPcmFloat32 decodes raw PCM16 and strips RIFF/WAVE headers cleanly', () => {
+  const input = new Float32Array([0, 0.5, -0.5, 0.25]);
+  const rawPcmBytes = float32ToPcm16Bytes(input);
+
+  const rawDecoded = decodeBase64AudioToPcmFloat32(
+    bytesToBase64(rawPcmBytes),
+    24000,
+    'audio/pcm;rate=24000',
+  );
+  assert.equal(rawDecoded.sampleRate, 24000);
+  assert.equal(rawDecoded.samples.length, 4);
+  assert.ok(Math.abs(rawDecoded.samples[1] - 0.5) < 0.001);
+  assert.ok(Math.abs(rawDecoded.samples[2] + 0.5) < 0.001);
+
+  const wavBytes = buildWavBytesFromPcm16(rawPcmBytes, 22050, 1);
+  const wavDecoded = decodeBase64AudioToPcmFloat32(bytesToBase64(wavBytes), 24000, 'audio/wav');
+  assert.equal(wavDecoded.sampleRate, 22050);
+  assert.equal(wavDecoded.samples.length, 4);
+  assert.ok(Math.abs(wavDecoded.samples[1] - 0.5) < 0.001);
+  assert.ok(Math.abs(wavDecoded.samples[2] + 0.5) < 0.001);
 });

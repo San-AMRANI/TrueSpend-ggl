@@ -441,7 +441,7 @@ export class AuthService {
       },
     });
 
-    await emailService.enqueueAndSend({
+    const delivery = await emailService.enqueueAndSend({
       userId: createdUser.id,
       recipientEmail: cleanEmail,
       templateName: 'email_verification',
@@ -452,13 +452,20 @@ export class AuthService {
       },
     });
 
-    const isDevPreview = process.env.NODE_ENV !== 'production' && !process.env.RESEND_API_KEY;
+    const isDevPreview = process.env.NODE_ENV !== 'production' && delivery.status !== 'sent';
 
     return {
       registrationAccepted: true,
       requiresVerification: true,
+      emailDelivered: delivery.status === 'sent',
+      deliveryStatus: delivery.status,
+      ...(delivery.status !== 'sent' && delivery.warning
+        ? { emailDeliveryWarning: delivery.warning }
+        : {}),
       message:
-        'Account setup initiated. Please check your email for verification instructions.',
+        delivery.status === 'sent'
+          ? 'Account setup initiated. Please check your email for verification instructions.'
+          : 'Account created, but the verification email could not be delivered.',
       invitationAccepted,
       ...(invitationWarning ? { invitationWarning } : {}),
       ...(isDevPreview ? { devVerificationToken: rawVerifyToken } : {}),
@@ -1024,10 +1031,14 @@ export class AuthService {
       deviceSummary: ctx.deviceLabel,
     });
 
-    const isDevPreview = process.env.NODE_ENV !== 'production' && !process.env.RESEND_API_KEY;
+    const isDevPreview = process.env.NODE_ENV !== 'production' && delivery.status !== 'sent';
     return {
       ...genericResponse,
+      emailDelivered: delivery.status === 'sent',
       deliveryStatus: delivery.status,
+      ...(delivery.status !== 'sent' && delivery.warning
+        ? { emailDeliveryWarning: delivery.warning }
+        : {}),
       ...(isDevPreview ? { devVerificationToken: rawToken } : {}),
     };
   }
@@ -1109,10 +1120,14 @@ export class AuthService {
       deviceSummary: ctx.deviceLabel,
     });
 
-    const isDevPreview = process.env.NODE_ENV !== 'production' && !process.env.RESEND_API_KEY;
+    const isDevPreview = process.env.NODE_ENV !== 'production' && delivery.status !== 'sent';
     return {
       ...genericResponse,
+      emailDelivered: delivery.status === 'sent',
       deliveryStatus: delivery.status,
+      ...(delivery.status !== 'sent' && delivery.warning
+        ? { emailDeliveryWarning: delivery.warning }
+        : {}),
       ...(isDevPreview ? { devResetToken: rawToken } : {}),
     };
   }
@@ -1352,7 +1367,7 @@ export class AuthService {
       });
     });
 
-    await Promise.all([
+    const [verificationDelivery] = await Promise.all([
       emailService.enqueueAndSend({
         userId: user.id,
         recipientEmail: cleanNewEmail,
@@ -1384,10 +1399,19 @@ export class AuthService {
       metadata: { pendingEmail: cleanNewEmail },
     });
 
-    const isDevPreview = process.env.NODE_ENV !== 'production' && !process.env.RESEND_API_KEY;
+    const isDevPreview =
+      process.env.NODE_ENV !== 'production' && verificationDelivery.status !== 'sent';
     return {
       pendingEmail: cleanNewEmail,
-      message: 'Confirmation link sent to your new email address. Your current email stays active until confirmed.',
+      emailDelivered: verificationDelivery.status === 'sent',
+      deliveryStatus: verificationDelivery.status,
+      ...(verificationDelivery.status !== 'sent' && verificationDelivery.warning
+        ? { emailDeliveryWarning: verificationDelivery.warning }
+        : {}),
+      message:
+        verificationDelivery.status === 'sent'
+          ? 'Confirmation link sent to your new email address. Your current email stays active until confirmed.'
+          : 'Email change started, but the confirmation email could not be delivered.',
       ...(isDevPreview ? { devVerificationToken: rawToken } : {}),
     };
   }

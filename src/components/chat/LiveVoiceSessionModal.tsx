@@ -27,6 +27,7 @@ import {
   bytesToBase64,
   compactLiveContext,
   concatUint8Arrays,
+  decodeBase64AudioToPcmFloat32,
   float32ToPcm16Bytes,
   isJwtTokenExpiringSoon,
   parseSseEventChunk,
@@ -82,22 +83,7 @@ function downsampleTo16kHz(samples: Float32Array, inputSampleRate: number): Floa
   return result;
 }
 
-function base64Pcm16ToFloat32(base64: string): Float32Array {
-  const binary = atob(base64);
-  const byteLength = binary.length - (binary.length % 2);
-  const bytes = new Uint8Array(byteLength);
-  for (let i = 0; i < byteLength; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  const view = new DataView(bytes.buffer);
-  const numSamples = byteLength / 2;
-  const float32 = new Float32Array(numSamples);
-  for (let i = 0; i < numSamples; i++) {
-    const int16 = view.getInt16(i * 2, true);
-    float32[i] = int16 / 32768;
-  }
-  return float32;
-}
+// Audio chunk decoding lives in liveVoiceHelpers.decodeBase64AudioToPcmFloat32
 
 const LIVE_QUICK_PROMPTS = [
   'What can I safely spend today and how are my wallets balanced?',
@@ -150,6 +136,11 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
 
   const inputAudioCtxRef = useRef<AudioContext | null>(null);
   const outputAudioCtxRef = useRef<AudioContext | null>(null);
+  const outputGainRef = useRef<GainNode | null>(null);
+  const audioScheduleChainRef = useRef<Promise<void>>(Promise.resolve());
+  const audioGenerationRef = useRef<number>(0);
+  const receivedAudioForTurnRef = useRef<boolean>(false);
+  const speechSynthesisActiveRef = useRef<boolean>(false);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
@@ -198,7 +189,43 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
     return activeTokenRef.current;
   }, [token]);
 
+  const ensureOutputAudioContext = useCallback(() => {
+    let outCtx = outputAudioCtxRef.current;
+    if (!outCtx || outCtx.state === 'closed') {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      // Use browser/OS native sample rate; AudioBuffer at 24kHz resamples cleanly on all hardware
+      outCtx = new AudioCtx();
+      outputAudioCtxRef.current = outCtx;
+      const gain = outCtx.createGain();
+      gain.gain.value = isSpeakerMutedRef.current ? 0 : 1;
+      gain.connect(outCtx.destination);
+      outputGainRef.current = gain;
+    } else if (!outputGainRef.current) {
+      const gain = outCtx.createGain();
+      gain.gain.value = isSpeakerMutedRef.current ? 0 : 1;
+      gain.connect(outCtx.destination);
+      outputGainRef.current = gain;
+    }
+    return outCtx;
+  }, []);
+
+  const unlockOutputAudio = useCallback(() => {
+    try {
+      const outCtx = ensureOutputAudioContext();
+      if (outCtx.state === 'suspended') {
+        outCtx.resume().catch(() => {});
+      }
+      // Play a silent 1-sample buffer inside user gesture to satisfy strict autoplay policies
+      const silent = outCtx.createBuffer(1, 1, outCtx.sampleRate);
+      const src = outCtx.createBufferSource();
+      src.buffer = silent;
+      src.connect(outCtx.destination);
+      src.start(0);
+    } catch {}
+  }, [ensureOutputAudioContext]);
+
   const stopQueuedOutputAudio = useCallback(() => {
+    audioGenerationRef.current += 1;
     activeSourcesRef.current.forEach((src) => {
       try {
         src.stop();
@@ -207,6 +234,57 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
     });
     activeSourcesRef.current.clear();
     nextStartTimeRef.current = 0;
+
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {}
+    }
+    speechSynthesisActiveRef.current = false;
+  }, []);
+
+  const speakWithBrowserFallback = useCallback((text: string) => {
+    const cleanText = text.trim();
+    if (!cleanText || isSpeakerMutedRef.current) return;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      const voices = window.speechSynthesis.getVoices();
+      const englishVoices = voices.filter((v) => /^en([-_]|$)/i.test(v.lang));
+      const pool = englishVoices.length > 0 ? englishVoices : voices;
+      if (pool.length > 0) {
+        const preferred =
+          pool.find((v) => /natural|google|samantha|daniel|aria|jenny/i.test(v.name)) || pool[0];
+        utterance.voice = preferred;
+      }
+
+      const personaPitch: Record<GeminiLiveVoiceId, number> = {
+        Zephyr: 1.04,
+        Puck: 1.08,
+        Kore: 1.0,
+        Fenrir: 0.9,
+        Charon: 0.95,
+      };
+      utterance.pitch = personaPitch[activeVoiceRef.current] ?? 1.0;
+      utterance.rate = 1.02;
+
+      speechSynthesisActiveRef.current = true;
+      setStatus('speaking');
+
+      const finalize = () => {
+        speechSynthesisActiveRef.current = false;
+        if (activeSourcesRef.current.size === 0 && !isTurnBusyRef.current) {
+          setStatus((prev) => (prev === 'speaking' ? 'ready' : prev));
+        }
+      };
+      utterance.onend = finalize;
+      utterance.onerror = finalize;
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      speechSynthesisActiveRef.current = false;
+    }
   }, []);
 
   const flushCompletedTurn = useCallback(() => {
@@ -239,44 +317,62 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
     setLiveAssistantTranscript('');
   }, []);
 
-  const scheduleOutputPcmChunk = useCallback((base64Pcm: string) => {
-    if (isSpeakerMutedRef.current) return;
-    let outCtx = outputAudioCtxRef.current;
-    if (!outCtx || outCtx.state === 'closed') {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      outCtx = new AudioCtx({ sampleRate: 24000 });
-      outputAudioCtxRef.current = outCtx;
-    }
-    if (outCtx.state === 'suspended') {
-      outCtx.resume().catch(() => {});
-    }
+  const scheduleOutputPcmChunk = useCallback(
+    (base64Pcm: string, mimeType?: string) => {
+      if (isSpeakerMutedRef.current) return;
+      const decoded = decodeBase64AudioToPcmFloat32(base64Pcm, 24000, mimeType);
+      if (decoded.samples.length === 0) return;
 
-    const float32 = base64Pcm16ToFloat32(base64Pcm);
-    if (float32.length === 0) return;
+      receivedAudioForTurnRef.current = true;
+      const myGeneration = audioGenerationRef.current;
 
-    const audioBuffer = outCtx.createBuffer(1, float32.length, 24000);
-    audioBuffer.getChannelData(0).set(float32);
+      audioScheduleChainRef.current = audioScheduleChainRef.current
+        .then(async () => {
+          if (audioGenerationRef.current !== myGeneration || isSpeakerMutedRef.current) return;
+          const outCtx = ensureOutputAudioContext();
+          if (outCtx.state === 'suspended') {
+            await outCtx.resume().catch(() => {});
+          }
+          if (
+            audioGenerationRef.current !== myGeneration ||
+            outCtx.state === 'closed' ||
+            isSpeakerMutedRef.current
+          ) {
+            return;
+          }
 
-    const source = outCtx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(outCtx.destination);
+          const destination = outputGainRef.current || outCtx.destination;
+          const audioBuffer = outCtx.createBuffer(1, decoded.samples.length, decoded.sampleRate);
+          audioBuffer.getChannelData(0).set(decoded.samples);
 
-    const now = outCtx.currentTime;
-    const startAt = Math.max(now + 0.01, nextStartTimeRef.current);
-    nextStartTimeRef.current = startAt + audioBuffer.duration;
+          const source = outCtx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(destination);
 
-    activeSourcesRef.current.add(source);
-    setStatus('speaking');
+          const now = outCtx.currentTime;
+          const startAt = Math.max(now + 0.015, nextStartTimeRef.current);
+          nextStartTimeRef.current = startAt + audioBuffer.duration;
 
-    source.onended = () => {
-      activeSourcesRef.current.delete(source);
-      if (activeSourcesRef.current.size === 0 && !isTurnBusyRef.current) {
-        setStatus((prev) => (prev === 'speaking' ? 'ready' : prev));
-      }
-    };
+          activeSourcesRef.current.add(source);
+          setStatus('speaking');
 
-    source.start(startAt);
-  }, []);
+          source.onended = () => {
+            activeSourcesRef.current.delete(source);
+            if (
+              activeSourcesRef.current.size === 0 &&
+              !speechSynthesisActiveRef.current &&
+              !isTurnBusyRef.current
+            ) {
+              setStatus((prev) => (prev === 'speaking' ? 'ready' : prev));
+            }
+          };
+
+          source.start(startAt);
+        })
+        .catch(() => {});
+    },
+    [ensureOutputAudioContext],
+  );
 
   const handleServerEvent = useCallback(
     (msg: LiveSseEvent) => {
@@ -290,17 +386,21 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
         return;
       }
 
-      if (msg.type === 'setup_complete' || msg.type === 'pong') {
+      if (msg.type === 'setup_complete' || msg.type === 'pong' || msg.type === 'audio_status') {
         return;
       }
 
       if (msg.type === 'input_transcript' && msg.text) {
+        receivedAudioForTurnRef.current = false;
         userTranscriptAccRef.current = msg.text;
         setLiveUserTranscript(msg.text.trim());
         return;
       }
 
       if (msg.type === 'output_transcript' && msg.text) {
+        if (!assistantTranscriptAccRef.current) {
+          receivedAudioForTurnRef.current = false;
+        }
         assistantTranscriptAccRef.current +=
           (assistantTranscriptAccRef.current && !assistantTranscriptAccRef.current.endsWith(' ')
             ? ' '
@@ -310,12 +410,13 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
       }
 
       if (msg.type === 'text' && msg.text && !assistantTranscriptAccRef.current) {
+        receivedAudioForTurnRef.current = false;
         assistantTranscriptAccRef.current += msg.text;
         setLiveAssistantTranscript(assistantTranscriptAccRef.current.trim());
       }
 
       if (msg.audio) {
-        scheduleOutputPcmChunk(msg.audio);
+        scheduleOutputPcmChunk(msg.audio, msg.mimeType);
       }
 
       if (msg.interrupted) {
@@ -326,8 +427,14 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
       }
 
       if (msg.turnComplete || msg.type === 'turn_complete') {
+        const completedAssistantText = assistantTranscriptAccRef.current.trim();
+        const hadServerAudio = receivedAudioForTurnRef.current;
+        receivedAudioForTurnRef.current = false;
         flushCompletedTurn();
-        if (activeSourcesRef.current.size === 0) {
+
+        if (!hadServerAudio && completedAssistantText && !isSpeakerMutedRef.current) {
+          speakWithBrowserFallback(completedAssistantText);
+        } else if (activeSourcesRef.current.size === 0 && !speechSynthesisActiveRef.current) {
           setStatus('ready');
         }
       }
@@ -341,7 +448,12 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
         }
       }
     },
-    [flushCompletedTurn, scheduleOutputPcmChunk, stopQueuedOutputAudio],
+    [
+      flushCompletedTurn,
+      scheduleOutputPcmChunk,
+      speakWithBrowserFallback,
+      stopQueuedOutputAudio,
+    ],
   );
 
   const resetVadState = useCallback(() => {
@@ -400,6 +512,13 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
           inputAudioCtxRef.current.close();
         } catch {}
         inputAudioCtxRef.current = null;
+      }
+
+      if (outputGainRef.current) {
+        try {
+          outputGainRef.current.disconnect();
+        } catch {}
+        outputGainRef.current = null;
       }
 
       if (outputAudioCtxRef.current) {
@@ -514,8 +633,12 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
         }
 
         if (attemptIdRef.current === myAttemptId) {
+          const leftoverAssistantText = assistantTranscriptAccRef.current.trim();
+          const hadServerAudio = receivedAudioForTurnRef.current;
           flushCompletedTurn();
-          if (activeSourcesRef.current.size === 0) {
+          if (leftoverAssistantText && !hadServerAudio && !isSpeakerMutedRef.current) {
+            speakWithBrowserFallback(leftoverAssistantText);
+          } else if (activeSourcesRef.current.size === 0 && !speechSynthesisActiveRef.current) {
             setStatus((prev) => (prev === 'error' ? 'error' : 'ready'));
           }
         }
@@ -534,7 +657,7 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
         isTurnBusyRef.current = false;
       }
     },
-    [flushCompletedTurn, handleServerEvent, resolveFreshToken],
+    [flushCompletedTurn, handleServerEvent, resolveFreshToken, speakWithBrowserFallback],
   );
 
   const wireMicrophonePipeline = useCallback(
@@ -646,12 +769,7 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
       setMicWarning(null);
 
       try {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        const outCtx = new AudioCtx({ sampleRate: 24000 });
-        outputAudioCtxRef.current = outCtx;
-        if (outCtx.state === 'suspended') {
-          outCtx.resume().catch(() => {});
-        }
+        unlockOutputAudio();
 
         // 1. Ensure a non-expired access token before opening WebSocket or SSE
         const freshToken = await resolveFreshToken();
@@ -714,6 +832,7 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
         }
 
         if (micStream) {
+          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
           mediaStreamRef.current = micStream;
           const inCtx = new AudioCtx({ sampleRate: 16000 });
           inputAudioCtxRef.current = inCtx;
@@ -845,6 +964,7 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
       handleServerEvent,
       resolveFreshToken,
       selectedVoice,
+      unlockOutputAudio,
       wireMicrophonePipeline,
     ],
   );
@@ -876,12 +996,20 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
     setIsSpeakerMuted((prev) => {
       const next = !prev;
       isSpeakerMutedRef.current = next;
-      if (next) stopQueuedOutputAudio();
+      if (outputGainRef.current) {
+        outputGainRef.current.gain.value = next ? 0 : 1;
+      }
+      if (next) {
+        stopQueuedOutputAudio();
+      } else {
+        unlockOutputAudio();
+      }
       return next;
     });
   };
 
   const handleVoiceChange = (voiceId: GeminiLiveVoiceId) => {
+    unlockOutputAudio();
     setSelectedVoice(voiceId);
     activeVoiceRef.current = voiceId;
     try {
@@ -893,10 +1021,9 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
   const handleSendTextTurn = (promptText: string) => {
     const trimmed = promptText.trim();
     if (!trimmed) return;
-    if (outputAudioCtxRef.current?.state === 'suspended') {
-      outputAudioCtxRef.current.resume().catch(() => {});
-    }
+    unlockOutputAudio();
     stopQueuedOutputAudio();
+    receivedAudioForTurnRef.current = false;
 
     if (transportModeRef.current === 'websocket') {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
