@@ -90,13 +90,29 @@ export const dashboardService = {
     apiClient.delete<{ success: boolean }>(`/api/contexts/${id}`, token),
   linkTransactionsToContext: (transactionIds: string[], contextId: string | null, token: string | null) =>
     apiClient.post<{ success: boolean; count: number }>('/api/contexts/link-transactions', { transactionIds, contextId }, token),
-  getDashboardBootstrap: (token: string | null, scope?: 'all' | 'ledger') =>
-    apiClient.get<{
-      kpis: KPI;
-      transactions: Transaction[];
-      debts: Debt[];
-      payrolls: Payroll[];
-      budgets: CategoryBudget[];
+  getDashboardBootstrap: (
+    token: string | null,
+    scope: 'core' | 'history' | 'radar' | 'ledger' | 'all' = 'core',
+    options?: { full?: boolean }
+  ) => {
+    const params = new URLSearchParams();
+    if (scope) params.set('scope', scope);
+    if (options?.full) params.set('full', '1');
+    const qs = params.toString();
+    return apiClient.get<{
+      scope?: 'core' | 'history' | 'radar' | 'ledger' | 'all';
+      kpis?: KPI;
+      transactions?: Transaction[];
+      transactionsWindow?: {
+        isPartial: boolean;
+        totalCount: number;
+        loadedCount: number;
+        windowDays: number;
+        oldestLoadedDate: string | null;
+      };
+      debts?: Debt[];
+      payrolls?: Payroll[];
+      budgets?: CategoryBudget[];
       settings?: UserSettings;
       goals?: Goal[];
       subscriptions?: Subscription[];
@@ -114,7 +130,8 @@ export const dashboardService = {
           staleCount: number;
         } | null;
       } | null;
-    }>(`/api/dashboard-bootstrap${scope ? `?scope=${scope}` : ''}`, token),
+    }>(`/api/dashboard-bootstrap${qs ? `?${qs}` : ''}`, token);
+  },
   getKpis: (token: string | null) => apiClient.get<KPI>('/api/kpis', token),
   getWallets: (token: string | null) => apiClient.get<Wallet[]>('/api/wallets', token),
   createWallet: (

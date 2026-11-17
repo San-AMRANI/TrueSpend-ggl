@@ -1,21 +1,35 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-interface ProgressiveSectionProps {
-  children: React.ReactNode;
+export interface ProgressiveSectionProps {
+  children?: React.ReactNode;
+  /**
+   * Lazy render factory: avoids constructing heavy JSX trees (and running child hooks)
+   * until the section actually enters the viewport.
+   */
+  render?: () => React.ReactNode;
   /**
    * Approximate height of the section to prevent Cumulative Layout Shift (CLS)
-   * while the section awaits viewport intersection or idle hydration.
+   * while the section awaits viewport intersection.
    */
   minHeight?: number;
   /**
-   * Optional staggered idle timer (ms) so sections below the fold still hydrate
-   * smoothly during browser idle time even before the user scrolls to them.
+   * When false (default), below-the-fold sections wait strictly for IntersectionObserver
+   * instead of eagerly mounting via timers right after initial paint.
+   */
+  hydrateOnIdle?: boolean;
+  /**
+   * Optional staggered idle timer (ms) used ONLY when `hydrateOnIdle` is true.
    */
   priorityDelayMs?: number;
   /**
-   * IntersectionObserver rootMargin (default pre-warms 240px before entering viewport).
+   * IntersectionObserver rootMargin (default pre-warms 280px before entering viewport).
    */
   rootMargin?: string;
+  /**
+   * Callback fired exactly once when the section hydrates (useful for triggering
+   * deferred API slices like Operational Radar or Investments Summary on scroll).
+   */
+  onHydrate?: () => void;
   /**
    * Accessible label or placeholder title shown in the lightweight skeleton.
    */
@@ -27,37 +41,65 @@ interface ProgressiveSectionProps {
   className?: string;
 }
 
+export function shouldHydrateImmediately(options: {
+  hasWindow: boolean;
+  hasIntersectionObserver: boolean;
+  hydrateOnIdle: boolean;
+  priorityDelayMs: number;
+}): boolean {
+  if (!options.hasWindow) return true;
+  if (!options.hasIntersectionObserver) return true;
+  return options.hydrateOnIdle && options.priorityDelayMs === 0;
+}
+
 /**
- * ProgressiveSection implements incremental partial rendering for heavy dashboard bands:
- * 1. Above-the-fold sections mount synchronously on frame 1.
- * 2. Below-the-fold sections mount lightweight placeholders first and hydrate either:
- *    - Immediately when scrolled near the viewport (IntersectionObserver with 240px rootMargin), OR
- *    - Automatically after `priorityDelayMs` during idle frames via requestIdleCallback/setTimeout.
- * Once hydrated, sections remain mounted to preserve scroll position and interactive state.
+ * ProgressiveSection implements true viewport-driven partial loading:
+ * 1. Above-the-fold bands render synchronously on frame 1.
+ * 2. Below-the-fold sections stay lightweight zero-chart placeholders until scrolled
+ *    within `rootMargin` (280px) of the viewport (or `hydrateOnIdle: true` is opted in).
+ * 3. `render` factory + React.lazy children defer JS parsing & JSX tree evaluation until needed.
+ * 4. Once hydrated, `content-visibility: auto` lets the browser skip off-screen layout/paint.
  */
 export const ProgressiveSection: React.FC<ProgressiveSectionProps> = ({
   children,
+  render,
   minHeight = 260,
+  hydrateOnIdle = false,
   priorityDelayMs = 120,
-  rootMargin = '240px 0px',
+  rootMargin = '280px 0px',
+  onHydrate,
   label,
   fallback,
   className = '',
 }) => {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const [hydrated, setHydrated] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    // In headless unit tests without IntersectionObserver, mount directly
-    return typeof IntersectionObserver === 'undefined' && priorityDelayMs === 0;
-  });
+  const onHydrateRef = useRef(onHydrate);
+  onHydrateRef.current = onHydrate;
+  const didNotifyRef = useRef(false);
+
+  const [hydrated, setHydrated] = useState<boolean>(() =>
+    shouldHydrateImmediately({
+      hasWindow: typeof window !== 'undefined',
+      hasIntersectionObserver: typeof IntersectionObserver !== 'undefined',
+      hydrateOnIdle,
+      priorityDelayMs,
+    })
+  );
 
   useEffect(() => {
-    if (hydrated) return;
+    if (hydrated) {
+      if (!didNotifyRef.current) {
+        didNotifyRef.current = true;
+        onHydrateRef.current?.();
+      }
+      return;
+    }
 
     let cancelled = false;
     let observer: IntersectionObserver | null = null;
     let idleHandle: number | null = null;
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    let delayTimer: ReturnType<typeof setTimeout> | null = null;
 
     const triggerHydrate = () => {
       if (cancelled) return;
@@ -80,40 +122,57 @@ export const ProgressiveSection: React.FC<ProgressiveSectionProps> = ({
       observer.observe(hostRef.current);
     }
 
-    const scheduleIdle = () => {
-      const w = window as unknown as {
-        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-        cancelIdleCallback?: (id: number) => void;
+    if (hydrateOnIdle) {
+      const scheduleIdle = () => {
+        const w = window as unknown as {
+          requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+          cancelIdleCallback?: (id: number) => void;
+        };
+        if (typeof w.requestIdleCallback === 'function') {
+          idleHandle = w.requestIdleCallback(triggerHydrate, {
+            timeout: Math.max(300, priorityDelayMs + 300),
+          });
+        } else {
+          timeoutHandle = setTimeout(triggerHydrate, 16);
+        }
       };
-      if (typeof w.requestIdleCallback === 'function') {
-        idleHandle = w.requestIdleCallback(triggerHydrate, {
-          timeout: Math.max(250, priorityDelayMs + 250),
-        });
-      } else {
-        timeoutHandle = setTimeout(triggerHydrate, 16);
-      }
-    };
-
-    const delayTimer = setTimeout(scheduleIdle, Math.max(0, priorityDelayMs));
+      delayTimer = setTimeout(scheduleIdle, Math.max(0, priorityDelayMs));
+    }
 
     return () => {
       cancelled = true;
       observer?.disconnect();
-      clearTimeout(delayTimer);
+      if (delayTimer) clearTimeout(delayTimer);
       if (timeoutHandle) clearTimeout(timeoutHandle);
       const w = window as unknown as { cancelIdleCallback?: (id: number) => void };
       if (idleHandle !== null && typeof w.cancelIdleCallback === 'function') {
         w.cancelIdleCallback(idleHandle);
       }
     };
-  }, [hydrated, priorityDelayMs, rootMargin]);
+  }, [hydrated, hydrateOnIdle, priorityDelayMs, rootMargin]);
 
   if (hydrated) {
-    return <div className={className}>{children}</div>;
+    return (
+      <div
+        className={className}
+        style={{
+          contentVisibility: 'auto',
+          containIntrinsicSize: `auto ${minHeight}px`,
+        }}
+      >
+        {render ? render() : children}
+      </div>
+    );
   }
 
   return (
-    <div ref={hostRef} className={className} style={{ minHeight }}>
+    <div
+      ref={hostRef}
+      className={className}
+      style={{ minHeight }}
+      data-progressive-section="pending"
+      data-section-label={label || undefined}
+    >
       {fallback ?? (
         <div
           className="w-full rounded-2xl border border-slate-200/70 dark:border-slate-800/80 bg-white/60 dark:bg-slate-900/50 p-5 animate-pulse flex flex-col justify-between"
@@ -142,7 +201,18 @@ export const ProgressiveSection: React.FC<ProgressiveSectionProps> = ({
 };
 
 /**
- * Incrementally reveals large lists (tables/cards) in chunks over animation/idle frames
+ * Computes progressive chunk step without blocking frame time.
+ */
+export function computeNextProgressiveCount(
+  current: number,
+  total: number,
+  batchSize: number
+): number {
+  return Math.min(total, current + Math.max(1, batchSize));
+}
+
+/**
+ * Incrementally reveals large lists (tables/cards) in chunks over animation frames
  * so rendering 500+ rows never blocks main-thread frame responsiveness.
  */
 export function useProgressiveItems<T>(
@@ -158,10 +228,21 @@ export function useProgressiveItems<T>(
 
   useEffect(() => {
     if (visibleCount >= items.length) return;
-    const id = setTimeout(() => {
-      setVisibleCount((prev) => Math.min(items.length, prev + batchSize));
-    }, 24);
-    return () => clearTimeout(id);
+    let rafId: number | null = null;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    if (typeof requestAnimationFrame === 'function') {
+      rafId = requestAnimationFrame(() => {
+        setVisibleCount((prev) => computeNextProgressiveCount(prev, items.length, batchSize));
+      });
+    } else {
+      timerId = setTimeout(() => {
+        setVisibleCount((prev) => computeNextProgressiveCount(prev, items.length, batchSize));
+      }, 16);
+    }
+    return () => {
+      if (rafId !== null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(rafId);
+      if (timerId !== null) clearTimeout(timerId);
+    };
   }, [visibleCount, items.length, batchSize]);
 
   const capped = Math.min(items.length, visibleCount);

@@ -1,25 +1,35 @@
-import React, { Suspense, lazy, startTransition, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, startTransition, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { DashboardNav } from './dashboard/DashboardNav';
 import { OverviewTab } from './dashboard/OverviewTab';
-import { TactileSmartCalculator } from './dashboard/TactileSmartCalculator';
-import TransactionForm from './TransactionForm';
-import { CommandPalette } from './CommandPalette';
-import { SpexCompanionPet } from './common/SpexCompanionPet';
-import { SmartNotificationCenter } from './dashboard/SmartNotificationCenter';
 import { FeatureUnavailableCard } from './dashboard/FeatureUnavailableCard';
-import { OnboardingFlow } from './onboarding/OnboardingFlow';
 import { PageTransition, MotionModal } from './ui/MotionPrimitives';
 import { AnimatePresence, motion } from 'motion/react';
 import { X, CheckCircle2, AlertCircle, Info, Calculator } from 'lucide-react';
-import { generateFacts, selectFacts } from '../lib/financialFacts';
 import {
   FEATURE_METADATA,
   getTabRequiredFeature,
   isTabAvailableForUser,
 } from '../lib/entitlements';
 import type { DashboardTab, WalletsWorkbenchSection } from '../types';
+
+const TactileSmartCalculator = lazy(() =>
+  import('./dashboard/TactileSmartCalculator').then((m) => ({ default: m.TactileSmartCalculator }))
+);
+const TransactionForm = lazy(() => import('./TransactionForm'));
+const CommandPalette = lazy(() =>
+  import('./CommandPalette').then((m) => ({ default: m.CommandPalette }))
+);
+const SmartNotificationCenter = lazy(() =>
+  import('./dashboard/SmartNotificationCenter').then((m) => ({ default: m.SmartNotificationCenter }))
+);
+const OnboardingFlow = lazy(() =>
+  import('./onboarding/OnboardingFlow').then((m) => ({ default: m.OnboardingFlow }))
+);
+const SpexCompanionPet = lazy(() =>
+  import('./common/SpexCompanionPet').then((m) => ({ default: m.SpexCompanionPet }))
+);
 
 const TransactionsTab = lazy(() =>
   import('./dashboard/TransactionsTab').then((m) => ({ default: m.TransactionsTab }))
@@ -135,6 +145,11 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     subscriptions,
     investmentsData,
     operationalRadar,
+    transactionsWindow,
+    isHydratingHistory,
+    isHydratingInvestments,
+    isHydratingRadar,
+    ensureRadarLoaded,
     handleCreateGoal,
     handleUpdateGoal,
     handleContributeToGoal,
@@ -166,17 +181,13 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     notifications,
   } = useDashboardData(token, tier);
 
-  const financialFacts = useMemo(
-    () => selectFacts(generateFacts(kpis, transactions, debts, budgets, payrolls, investmentsData)),
-    [kpis, transactions, debts, budgets, payrolls, investmentsData],
-  );
-
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationCenterOpen, setIsNotificationCenterOpen] = useState(false);
   const [quickTxModalType, setQuickTxModalType] = useState<'Expense' | 'Income' | 'Transfer' | null>(null);
   const [isSmartCalcModalOpen, setIsSmartCalcModalOpen] = useState(false);
   const [isWalletsModalOpen, setIsWalletsModalOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [isPetReady, setIsPetReady] = useState(false);
   const hasAutoOpenedWizard = React.useRef(false);
   const [accountsSection, setAccountsSection] = useState<WalletsWorkbenchSection>('wallets');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -196,38 +207,30 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
     }
   }, [propActiveTab]);
 
-  // Pre-warm lazy tab chunks during browser idle frames once initial overview settles
+  // Defer SPEX companion hydration until Frame-1 KPIs settle and browser reaches idle
   useEffect(() => {
-    if (loading || !kpis) return;
+    if (loading || !kpis || isPetReady) return;
     let cancelled = false;
-    const warmTabs = () => {
-      if (cancelled) return;
-      void import('./dashboard/TransactionsTab');
-      void import('./dashboard/AnalyticsTab');
-      void import('./dashboard/WalletsManager');
-      if (tier === 'advanced') {
-        void import('./dashboard/InvestmentsTab');
-      }
-      void import('./dashboard/DebtsTab');
-      void import('./dashboard/BudgetsTab');
+    const activatePet = () => {
+      if (!cancelled) setIsPetReady(true);
     };
     const w = window as unknown as {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
       cancelIdleCallback?: (id: number) => void;
     };
     if (typeof w.requestIdleCallback === 'function') {
-      const id = w.requestIdleCallback(warmTabs, { timeout: 1500 });
+      const id = w.requestIdleCallback(activatePet, { timeout: 1800 });
       return () => {
         cancelled = true;
         w.cancelIdleCallback?.(id);
       };
     }
-    const t = setTimeout(warmTabs, 600);
+    const timer = window.setTimeout(activatePet, 900);
     return () => {
       cancelled = true;
-      clearTimeout(t);
+      window.clearTimeout(timer);
     };
-  }, [loading, kpis, tier]);
+  }, [loading, kpis, isPetReady]);
 
   useEffect(() => {
     window.dispatchEvent(
@@ -425,6 +428,9 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               subscriptions={subscriptions}
               investmentsData={investmentsData}
               initialOperationalRadar={operationalRadar}
+              isHydratingRadar={isHydratingRadar}
+              isHydratingInvestments={isHydratingInvestments}
+              onEnsureRadarLoaded={ensureRadarLoaded}
               setActiveTab={setActiveTab}
               openTransaction={openTransaction}
               handleSettle={handleSettleDebt}
@@ -510,6 +516,8 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               debts={debts}
               payrolls={payrolls}
               investmentsData={investmentsData}
+              isHydratingHistory={isHydratingHistory}
+              transactionsWindow={transactionsWindow}
               setActiveTab={setActiveTab}
               handleDeleteTx={handleDeleteTransaction}
               fetchData={fetchData}
@@ -692,107 +700,117 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       )}
 
       {/* Global Command Palette (Cmd+K / Ctrl+K) */}
-      <CommandPalette
-        isOpen={isCommandPaletteOpen}
-        onClose={() => setIsCommandPaletteOpen(false)}
-        setActiveTab={setActiveTab}
-        openTransaction={openTransaction}
-        onOpenQuickTransaction={(type) => setQuickTxModalType(type)}
-        onOpenSmartCalculator={() => setIsSmartCalcModalOpen(true)}
-        onOpenWalletsModal={() => {
-          setAccountsSection('wallets');
-          setActiveTab('accounts');
-        }}
-        kpis={kpis}
-        transactions={transactions}
-        debts={debts}
-        goals={goals}
-        subscriptions={subscriptions}
-        investmentsData={investmentsData}
-      />
+      {isCommandPaletteOpen && (
+        <Suspense fallback={null}>
+          <CommandPalette
+            isOpen={isCommandPaletteOpen}
+            onClose={() => setIsCommandPaletteOpen(false)}
+            setActiveTab={setActiveTab}
+            openTransaction={openTransaction}
+            onOpenQuickTransaction={(type) => setQuickTxModalType(type)}
+            onOpenSmartCalculator={() => setIsSmartCalcModalOpen(true)}
+            onOpenWalletsModal={() => {
+              setAccountsSection('wallets');
+              setActiveTab('accounts');
+            }}
+            kpis={kpis}
+            transactions={transactions}
+            debts={debts}
+            goals={goals}
+            subscriptions={subscriptions}
+            investmentsData={investmentsData}
+          />
+        </Suspense>
+      )}
 
       {/* Quick Transaction Entry Modal */}
-      <MotionModal
-        isOpen={Boolean(quickTxModalType)}
-        onClose={() => setQuickTxModalType(null)}
-        containerClassName="w-full max-w-lg max-h-[90vh] overflow-y-auto ts-scrollbar rounded-2xl shadow-2xl"
-      >
-        {quickTxModalType && (
-          <TransactionForm
-            initialType={quickTxModalType}
-            wallets={kpis?.accounts || []}
-            contexts={contexts}
-            onCancel={() => setQuickTxModalType(null)}
-            onSuccess={() => {
-              const label = quickTxModalType;
-              setQuickTxModalType(null);
-              fetchData();
-              setToast({ message: `${label} recorded and balances updated.`, type: 'success' });
-            }}
-          />
-        )}
-      </MotionModal>
+      {quickTxModalType && (
+        <MotionModal
+          isOpen={true}
+          onClose={() => setQuickTxModalType(null)}
+          containerClassName="w-full max-w-lg max-h-[90vh] overflow-y-auto ts-scrollbar rounded-2xl shadow-2xl"
+        >
+          <Suspense fallback={<div className="p-8 h-64 rounded-2xl bg-white dark:bg-gray-900 animate-pulse" />}>
+            <TransactionForm
+              initialType={quickTxModalType}
+              wallets={kpis?.accounts || []}
+              contexts={contexts}
+              onCancel={() => setQuickTxModalType(null)}
+              onSuccess={() => {
+                const label = quickTxModalType;
+                setQuickTxModalType(null);
+                fetchData();
+                setToast({ message: `${label} recorded and balances updated.`, type: 'success' });
+              }}
+            />
+          </Suspense>
+        </MotionModal>
+      )}
 
       {/* Quick Tactile Smart Calculator Modal */}
-      <MotionModal
-        isOpen={isSmartCalcModalOpen}
-        onClose={() => setIsSmartCalcModalOpen(false)}
-        containerClassName="w-full max-w-5xl max-h-[92vh] overflow-y-auto ts-scrollbar bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl p-4 sm:p-6"
-      >
-        <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
-              <Calculator className="h-5 w-5" />
+      {isSmartCalcModalOpen && (
+        <MotionModal
+          isOpen={true}
+          onClose={() => setIsSmartCalcModalOpen(false)}
+          containerClassName="w-full max-w-5xl max-h-[92vh] overflow-y-auto ts-scrollbar bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl p-4 sm:p-6"
+        >
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-800">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                <Calculator className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">Tactile Smart Calculator</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Evaluate expressions, check Safe-to-Spend impact, and convert numbers directly into transactions or goals.
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-base font-bold text-gray-900 dark:text-white">Tactile Smart Calculator</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Evaluate expressions, check Safe-to-Spend impact, and convert numbers directly into transactions or goals.
-              </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSmartCalcModalOpen(false);
+                  setActiveTab('calculators');
+                }}
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline px-2.5 py-1.5 cursor-pointer"
+              >
+                Open All 7 Simulators →
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsSmartCalcModalOpen(false)}
+                aria-label="Close calculator"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
+          <Suspense fallback={<div className="h-72 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />}>
+            <TactileSmartCalculator
+              kpis={kpis}
+              debts={debts}
+              goals={goals}
+              userSettings={userSettings}
+              onNavigateToTab={(tab) => {
+                setIsSmartCalcModalOpen(false);
+                setActiveTab(tab);
+              }}
+              onSetWhatIfAmount={(amt) => {
+                setWhatIfAmount(amt);
                 setIsSmartCalcModalOpen(false);
                 setActiveTab('calculators');
               }}
-              className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline px-2.5 py-1.5 cursor-pointer"
-            >
-              Open All 7 Simulators →
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsSmartCalcModalOpen(false)}
-              aria-label="Close calculator"
-              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-        <TactileSmartCalculator
-          kpis={kpis}
-          debts={debts}
-          goals={goals}
-          userSettings={userSettings}
-          onNavigateToTab={(tab) => {
-            setIsSmartCalcModalOpen(false);
-            setActiveTab(tab);
-          }}
-          onSetWhatIfAmount={(amt) => {
-            setWhatIfAmount(amt);
-            setIsSmartCalcModalOpen(false);
-            setActiveTab('calculators');
-          }}
-          onCreateGoal={handleCreateGoal}
-          onTransactionLogged={() => {
-            fetchData();
-            setToast({ message: 'Logged directly from Smart Calculator.', type: 'success' });
-          }}
-        />
-      </MotionModal>
+              onCreateGoal={handleCreateGoal}
+              onTransactionLogged={() => {
+                fetchData();
+                setToast({ message: 'Logged directly from Smart Calculator.', type: 'success' });
+              }}
+            />
+          </Suspense>
+        </MotionModal>
+      )}
 
       {/* Optional Quick Wallets Modal */}
       {isWalletsModalOpen && (
@@ -818,36 +836,52 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
       )}
 
       {/* Smart Multi-Domain Notification & Insights Center Drawer */}
-      <SmartNotificationCenter
-        isOpen={isNotificationCenterOpen}
-        onClose={() => setIsNotificationCenterOpen(false)}
-        notifications={notifications}
-        onNavigateTab={(tab) => {
-          setIsNotificationCenterOpen(false);
-          setActiveTab(tab);
-        }}
-      />
+      {isNotificationCenterOpen && (
+        <Suspense fallback={null}>
+          <SmartNotificationCenter
+            isOpen={isNotificationCenterOpen}
+            onClose={() => setIsNotificationCenterOpen(false)}
+            notifications={notifications}
+            onNavigateTab={(tab) => {
+              setIsNotificationCenterOpen(false);
+              setActiveTab(tab);
+            }}
+          />
+        </Suspense>
+      )}
 
-      {/* Interactive SPEX Companion Pet */}
-      <SpexCompanionPet
-        activeTab={activeTab}
-        kpis={kpis}
-        facts={financialFacts}
-        onOpenChat={() => setActiveTab('chat')}
-      />
+      {/* Interactive SPEX Companion Pet (Idle-Deferred) */}
+      {isPetReady && (
+        <Suspense fallback={null}>
+          <SpexCompanionPet
+            activeTab={activeTab}
+            kpis={kpis}
+            transactions={transactions}
+            debts={debts}
+            budgets={budgets}
+            payrolls={payrolls}
+            investmentsData={investmentsData}
+            onOpenChat={() => setActiveTab('chat')}
+          />
+        </Suspense>
+      )}
 
       {/* Interactive Setup & Onboarding Wizard */}
-      <OnboardingFlow
-        isOpen={isOnboardingOpen}
-        onClose={() => setIsOnboardingOpen(false)}
-        onComplete={async (jumpTab) => {
-          setIsOnboardingOpen(false);
-          await Promise.all([fetchData(), refreshUserProfile(), refreshOnboarding()]);
-          if (jumpTab && isTabAvailableForUser(jumpTab, user?.experienceTier, user?.role)) {
-            setActiveTab(jumpTab);
-          }
-        }}
-      />
+      {isOnboardingOpen && (
+        <Suspense fallback={null}>
+          <OnboardingFlow
+            isOpen={isOnboardingOpen}
+            onClose={() => setIsOnboardingOpen(false)}
+            onComplete={async (jumpTab) => {
+              setIsOnboardingOpen(false);
+              await Promise.all([fetchData(), refreshUserProfile(), refreshOnboarding()]);
+              if (jumpTab && isTabAvailableForUser(jumpTab, user?.experienceTier, user?.role)) {
+                setActiveTab(jumpTab);
+              }
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

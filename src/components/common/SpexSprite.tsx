@@ -176,14 +176,80 @@ export const SPEX_LOOK_DIRECTIONS: LookDirectionSpec[] = [
   { sector: 15, angleDeg: 337.5, row: 10, col: 7, compass: 'NNW', label: '337.5° Up-Left' },
 ];
 
-/**
- * Converts a (dx, dy) vector from SPEX's center to the pointer into one of the 16 gaze cells
- * on rows 9 and 10. Clockwise from 0° = North (Up).
- */
 export function getLookCellFromVector(dx: number, dy: number): LookDirectionSpec {
   const deg = ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
   const sector = Math.round(deg / 22.5) % 16;
   return SPEX_LOOK_DIRECTIONS[sector] || SPEX_LOOK_DIRECTIONS[0];
+}
+
+export function computeSpriteFrameCoords(params: {
+  effectiveState: SpexAnimationState;
+  lookAtCursor: boolean;
+  isPointerLooking: boolean;
+  hasTransientState: boolean;
+  forcedLookSector: number | null;
+  forcedFrame: number | null;
+  frameIndex: number;
+  activeLookSector: number;
+}): { row: number; col: number; bgPosX: string; bgPosY: string; shouldUseLookCell: boolean } {
+  const stateMeta = SPEX_ANIMATION_STATES[params.effectiveState] || SPEX_ANIMATION_STATES.idle;
+  const shouldUseLookCell =
+    params.effectiveState === 'look' ||
+    (params.lookAtCursor &&
+      params.isPointerLooking &&
+      params.effectiveState === 'idle' &&
+      !params.hasTransientState);
+
+  let row = stateMeta.row;
+  let col = 0;
+
+  if (shouldUseLookCell) {
+    const sector =
+      params.forcedLookSector !== null && params.forcedLookSector !== undefined
+        ? ((params.forcedLookSector % 16) + 16) % 16
+        : params.effectiveState === 'look' && !params.isPointerLooking
+        ? (((params.forcedFrame ?? params.frameIndex) % 16) + 16) % 16
+        : ((params.activeLookSector % 16) + 16) % 16;
+    const lookSpec = SPEX_LOOK_DIRECTIONS[sector] || SPEX_LOOK_DIRECTIONS[0];
+    row = lookSpec.row;
+    col = lookSpec.col;
+  } else {
+    const safeFrame =
+      params.forcedFrame !== null && params.forcedFrame !== undefined
+        ? ((params.forcedFrame % stateMeta.frames) + stateMeta.frames) % stateMeta.frames
+        : ((params.frameIndex % stateMeta.frames) + stateMeta.frames) % stateMeta.frames;
+    row = stateMeta.row;
+    col = safeFrame;
+  }
+
+  return {
+    row,
+    col,
+    bgPosX: `${(col / 7) * 100}%`,
+    bgPosY: `${(row / 10) * 100}%`,
+    shouldUseLookCell,
+  };
+}
+
+let cachedWebpSupport: boolean | null = null;
+function detectWebpSupport(): boolean {
+  if (cachedWebpSupport !== null) return cachedWebpSupport;
+  if (typeof document === 'undefined') return true;
+  try {
+    const canvas = document.createElement('canvas');
+    if (canvas.getContext && canvas.getContext('2d')) {
+      cachedWebpSupport = canvas.toDataURL('image/webp').indexOf('data:image/webp') === 0;
+      return cachedWebpSupport;
+    }
+  } catch {
+    // fallback
+  }
+  cachedWebpSupport = true;
+  return true;
+}
+
+export function resolveSpritesheetUrl(supportsWebp: boolean): string {
+  return supportsWebp ? SPEX_SPRITESHEET_WEBP : SPEX_SPRITESHEET_PNG;
 }
 
 export interface SpexSpriteProps {
@@ -214,11 +280,23 @@ export const SpexSprite: React.FC<SpexSpriteProps> = ({
   onFrameChange,
 }) => {
   const containerRef = useRef<HTMLSpanElement>(null);
-  const [frameIndex, setFrameIndex] = useState(0);
-  const [activeLookSector, setActiveLookSector] = useState<number>(8); // default 180° front-down
-  const [isPointerLooking, setIsPointerLooking] = useState(false);
+  const spriteLayerRef = useRef<HTMLSpanElement>(null);
+  const frameIndexRef = useRef(0);
+  const activeLookSectorRef = useRef<number>(8);
+  const isPointerLookingRef = useRef(false);
+  const lastReportedRef = useRef<{ row: number; col: number }>({ row: -1, col: -1 });
+
   const [transientState, setTransientState] = useState<SpexAnimationState | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [isOnScreen, setIsOnScreen] = useState(true);
+  const [isDocumentVisible, setIsDocumentVisible] = useState(
+    () => typeof document === 'undefined' || !document.hidden
+  );
+
+  const onSectorChangeRef = useRef(onSectorChange);
+  onSectorChangeRef.current = onSectorChange;
+  const onFrameChangeRef = useRef(onFrameChange);
+  onFrameChangeRef.current = onFrameChange;
 
   const pointerIdleTimeoutRef = useRef<number | null>(null);
   const transientTimeoutRef = useRef<number | null>(null);
@@ -232,44 +310,112 @@ export const SpexSprite: React.FC<SpexSpriteProps> = ({
     return () => mq.removeEventListener?.('change', handler);
   }, []);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handleVisibility = () => setIsDocumentVisible(!document.hidden);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined' || !containerRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          setIsOnScreen(entry.isIntersecting);
+        }
+      },
+      { rootMargin: '80px' }
+    );
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   const effectiveState: SpexAnimationState = transientState || state;
   const stateMeta = SPEX_ANIMATION_STATES[effectiveState] || SPEX_ANIMATION_STATES.idle;
   const fps = fpsOverride || stateMeta.defaultFps;
 
-  // Reset frame index when state changes
-  useEffect(() => {
-    setFrameIndex(0);
-  }, [effectiveState]);
+  const paintSpriteFrame = useCallback(() => {
+    const coords = computeSpriteFrameCoords({
+      effectiveState,
+      lookAtCursor,
+      isPointerLooking: isPointerLookingRef.current,
+      hasTransientState: Boolean(transientState),
+      forcedLookSector,
+      forcedFrame,
+      frameIndex: frameIndexRef.current,
+      activeLookSector: activeLookSectorRef.current,
+    });
 
-  // Frame loop interval
+    if (spriteLayerRef.current) {
+      spriteLayerRef.current.style.backgroundPosition = `${coords.bgPosX} ${coords.bgPosY}`;
+    }
+
+    if (
+      lastReportedRef.current.row !== coords.row ||
+      lastReportedRef.current.col !== coords.col
+    ) {
+      lastReportedRef.current = { row: coords.row, col: coords.col };
+      onFrameChangeRef.current?.(coords.col, coords.row, coords.col);
+    }
+  }, [effectiveState, lookAtCursor, transientState, forcedLookSector, forcedFrame]);
+
+  // Reset frame index when state changes and paint immediately
   useEffect(() => {
-    if (paused || reducedMotion) return;
+    frameIndexRef.current = 0;
+    paintSpriteFrame();
+  }, [effectiveState, forcedLookSector, forcedFrame, paintSpriteFrame]);
+
+  // Zero-react-rerender DOM animation interval (auto-paused when off-screen or tab hidden)
+  useEffect(() => {
+    if (paused || reducedMotion || !isOnScreen || !isDocumentVisible) return;
     if (forcedFrame !== null && forcedFrame !== undefined) return;
-    if (effectiveState === 'look' && (forcedLookSector !== null || isPointerLooking)) return;
+    if (effectiveState === 'look' && (forcedLookSector !== null || isPointerLookingRef.current)) return;
 
     const totalFrames = effectiveState === 'look' ? 16 : stateMeta.frames;
     const intervalMs = Math.max(45, Math.round(1000 / fps));
 
     const timer = window.setInterval(() => {
-      setFrameIndex((prev) => (prev + 1) % totalFrames);
+      if (effectiveState === 'look' && isPointerLookingRef.current) return;
+      frameIndexRef.current = (frameIndexRef.current + 1) % totalFrames;
+      paintSpriteFrame();
     }, intervalMs);
 
     return () => window.clearInterval(timer);
-  }, [effectiveState, stateMeta.frames, fps, paused, reducedMotion, forcedFrame, forcedLookSector, isPointerLooking]);
+  }, [
+    effectiveState,
+    stateMeta.frames,
+    fps,
+    paused,
+    reducedMotion,
+    isOnScreen,
+    isDocumentVisible,
+    forcedFrame,
+    forcedLookSector,
+    paintSpriteFrame,
+  ]);
 
-  // 16-angle cursor gaze tracking
+  // rAF-throttled 16-angle cursor gaze tracking (zero layout thrash, zero React state per pixel)
   useEffect(() => {
     if (!lookAtCursor && effectiveState !== 'look') {
-      setIsPointerLooking(false);
+      isPointerLookingRef.current = false;
+      paintSpriteFrame();
       return;
     }
     if (forcedLookSector !== null && forcedLookSector !== undefined) {
       return;
     }
+    if (!isOnScreen || !isDocumentVisible) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    let rafId: number | null = null;
+    let pendingEvent: MouseEvent | null = null;
+
+    const processMouse = () => {
+      rafId = null;
+      const e = pendingEvent;
+      pendingEvent = null;
       const el = containerRef.current;
-      if (!el) return;
+      if (!e || !el) return;
       const rect = el.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
 
@@ -279,28 +425,42 @@ export const SpexSprite: React.FC<SpexSpriteProps> = ({
       const dy = e.clientY - centerY;
       const distance = Math.hypot(dx, dy);
 
-      // If within deadzone right on top of nose, look straight down/front (180°)
       const spec = distance < 10 ? SPEX_LOOK_DIRECTIONS[8] : getLookCellFromVector(dx, dy);
-      setActiveLookSector(spec.sector);
-      setIsPointerLooking(true);
-      onSectorChange?.(spec);
+      const changed =
+        activeLookSectorRef.current !== spec.sector || !isPointerLookingRef.current;
+      activeLookSectorRef.current = spec.sector;
+      isPointerLookingRef.current = true;
+
+      if (changed) {
+        paintSpriteFrame();
+        onSectorChangeRef.current?.(spec);
+      }
 
       if (pointerIdleTimeoutRef.current) {
         window.clearTimeout(pointerIdleTimeoutRef.current);
       }
       pointerIdleTimeoutRef.current = window.setTimeout(() => {
-        setIsPointerLooking(false);
+        isPointerLookingRef.current = false;
+        paintSpriteFrame();
       }, 2400);
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      pendingEvent = e;
+      if (rafId === null) {
+        rafId = window.requestAnimationFrame(processMouse);
+      }
     };
 
     window.addEventListener('mousemove', handleMouseMove, { passive: true });
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
       if (pointerIdleTimeoutRef.current) {
         window.clearTimeout(pointerIdleTimeoutRef.current);
       }
     };
-  }, [lookAtCursor, effectiveState, forcedLookSector, onSectorChange]);
+  }, [lookAtCursor, effectiveState, forcedLookSector, isOnScreen, isDocumentVisible, paintSpriteFrame]);
 
   useEffect(() => {
     return () => {
@@ -320,40 +480,18 @@ export const SpexSprite: React.FC<SpexSpriteProps> = ({
     }, durationMs);
   }, []);
 
-  // Compute exact (row, col) on the 8x11 spritesheet
-  let row = stateMeta.row;
-  let col = 0;
+  const initialCoords = computeSpriteFrameCoords({
+    effectiveState,
+    lookAtCursor,
+    isPointerLooking: isPointerLookingRef.current,
+    hasTransientState: Boolean(transientState),
+    forcedLookSector,
+    forcedFrame,
+    frameIndex: frameIndexRef.current,
+    activeLookSector: activeLookSectorRef.current,
+  });
 
-  const shouldUseLookCell =
-    effectiveState === 'look' ||
-    (lookAtCursor && isPointerLooking && effectiveState === 'idle' && !transientState);
-
-  if (shouldUseLookCell) {
-    const sector =
-      forcedLookSector !== null && forcedLookSector !== undefined
-        ? ((forcedLookSector % 16) + 16) % 16
-        : effectiveState === 'look' && !isPointerLooking
-        ? (forcedFrame ?? frameIndex) % 16
-        : activeLookSector;
-    const lookSpec = SPEX_LOOK_DIRECTIONS[sector] || SPEX_LOOK_DIRECTIONS[0];
-    row = lookSpec.row;
-    col = lookSpec.col;
-  } else {
-    const safeFrame =
-      forcedFrame !== null && forcedFrame !== undefined
-        ? forcedFrame % stateMeta.frames
-        : frameIndex % stateMeta.frames;
-    row = stateMeta.row;
-    col = safeFrame;
-  }
-
-  useEffect(() => {
-    onFrameChange?.(col, row, col);
-  }, [row, col, onFrameChange]);
-
-  // CSS background-position percentages for an 8-column (0..7) x 11-row (0..10) grid
-  const bgPosX = `${(col / 7) * 100}%`;
-  const bgPosY = `${(row / 10) * 100}%`;
+  const spritesheetUrl = resolveSpritesheetUrl(detectWebpSupport());
 
   const containerStyle: React.CSSProperties | undefined = size
     ? { width: size, height: size }
@@ -376,16 +514,18 @@ export const SpexSprite: React.FC<SpexSpriteProps> = ({
       className={`relative inline-flex items-center justify-center shrink-0 select-none overflow-visible ${className}`}
     >
       <span
+        ref={spriteLayerRef}
         aria-hidden="true"
         className="block w-full h-full bg-no-repeat pointer-events-none transition-transform duration-150"
         style={{
           aspectRatio: '192 / 208',
           maxHeight: '100%',
           maxWidth: '100%',
-          backgroundImage: `url("${SPEX_SPRITESHEET_WEBP}"), url("${SPEX_SPRITESHEET_PNG}")`,
+          backgroundImage: `url("${spritesheetUrl}")`,
           backgroundSize: '800% 1100%',
-          backgroundPosition: `${bgPosX} ${bgPosY}`,
+          backgroundPosition: `${initialCoords.bgPosX} ${initialCoords.bgPosY}`,
           filter: 'drop-shadow(0 3px 6px rgba(0, 0, 0, 0.16))',
+          willChange: 'background-position',
         }}
       />
     </span>

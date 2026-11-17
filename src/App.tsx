@@ -1,17 +1,21 @@
 import { initGoogleAuth } from './lib/googleAuth';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
 import { MotionConfig, AnimatePresence, motion } from 'motion/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider, useTheme, THEME_PRESETS, type ThemeId } from './context/ThemeContext';
 import { PrivacyProvider, usePrivacy } from './context/PrivacyContext';
-import Dashboard from './components/Dashboard';
 import { DesktopHeaderNav } from './components/dashboard/DesktopHeaderNav';
 import { DesktopSidebarNav } from './components/dashboard/DesktopSidebarNav';
-import { AuthPortal } from './components/auth/AuthPortal';
 import type { DashboardTab } from './types';
 import { NAV_GROUP_ORDER, NAV_ITEMS } from './config/navigation';
 import { getOfflineOutbox } from './lib/offlineOutbox';
 import { isTabAvailableForUser } from './lib/entitlements';
+import { prefetchTabChunk } from './lib/tabPrefetch';
+
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const AuthPortal = lazy(() =>
+  import('./components/auth/AuthPortal').then((m) => ({ default: m.AuthPortal }))
+);
 import {
   Menu,
   X,
@@ -35,6 +39,40 @@ import {
 } from 'lucide-react';
 
 const appIconSrc = `${(import.meta as any).env?.BASE_URL || '/'}app-icon.png?v=transparent`;
+
+const AppShellSkeleton: React.FC = () => (
+  <div className="min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+    <header className="sticky top-0 z-30 border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md px-4 py-2.5 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4">
+        <div className="flex items-center gap-2 shrink-0">
+          <button disabled className="md:hidden p-1.5 -ml-1.5 rounded-md text-gray-400">
+            <Menu className="h-5 w-5" />
+          </button>
+          <img src={appIconSrc} alt="TrueSpend Logo" className="h-8 w-8 opacity-50" />
+          <span className="text-lg font-bold tracking-tight text-gray-400">TrueSpend</span>
+        </div>
+        <div className="hidden sm:flex items-center gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-8 w-20 rounded bg-gray-200 dark:bg-gray-800 animate-pulse" />
+          ))}
+        </div>
+      </div>
+    </header>
+    <main className="mx-auto min-w-0 max-w-7xl p-3 sm:p-6 lg:p-8">
+      <div className="space-y-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-32 rounded-xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
+          ))}
+        </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 h-96 rounded-xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
+          <div className="h-96 rounded-xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
+        </div>
+      </div>
+    </main>
+  </div>
+);
 
 function AppContent() {
   const { user, loading, switchExperienceTier } = useAuth();
@@ -118,43 +156,15 @@ function AppContent() {
   const isChatOnMobile = activeTab === 'chat';
 
   if (loading) {
-    return (
-      <div className="min-h-screen overflow-x-hidden bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
-        <header className="sticky top-0 z-30 border-b border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md px-4 py-2.5 sm:px-6 lg:px-8">
-          <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4">
-            <div className="flex items-center gap-2 shrink-0">
-              <button disabled className="md:hidden p-1.5 -ml-1.5 rounded-md text-gray-400">
-                <Menu className="h-5 w-5" />
-              </button>
-              <img src={appIconSrc} alt="TrueSpend Logo" className="h-8 w-8 opacity-50" />
-              <span className="text-lg font-bold tracking-tight text-gray-400">TrueSpend</span>
-            </div>
-            <div className="hidden sm:flex items-center gap-4">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-8 w-20 rounded bg-gray-200 dark:bg-gray-800 animate-pulse" />
-              ))}
-            </div>
-          </div>
-        </header>
-        <main className="mx-auto min-w-0 max-w-7xl p-3 sm:p-6 lg:p-8">
-          <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-32 rounded-xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
-              ))}
-            </div>
-            <div className="grid gap-6 lg:grid-cols-3">
-              <div className="lg:col-span-2 h-96 rounded-xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
-              <div className="h-96 rounded-xl bg-gray-200 dark:bg-gray-800 animate-pulse" />
-            </div>
-          </div>
-        </main>
-      </div>
-    );
+    return <AppShellSkeleton />;
   }
 
   if (!user) {
-    return <AuthPortal appIconSrc={appIconSrc} />;
+    return (
+      <Suspense fallback={<AppShellSkeleton />}>
+        <AuthPortal appIconSrc={appIconSrc} />
+      </Suspense>
+    );
   }
 
   const isAdvancedTier = user.experienceTier === 'advanced';
@@ -662,7 +672,23 @@ function AppContent() {
               : 'max-w-[1440px] p-3 pb-24 sm:p-6 sm:pb-24 md:pb-8 lg:px-8'
           }`}
         >
-          <Dashboard activeTab={activeTab} onTabChange={setActiveTab} />
+          <Suspense
+            fallback={
+              <div className="space-y-6 animate-pulse">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-32 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+                  ))}
+                </div>
+                <div className="grid gap-6 lg:grid-cols-3">
+                  <div className="lg:col-span-2 h-96 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+                  <div className="h-96 bg-gray-200 dark:bg-gray-800 rounded-xl" />
+                </div>
+              </div>
+            }
+          >
+            <Dashboard activeTab={activeTab} onTabChange={setActiveTab} />
+          </Suspense>
         </main>
       </div>
 
@@ -720,6 +746,8 @@ function AppContent() {
                               ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 border-r-2 border-indigo-600 dark:border-indigo-400'
                               : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                           }`}
+                          onMouseEnter={() => prefetchTabChunk(tab.id)}
+                          onFocus={() => prefetchTabChunk(tab.id)}
                           onClick={() => {
                             window.dispatchEvent(
                               new CustomEvent('truespend:setTab', { detail: tab.id })

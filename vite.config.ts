@@ -32,6 +32,15 @@ export default defineConfig(() => {
             if (id.includes('react-dom') || id.includes('/react/') || id.includes('scheduler')) {
               return 'vendor-react';
             }
+            if (id.includes('react-markdown') || id.includes('remark-gfm') || id.includes('unified') || id.includes('mdast') || id.includes('micromark')) {
+              return 'vendor-markdown';
+            }
+            if (id.includes('date-fns')) {
+              return 'vendor-date';
+            }
+            if (id.includes('firebase') || id.includes('@firebase')) {
+              return 'vendor-firebase';
+            }
             if (id.includes('xlsx') || id.includes('jspdf') || id.includes('html2canvas')) {
               return 'vendor-export';
             }

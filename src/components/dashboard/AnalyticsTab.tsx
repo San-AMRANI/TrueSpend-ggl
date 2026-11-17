@@ -1625,8 +1625,11 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
           )}
 
           {/* Cumulative Trajectory Burn Chart */}
-          <ProgressiveSection minHeight={340} priorityDelayMs={80} label="Day-by-Day Cumulative Spending Trajectory">
-          <Card>
+          <ProgressiveSection
+            minHeight={340}
+            label="Day-by-Day Cumulative Spending Trajectory"
+            render={() => (
+              <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
@@ -1686,11 +1689,15 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               )}
             </CardContent>
           </Card>
-          </ProgressiveSection>
+            )}
+          />
 
           {/* Cash Flow Outflow Waterfall & Wallet Split */}
-          <ProgressiveSection minHeight={300} priorityDelayMs={140} label="Cash Flow Allocation Charts">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <ProgressiveSection
+            minHeight={300}
+            label="Cash Flow Allocation Charts"
+            render={() => (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle>Cash Flow Inflow &amp; Outflow Allocation</CardTitle>
@@ -1748,7 +1755,8 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
               </CardContent>
             </Card>
           </div>
-          </ProgressiveSection>
+            )}
+          />
 
           {/* Adjusted True Spend Details */}
           <Card>

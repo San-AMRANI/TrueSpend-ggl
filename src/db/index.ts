@@ -1283,6 +1283,8 @@ const CORE_DDL_STATEMENTS: Array<{ sql: string; optional?: boolean; label: strin
   { label: 'idx domain_event_outbox_user_status_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "domain_event_outbox_user_status_idx" ON "domain_event_outbox"("user_id", "status")` },
 ];
 
+const CURRENT_SCHEMA_VERSION = 2026111701;
+
 export async function ensureDatabaseSchema(): Promise<void> {
   if (!global._schemaReadyPromise) {
     global._schemaReadyPromise = (async () => {
@@ -1291,17 +1293,56 @@ export async function ensureDatabaseSchema(): Promise<void> {
         await global._pgliteInstance.waitReady;
       }
 
-      for (const stmt of CORE_DDL_STATEMENTS) {
+      // Fast path: 1-query schema version check avoids re-running 220+ DDL statements on every cold start
+      try {
+        const metaRes = await pool.query(
+          `SELECT "schema_version" FROM "_truespend_schema_meta" WHERE "id" = 1 LIMIT 1`
+        );
+        if (Number(metaRes.rows?.[0]?.schema_version) === CURRENT_SCHEMA_VERSION) {
+          return;
+        }
+      } catch {
+        // Table doesn't exist yet — proceed with full schema initialization
+      }
+
+      const criticalStatements = CORE_DDL_STATEMENTS.filter((s) => !s.optional);
+      const optionalStatements = CORE_DDL_STATEMENTS.filter((s) => s.optional);
+
+      // Run critical statements sequentially (or batched in pg) to preserve FK/enum ordering
+      for (const stmt of criticalStatements) {
         try {
           await pool.query(stmt.sql);
         } catch (err: any) {
-          if (stmt.optional) {
-            console.warn(`[DB Init] Optional migration notice (${stmt.label}):`, err?.message || err);
-          } else {
-            console.error(`[DB Init] Critical migration error (${stmt.label}):`, err?.message || err);
-            throw err;
-          }
+          console.error(`[DB Init] Critical migration error (${stmt.label}):`, err?.message || err);
+          throw err;
         }
+      }
+
+      // Run optional ALTER/INDEX statements in parallel chunks of 8 instead of 1-by-1 serial round-trips
+      const CHUNK_SIZE = 8;
+      for (let i = 0; i < optionalStatements.length; i += CHUNK_SIZE) {
+        const chunk = optionalStatements.slice(i, i + CHUNK_SIZE);
+        await Promise.all(
+          chunk.map(async (stmt) => {
+            try {
+              await pool.query(stmt.sql);
+            } catch (err: any) {
+              console.warn(`[DB Init] Optional migration notice (${stmt.label}):`, err?.message || err);
+            }
+          })
+        );
+      }
+
+      try {
+        await pool.query(
+          `CREATE TABLE IF NOT EXISTS "_truespend_schema_meta" ("id" integer PRIMARY KEY, "schema_version" integer NOT NULL, "updated_at" timestamp DEFAULT now())`
+        );
+        await pool.query(
+          `INSERT INTO "_truespend_schema_meta" ("id", "schema_version", "updated_at") VALUES (1, $1, now()) ON CONFLICT ("id") DO UPDATE SET "schema_version" = EXCLUDED."schema_version", "updated_at" = now()`,
+          [CURRENT_SCHEMA_VERSION]
+        );
+      } catch (err: any) {
+        console.warn('[DB Init] Schema meta stamp notice:', err?.message || err);
       }
     })().catch((err) => {
       global._schemaReadyPromise = undefined;

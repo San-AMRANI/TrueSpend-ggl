@@ -59,7 +59,9 @@ export function getWebSocketUrl(path: string, token?: string | null): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   let baseWsUrl: string;
 
-  if (isNativePlatform()) {
+  const customBase =
+    typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_API_BASE) : null;
+  if (isNativePlatform() || (customBase && customBase.trim())) {
     const httpBase = getCapacitorApiBaseUrl();
     baseWsUrl = httpBase.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:');
   } else if (typeof window !== 'undefined') {

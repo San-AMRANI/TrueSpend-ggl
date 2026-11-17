@@ -94,7 +94,7 @@ export class PayrollService {
       walletId: targetWallet?.id || null,
     });
 
-    await coreAuditService.syncAndGetCommitmentOccurrences(userId).catch(() => undefined);
+    await coreAuditService.syncAndGetCommitmentOccurrences(userId, 90, { forceSync: true }).catch(() => undefined);
     return {
       ...created,
       walletId: created.walletId || targetWallet?.id || null,
@@ -145,7 +145,7 @@ export class PayrollService {
         ? await payrollRepository.update(payrollId, userId, updates)
         : payroll;
 
-    await coreAuditService.syncAndGetCommitmentOccurrences(userId).catch(() => undefined);
+    await coreAuditService.syncAndGetCommitmentOccurrences(userId, 90, { forceSync: true }).catch(() => undefined);
     return {
       ...updated,
       walletName: targetWallet?.name || null,
@@ -303,7 +303,7 @@ export class PayrollService {
 
     await Promise.all([
       coreAuditService.processPendingOutboxEvents(userId).catch(() => undefined),
-      coreAuditService.syncAndGetCommitmentOccurrences(userId).catch(() => undefined),
+      coreAuditService.syncAndGetCommitmentOccurrences(userId, 90, { forceSync: true }).catch(() => undefined),
     ]);
 
     return {

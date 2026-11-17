@@ -5,6 +5,7 @@ import { NAV_GROUP_ORDER, NAV_ITEMS } from '../../config/navigation';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { isTabAvailableForUser } from '../../lib/entitlements';
+import { prefetchTabChunk } from '../../lib/tabPrefetch';
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -100,6 +101,8 @@ export const DesktopSidebarNav: React.FC<DesktopSidebarNavProps> = ({
                       type="button"
                       aria-current={isActive ? 'page' : undefined}
                       title={sidebarCollapsed ? `${tab.label} — ${tab.description}` : tab.description}
+                      onMouseEnter={() => prefetchTabChunk(tab.id)}
+                      onFocus={() => prefetchTabChunk(tab.id)}
                       onClick={() => onSelectTab(tab.id)}
                       className={`relative w-full flex items-center rounded-xl transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                         sidebarCollapsed ? 'justify-center px-2 py-2.5' : 'gap-2.5 px-2.5 py-2'
