@@ -1,5 +1,6 @@
 // Secure, Encrypted & Recoverable Offline Transaction Outbox with Idempotency Keys
 import { getApiAccessToken } from '../services/api/apiClient';
+import { getApiUrl } from './capacitorBridge';
 
 export interface OfflineOutboxItem {
   idempotencyKey: string;
@@ -372,7 +373,7 @@ export async function flushOfflineOutbox(
     }
 
     try {
-      const response = await fetch('/api/transactions', {
+      const response = await fetch(getApiUrl('/api/transactions'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

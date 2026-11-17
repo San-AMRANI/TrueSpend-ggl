@@ -1884,7 +1884,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         ),
       );
       try {
-        const simRes = await fetch('/api/chat/simulate-actions', {
+        const simRes = await fetch(getApiUrl('/api/chat/simulate-actions'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ actions: message.actions }),

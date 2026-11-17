@@ -30,7 +30,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { auth } from '../../lib/firebase';
+import { getApiUrl } from '../../lib/capacitorBridge';
+import { getApiAccessToken } from '../../services/api/apiClient';
 import type {
   DividendEventRecord,
   InvestmentGoalItem,
@@ -50,7 +51,7 @@ import {
 import { normalizeStockTicker, resolveCanonicalCompanyName } from '../../lib/stockCategories';
 
 async function authorizedFetch(url: string, options: RequestInit = {}) {
-  const token = await auth.currentUser?.getIdToken().catch(() => null);
+  const token = getApiAccessToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
@@ -58,7 +59,7 @@ async function authorizedFetch(url: string, options: RequestInit = {}) {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  return fetch(url, { ...options, headers });
+  return fetch(getApiUrl(url), { ...options, credentials: 'include', headers });
 }
 
 export type StocksSuiteSection =

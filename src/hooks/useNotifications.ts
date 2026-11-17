@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { isNativePlatform } from '../lib/capacitorBridge';
+import { getApiUrl, isNativePlatform } from '../lib/capacitorBridge';
 import { getApiAccessToken } from '../services/api/apiClient';
 import type {
   CategoryBudget,
@@ -1305,7 +1305,7 @@ export function useNotifications() {
       const reg = await navigator.serviceWorker.ready;
       let subscription = await reg.pushManager.getSubscription();
       if (!subscription) {
-        const response = await fetch('/api/notifications/vapid-public-key', { credentials: 'include' });
+        const response = await fetch(getApiUrl('/api/notifications/vapid-public-key'), { credentials: 'include' });
         if (!response.ok) return;
         const { publicKey } = await response.json();
         if (!publicKey) return;
@@ -1315,7 +1315,7 @@ export function useNotifications() {
           applicationServerKey,
         });
       }
-      await fetch('/api/notifications/subscribe', {
+      await fetch(getApiUrl('/api/notifications/subscribe'), {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -1348,7 +1348,7 @@ export function useNotifications() {
     const token = getApiAccessToken();
     if (!token) return;
     try {
-      const res = await fetch('/api/notifications/preferences', {
+      const res = await fetch(getApiUrl('/api/notifications/preferences'), {
         credentials: 'include',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1394,7 +1394,7 @@ export function useNotifications() {
 
       if (!token) return;
       try {
-        const res = await fetch('/api/notifications/preferences', {
+        const res = await fetch(getApiUrl('/api/notifications/preferences'), {
           method: 'PUT',
           credentials: 'include',
           headers: {
