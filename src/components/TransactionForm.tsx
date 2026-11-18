@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { Transaction } from '../types';
 import { expenseCategories, incomeAndTransferCategories } from '../lib/categories';
 import { Trash2, AlertCircle, Plus, Users, Clock, Percent } from 'lucide-react';
+import { dashboardService } from '../services/api/dashboardService';
 
 type FormData = {
   amount: string;
@@ -460,18 +461,10 @@ export default function TransactionForm({
             }
           : {}),
       };
-      const response = await fetch(
-        isEditing ? `/api/transactions/${transaction!.id}` : '/api/transactions',
-        {
-          method: isEditing ? 'PUT' : 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(payload),
-        }
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        if (response.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
-        throw new Error(data.error || 'Unable to save the transaction.');
+      if (isEditing) {
+        await dashboardService.updateTransaction(transaction!.id, payload, token);
+      } else {
+        await dashboardService.createTransaction(payload, token);
       }
 
       onSuccess();
