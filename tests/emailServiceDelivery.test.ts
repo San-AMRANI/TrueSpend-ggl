@@ -6,10 +6,11 @@ import {
   formatEmailDeliveryWarning,
   isResendSandboxRecipientRestriction,
   parseSmtpConfig,
+  resolveActiveEmailSenderMode,
   resolveEmailFromAddress,
   selectEmailTransportOrder,
 } from '../server/services/emailDeliveryHelpers.js';
-import { emailService } from '../server/services/EmailService.js';
+import { emailService, resolveEmailThemePalette } from '../server/services/EmailService.js';
 
 test.after(async () => {
   await (globalThis as any)._pgliteInstance?.close?.();
@@ -71,7 +72,7 @@ test('parseSmtpConfig detects explicit SMTP and Gmail App Password config', () =
     port: 465,
     secure: true,
     user: 'sender@gmail.com',
-    pass: 'abcd efgh ijkl mnop',
+    pass: 'abcdefghijklmnop',
     providerLabel: 'smtp.gmail.com',
   });
 
@@ -112,8 +113,25 @@ test('selectEmailTransportOrder prefers SMTP over unverified Resend sandbox and 
 
   // Both SMTP and Resend key present, but NO custom verified EMAIL_FROM -> SMTP must go first
   assert.deepEqual(selectEmailTransportOrder({} as any, smtpCfg, true), ['smtp', 'resend']);
+  assert.equal(resolveActiveEmailSenderMode({} as any, smtpCfg, true), 'gmail_app_password');
 
-  // Custom verified EMAIL_FROM + Resend key -> Resend goes first, SMTP is backup
+  // Even if someone set EMAIL_FROM to a @gmail.com address, Resend cannot verify gmail.com -> Gmail SMTP must go first
+  assert.deepEqual(
+    selectEmailTransportOrder({ EMAIL_FROM: 'TrueSpend <sender@gmail.com>' } as any, smtpCfg, true),
+    ['smtp', 'resend'],
+  );
+
+  // Explicit EMAIL_PROVIDER=gmail forces Gmail SMTP first even if EMAIL_FROM is set
+  assert.deepEqual(
+    selectEmailTransportOrder(
+      { EMAIL_PROVIDER: 'gmail', EMAIL_FROM: 'TrueSpend <noreply@verified.com>' } as any,
+      smtpCfg,
+      true,
+    ),
+    ['smtp', 'resend'],
+  );
+
+  // Custom verified EMAIL_FROM + Resend key (without EMAIL_PROVIDER=gmail) -> Resend goes first, SMTP is backup
   assert.deepEqual(
     selectEmailTransportOrder({ EMAIL_FROM: 'TrueSpend <noreply@verified.com>' } as any, smtpCfg, true),
     ['resend', 'smtp'],
@@ -269,3 +287,117 @@ test('EmailService never relays emails cross-origin to Vercel when unconfigured'
     restoreEnv();
   }
 });
+
+test('parseSmtpConfig infers free SMTP host automatically from EMAIL_USER/SMTP_USER domain without SMTP_HOST', () => {
+  const gmailAlias = parseSmtpConfig({
+    EMAIL_USER: 'free.sender@gmail.com',
+    EMAIL_PASS: '16char-app-pass',
+  } as any);
+  assert.deepEqual(gmailAlias, {
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    user: 'free.sender@gmail.com',
+    pass: '16char-app-pass',
+    providerLabel: 'smtp.gmail.com',
+  });
+
+  const outlookAlias = parseSmtpConfig({
+    SMTP_USER: 'free.sender@outlook.com',
+    SMTP_PASS: 'outlook-pass',
+  } as any);
+  assert.deepEqual(outlookAlias, {
+    host: 'smtp-mail.outlook.com',
+    port: 587,
+    secure: false,
+    user: 'free.sender@outlook.com',
+    pass: 'outlook-pass',
+    providerLabel: 'smtp-mail.outlook.com',
+  });
+});
+
+test('EmailService prioritizes Gmail App Password over Resend sandbox and formats From cleanly', async () => {
+  const restoreEnv = snapshotMailEnv();
+  const originalFetch = globalThis.fetch;
+  const origCreateTransport = nodemailer.createTransport;
+  const smtpCalls: any[] = [];
+  let resendCalled = false;
+
+  try {
+    process.env.GMAIL_USER = 'my.truespend.sender@gmail.com';
+    process.env.GMAIL_APP_PASSWORD = 'qwer tyui opas dfgh';
+    process.env.RESEND_API_KEY = 're_sandbox_key';
+    process.env.EMAIL_FROM = 'TrueSpend <onboarding@resend.dev>';
+
+    globalThis.fetch = (async () => {
+      resendCalled = true;
+      return new Response('{}', { status: 403 });
+    }) as any;
+
+    (nodemailer as any).createTransport = () => ({
+      sendMail: async (mail: any) => {
+        smtpCalls.push(mail);
+        return { messageId: 'gmail-msg-1', response: '250 2.0.0 OK' };
+      },
+    });
+
+    const result = await emailService.enqueueAndSend({
+      userId: null,
+      recipientEmail: 'frank.ctl35@gmail.com',
+      templateName: 'email_verification',
+      subject: 'Verify your TrueSpend email address',
+      payload: { displayName: 'Frank', token: 'verify-token-999' },
+      skipOutboxDb: true,
+    });
+
+    assert.equal(resendCalled, false);
+    assert.equal(smtpCalls.length, 1);
+    assert.equal(smtpCalls[0].from, 'TrueSpend Security <my.truespend.sender@gmail.com>');
+    assert.equal(smtpCalls[0].to, 'frank.ctl35@gmail.com');
+    assert.equal(result.status, 'sent');
+    assert.equal(result.transportUsed, 'smtp');
+    assert.equal(result.fromUsed, 'TrueSpend Security <my.truespend.sender@gmail.com>');
+  } finally {
+    globalThis.fetch = originalFetch;
+    (nodemailer as any).createTransport = origCreateTransport;
+    restoreEnv();
+  }
+});
+
+test('EmailService renders responsive, theme-matched HTML templates with dark-mode adaptation', () => {
+  const defaultHtml = emailService.renderHtml('email_verification', {
+    displayName: 'Frank',
+    token: 'TS-998877',
+  });
+
+  // Matches Swiss Alabaster defaults + Midnight Obsidian dark mode media query
+  assert.ok(defaultHtml.includes('#f8fafc'));
+  assert.ok(defaultHtml.includes('#4f46e5'));
+  assert.ok(defaultHtml.includes('#0d9488'));
+  assert.ok(defaultHtml.includes('@media (prefers-color-scheme: dark)'));
+  assert.ok(defaultHtml.includes('@media only screen and (max-width: 560px)'));
+  assert.ok(defaultHtml.includes('@media only screen and (max-width: 480px)'));
+  assert.ok(defaultHtml.includes('TS-998877'));
+  assert.ok(defaultHtml.includes('Spex Security Guardian'));
+
+  // Supports all TrueSpend themes (e.g., Tokyo Night, Vintage Ledger)
+  const vintageHtml = emailService.renderHtml('password_reset', {
+    displayName: 'Frank',
+    token: 'RESET-123',
+    theme: 'vintage',
+  });
+  const vintagePalette = resolveEmailThemePalette('vintage');
+  assert.ok(vintageHtml.includes(vintagePalette.canvas));
+  assert.ok(vintageHtml.includes(vintagePalette.accent));
+
+  const tokyoHtml = emailService.renderHtml('new_signin_alert', {
+    displayName: 'Frank',
+    deviceLabel: 'Chrome on macOS',
+    theme: 'tokyo-night',
+  });
+  assert.ok(tokyoHtml.includes('#0a0d17'));
+  assert.ok(tokyoHtml.includes('#06b6d4'));
+  assert.ok(tokyoHtml.includes('color-scheme" content="dark"'));
+});
+
+

@@ -327,9 +327,86 @@ export class AuthService {
       );
 
     if (conflicts.length > 0) {
-      // Equalize scrypt work against email enumeration timing
-      await verifyPasswordAsync(password, DEFAULT_DUMMY_PASSWORD_HASH);
       const emailConflict = conflicts.find((c) => c.email.toLowerCase() === cleanEmail);
+      const otherUsernameConflict = conflicts.find(
+        (c) =>
+          c.username?.toLowerCase() === cleanUsername.toLowerCase() &&
+          c.email.toLowerCase() !== cleanEmail
+      );
+
+      // If the user previously tried to register this email while email delivery was in sandbox mode
+      // and the account is still unverified, update their pending credentials and issue a fresh verification token!
+      if (
+        emailConflict &&
+        !otherUsernameConflict &&
+        (!emailConflict.emailVerifiedAt || emailConflict.status === 'pending_verification')
+      ) {
+        const updatedPasswordHash = await hashPasswordAsync(password);
+        const rawVerifyToken = generateOpaqueToken(32);
+        const verifyTokenHash = hashOpaqueToken(rawVerifyToken);
+        const verifyExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
+        const now = new Date();
+
+        await db.transaction(async (txDb) => {
+          await txDb
+            .update(users)
+            .set({
+              displayName: cleanDisplayName,
+              passwordHash: updatedPasswordHash,
+              passwordUpdatedAt: now,
+              experienceTier,
+            })
+            .where(eq(users.id, emailConflict.id));
+
+          await txDb
+            .update(emailVerificationTokens)
+            .set({ usedAt: now })
+            .where(
+              and(
+                eq(emailVerificationTokens.userId, emailConflict.id),
+                isNull(emailVerificationTokens.usedAt)
+              )
+            );
+
+          await txDb.insert(emailVerificationTokens).values({
+            userId: emailConflict.id,
+            targetEmail: cleanEmail,
+            tokenHash: verifyTokenHash,
+            expiresAt: verifyExpiresAt,
+          });
+        });
+
+        const delivery = await emailService.enqueueAndSend({
+          userId: emailConflict.id,
+          recipientEmail: cleanEmail,
+          templateName: 'email_verification',
+          subject: 'Verify your TrueSpend email address',
+          payload: {
+            displayName: cleanDisplayName,
+            token: rawVerifyToken,
+          },
+        });
+
+        const includeInstantToken = delivery.status !== 'sent';
+        return {
+          registrationAccepted: true,
+          requiresVerification: true,
+          emailDelivered: delivery.status === 'sent',
+          deliveryStatus: delivery.status,
+          ...(delivery.status !== 'sent' && delivery.warning
+            ? { emailDeliveryWarning: delivery.warning }
+            : {}),
+          ...(delivery.previewUrl ? { emailPreviewUrl: delivery.previewUrl } : {}),
+          message:
+            delivery.status === 'sent'
+              ? 'Account setup initiated. Please check your email for verification instructions.'
+              : 'Account ready for instant verification below.',
+          ...(includeInstantToken ? { devVerificationToken: rawVerifyToken } : {}),
+        };
+      }
+
+      // Equalize scrypt work against email enumeration timing for active accounts
+      await verifyPasswordAsync(password, DEFAULT_DUMMY_PASSWORD_HASH);
       if (emailConflict) {
         await this.logSecurityEvent({
           userId: emailConflict.id,
@@ -452,7 +529,7 @@ export class AuthService {
       },
     });
 
-    const isDevPreview = process.env.NODE_ENV !== 'production' && delivery.status !== 'sent';
+    const includeInstantToken = delivery.status !== 'sent';
 
     return {
       registrationAccepted: true,
@@ -462,13 +539,14 @@ export class AuthService {
       ...(delivery.status !== 'sent' && delivery.warning
         ? { emailDeliveryWarning: delivery.warning }
         : {}),
+      ...(delivery.previewUrl ? { emailPreviewUrl: delivery.previewUrl } : {}),
       message:
         delivery.status === 'sent'
           ? 'Account setup initiated. Please check your email for verification instructions.'
-          : 'Account created, but the verification email could not be delivered.',
+          : 'Account created! Use the pre-filled verification code below to activate your workspace immediately.',
       invitationAccepted,
       ...(invitationWarning ? { invitationWarning } : {}),
-      ...(isDevPreview ? { devVerificationToken: rawVerifyToken } : {}),
+      ...(includeInstantToken ? { devVerificationToken: rawVerifyToken } : {}),
     };
   }
 
@@ -545,11 +623,56 @@ export class AuthService {
     }
 
     if (!userRow.emailVerifiedAt || userRow.status === 'pending_verification') {
+      const rawVerifyToken = generateOpaqueToken(32);
+      const verifyTokenHash = hashOpaqueToken(rawVerifyToken);
+      const verifyExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
+
+      await db.transaction(async (txDb) => {
+        await txDb
+          .update(emailVerificationTokens)
+          .set({ usedAt: new Date() })
+          .where(
+            and(
+              eq(emailVerificationTokens.userId, userRow.id),
+              isNull(emailVerificationTokens.usedAt)
+            )
+          );
+
+        await txDb.insert(emailVerificationTokens).values({
+          userId: userRow.id,
+          targetEmail: userRow.email.toLowerCase(),
+          tokenHash: verifyTokenHash,
+          expiresAt: verifyExpiresAt,
+        });
+      });
+
+      const delivery = await emailService.enqueueAndSend({
+        userId: userRow.id,
+        recipientEmail: userRow.email,
+        templateName: 'email_verification',
+        subject: 'Verify your TrueSpend email address',
+        payload: {
+          displayName: userRow.displayName || userRow.username,
+          token: rawVerifyToken,
+        },
+      });
+
+      const includeInstantToken = delivery.status !== 'sent';
       throw new AuthError(
-        'Please verify your email address before signing in. You can resend the verification link below.',
+        delivery.status === 'sent'
+          ? 'Please verify your email address before signing in. A fresh verification link has been sent to your inbox.'
+          : 'Please confirm your account below — your verification code has been pre-filled for instant activation.',
         403,
         'EMAIL_VERIFICATION_REQUIRED',
-        { email: userRow.email, requiresVerification: true }
+        {
+          email: userRow.email,
+          requiresVerification: true,
+          ...(delivery.status !== 'sent' && delivery.warning
+            ? { emailDeliveryWarning: delivery.warning }
+            : {}),
+          ...(delivery.previewUrl ? { emailPreviewUrl: delivery.previewUrl } : {}),
+          ...(includeInstantToken ? { devVerificationToken: rawVerifyToken } : {}),
+        }
       );
     }
 
@@ -1031,15 +1154,20 @@ export class AuthService {
       deviceSummary: ctx.deviceLabel,
     });
 
-    const isDevPreview = process.env.NODE_ENV !== 'production' && delivery.status !== 'sent';
+    const includeInstantToken = delivery.status !== 'sent';
     return {
       ...genericResponse,
+      message:
+        delivery.status === 'sent'
+          ? genericResponse.message
+          : 'Your fresh verification code is pre-filled below for instant activation.',
       emailDelivered: delivery.status === 'sent',
       deliveryStatus: delivery.status,
       ...(delivery.status !== 'sent' && delivery.warning
         ? { emailDeliveryWarning: delivery.warning }
         : {}),
-      ...(isDevPreview ? { devVerificationToken: rawToken } : {}),
+      ...(delivery.previewUrl ? { emailPreviewUrl: delivery.previewUrl } : {}),
+      ...(includeInstantToken ? { devVerificationToken: rawToken } : {}),
     };
   }
 
@@ -1120,15 +1248,20 @@ export class AuthService {
       deviceSummary: ctx.deviceLabel,
     });
 
-    const isDevPreview = process.env.NODE_ENV !== 'production' && delivery.status !== 'sent';
+    const includeInstantToken = delivery.status !== 'sent';
     return {
       ...genericResponse,
+      message:
+        delivery.status === 'sent'
+          ? genericResponse.message
+          : 'Your one-time password reset token is ready below.',
       emailDelivered: delivery.status === 'sent',
       deliveryStatus: delivery.status,
       ...(delivery.status !== 'sent' && delivery.warning
         ? { emailDeliveryWarning: delivery.warning }
         : {}),
-      ...(isDevPreview ? { devResetToken: rawToken } : {}),
+      ...(delivery.previewUrl ? { emailPreviewUrl: delivery.previewUrl } : {}),
+      ...(includeInstantToken ? { devResetToken: rawToken } : {}),
     };
   }
 
@@ -1399,8 +1532,7 @@ export class AuthService {
       metadata: { pendingEmail: cleanNewEmail },
     });
 
-    const isDevPreview =
-      process.env.NODE_ENV !== 'production' && verificationDelivery.status !== 'sent';
+    const includeInstantToken = verificationDelivery.status !== 'sent';
     return {
       pendingEmail: cleanNewEmail,
       emailDelivered: verificationDelivery.status === 'sent',
@@ -1408,11 +1540,14 @@ export class AuthService {
       ...(verificationDelivery.status !== 'sent' && verificationDelivery.warning
         ? { emailDeliveryWarning: verificationDelivery.warning }
         : {}),
+      ...(verificationDelivery.previewUrl
+        ? { emailPreviewUrl: verificationDelivery.previewUrl }
+        : {}),
       message:
         verificationDelivery.status === 'sent'
           ? 'Confirmation link sent to your new email address. Your current email stays active until confirmed.'
-          : 'Email change started, but the confirmation email could not be delivered.',
-      ...(isDevPreview ? { devVerificationToken: rawToken } : {}),
+          : 'Email change ready — click Confirm New Email Now below to complete the update immediately.',
+      ...(includeInstantToken ? { devVerificationToken: rawToken } : {}),
     };
   }
 

@@ -734,6 +734,7 @@ export const dashboardService = {
       emailDelivered?: boolean;
       deliveryStatus?: string;
       emailDeliveryWarning?: string;
+      emailPreviewUrl?: string;
       devVerificationToken?: string;
     }>('/api/auth/register', payload),
   loginAccount: (payload: { email?: string; username?: string; password: string }) =>
@@ -760,6 +761,7 @@ export const dashboardService = {
       emailDelivered?: boolean;
       deliveryStatus?: string;
       emailDeliveryWarning?: string;
+      emailPreviewUrl?: string;
       devVerificationToken?: string;
     }>(
       '/api/auth/resend-verification',
@@ -772,6 +774,7 @@ export const dashboardService = {
       emailDelivered?: boolean;
       deliveryStatus?: string;
       emailDeliveryWarning?: string;
+      emailPreviewUrl?: string;
       devResetToken?: string;
     }>(
       '/api/auth/forgot-password',
@@ -795,6 +798,7 @@ export const dashboardService = {
       emailDelivered?: boolean;
       deliveryStatus?: string;
       emailDeliveryWarning?: string;
+      emailPreviewUrl?: string;
       devVerificationToken?: string;
     }>(
       '/api/auth/change-email',
