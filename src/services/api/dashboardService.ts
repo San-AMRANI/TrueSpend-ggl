@@ -884,6 +884,11 @@ export const dashboardService = {
       payday?: number;
       salary?: number;
       emergencyBuffer?: number;
+      employmentType?: 'employee' | 'non_employee';
+      financialCycleMode?: 'payday_to_payday' | 'calendar_month' | 'custom_period';
+      onboardingStartingPoint?: 'first_day' | 'mid_cycle';
+      periodStartDate?: string | null;
+      nextPaydayDate?: string | null;
     },
     token: string | null
   ) =>
@@ -896,8 +901,34 @@ export const dashboardService = {
       isMain?: boolean;
       currency?: string;
     }>,
+    token: string | null,
+    options?: { emergencyBuffer?: number }
+  ) =>
+    apiClient.post<{ accounts: Wallet[]; onboarding?: OnboardingState; user?: User }>(
+      '/api/onboarding/setup-accounts',
+      { accounts, ...(options?.emergencyBuffer !== undefined ? { emergencyBuffer: options.emergencyBuffer } : {}) },
+      token
+    ),
+  setupFinancialPeriod: (
+    payload: {
+      employmentType: 'employee' | 'non_employee';
+      financialCycleMode: 'payday_to_payday' | 'calendar_month' | 'custom_period';
+      startingPoint: 'first_day' | 'mid_cycle';
+      paydayDay: number;
+      salary: number;
+      periodStartDate?: string;
+      nextPaydayDate?: string;
+      emergencyBuffer?: number;
+      targetWalletId?: string | null;
+    },
     token: string | null
-  ) => apiClient.post<{ accounts: Wallet[] }>('/api/onboarding/setup-accounts', { accounts }, token),
+  ) =>
+    apiClient.post<{
+      onboarding: OnboardingState;
+      user?: User;
+      periodStartDate: string;
+      nextPaydayDate: string;
+    }>('/api/onboarding/setup-period', payload, token),
   getStarterTemplates: (token: string | null) =>
     apiClient.get<{ templates: StarterTemplate[]; currentTier: ExperienceTier }>(
       '/api/templates',

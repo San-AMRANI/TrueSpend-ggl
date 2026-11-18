@@ -221,6 +221,11 @@ const CORE_DDL_STATEMENTS: Array<{ sql: string; optional?: boolean; label: strin
       "payday" integer DEFAULT 25,
       "emergency_buffer" numeric NOT NULL DEFAULT 0,
       "salary" numeric NOT NULL DEFAULT 0,
+      "employment_type" text NOT NULL DEFAULT 'employee',
+      "financial_cycle_mode" text NOT NULL DEFAULT 'payday_to_payday',
+      "onboarding_starting_point" text NOT NULL DEFAULT 'mid_cycle',
+      "period_start_date" text,
+      "next_payday_date" text,
       "base_currency" text NOT NULL DEFAULT 'MAD',
       "automated_drive_backups" integer DEFAULT 0,
       "last_drive_backup_date" timestamp,
@@ -263,6 +268,11 @@ const CORE_DDL_STATEMENTS: Array<{ sql: string; optional?: boolean; label: strin
   { label: 'users.deletion_requested_at', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "deletion_requested_at" timestamp` },
   { label: 'users.deleted_at', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "deleted_at" timestamp` },
   { label: 'users.base_currency', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "base_currency" text NOT NULL DEFAULT 'MAD'` },
+  { label: 'users.employment_type', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "employment_type" text NOT NULL DEFAULT 'employee'` },
+  { label: 'users.financial_cycle_mode', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "financial_cycle_mode" text NOT NULL DEFAULT 'payday_to_payday'` },
+  { label: 'users.onboarding_starting_point', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "onboarding_starting_point" text NOT NULL DEFAULT 'mid_cycle'` },
+  { label: 'users.period_start_date', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "period_start_date" text` },
+  { label: 'users.next_payday_date', sql: `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "next_payday_date" text` },
 
   // Grandfather existing verified-less active accounts into isolated mode
   {
@@ -1283,7 +1293,7 @@ const CORE_DDL_STATEMENTS: Array<{ sql: string; optional?: boolean; label: strin
   { label: 'idx domain_event_outbox_user_status_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "domain_event_outbox_user_status_idx" ON "domain_event_outbox"("user_id", "status")` },
 ];
 
-const CURRENT_SCHEMA_VERSION = 2026111701;
+const CURRENT_SCHEMA_VERSION = 2026111801;
 
 export async function ensureDatabaseSchema(): Promise<void> {
   if (!global._schemaReadyPromise) {

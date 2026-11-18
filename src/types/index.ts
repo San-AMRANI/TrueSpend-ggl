@@ -69,6 +69,11 @@ export interface User {
   payday?: number | null;
   salary?: number;
   emergencyBuffer?: number;
+  employmentType?: 'employee' | 'non_employee';
+  financialCycleMode?: 'payday_to_payday' | 'calendar_month' | 'custom_period';
+  onboardingStartingPoint?: 'first_day' | 'mid_cycle';
+  periodStartDate?: string | null;
+  nextPaydayDate?: string | null;
   onboardingVersion?: number;
   onboardingStartedAt?: string | null;
   onboardingCompletedAt?: string | null;
@@ -113,7 +118,16 @@ export interface OnboardingChecklistItem {
   description: string;
   completed: boolean;
   targetTab?: DashboardTab;
-  actionType?: 'verify_email' | 'choose_experience' | 'create_wallet' | 'log_transaction' | 'create_budget' | 'add_subscription' | 'create_goal';
+  actionType?:
+    | 'verify_email'
+    | 'choose_experience'
+    | 'configure_payroll'
+    | 'define_period'
+    | 'create_wallet'
+    | 'log_transaction'
+    | 'create_budget'
+    | 'add_subscription'
+    | 'create_goal';
 }
 
 export interface OnboardingState {
@@ -127,6 +141,25 @@ export interface OnboardingState {
   checklist: OnboardingChecklistItem[];
   completedCount: number;
   totalCount: number;
+  profileSnapshot?: {
+    employmentType: 'employee' | 'non_employee';
+    financialCycleMode: 'payday_to_payday' | 'calendar_month' | 'custom_period';
+    startingPoint: 'first_day' | 'mid_cycle';
+    payday: number;
+    salary: number;
+    emergencyBuffer: number;
+    periodStartDate: string | null;
+    nextPaydayDate: string | null;
+    hasActivePeriod: boolean;
+    hasWallets: boolean;
+    accounts?: Array<{
+      id: string;
+      name: string;
+      type: 'Bank' | 'Cash' | 'Savings';
+      openingBalance: number;
+      isMain: boolean;
+    }>;
+  };
 }
 
 export interface StarterTemplateItemPreview {

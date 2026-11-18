@@ -276,11 +276,21 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       {!currentFm && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 flex flex-wrap items-center justify-between gap-2">
           <span>
-            Your financial period is not set yet. Configure current and next payroll dates in Financial Calendar so budgets and forecasts align with your payday.
+            Your financial period is not set yet. Configure your current cycle and next payday so Safe-to-Spend, budgets, and forecasts align with your payday.
           </span>
-          <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab('calendar')}>
-            Open Calendar
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => window.dispatchEvent(new CustomEvent('truespend:openOnboarding'))}
+            >
+              Guided Period Setup
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setActiveTab('calendar')}>
+              Open Calendar
+            </Button>
+          </div>
         </div>
       )}
 

@@ -871,7 +871,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
         <Suspense fallback={null}>
           <OnboardingFlow
             isOpen={isOnboardingOpen}
-            onClose={() => setIsOnboardingOpen(false)}
+            onClose={onboarding?.onboardingCompletedAt ? () => setIsOnboardingOpen(false) : undefined}
             onComplete={async (jumpTab) => {
               setIsOnboardingOpen(false);
               await Promise.all([fetchData(), refreshUserProfile(), refreshOnboarding()]);

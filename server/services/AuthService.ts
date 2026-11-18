@@ -106,6 +106,17 @@ export class AuthService {
       payday: dbRow.payday ?? 25,
       salary: Number(dbRow.salary || 0),
       emergencyBuffer: Number(dbRow.emergencyBuffer || 0),
+      employmentType:
+        dbRow.employmentType === 'non_employee' ? 'non_employee' : 'employee',
+      financialCycleMode:
+        dbRow.financialCycleMode === 'calendar_month' ||
+        dbRow.financialCycleMode === 'custom_period'
+          ? dbRow.financialCycleMode
+          : 'payday_to_payday',
+      onboardingStartingPoint:
+        dbRow.onboardingStartingPoint === 'first_day' ? 'first_day' : 'mid_cycle',
+      periodStartDate: dbRow.periodStartDate || null,
+      nextPaydayDate: dbRow.nextPaydayDate || null,
       onboardingVersion: dbRow.onboardingVersion ?? 1,
       onboardingStartedAt: dbRow.onboardingStartedAt
         ? new Date(dbRow.onboardingStartedAt).toISOString()

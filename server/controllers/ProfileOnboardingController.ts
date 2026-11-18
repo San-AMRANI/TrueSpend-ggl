@@ -285,11 +285,34 @@ export class ProfileOnboardingController {
     try {
       const result = await onboardingService.setupOpeningAccounts(
         req.userId!,
-        req.body?.accounts || []
+        req.body?.accounts || [],
+        {
+          emergencyBuffer:
+            req.body?.emergencyBuffer !== undefined
+              ? Number(req.body.emergencyBuffer)
+              : undefined,
+        }
       );
-      res.json(result);
+      const [userRow] = await db.select().from(users).where(eq(users.id, req.userId!)).limit(1);
+      res.json({
+        ...result,
+        user: userRow ? authService.formatAuthUser(userRow) : undefined,
+      });
     } catch (error: any) {
       res.status(400).json({ error: error.message || 'Failed to configure accounts' });
+    }
+  }
+
+  async setupFinancialPeriod(req: AuthRequest, res: Response) {
+    try {
+      const result = await onboardingService.setupFinancialPeriod(req.userId!, req.body || {});
+      const [userRow] = await db.select().from(users).where(eq(users.id, req.userId!)).limit(1);
+      res.json({
+        ...result,
+        user: userRow ? authService.formatAuthUser(userRow) : undefined,
+      });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'Failed to configure financial period' });
     }
   }
 

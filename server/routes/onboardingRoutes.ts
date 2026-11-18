@@ -26,6 +26,9 @@ router.put('/onboarding', requireAuth, (req, res) =>
 router.post('/onboarding/setup-accounts', requireAuth, (req, res) =>
   profileOnboardingController.setupAccounts(req as any, res)
 );
+router.post('/onboarding/setup-period', requireAuth, (req, res) =>
+  profileOnboardingController.setupFinancialPeriod(req as any, res)
+);
 
 router.get('/templates', requireAuth, (req, res) =>
   profileOnboardingController.listTemplates(req as any, res)
