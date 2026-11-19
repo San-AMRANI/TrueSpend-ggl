@@ -11,7 +11,6 @@ export const initGoogleAuth = (
       clearInterval(checkInterval);
       const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID;
       if (!clientId) {
-        console.error('VITE_GOOGLE_CLIENT_ID is not defined');
         return;
       }
       tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
@@ -37,15 +36,13 @@ export const initGoogleAuth = (
 export const googleSignIn = (): Promise<{ user: any; accessToken: string }> => {
   return new Promise((resolve, reject) => {
     if (!tokenClient) {
-      reject(new Error('Google Identity Services not loaded yet or VITE_GOOGLE_CLIENT_ID is missing.'));
+      reject(new Error('Google Identity Services not configured (VITE_GOOGLE_CLIENT_ID is not set).'));
       return;
     }
     
     // Check if we are running in an iframe
     if (window.self !== window.top) {
-      // In an iframe, the popup might be blocked by Cross-Origin-Opener-Policy.
-      alert('Google Sign-in cannot be completed inside this preview iframe due to browser security restrictions.\n\nPlease open the application in a new tab (using the button in the top right corner of the preview) to connect your Google Drive.');
-      reject(new Error('Popup blocked in iframe. Please open in a new tab.'));
+      reject(new Error('Google Sign-in cannot be completed inside an embedded preview iframe. Please open the app in a new browser tab to connect Google Drive.'));
       return;
     }
     
@@ -61,8 +58,7 @@ export const googleSignIn = (): Promise<{ user: any; accessToken: string }> => {
       
       tokenClient.requestAccessToken();
     } catch (error) {
-      console.error('Error opening Google popup:', error);
-      alert('Failed to open Google login popup. Please try again.');
+      console.warn('Error opening Google popup:', error);
       reject(new Error('Failed to open Google login popup.'));
     }
   });

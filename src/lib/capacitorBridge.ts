@@ -123,14 +123,26 @@ function installNativeApiFetchInterceptor() {
   if (fetchInterceptorInstalled || typeof window === 'undefined') return;
   fetchInterceptorInstalled = true;
 
-  const originalFetch = window.fetch.bind(window);
+  // On standard web with no custom API base URL, relative /api/* paths work natively without overriding window.fetch
+  const native = isNativePlatform();
+  let customBase: string | null = null;
+  try {
+    customBase = localStorage.getItem(STORAGE_KEY_API_BASE);
+  } catch {}
+  if (!native && !(customBase && customBase.trim())) {
+    return;
+  }
 
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const native = isNativePlatform();
-    const customBase = localStorage.getItem(STORAGE_KEY_API_BASE);
+  const originalFetch = window.fetch.bind(window);
+  const interceptedFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const isNative = isNativePlatform();
+    let activeCustomBase: string | null = null;
+    try {
+      activeCustomBase = localStorage.getItem(STORAGE_KEY_API_BASE);
+    } catch {}
 
     // Rewrite relative `/api/...` calls when running natively on Android/iOS or when a custom API server is set
-    if (native || (customBase && customBase.trim())) {
+    if (isNative || (activeCustomBase && activeCustomBase.trim())) {
       const baseUrl = getCapacitorApiBaseUrl();
       if (typeof input === 'string' && input.startsWith('/api')) {
         const targetUrl = getApiUrl(input);
@@ -150,6 +162,20 @@ function installNativeApiFetchInterceptor() {
 
     return originalFetch(input, init);
   };
+
+  try {
+    window.fetch = interceptedFetch as typeof window.fetch;
+  } catch {
+    try {
+      Object.defineProperty(window, 'fetch', {
+        value: interceptedFetch,
+        configurable: true,
+        writable: true,
+      });
+    } catch {
+      // Environment enforces read-only non-configurable window.fetch; callers use getApiUrl() directly
+    }
+  }
 }
 
 export async function initCapacitorBridge(): Promise<void> {

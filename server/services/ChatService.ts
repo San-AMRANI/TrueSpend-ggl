@@ -642,16 +642,22 @@ export async function getChatCompletion(
   for (let i = 0; i < modelsToTry.length; i++) {
     const model = modelsToTry[i];
     try {
+      const isGemini4 = model.startsWith('gemini-4');
       const response = await withTimeout(
         gemini.models.generateContent({
           model,
           contents,
-          config: {
-            systemInstruction,
-            responseMimeType: 'application/json',
-            temperature,
-            maxOutputTokens,
-          },
+          config: isGemini4
+            ? {
+                systemInstruction,
+                responseMimeType: 'application/json',
+              }
+            : {
+                systemInstruction,
+                responseMimeType: 'application/json',
+                temperature,
+                maxOutputTokens,
+              },
         }),
         28000,
         model

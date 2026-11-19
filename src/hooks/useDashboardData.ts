@@ -817,7 +817,10 @@ export function useDashboardData(token: string | null, experienceTier?: Experien
     }
   };
 
-  const handlePaySubscription = async (id: string, payload: { walletId?: string; date?: string } = {}) => {
+  const handlePaySubscription = async (
+    id: string,
+    payload: { walletId?: string; date?: string; amount?: number; updateBaselineAmount?: boolean } = {}
+  ) => {
     if (!token) return;
     setIsSaving(true);
     try {

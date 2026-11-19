@@ -5,9 +5,10 @@ import {
   MODEL_FLASH_FAST,
   MODEL_FLASH_LATEST,
   MODEL_FLASH_LITE,
-  MODEL_FLASH_LITE_PREVIEW,
   MODEL_FLASH_TTS,
   MODEL_LIVE,
+  MODEL_LIVE_EXTENDED,
+  MODEL_TRANSCRIBE,
   MODEL_TTS,
   isModelUnavailable,
   markModelQuotaExhausted,
@@ -70,6 +71,7 @@ async function tryGeminiLiveBurstTurn(
     textPrompt?: string;
     voiceName: LiveVoiceName;
     systemInstruction: string;
+    liveModel?: string;
     signal?: AbortSignal;
   },
   onEvent: (evt: LiveSseEvent) => void,
@@ -111,7 +113,7 @@ async function tryGeminiLiveBurstTurn(
 
     gemini.live
       .connect({
-        model: MODEL_LIVE,
+        model: params.liveModel || MODEL_LIVE,
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -344,14 +346,21 @@ async function runHttpModelAndTtsFallback(
     throw new Error('Either spoken audio or a prompt is required.');
   }
 
-  const allCandidates = [
-    'gemini-4-hydrogen',
-    MODEL_FLASH_LITE_PREVIEW,
-    MODEL_FLASH_LITE,
-    MODEL_FLASH_FAST,
-    MODEL_FLASH_LATEST,
-    MODEL_FLASH_DEEP,
-  ];
+  const rawCandidates = params.pcmBuffer && params.pcmBuffer.length > 0
+    ? [
+        MODEL_FLASH_DEEP,
+        MODEL_TRANSCRIBE,
+        MODEL_FLASH_LITE,
+        MODEL_FLASH_FAST,
+        MODEL_FLASH_LATEST,
+      ]
+    : [
+        MODEL_FLASH_DEEP,
+        MODEL_FLASH_LITE,
+        MODEL_FLASH_FAST,
+        MODEL_FLASH_LATEST,
+      ];
+  const allCandidates = Array.from(new Set(rawCandidates));
   const available = allCandidates.filter((m) => !isModelUnavailable(m));
   const candidateModels = available.length > 0 ? available : allCandidates;
 
@@ -479,17 +488,32 @@ export async function streamLiveVoiceTurn(
 
   onEvent({ type: 'ready', transport: 'sse', voiceName });
 
-  // 1. Primary: low-latency Gemini Live burst session over SSE
-  const liveOk = await tryGeminiLiveBurstTurn(
+  // 1. Primary: low-latency Gemini Live burst session over SSE (with secondary Live model failover)
+  let liveOk = await tryGeminiLiveBurstTurn(
     {
       pcmBuffer,
       textPrompt,
       voiceName,
       systemInstruction,
+      liveModel: MODEL_LIVE,
       signal: input.signal,
     },
     onEvent,
   );
+
+  if (!liveOk && !input.signal?.aborted) {
+    liveOk = await tryGeminiLiveBurstTurn(
+      {
+        pcmBuffer,
+        textPrompt,
+        voiceName,
+        systemInstruction,
+        liveModel: MODEL_LIVE_EXTENDED,
+        signal: input.signal,
+      },
+      onEvent,
+    );
+  }
 
   if (liveOk || input.signal?.aborted) {
     return;

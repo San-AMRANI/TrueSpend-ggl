@@ -91,7 +91,7 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
     }
   };
 
-  const { totalReceivable, totalPayable, filteredDebts, pendingPayables } = useMemo(() => {
+  const { totalReceivable, totalPayable, filteredDebts, pendingPayables, pendingReceivables } = useMemo(() => {
     const pendingReceivables = debts.filter((d) => d.type === 'Receivable' && d.status === 'Pending');
     const pendingPayables = debts.filter((d) => d.type === 'Payable' && d.status === 'Pending');
 
@@ -112,8 +112,24 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
       return true;
     });
 
-    return { totalReceivable, totalPayable, filteredDebts, pendingPayables };
+    return { totalReceivable, totalPayable, filteredDebts, pendingPayables, pendingReceivables };
   }, [debts, activeTab]);
+
+  const handleCopySplitReminder = async (debt: Debt) => {
+    const remaining = parseFloat(debt.remainingBalance) || 0;
+    const createdStr = debt.createdAt ? format(new Date(debt.createdAt), 'MMM d') : 'recently';
+    const message = `Hi ${debt.contactName}! Quick reminder about our split bill / balance of ${remaining.toFixed(2)} MAD from ${createdStr}. Let me know whenever you can settle it—thanks!`;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(message);
+      }
+      setBudgetSuccessMsg(`Copied settlement reminder for ${debt.contactName} (${remaining.toFixed(2)} MAD) to clipboard!`);
+      setTimeout(() => setBudgetSuccessMsg(null), 4000);
+    } catch {
+      setBudgetSuccessMsg(`Reminder ready: "${message}"`);
+      setTimeout(() => setBudgetSuccessMsg(null), 5000);
+    }
+  };
 
   // Payoff Strategy Simulator (Avalanche vs Snowball)
   const strategyComparison = useMemo(() => {
@@ -300,6 +316,83 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Split-Bill & Receivable Settlement Reminders ── */}
+      {pendingReceivables.length > 0 && (
+        <Card className="border-blue-200/80 dark:border-blue-900/50 bg-gradient-to-r from-blue-50/70 via-white to-white dark:from-blue-950/25 dark:via-gray-900 dark:to-gray-900 overflow-hidden shadow-xs">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300 shadow-xs">
+                  <HeartHandshake className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-sm text-gray-900 dark:text-gray-100">
+                      Split-Bill & Receivable Settlement Reminders
+                    </h4>
+                    <span className="text-xs font-semibold text-blue-700 dark:text-blue-400">
+                      · {pendingReceivables.length} pending ({totalReceivable.toFixed(2)} MAD)
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                    Copy a friendly WhatsApp/SMS reminder or record an incoming settlement in one click.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {pendingReceivables.slice(0, 6).map((item) => {
+                const rem = parseFloat(item.remainingBalance) || 0;
+                const ageDays = item.createdAt
+                  ? Math.max(0, Math.floor((Date.now() - new Date(item.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
+                  : 0;
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-blue-100 dark:border-blue-900/40 bg-white/90 dark:bg-gray-900/80 px-3.5 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-gray-900 dark:text-gray-100 truncate">
+                        {item.contactName}
+                      </p>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+                        <strong className="font-semibold text-blue-700 dark:text-blue-300">
+                          {rem.toFixed(2)} MAD
+                        </strong>{' '}
+                        · {ageDays === 0 ? 'Logged today' : `${ageDays}d outstanding`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCopySplitReminder(item)}
+                        className="h-7 px-2.5 text-[11px] border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/50"
+                      >
+                        Copy Reminder
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          setSettlingDebt(item);
+                          setSettleModalMode('settle');
+                        }}
+                        className="h-7 px-2.5 text-[11px] bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        Settle
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {totalPayable > 0 && (
         <Card

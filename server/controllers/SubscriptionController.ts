@@ -47,8 +47,15 @@ export class SubscriptionController {
 
   async logPayment(req: AuthRequest, res: Response) {
     try {
-      const { walletId, date } = req.body || {};
-      const result = await subscriptionService.logSubscriptionPayment(req.dbUser.id, req.params.id, walletId, date);
+      const { walletId, date, amount, updateBaselineAmount } = req.body || {};
+      const result = await subscriptionService.logSubscriptionPayment(
+        req.dbUser.id,
+        req.params.id,
+        walletId,
+        date,
+        amount !== undefined && amount !== null ? Number(amount) : undefined,
+        Boolean(updateBaselineAmount)
+      );
       res.status(200).json(result);
     } catch (e: any) {
       console.error(e);

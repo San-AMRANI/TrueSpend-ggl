@@ -64,7 +64,7 @@ export const dashboardService = {
     apiClient.put<Subscription>(`/api/subscriptions/${id}`, payload, token),
   deleteSubscription: (id: string, token: string | null) =>
     apiClient.delete<{ success: boolean }>(`/api/subscriptions/${id}`, token),
-  paySubscription: (id: string, payload: { walletId?: string; date?: string }, token: string | null) =>
+  paySubscription: (id: string, payload: { walletId?: string; date?: string; amount?: number; updateBaselineAmount?: boolean }, token: string | null) =>
     apiClient.post<{ subscription: Subscription; transaction: Transaction }>(`/api/subscriptions/${id}/pay`, payload, token),
   changeSubscriptionPlan: (id: string, payload: SubscriptionPlanChangePayload, token: string | null) =>
     apiClient.post<SubscriptionPlanChangeResult>(`/api/subscriptions/${id}/change-plan`, payload, token),
