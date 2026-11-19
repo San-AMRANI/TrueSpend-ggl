@@ -8,8 +8,10 @@ import {
   financialContexts,
   users,
   templateApplications,
+  payrolls,
 } from '../../src/db/schema.js';
 import { normalizeExperienceTier } from '../../src/lib/entitlements.js';
+import { getCurrentFinancialMonth } from '../../src/lib/financialMonth.js';
 import type { ExperienceTier, StarterTemplate } from '../../src/types/index.js';
 
 interface TemplateSeedDefinition {
@@ -382,8 +384,13 @@ export class TemplateService {
     }
 
     const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
+    const userPayrolls = await db
+      .select()
+      .from(payrolls)
+      .where(eq(payrolls.userId, userId));
+    const currentFm = getCurrentFinancialMonth(userPayrolls, now);
+    const month = currentFm ? currentFm.month : now.getMonth() + 1;
+    const year = currentFm ? currentFm.year : now.getFullYear();
 
     return await db.transaction(async (txDb) => {
       const existingApp = await txDb
@@ -540,10 +547,28 @@ export class TemplateService {
       }
 
       if (def.seed.preferences?.emergencyBuffer !== undefined) {
-        await txDb
-          .update(users)
-          .set({ emergencyBuffer: String(def.seed.preferences.emergencyBuffer) })
-          .where(eq(users.id, userId));
+        const [uRow] = await txDb
+          .select({
+            emergencyBuffer: users.emergencyBuffer,
+            onboardingStepsJson: users.onboardingStepsJson,
+          })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+        const existingBuf = Number(uRow?.emergencyBuffer || 0);
+        let completedSteps: string[] = [];
+        try {
+          completedSteps = JSON.parse(uRow?.onboardingStepsJson || '[]');
+        } catch {
+          completedSteps = [];
+        }
+        const accountsAlreadyCalibrated = completedSteps.includes('setup_accounts');
+        if (existingBuf === 0 && !accountsAlreadyCalibrated) {
+          await txDb
+            .update(users)
+            .set({ emergencyBuffer: String(def.seed.preferences.emergencyBuffer) })
+            .where(eq(users.id, userId));
+        }
       }
 
       const [appRecord] = await txDb

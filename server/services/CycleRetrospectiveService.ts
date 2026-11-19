@@ -58,36 +58,59 @@ export class CycleRetrospectiveService {
       }).reverse(); // Most recent first
     }
 
-    // Fallback: Synthesize periods using latest payroll day-of-month (or default 25th)
+    // Fallback: Synthesize periods using user's configured payday or latest payroll UTC day-of-month
     const latestPayrollDay =
-      payrolls.length > 0 ? new Date(payrolls[0].scheduledFor).getDate() : 25;
-    const paydayDay = latestPayrollDay >= 1 && latestPayrollDay <= 31 ? latestPayrollDay : 25;
+      payrolls.length > 0 ? new Date(payrolls[0].scheduledFor).getUTCDate() : null;
+    const configuredPayday = Number(dbUser?.payday);
+    const isCalendarMode = dbUser?.financialCycleMode === 'calendar_month';
+    const rawPaydayDay = isCalendarMode
+      ? 1
+      : configuredPayday >= 1 && configuredPayday <= 31
+      ? configuredPayday
+      : latestPayrollDay && latestPayrollDay >= 1 && latestPayrollDay <= 31
+      ? latestPayrollDay
+      : 25;
     const summaries: CyclePeriodSummary[] = [];
+    const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+
+    const clampUtcDate = (y: number, mZeroIndexed: number, desiredDay: number) => {
+      const normalizedMonth = new Date(Date.UTC(y, mZeroIndexed, 1));
+      const actualY = normalizedMonth.getUTCFullYear();
+      const actualM = normalizedMonth.getUTCMonth();
+      const maxDay = new Date(Date.UTC(actualY, actualM + 1, 0)).getUTCDate();
+      return new Date(Date.UTC(actualY, actualM, Math.min(desiredDay, maxDay), 0, 0, 0, 0));
+    };
 
     // Current, Previous, and 2-months-ago periods
     for (let offset = 0; offset >= -2; offset--) {
-      const refDate = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-      const year = refDate.getFullYear();
-      const month = refDate.getMonth(); // 0-indexed
+      const refMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+      const year = refMonth.getUTCFullYear();
+      const month = refMonth.getUTCMonth(); // 0-indexed
 
-      // Period start: (month - 1) on payday
-      const startDate = new Date(year, month - 1, paydayDay, 0, 0, 0, 0);
-      // Period end: day before this month's payday
-      const endDate = new Date(year, month, paydayDay - 1, 23, 59, 59, 999);
+      // Period start: (month - 1) on payday (or 1st of current month if calendar mode)
+      const startDate = isCalendarMode
+        ? clampUtcDate(year, month, 1)
+        : clampUtcDate(year, month - 1, rawPaydayDay);
+      // Next period start: this month on payday (or 1st of next month if calendar mode)
+      const nextPeriodStart = isCalendarMode
+        ? clampUtcDate(year, month + 1, 1)
+        : clampUtcDate(year, month, rawPaydayDay);
+      // Period end: day before nextPeriodStart at 23:59:59.999 UTC
+      const endDate = new Date(nextPeriodStart.getTime() - 1);
 
-      const isCurrent = today >= startDate && today <= endDate;
+      const isCurrent = todayUtcMs >= startDate.getTime() && todayUtcMs <= endDate.getTime();
       const startStr = startDate.toISOString().split('T')[0];
       const endStr = endDate.toISOString().split('T')[0];
-      const label = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      const label = `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} – ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
 
       summaries.push({
-        id: `synth-${startDate.getFullYear()}-${startDate.getMonth() + 1}`,
+        id: `synth-${startDate.getUTCFullYear()}-${startDate.getUTCMonth() + 1}`,
         label,
         startDate: startStr,
         endDate: endStr,
         isCurrent,
-        year: endDate.getFullYear(),
-        month: endDate.getMonth() + 1,
+        year: endDate.getUTCFullYear(),
+        month: endDate.getUTCMonth() + 1,
       });
     }
 
@@ -137,12 +160,23 @@ export class CycleRetrospectiveService {
 
     const cycleStart = new Date(selectedCycle.startDate + 'T00:00:00.000Z');
     const cycleEnd = new Date(selectedCycle.endDate + 'T23:59:59.999Z');
+    const cycleEndMidnight = new Date(selectedCycle.endDate + 'T00:00:00.000Z');
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const todayMidnightUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
-    const totalDays = Math.max(1, Math.round((cycleEnd.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+    // Exact inclusive calendar day count between startDate and endDate (e.g. Oct 25 to Nov 24 = 31 days)
+    const totalDays = Math.max(
+      1,
+      Math.round((cycleEndMidnight.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    );
     const elapsedDays = selectedCycle.isCurrent
-      ? Math.max(1, Math.min(totalDays, Math.round((today.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1))
+      ? Math.max(
+          1,
+          Math.min(
+            totalDays,
+            Math.round((todayMidnightUtc.getTime() - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+          )
+        )
       : totalDays;
     const daysRemaining = Math.max(0, totalDays - elapsedDays);
 
@@ -161,13 +195,22 @@ export class CycleRetrospectiveService {
     const categorySpendMap = new Map<string, number>();
     const dailySpendMap = new Map<string, number>();
 
-    // Initial salary from payroll scheduled amount
+    // Check if there is an opening/anchor payroll for this cycle that is confirmed/matched
+    // but has no separate Income transaction row (e.g., mid-cycle opening anchor)
     const cyclePayroll = payrolls.find((p) => {
       const pDate = new Date(p.scheduledFor);
       return pDate >= cycleStart && pDate <= cycleEnd;
     });
-    if (cyclePayroll && Number(cyclePayroll.amount) > 0) {
-      totalInflow += Number(cyclePayroll.amount);
+    const hasPayrollLinkedIncomeTx = cycleTransactions.some(
+      (tx) => tx.type === 'Income' && Boolean(tx.payrollId)
+    );
+    if (
+      cyclePayroll &&
+      !hasPayrollLinkedIncomeTx &&
+      cyclePayroll.status !== 'expected' &&
+      Number(cyclePayroll.confirmedAmount || cyclePayroll.amount) > 0
+    ) {
+      totalInflow += Number(cyclePayroll.confirmedAmount || cyclePayroll.amount);
     }
 
     for (const tx of cycleTransactions) {
@@ -180,8 +223,7 @@ export class CycleRetrospectiveService {
       const isToInvestmentWallet = String(destWallet?.type || '').toLowerCase() === 'investment';
 
       if (tx.type === 'Income') {
-        // Only count real non-reimbursement income if not duplicate of already counted payroll
-        if (!isReimbursementIncome(tx) && (!tx.payrollId || !cyclePayroll)) {
+        if (!isReimbursementIncome(tx)) {
           totalInflow += amount;
         }
       } else if (tx.type === 'Transfer') {
@@ -666,14 +708,20 @@ Provide the complete AI Cycle Wrap-Up and Payday Retrospective.`;
 
     for (const model of modelsToTry) {
       try {
+        const isGemini4 = model.startsWith('gemini-4');
         const response = await gemini.models.generateContent({
           model,
           contents: userPrompt,
-          config: {
-            systemInstruction: systemPrompt,
-            responseMimeType: 'application/json',
-            temperature: 0.3,
-          },
+          config: isGemini4
+            ? {
+                systemInstruction: systemPrompt,
+                responseMimeType: 'application/json',
+              }
+            : {
+                systemInstruction: systemPrompt,
+                responseMimeType: 'application/json',
+                temperature: 0.3,
+              },
         });
 
         const text = response.text || '';

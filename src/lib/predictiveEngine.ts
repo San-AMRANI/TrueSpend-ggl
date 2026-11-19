@@ -271,7 +271,9 @@ export function computeHolisticForecast(params: {
   const monthlyIncomeBaseline =
     activeSalary > 0
       ? activeSalary
-      : (kpis?.monthlyIncome && kpis.monthlyIncome > 0 ? kpis.monthlyIncome : 6000);
+      : kpis?.monthlyIncome && kpis.monthlyIncome > 0
+      ? kpis.monthlyIncome
+      : 0;
 
   // Inferred standard payday day-of-month (strictly grounded on user payroll records)
   const inferredPaydayDayOfMonth =
@@ -329,8 +331,8 @@ export function computeHolisticForecast(params: {
   // Count how many of each weekday occurred in the last 90 days (~12.85)
   const weeksInWindow = Math.max(1, recentExpenses.length > 0 ? 12.85 : 4);
   const rawDowAvgs = dowTotals.map((tot) => tot / weeksInWindow);
-  const overallDowMean =
-    rawDowAvgs.reduce((a, b) => a + b, 0) / 7 || (kpis?.avgDailySpend ?? 120);
+  const rawDowMean = rawDowAvgs.reduce((a, b) => a + b, 0) / 7;
+  const overallDowMean = rawDowMean > 0 ? rawDowMean : (kpis?.avgDailySpend ?? 0);
 
   const dayOfWeekPatterns: DayOfWeekPattern[] = DAY_NAMES.map((name, i) => {
     const avg = rawDowAvgs[i] > 0 ? rawDowAvgs[i] : overallDowMean;
@@ -358,7 +360,9 @@ export function computeHolisticForecast(params: {
   const weightedDailyBurn =
     kpis?.avgDailySpend && kpis.avgDailySpend > 0
       ? kpis.avgDailySpend * 0.65 + overallDowMean * 0.35
-      : cycleSpendSoFar / elapsedDays || overallDowMean || 110;
+      : cycleSpendSoFar > 0
+      ? cycleSpendSoFar / elapsedDays
+      : overallDowMean;
 
   const monthlyVariableBurn = Math.max(
     0,
@@ -533,9 +537,11 @@ export function computeHolisticForecast(params: {
 
       if (matchingScheduledPayroll) {
         const payAmt = parseFloat(matchingScheduledPayroll.amount) || monthlyIncomeBaseline;
-        const totalPay = payAmt + whatIf.incomeDeltaMad;
-        dayInflow += totalPay;
-        events.push(`Payday (+${totalPay.toFixed(0)} MAD)`);
+        const totalPay = Math.max(0, payAmt + whatIf.incomeDeltaMad);
+        if (totalPay > 0) {
+          dayInflow += totalPay;
+          events.push(`Payday (+${totalPay.toFixed(0)} MAD)`);
+        }
         monthsWithSalaryAppliedInWindow.add(yearMonthKey);
       } else if (
         dayOfMonth === inferredPaydayDayOfMonth &&
@@ -543,10 +549,12 @@ export function computeHolisticForecast(params: {
         !monthsWithSalaryAppliedInWindow.has(yearMonthKey)
       ) {
         // ONLY project salary if this month has NO scheduled payroll in the database,
-        // and no salary event has been added yet for this month!
-        const totalPay = monthlyIncomeBaseline + whatIf.incomeDeltaMad;
-        dayInflow += totalPay;
-        events.push(`Projected Salary (+${totalPay.toFixed(0)} MAD)`);
+        // and the user has an actual positive salary baseline or what-if income delta!
+        const totalPay = Math.max(0, monthlyIncomeBaseline + whatIf.incomeDeltaMad);
+        if (totalPay > 0) {
+          dayInflow += totalPay;
+          events.push(`Projected Salary (+${totalPay.toFixed(0)} MAD)`);
+        }
         monthsWithSalaryAppliedInWindow.add(yearMonthKey);
       }
 
@@ -777,11 +785,14 @@ export function computeHolisticForecast(params: {
   });
 
   // 10. Survival Runway Days (how long current liquidity lasts at current burn with 0 new income)
-  const totalDailyBurn = Math.max(1, (simulatedVariableBurn + simulatedFixedBurn) / 30);
-  const survivalRunwayDays = Math.max(
-    0,
-    Math.round((currentLiquidity + whatIf.oneTimeShockMad) / totalDailyBurn)
-  );
+  const rawDailyBurn = (simulatedVariableBurn + simulatedFixedBurn) / 30;
+  const effectiveLiquidity = currentLiquidity + whatIf.oneTimeShockMad;
+  const survivalRunwayDays =
+    rawDailyBurn > 0.01
+      ? Math.max(0, Math.round(effectiveLiquidity / rawDailyBurn))
+      : effectiveLiquidity > 0
+      ? 365
+      : 0;
 
   // 11. Cross-Domain Predictive Signals
   const signals: PredictiveSignal[] = [];

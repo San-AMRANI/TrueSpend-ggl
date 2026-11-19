@@ -253,9 +253,21 @@ export class SubscriptionService {
     return { success: true };
   }
 
-  async logSubscriptionPayment(userId: string, id: string, overrideWalletId?: string, paymentDate?: string) {
+  async logSubscriptionPayment(
+    userId: string,
+    id: string,
+    overrideWalletId?: string,
+    paymentDate?: string,
+    overrideAmount?: number,
+    updateBaselineAmount?: boolean
+  ) {
     const sub = await this.getSubscriptionById(id, userId);
-    const amountNum = parseFloat(sub.amount as string) || 0;
+    const baselineAmountNum = parseFloat(sub.amount as string) || 0;
+    const paidAmount =
+      overrideAmount !== undefined && Number.isFinite(Number(overrideAmount)) && Number(overrideAmount) > 0
+        ? Number(overrideAmount)
+        : baselineAmountNum;
+    const hasVariance = Math.abs(paidAmount - baselineAmountNum) >= 0.01;
 
     // Determine target wallet
     let walletId = overrideWalletId || sub.walletId;
@@ -268,11 +280,14 @@ export class SubscriptionService {
 
     // 1. Record the transaction
     const dateToUse = (paymentDate ? new Date(paymentDate) : new Date()).toISOString().slice(0, 10);
+    const varianceNote = hasVariance
+      ? ` (Variable bill: paid ${paidAmount.toFixed(2)} vs est. ${baselineAmountNum.toFixed(2)})`
+      : '';
     const createdTx = await transactionService.createTransaction(userId, {
-      amount: amountNum,
+      amount: paidAmount,
       type: 'Expense',
       category: sub.category || 'Subscriptions & Streaming',
-      notes: `Subscription: ${sub.name}`,
+      notes: `Subscription: ${sub.name}${varianceNote}`,
       walletId,
       transaction_date: dateToUse,
     });
@@ -288,6 +303,7 @@ export class SubscriptionService {
     const updatedSub = await subscriptionRepository.update(id, userId, {
       nextBillingDate: rolledDate,
       status: sub.status === 'planned' ? 'active' : sub.status,
+      ...(updateBaselineAmount && paidAmount > 0 ? { amount: paidAmount.toFixed(2) } : {}),
     });
 
     return {

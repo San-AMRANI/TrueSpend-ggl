@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../../src/middleware/auth.js';
 import { transactionService } from '../services/TransactionService.js';
 import { payrollService } from '../services/PayrollService.js';
+import { parseBankNotification } from '../services/BankNotificationParser.js';
 
 export class TransactionController {
   async getTransactions(req: AuthRequest, res: Response) {
@@ -45,6 +46,50 @@ export class TransactionController {
     } catch (e: any) {
       console.error(e);
       res.status(e.message?.includes('not found') ? 404 : 400).json({ error: e.message || 'Unable to update transaction' });
+    }
+  }
+
+  async ingestBankNotification(req: AuthRequest, res: Response) {
+    try {
+      const title = typeof req.body?.title === 'string' ? req.body.title : '';
+      const text = typeof req.body?.text === 'string' ? req.body.text : '';
+      const packageName = typeof req.body?.packageName === 'string' ? req.body.packageName : '';
+      const idempotencyKey =
+        typeof req.body?.idempotencyKey === 'string' && req.body.idempotencyKey.trim()
+          ? req.body.idempotencyKey.trim()
+          : null;
+      if (!title && !text) {
+        res.status(400).json({ error: 'Notification text is required.' });
+        return;
+      }
+
+      const proposal = await parseBankNotification([title, text].filter(Boolean).join('\n'));
+      if (!proposal.amount) {
+        res.status(422).json({
+          error: 'No transaction amount could be detected.',
+          proposal,
+        });
+        return;
+      }
+
+      const created = await transactionService.createTransaction(req.dbUser.id, {
+        amount: proposal.amount,
+        nativeAmount: proposal.amount,
+        currency: proposal.currency,
+        type: proposal.type,
+        walletId: 'Bank',
+        category: proposal.category,
+        notes: `[Bank notification: ${packageName || 'unknown app'}] ${proposal.notes}${proposal.merchant ? ` | ${proposal.merchant}` : ''}`,
+        transaction_date: proposal.transactionDate,
+        idempotencyKey: idempotencyKey ? `bank-${idempotencyKey}` : undefined,
+      });
+      res.status(201).json({
+        transactionId: created.id,
+        proposal,
+      });
+    } catch (e: any) {
+      console.error(e);
+      res.status(400).json({ error: e.message || 'Unable to ingest bank notification' });
     }
   }
 }

@@ -64,7 +64,7 @@ export const dashboardService = {
     apiClient.put<Subscription>(`/api/subscriptions/${id}`, payload, token),
   deleteSubscription: (id: string, token: string | null) =>
     apiClient.delete<{ success: boolean }>(`/api/subscriptions/${id}`, token),
-  paySubscription: (id: string, payload: { walletId?: string; date?: string }, token: string | null) =>
+  paySubscription: (id: string, payload: { walletId?: string; date?: string; amount?: number; updateBaselineAmount?: boolean }, token: string | null) =>
     apiClient.post<{ subscription: Subscription; transaction: Transaction }>(`/api/subscriptions/${id}/pay`, payload, token),
   changeSubscriptionPlan: (id: string, payload: SubscriptionPlanChangePayload, token: string | null) =>
     apiClient.post<SubscriptionPlanChangeResult>(`/api/subscriptions/${id}/change-plan`, payload, token),
@@ -734,6 +734,7 @@ export const dashboardService = {
       emailDelivered?: boolean;
       deliveryStatus?: string;
       emailDeliveryWarning?: string;
+      emailPreviewUrl?: string;
       devVerificationToken?: string;
     }>('/api/auth/register', payload),
   loginAccount: (payload: { email?: string; username?: string; password: string }) =>
@@ -760,6 +761,7 @@ export const dashboardService = {
       emailDelivered?: boolean;
       deliveryStatus?: string;
       emailDeliveryWarning?: string;
+      emailPreviewUrl?: string;
       devVerificationToken?: string;
     }>(
       '/api/auth/resend-verification',
@@ -772,6 +774,7 @@ export const dashboardService = {
       emailDelivered?: boolean;
       deliveryStatus?: string;
       emailDeliveryWarning?: string;
+      emailPreviewUrl?: string;
       devResetToken?: string;
     }>(
       '/api/auth/forgot-password',
@@ -795,6 +798,7 @@ export const dashboardService = {
       emailDelivered?: boolean;
       deliveryStatus?: string;
       emailDeliveryWarning?: string;
+      emailPreviewUrl?: string;
       devVerificationToken?: string;
     }>(
       '/api/auth/change-email',
@@ -880,6 +884,11 @@ export const dashboardService = {
       payday?: number;
       salary?: number;
       emergencyBuffer?: number;
+      employmentType?: 'employee' | 'non_employee';
+      financialCycleMode?: 'payday_to_payday' | 'calendar_month' | 'custom_period';
+      onboardingStartingPoint?: 'first_day' | 'mid_cycle';
+      periodStartDate?: string | null;
+      nextPaydayDate?: string | null;
     },
     token: string | null
   ) =>
@@ -892,8 +901,34 @@ export const dashboardService = {
       isMain?: boolean;
       currency?: string;
     }>,
+    token: string | null,
+    options?: { emergencyBuffer?: number }
+  ) =>
+    apiClient.post<{ accounts: Wallet[]; onboarding?: OnboardingState; user?: User }>(
+      '/api/onboarding/setup-accounts',
+      { accounts, ...(options?.emergencyBuffer !== undefined ? { emergencyBuffer: options.emergencyBuffer } : {}) },
+      token
+    ),
+  setupFinancialPeriod: (
+    payload: {
+      employmentType: 'employee' | 'non_employee';
+      financialCycleMode: 'payday_to_payday' | 'calendar_month' | 'custom_period';
+      startingPoint: 'first_day' | 'mid_cycle';
+      paydayDay: number;
+      salary: number;
+      periodStartDate?: string;
+      nextPaydayDate?: string;
+      emergencyBuffer?: number;
+      targetWalletId?: string | null;
+    },
     token: string | null
-  ) => apiClient.post<{ accounts: Wallet[] }>('/api/onboarding/setup-accounts', { accounts }, token),
+  ) =>
+    apiClient.post<{
+      onboarding: OnboardingState;
+      user?: User;
+      periodStartDate: string;
+      nextPaydayDate: string;
+    }>('/api/onboarding/setup-period', payload, token),
   getStarterTemplates: (token: string | null) =>
     apiClient.get<{ templates: StarterTemplate[]; currentTier: ExperienceTier }>(
       '/api/templates',

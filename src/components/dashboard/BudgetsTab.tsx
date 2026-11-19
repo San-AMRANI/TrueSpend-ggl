@@ -234,17 +234,26 @@ function gradeFromScore(score: number): { grade: string; color: string } {
   return { grade: 'F', color: 'text-red-600' };
 }
 
-function predictDaysToOverspend(spent: number, budget: number, year: number, month: number): number | null {
+export function predictDaysToOverspend(
+  spent: number,
+  budget: number,
+  year: number,
+  month: number,
+  pace?: { elapsedDays: number; daysInMonth: number } | null
+): number | null {
   const now = new Date();
-  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const elapsed = now.getUTCDate();
-  if (elapsed === 0 || spent === 0) return null;
+  const hasFinancialBounds = Boolean(pace && pace.daysInMonth > 0 && pace.elapsedDays > 0);
+  const daysInPeriod = hasFinancialBounds
+    ? pace!.daysInMonth
+    : new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const elapsed = hasFinancialBounds ? pace!.elapsedDays : now.getUTCDate();
+  if (elapsed <= 0 || spent <= 0) return null;
   const dailyRate = spent / elapsed;
-  if (dailyRate === 0) return null;
+  if (dailyRate <= 0) return null;
   const remaining = budget - spent;
   if (remaining <= 0) return 0;
   const daysLeft = Math.floor(remaining / dailyRate);
-  return daysLeft > daysInMonth - elapsed ? null : daysLeft;
+  return daysLeft > Math.max(0, daysInPeriod - elapsed) ? null : daysLeft;
 }
 
 // ─── Mini Donut SVG ───────────────────────────────────────────────────────────
@@ -332,7 +341,10 @@ function BudgetCard({
   const statusCfg = statusConfig[status.status];
   const StatusIcon = statusCfg.icon;
   const pace = !isWealth && amount !== undefined ? getSpendingPace(spent, amount, year, month, payrolls) : null;
-  const daysWarning = !isWealth && amount !== undefined && isCurrentMonth ? predictDaysToOverspend(spent, amount, year, month) : null;
+  const daysWarning =
+    !isWealth && amount !== undefined && isCurrentMonth
+      ? predictDaysToOverspend(spent, amount, year, month, pace)
+      : null;
   const color = categoryColor(category);
 
   const [editing, setEditing] = useState(false);

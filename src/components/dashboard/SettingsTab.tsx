@@ -45,6 +45,7 @@ import {
   type OfflineOutboxItem,
 } from '../../lib/offlineOutbox';
 import { fetchLatestAndroidRelease, getLatestAndroidApkUrl, type AndroidRelease } from '../../lib/androidRelease';
+import { bankNotificationCapture, drainCapturedBankNotifications } from '../../lib/bankNotificationCapture';
 import type {
   NotifChannelPrefs,
   NotifSettings,
@@ -126,6 +127,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [isDriveBackingUp, setIsDriveBackingUp] = useState(false);
   const [latestAndroidRelease, setLatestAndroidRelease] = useState<AndroidRelease | null>(null);
   const [apiBaseInput, setApiBaseInput] = useState<string>(() => getCapacitorApiBaseUrl());
+  const [bankNotificationAccess, setBankNotificationAccess] = useState(false);
+  const [bankNotificationPackages, setBankNotificationPackages] = useState('');
+  const [bankNotificationStatus, setBankNotificationStatus] = useState<string | null>(null);
   const [backupPreview, setBackupPreview] = useState<BackupValidationPreview | null>(null);
   const [rules, setRules] = useState<FinancialRuleItem[]>([]);
   const [ruleLogs, setRuleLogs] = useState<FinancialRuleLogItem[]>([]);
@@ -178,6 +182,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [currentPwForEmail, setCurrentPwForEmail] = useState('');
   const [newEmailInput, setNewEmailInput] = useState('');
   const [emailFeedback, setEmailFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [pendingEmailChangeToken, setPendingEmailChangeToken] = useState<string | null>(null);
+  const [pendingEmailPreviewUrl, setPendingEmailPreviewUrl] = useState<string | null>(null);
   const [changingEmail, setChangingEmail] = useState(false);
   const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
   const [loggingOutAll, setLoggingOutAll] = useState(false);
@@ -202,6 +208,16 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     setTimezone(user?.timezone || 'Africa/Casablanca');
     setLocale(user?.locale || 'en');
   }, [user]);
+
+  useEffect(() => {
+    if (!isNativePlatform()) return;
+    bankNotificationCapture.isAccessGranted()
+      .then((result) => setBankNotificationAccess(result.granted))
+      .catch(() => setBankNotificationAccess(false));
+    bankNotificationCapture.getEnabledPackages()
+      .then((result) => setBankNotificationPackages((result.packages || []).join(', ')))
+      .catch(() => setBankNotificationPackages(''));
+  }, []);
 
   const loadSecurityData = React.useCallback(async () => {
     if (!token) return;
@@ -339,15 +355,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     if (!token) return;
     setChangingEmail(true);
     setEmailFeedback(null);
+    setPendingEmailChangeToken(null);
+    setPendingEmailPreviewUrl(null);
     try {
       const res = await dashboardService.changeEmail(currentPwForEmail, newEmailInput.trim(), token);
-      const devNote = res.devVerificationToken
-        ? ` Verification token (dev): ${res.devVerificationToken}`
-        : '';
+      if (res.devVerificationToken) {
+        setPendingEmailChangeToken(res.devVerificationToken);
+      }
+      if (res.emailPreviewUrl) {
+        setPendingEmailPreviewUrl(res.emailPreviewUrl);
+      }
       const warningNote = res.emailDeliveryWarning ? ` ${res.emailDeliveryWarning}` : '';
       setEmailFeedback({
-        type: res.emailDeliveryWarning ? 'err' : 'ok',
-        text: `${res.message}${warningNote}${devNote}`,
+        type: 'ok',
+        text: `${res.message}${warningNote}`,
       });
       setCurrentPwForEmail('');
       setNewEmailInput('');
@@ -355,6 +376,29 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       await loadSecurityData();
     } catch (err: any) {
       setEmailFeedback({ type: 'err', text: err?.message || 'Could not start email update.' });
+    } finally {
+      setChangingEmail(false);
+    }
+  };
+
+  const handleConfirmPendingEmailChange = async () => {
+    if (!pendingEmailChangeToken) return;
+    setChangingEmail(true);
+    try {
+      await dashboardService.verifyEmailToken(pendingEmailChangeToken);
+      setPendingEmailChangeToken(null);
+      setPendingEmailPreviewUrl(null);
+      setEmailFeedback({
+        type: 'ok',
+        text: 'Your new account email address has been verified and activated!',
+      });
+      await refreshUserProfile();
+      await loadSecurityData();
+    } catch (err: any) {
+      setEmailFeedback({
+        type: 'err',
+        text: err?.message || 'Could not confirm email change.',
+      });
     } finally {
       setChangingEmail(false);
     }
@@ -1046,9 +1090,37 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 className="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
               {emailFeedback && (
-                <p className={`text-xs break-words ${emailFeedback.type === 'ok' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                <p className={`text-xs break-words ${emailFeedback.type === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'}`}>
                   {emailFeedback.text}
                 </p>
+              )}
+              {pendingEmailChangeToken && (
+                <div className="rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/30 p-2.5 text-xs space-y-2">
+                  <p className="font-mono text-[11px] break-all text-emerald-900 dark:text-emerald-200">
+                    Verification token ready: <strong>{pendingEmailChangeToken}</strong>
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={changingEmail}
+                      onClick={handleConfirmPendingEmailChange}
+                      className="text-xs"
+                    >
+                      {changingEmail ? 'Confirming...' : 'Confirm New Email Now'}
+                    </Button>
+                    {pendingEmailPreviewUrl && (
+                      <a
+                        href={pendingEmailPreviewUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                      >
+                        Open Webmail Preview ↗
+                      </a>
+                    )}
+                  </div>
+                </div>
               )}
               <Button type="submit" size="sm" variant="outline" disabled={changingEmail} className="text-xs">
                 {changingEmail ? 'Sending Verification...' : 'Send Email Change Link'}
@@ -2213,6 +2285,74 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 Install latest APK
               </a>
             </div>
+
+            {isNativePlatform() && (
+              <div className="space-y-3 pb-4 border-b border-gray-200 dark:border-gray-800">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                      Bank Notification Transaction Capture
+                    </h3>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                      Grant notification access, then select only the exact Android package names of your bank apps.
+                      TrueSpend parses matched notifications and creates a deduplicated transaction using Gemini with a local fallback.
+                      Notification text is sent only to the authenticated TrueSpend server.
+                    </p>
+                  </div>
+                  <span className={`shrink-0 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                    bankNotificationAccess
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                      : 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
+                  }`}>
+                    {bankNotificationAccess ? 'Access granted' : 'Access required'}
+                  </span>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    value={bankNotificationPackages}
+                    onChange={(e) => setBankNotificationPackages(e.target.value)}
+                    placeholder="e.g. com.example.bank, ma.example.bank"
+                    className="flex-1 px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      const packages = bankNotificationPackages
+                        .split(',')
+                        .map((value) => value.trim())
+                        .filter(Boolean);
+                      await bankNotificationCapture.setEnabledPackages(packages);
+                      setBankNotificationStatus(`Saved ${packages.length} allowed app package(s).`);
+                    }}
+                  >
+                    Save Apps
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      await bankNotificationCapture.openAccessSettings();
+                      setBankNotificationStatus('Choose TrueSpend in Android Notification Access settings.');
+                    }}
+                  >
+                    Open Android Access
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      const result = await drainCapturedBankNotifications();
+                      setBankNotificationStatus(`Processed ${result.processed}; ${result.remaining} notification(s) remain queued.`);
+                    }}
+                  >
+                    Sync Captures
+                  </Button>
+                </div>
+                {bankNotificationStatus && (
+                  <p className="text-[11px] text-indigo-600 dark:text-indigo-400">{bankNotificationStatus}</p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">

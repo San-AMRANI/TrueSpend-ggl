@@ -63,7 +63,10 @@ interface SubscriptionsTabProps {
   ) => Promise<any>;
   onUpdateSubscription: (id: string, payload: Partial<Subscription>) => Promise<any>;
   onDeleteSubscription: (id: string) => Promise<any>;
-  onPaySubscription: (id: string, payload?: { walletId?: string; date?: string }) => Promise<any>;
+  onPaySubscription: (
+    id: string,
+    payload?: { walletId?: string; date?: string; amount?: number; updateBaselineAmount?: boolean }
+  ) => Promise<any>;
   onChangeSubscriptionPlan?: (id: string, payload: SubscriptionPlanChangePayload) => Promise<any>;
   onDetectSubscriptions: () => Promise<DetectedSubscription[]>;
 }
@@ -103,6 +106,22 @@ const PRESETS: PresetItem[] = [
     defaultAmount: 750,
     cycle: 'every_3_months',
     badge: '3-Mo Pass',
+  },
+  {
+    name: 'Electricity & Water Utility (Variable)',
+    icon: '💡',
+    category: 'Bills & Utilities',
+    defaultAmount: 280,
+    cycle: 'monthly',
+    badge: 'Variable Bill',
+  },
+  {
+    name: 'Monthly Fuel / Transport (Variable)',
+    icon: '⛽',
+    category: 'Bills & Utilities',
+    defaultAmount: 650,
+    cycle: 'monthly',
+    badge: 'Variable Bill',
   },
   {
     name: 'Fiber Internet',
@@ -208,10 +227,19 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
   const [payingSub, setPayingSub] = useState<Subscription | null>(null);
   const [selectedPayingWallet, setSelectedPayingWallet] = useState<string>('');
   const [paymentDateInput, setPaymentDateInput] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [paymentAmountInput, setPaymentAmountInput] = useState<string>('');
+  const [updateBaselineOnPay, setUpdateBaselineOnPay] = useState<boolean>(false);
   const [detectedCandidates, setDetectedCandidates] = useState<DetectedSubscription[]>([]);
   const [isDetecting, setIsDetecting] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (payingSub) {
+      setPaymentAmountInput(String(parseFloat(String(payingSub.amount)) || ''));
+      setUpdateBaselineOnPay(false);
+    }
+  }, [payingSub]);
 
   // Upgrade / Downgrade Plan Switcher Modal state
   const [switchingSub, setSwitchingSub] = useState<Subscription | null>(null);
@@ -637,7 +665,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
       }
       setIsCreateModalOpen(false);
     } catch (err: any) {
-      alert(err.message || 'Failed to save subscription');
+      showToast(err.message || 'Failed to save subscription');
     }
   };
 
@@ -661,7 +689,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
       setDetectedCandidates((prev) => prev.filter((c) => c.name !== candidate.name));
       showToast(`Added "${candidate.name}" (${getCycleMeta(candidate.suggestedCycle).shortLabel})!`);
     } catch (err: any) {
-      alert(err.message || 'Failed to import subscription');
+      showToast(err.message || 'Failed to import subscription');
     }
   };
 
@@ -670,18 +698,23 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
     try {
       const wasPlanned = payingSub.status === 'planned';
       const meta = getCycleMeta(payingSub.billingCycle);
+      const baselineAmt = parseFloat(String(payingSub.amount)) || 0;
+      const customAmt = parseFloat(paymentAmountInput);
+      const effectivePaidAmount = Number.isFinite(customAmt) && customAmt > 0 ? customAmt : baselineAmt;
       await onPaySubscription(payingSub.id, {
         walletId: selectedPayingWallet || payingSub.walletId || undefined,
         date: paymentDateInput || new Date().toISOString().slice(0, 10),
+        amount: effectivePaidAmount,
+        updateBaselineAmount: updateBaselineOnPay,
       });
       showToast(
         wasPlanned
-          ? `Activated "${payingSub.name}", recorded ${payingSub.amount} MAD, and set next renewal in ${meta.shortLabel}!`
-          : `Recorded ${payingSub.amount} MAD for "${payingSub.name}" and rolled renewal forward by ${meta.shortLabel}!`
+          ? `Activated "${payingSub.name}", recorded ${effectivePaidAmount.toFixed(2)} MAD, and set next renewal in ${meta.shortLabel}!`
+          : `Recorded ${effectivePaidAmount.toFixed(2)} MAD for "${payingSub.name}" and rolled renewal forward by ${meta.shortLabel}!`
       );
       setPayingSub(null);
     } catch (err: any) {
-      alert(err.message || 'Failed to record payment');
+      showToast(err.message || 'Failed to record payment');
     }
   };
 
@@ -695,7 +728,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
       await onUpdateSubscription(sub.id, updates);
       showToast(`"${sub.name}" marked as ${newStatus}`);
     } catch (err: any) {
-      alert(err.message || 'Failed to update status');
+      showToast(err.message || 'Failed to update status');
     }
   };
 
@@ -866,7 +899,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
       }
       setSwitchingSub(null);
     } catch (err: any) {
-      alert(err.message || 'Failed to change subscription plan');
+      showToast(err.message || 'Failed to change subscription plan');
     } finally {
       setIsSubmittingSwitch(false);
     }
@@ -2702,6 +2735,72 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
             </div>
 
             <div className="mt-4 space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
+                    Actual Bill Amount Paid This Cycle ({payingSub.currency || 'MAD'}):
+                  </label>
+                  {(() => {
+                    const est = parseFloat(String(payingSub.amount)) || 0;
+                    const cur = parseFloat(paymentAmountInput) || 0;
+                    const diff = cur - est;
+                    if (!cur || Math.abs(diff) < 0.01) {
+                      return (
+                        <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                          Matches baseline
+                        </span>
+                      );
+                    }
+                    return (
+                      <span
+                        className={`text-[11px] font-semibold tabular-nums ${
+                          diff > 0
+                            ? 'text-amber-600 dark:text-amber-400'
+                            : 'text-emerald-600 dark:text-emerald-400'
+                        }`}
+                      >
+                        {diff > 0 ? `+${diff.toFixed(2)}` : diff.toFixed(2)} {payingSub.currency || 'MAD'} vs est.
+                      </span>
+                    );
+                  })()}
+                </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={paymentAmountInput}
+                  onChange={(e) => setPaymentAmountInput(e.target.value)}
+                  placeholder={String(payingSub.amount)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100"
+                />
+                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                  For variable bills (electricity, water, fuel), enter the exact invoice amount charged this cycle.
+                </p>
+                {(() => {
+                  const est = parseFloat(String(payingSub.amount)) || 0;
+                  const cur = parseFloat(paymentAmountInput) || 0;
+                  if (cur > 0 && Math.abs(cur - est) >= 0.01) {
+                    return (
+                      <label className="mt-2 flex items-center gap-2 rounded-lg border border-indigo-200/70 dark:border-indigo-800/50 bg-indigo-50/50 dark:bg-indigo-950/30 px-2.5 py-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={updateBaselineOnPay}
+                          onChange={(e) => setUpdateBaselineOnPay(e.target.checked)}
+                          className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>
+                          Update future cycle baseline estimate to{' '}
+                          <strong className="font-semibold text-indigo-700 dark:text-indigo-300">
+                            {cur.toFixed(2)} {payingSub.currency || 'MAD'}
+                          </strong>
+                        </span>
+                      </label>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Charge From Wallet:

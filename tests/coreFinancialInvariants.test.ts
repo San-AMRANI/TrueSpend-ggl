@@ -251,6 +251,61 @@ async function runTests() {
     console.log('✓ Test 5 passed: Offline outbox uses AES-GCM encryption, preserves pending items on logout, and bounds retry backoff.');
   }
 
+  // 6. Predictive Forecast zero-baseline invariant on empty / non-employee accounts (no fake 6000 MAD salary or 110-120 MAD/day burn)
+  {
+    const { computeHolisticForecast } = await import('../src/lib/predictiveEngine.js');
+    const emptyForecast = computeHolisticForecast({
+      kpis: {
+        safeToSpend: 2500,
+        totalLiquidity: 2500,
+        bankBalance: 2000,
+        cashOnHand: 500,
+        dailyAllowance: 80,
+        daysUntilPayday: 30,
+        avgDailySpend: 0,
+        monthlyIncome: 0,
+        salary: 0,
+        currentFinancialAmount: 0,
+      } as any,
+      transactions: [],
+      payrolls: [],
+      budgets: [],
+      subscriptions: [],
+      debts: [],
+      goals: [],
+      contexts: [],
+      userSettings: { salary: 0, payday: 1, emergencyBuffer: 0 },
+    });
+    assert.equal(
+      emptyForecast.monthlyIncomeBaseline,
+      0,
+      `Empty / non-employee account monthlyIncomeBaseline must be 0, got ${emptyForecast.monthlyIncomeBaseline}`
+    );
+    assert.equal(
+      emptyForecast.monthlyVariableBurn,
+      0,
+      `Empty account monthlyVariableBurn must be 0, got ${emptyForecast.monthlyVariableBurn}`
+    );
+    assert.equal(
+      emptyForecast.survivalRunwayDays,
+      365,
+      `Empty account with positive liquidity and 0 daily burn should report 365d runway, got ${emptyForecast.survivalRunwayDays}`
+    );
+    console.log('✓ Test 6 passed: Predictive engine never invents fake 6,000 MAD salary or 110–120 MAD/day burn on empty/non-employee accounts.');
+  }
+
+  // 7. GeminiClient valid @google/genai model identifiers check
+  {
+    const geminiModels = await import('../server/services/GeminiClient.js');
+    assert.equal(geminiModels.MODEL_FLASH_DEEP, 'gemini-4-hydrogen');
+    assert.equal(geminiModels.MODEL_FLASH_LITE, 'gemini-3.1-flash-lite');
+    assert.equal(geminiModels.MODEL_FLASH_LATEST, 'gemini-2.5-flash');
+    assert.equal(geminiModels.MODEL_TRANSCRIBE, 'gemini-3.5-transcribe');
+    assert.equal(geminiModels.MODEL_LIVE, 'gemini-3.8-live');
+    assert.equal(geminiModels.MODEL_LIVE_EXTENDED, 'gemini-3.8-live-extended-thinking');
+    console.log('✓ Test 7 passed: GeminiClient exports valid @google/genai model IDs.');
+  }
+
   console.log('\nAll Core Financial Invariant tests passed!');
 }
 
@@ -258,3 +313,4 @@ runTests().catch((err) => {
   console.error('Core financial invariant test failure:', err);
   process.exit(1);
 });
+

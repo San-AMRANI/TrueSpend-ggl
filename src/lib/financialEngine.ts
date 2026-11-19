@@ -296,8 +296,8 @@ export function computeFinancialState(input: FinancialEngineInput) {
     ? userWallets.filter(w => !isCreditLiabilityWallet(w)).reduce((sum, w) => sum + (openingWalletBalances[w.id] || 0), 0)
     : (openingWalletBalances.Bank || 0) + (openingWalletBalances.Cash || 0) + (openingWalletBalances.Savings || 0) + (openingWalletBalances.Investment || 0);
   const nextPayroll = getNextPayroll(input.payrolls, now);
-  const nextPayday = nextPayroll ? new Date(nextPayroll.scheduledFor) : null;
-  const daysUntilPayday = nextPayday ? Math.max(0, Math.ceil((nextPayday.getTime() - today.getTime()) / 86_400_000)) : 0;
+  const nextPayday = nextPayroll ? toCalendarDay(new Date(nextPayroll.scheduledFor)) : null;
+  const daysUntilPayday = nextPayday ? Math.max(0, Math.round((nextPayday.getTime() - today.getTime()) / 86_400_000)) : 0;
   
   // Phase 1 Intelligence - Core Definitions
   const pendingPayables = input.debts
