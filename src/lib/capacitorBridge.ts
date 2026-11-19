@@ -4,6 +4,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import { flushOfflineOutbox } from './offlineOutbox';
+import { initBankNotificationCapture } from './bankNotificationCapture';
 import { getApiAccessToken } from '../services/api/apiClient';
 
 const STORAGE_KEY_API_BASE = 'truespend_capacitor_api_base_url';
@@ -196,6 +197,10 @@ export async function initCapacitorBridge(): Promise<void> {
   try {
     const isDark = document.documentElement.classList.contains('dark');
     await syncNativeStatusBar(isDark, isDark ? '#0A0D14' : '#FFFFFF');
+  } catch {}
+
+  try {
+    await initBankNotificationCapture();
   } catch {}
 
   try {
