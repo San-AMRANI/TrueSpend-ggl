@@ -138,13 +138,16 @@ Notes on rules:
 
   for (const model of models) {
     try {
+      const isGemini4 = model.startsWith('gemini-4');
       const response = await gemini.models.generateContent({
         model,
         contents: { parts },
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
+        config: isGemini4
+          ? { responseMimeType: 'application/json' }
+          : {
+              responseMimeType: 'application/json',
+              temperature: 0.1,
+            },
       });
 
       const responseText = response.text || '';

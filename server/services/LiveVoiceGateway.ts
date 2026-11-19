@@ -2,7 +2,7 @@ import type { Server as HttpServer, IncomingMessage } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { LiveServerMessage, Modality } from '@google/genai';
 import jwt from 'jsonwebtoken';
-import { gemini, MODEL_LIVE } from './GeminiClient.js';
+import { gemini, MODEL_LIVE, MODEL_LIVE_EXTENDED } from './GeminiClient.js';
 import { getJwtSecret } from './SecurityCrypto.js';
 import { compactLiveContext } from '../../src/lib/liveVoiceHelpers.js';
 
@@ -139,137 +139,149 @@ export function attachLiveVoiceGateway(server: HttpServer): WebSocketServer {
         opts?.focusScopes,
       );
 
-      let geminiLiveOpened = false;
+      const connectWithLiveModel = (liveModel: string, allowExtendedFallback: boolean): Promise<any> => {
+        let geminiLiveOpened = false;
 
-      sessionPromise = gemini.live
-        .connect({
-          model: MODEL_LIVE,
-          config: {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: {
-                  voiceName: validVoice,
+        return gemini.live
+          .connect({
+            model: liveModel,
+            config: {
+              responseModalities: [Modality.AUDIO],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: {
+                    voiceName: validVoice,
+                  },
                 },
               },
+              inputAudioTranscription: {},
+              outputAudioTranscription: {},
+              systemInstruction,
             },
-            inputAudioTranscription: {},
-            outputAudioTranscription: {},
-            systemInstruction,
-          },
-          callbacks: {
-            onopen: () => {
-              geminiLiveOpened = true;
-              safeSend({
-                type: 'ready',
-                transport: 'websocket',
-                model: MODEL_LIVE,
-                voiceName: validVoice,
-              });
-            },
-            onmessage: (message: LiveServerMessage) => {
-              if (message.setupComplete) {
-                safeSend({ type: 'setup_complete' });
-              }
-
-              const content = message.serverContent;
-              if (!content) return;
-
-              if (content.inputTranscription?.text) {
+            callbacks: {
+              onopen: () => {
+                geminiLiveOpened = true;
                 safeSend({
-                  type: 'input_transcript',
-                  text: content.inputTranscription.text,
+                  type: 'ready',
+                  transport: 'websocket',
+                  model: liveModel,
+                  voiceName: validVoice,
                 });
-              }
+              },
+              onmessage: (message: LiveServerMessage) => {
+                if (message.setupComplete) {
+                  safeSend({ type: 'setup_complete' });
+                }
 
-              if (content.outputTranscription?.text) {
-                safeSend({
-                  type: 'output_transcript',
-                  text: content.outputTranscription.text,
-                });
-              }
+                const content = message.serverContent;
+                if (!content) return;
 
-              for (const part of content.modelTurn?.parts ?? []) {
-                if (part.inlineData?.data) {
+                if (content.inputTranscription?.text) {
                   safeSend({
-                    type: 'audio',
-                    audio: part.inlineData.data,
-                    mimeType: part.inlineData.mimeType || 'audio/pcm;rate=24000',
+                    type: 'input_transcript',
+                    text: content.inputTranscription.text,
                   });
                 }
-                if (part.text) {
+
+                if (content.outputTranscription?.text) {
                   safeSend({
-                    type: 'text',
-                    text: part.text,
+                    type: 'output_transcript',
+                    text: content.outputTranscription.text,
                   });
                 }
-              }
 
-              if (content.interrupted) {
-                safeSend({
-                  type: 'interrupted',
-                  interrupted: true,
-                });
-              }
+                for (const part of content.modelTurn?.parts ?? []) {
+                  if (part.inlineData?.data) {
+                    safeSend({
+                      type: 'audio',
+                      audio: part.inlineData.data,
+                      mimeType: part.inlineData.mimeType || 'audio/pcm;rate=24000',
+                    });
+                  }
+                  if (part.text) {
+                    safeSend({
+                      type: 'text',
+                      text: part.text,
+                    });
+                  }
+                }
 
-              if (content.turnComplete) {
+                if (content.interrupted) {
+                  safeSend({
+                    type: 'interrupted',
+                    interrupted: true,
+                  });
+                }
+
+                if (content.turnComplete) {
+                  safeSend({
+                    type: 'turn_complete',
+                    turnComplete: true,
+                  });
+                }
+              },
+              onerror: (err: any) => {
+                const message =
+                  err?.message || err?.error?.message || 'Gemini Live connection error occurred.';
+                console.warn(`[LiveVoiceGateway] Gemini Live error on ${liveModel}:`, message);
+                if (!geminiLiveOpened) {
+                  if (allowExtendedFallback && !isClosed) {
+                    console.info(`[LiveVoiceGateway] Retrying Live session with ${MODEL_LIVE_EXTENDED}...`);
+                    sessionPromise = connectWithLiveModel(MODEL_LIVE_EXTENDED, false);
+                    return;
+                  }
+                  safeSend({
+                    type: 'fallback_to_sse',
+                    error: message,
+                  });
+                  return;
+                }
                 safeSend({
-                  type: 'turn_complete',
-                  turnComplete: true,
-                });
-              }
-            },
-            onerror: (err: any) => {
-              const message =
-                err?.message || err?.error?.message || 'Gemini Live connection error occurred.';
-              console.error('[LiveVoiceGateway] Gemini Live error:', message);
-              if (!geminiLiveOpened) {
-                safeSend({
-                  type: 'fallback_to_sse',
+                  type: 'error',
                   error: message,
                 });
-                return;
+              },
+              onclose: () => {
+                if (!isClosed && geminiLiveOpened) {
+                  safeSend({ type: 'session_closed' });
+                }
+              },
+            },
+          })
+          .then((session) => {
+            if (isClosed) {
+              try {
+                session.close?.();
+              } catch {}
+              return null;
+            }
+            activeSession = session;
+            return session;
+          })
+          .catch((err: any) => {
+            const msg =
+              err?.message || 'Failed to establish Gemini Live voice session. Please try again.';
+            console.warn(`[LiveVoiceGateway] Failed to connect to ${liveModel}:`, msg);
+            if (!geminiLiveOpened) {
+              if (allowExtendedFallback && !isClosed) {
+                console.info(`[LiveVoiceGateway] Failover to ${MODEL_LIVE_EXTENDED}...`);
+                return connectWithLiveModel(MODEL_LIVE_EXTENDED, false);
               }
               safeSend({
-                type: 'error',
-                error: message,
+                type: 'fallback_to_sse',
+                error: msg,
               });
-            },
-            onclose: () => {
-              if (!isClosed) {
-                safeSend({ type: 'session_closed' });
-              }
-            },
-          },
-        })
-        .then((session) => {
-          if (isClosed) {
-            try {
-              session.close?.();
-            } catch {}
-            return null;
-          }
-          activeSession = session;
-          return session;
-        })
-        .catch((err: any) => {
-          const msg =
-            err?.message || 'Failed to establish Gemini Live voice session. Please try again.';
-          console.error('[LiveVoiceGateway] Failed to connect to Gemini Live:', msg);
-          if (!geminiLiveOpened) {
+              return null;
+            }
             safeSend({
-              type: 'fallback_to_sse',
+              type: 'error',
               error: msg,
             });
             return null;
-          }
-          safeSend({
-            type: 'error',
-            error: msg,
           });
-          return null;
-        });
+      };
 
+      sessionPromise = connectWithLiveModel(MODEL_LIVE, true);
       return sessionPromise;
     };
 

@@ -178,6 +178,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [currentPwForEmail, setCurrentPwForEmail] = useState('');
   const [newEmailInput, setNewEmailInput] = useState('');
   const [emailFeedback, setEmailFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [pendingEmailChangeToken, setPendingEmailChangeToken] = useState<string | null>(null);
+  const [pendingEmailPreviewUrl, setPendingEmailPreviewUrl] = useState<string | null>(null);
   const [changingEmail, setChangingEmail] = useState(false);
   const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
   const [loggingOutAll, setLoggingOutAll] = useState(false);
@@ -339,15 +341,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     if (!token) return;
     setChangingEmail(true);
     setEmailFeedback(null);
+    setPendingEmailChangeToken(null);
+    setPendingEmailPreviewUrl(null);
     try {
       const res = await dashboardService.changeEmail(currentPwForEmail, newEmailInput.trim(), token);
-      const devNote = res.devVerificationToken
-        ? ` Verification token (dev): ${res.devVerificationToken}`
-        : '';
+      if (res.devVerificationToken) {
+        setPendingEmailChangeToken(res.devVerificationToken);
+      }
+      if (res.emailPreviewUrl) {
+        setPendingEmailPreviewUrl(res.emailPreviewUrl);
+      }
       const warningNote = res.emailDeliveryWarning ? ` ${res.emailDeliveryWarning}` : '';
       setEmailFeedback({
-        type: res.emailDeliveryWarning ? 'err' : 'ok',
-        text: `${res.message}${warningNote}${devNote}`,
+        type: 'ok',
+        text: `${res.message}${warningNote}`,
       });
       setCurrentPwForEmail('');
       setNewEmailInput('');
@@ -355,6 +362,29 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       await loadSecurityData();
     } catch (err: any) {
       setEmailFeedback({ type: 'err', text: err?.message || 'Could not start email update.' });
+    } finally {
+      setChangingEmail(false);
+    }
+  };
+
+  const handleConfirmPendingEmailChange = async () => {
+    if (!pendingEmailChangeToken) return;
+    setChangingEmail(true);
+    try {
+      await dashboardService.verifyEmailToken(pendingEmailChangeToken);
+      setPendingEmailChangeToken(null);
+      setPendingEmailPreviewUrl(null);
+      setEmailFeedback({
+        type: 'ok',
+        text: 'Your new account email address has been verified and activated!',
+      });
+      await refreshUserProfile();
+      await loadSecurityData();
+    } catch (err: any) {
+      setEmailFeedback({
+        type: 'err',
+        text: err?.message || 'Could not confirm email change.',
+      });
     } finally {
       setChangingEmail(false);
     }
@@ -1046,9 +1076,37 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 className="w-full px-3 py-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
               {emailFeedback && (
-                <p className={`text-xs break-words ${emailFeedback.type === 'ok' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                <p className={`text-xs break-words ${emailFeedback.type === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'}`}>
                   {emailFeedback.text}
                 </p>
+              )}
+              {pendingEmailChangeToken && (
+                <div className="rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/30 p-2.5 text-xs space-y-2">
+                  <p className="font-mono text-[11px] break-all text-emerald-900 dark:text-emerald-200">
+                    Verification token ready: <strong>{pendingEmailChangeToken}</strong>
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={changingEmail}
+                      onClick={handleConfirmPendingEmailChange}
+                      className="text-xs"
+                    >
+                      {changingEmail ? 'Confirming...' : 'Confirm New Email Now'}
+                    </Button>
+                    {pendingEmailPreviewUrl && (
+                      <a
+                        href={pendingEmailPreviewUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                      >
+                        Open Webmail Preview ↗
+                      </a>
+                    )}
+                  </div>
+                </div>
               )}
               <Button type="submit" size="sm" variant="outline" disabled={changingEmail} className="text-xs">
                 {changingEmail ? 'Sending Verification...' : 'Send Email Change Link'}

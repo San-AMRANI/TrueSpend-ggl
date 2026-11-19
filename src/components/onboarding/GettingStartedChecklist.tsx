@@ -6,6 +6,10 @@ import {
   X,
   Compass,
   RotateCcw,
+  Plus,
+  PieChart,
+  Repeat,
+  Landmark,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { dashboardService } from '../../services/api/dashboardService';
@@ -32,6 +36,8 @@ export const GettingStartedChecklist: React.FC<GettingStartedChecklistProps> = (
       ? Math.round((onboarding.completedCount / onboarding.totalCount) * 100)
       : 0;
 
+  const nextActionItem = onboarding.checklist.find((item) => !item.completed) || null;
+
   const handleDismiss = async () => {
     if (!token) return;
     setDismissing(true);
@@ -43,20 +49,35 @@ export const GettingStartedChecklist: React.FC<GettingStartedChecklistProps> = (
     }
   };
 
+  const handleItemAction = (item: { id: string; targetTab?: DashboardTab | null }) => {
+    if (item.id === 'first_transaction') {
+      window.dispatchEvent(new CustomEvent('truespend:openQuickTransaction', { detail: 'Expense' }));
+      return;
+    }
+    if (item.id === 'external_wealth') {
+      window.dispatchEvent(new CustomEvent('truespend:openAccountsSection', { detail: 'external' }));
+      return;
+    }
+    if (item.targetTab) {
+      onNavigateTab(item.targetTab);
+    }
+  };
+
   return (
     <div className="rounded-2xl border border-indigo-200/80 dark:border-indigo-900/60 bg-gradient-to-br from-indigo-50/70 via-white to-emerald-50/40 dark:from-indigo-950/30 dark:via-gray-900 dark:to-gray-900 p-4 sm:p-5 shadow-xs space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
             <Compass className="h-4 w-4" />
-            <span>Getting Started Checklist</span>
+            <span>Guided Quick-Start Checklist</span>
             <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400">
               · {onboarding.completedCount}/{onboarding.totalCount} complete ({pct}%)
             </span>
           </div>
           <p className="text-xs text-gray-600 dark:text-gray-400">
-            Track real setup milestones derived from your private workspace. Finish anytime or
-            dismiss when you feel ready.
+            {nextActionItem
+              ? `Next recommended step: ${nextActionItem.label} — ${nextActionItem.description}`
+              : 'All core financial period & liquidity milestones are configured!'}
           </p>
         </div>
 
@@ -67,7 +88,7 @@ export const GettingStartedChecklist: React.FC<GettingStartedChecklistProps> = (
             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
           >
             <RotateCcw className="h-3 w-3" />
-            Guided Setup
+            Guided Period Setup
           </button>
           <button
             type="button"
@@ -88,14 +109,52 @@ export const GettingStartedChecklist: React.FC<GettingStartedChecklistProps> = (
         />
       </div>
 
+      {/* Quick-Action Launchpad Buttons */}
+      <div className="flex flex-wrap items-center gap-2 pt-0.5">
+        <button
+          type="button"
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent('truespend:openQuickTransaction', { detail: 'Expense' }))
+          }
+          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Log First Expense
+        </button>
+        <button
+          type="button"
+          onClick={() => onNavigateTab('budgets')}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-800 dark:text-gray-200 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer"
+        >
+          <PieChart className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+          Set Category Budgets
+        </button>
+        <button
+          type="button"
+          onClick={() => onNavigateTab('subscriptions')}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-800 dark:text-gray-200 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer"
+        >
+          <Repeat className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+          Track Recurring / Variable Bill
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent('truespend:openAccountsSection', { detail: 'external' }))
+          }
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700 text-gray-800 dark:text-gray-200 px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer"
+        >
+          <Landmark className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+          Declare External Asset
+        </button>
+      </div>
+
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {onboarding.checklist.map((item) => (
           <button
             key={item.id}
             type="button"
-            onClick={() => {
-              if (item.targetTab) onNavigateTab(item.targetTab);
-            }}
+            onClick={() => handleItemAction(item)}
             className={`group flex items-start gap-2.5 rounded-xl border p-3 text-left transition-colors cursor-pointer ${
               item.completed
                 ? 'border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20'
@@ -121,7 +180,7 @@ export const GettingStartedChecklist: React.FC<GettingStartedChecklistProps> = (
                 {item.description}
               </div>
             </div>
-            {!item.completed && item.targetTab && (
+            {!item.completed && (
               <ArrowRight className="h-3.5 w-3.5 text-gray-400 group-hover:text-indigo-600 shrink-0 mt-0.5" />
             )}
           </button>
@@ -130,3 +189,4 @@ export const GettingStartedChecklist: React.FC<GettingStartedChecklistProps> = (
     </div>
   );
 };
+

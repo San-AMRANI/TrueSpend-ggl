@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { useAuth } from '../context/AuthContext';
 import { Transaction } from '../types';
 import { expenseCategories, incomeAndTransferCategories } from '../lib/categories';
-import { Trash2, AlertCircle, Plus, Users, Clock, Percent } from 'lucide-react';
+import { getApiUrl } from '../lib/capacitorBridge';
 import { dashboardService } from '../services/api/dashboardService';
+import { Trash2, AlertCircle, Plus, Users, Clock, Percent, Landmark } from 'lucide-react';
 
 type FormData = {
   amount: string;
@@ -94,6 +95,14 @@ export default function TransactionForm({
   const [unpaidDueDate, setUnpaidDueDate] = useState('');
 
   const [loanContactName, setLoanContactName] = useState('');
+
+  // Declare purchased item as a Physical / External Asset in Net Worth
+  const [declareAsAsset, setDeclareAsAsset] = useState(false);
+  const [assetName, setAssetName] = useState('');
+  const [assetCategory, setAssetCategory] = useState('Electronics & Equipment');
+  const [assetValuationInput, setAssetValuationInput] = useState('');
+  const [assetIsLiquid, setAssetIsLiquid] = useState(false);
+
   const isPayroll = Boolean(transaction?.payrollId);
 
   const handleDelete = async () => {
@@ -461,10 +470,63 @@ export default function TransactionForm({
             }
           : {}),
       };
-      if (isEditing) {
-        await dashboardService.updateTransaction(transaction!.id, payload, token);
-      } else {
-        await dashboardService.createTransaction(payload, token);
+      const response = await fetch(
+        getApiUrl(isEditing ? `/api/transactions/${transaction!.id}` : '/api/transactions'),
+        {
+          method: isEditing ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 401) window.dispatchEvent(new Event('auth:unauthorized'));
+        throw new Error(data.error || 'Unable to save the transaction.');
+      }
+
+      if (!isEditing && formData.type === 'Expense' && declareAsAsset) {
+        const defaultValuation =
+          isPartialPayment && computedTotalBill > 0
+            ? computedTotalBill
+            : Number.parseFloat(formData.amount) || 0;
+        const resolvedValuation =
+          Number.parseFloat(assetValuationInput) > 0
+            ? Number.parseFloat(assetValuationInput)
+            : defaultValuation;
+        const resolvedName =
+          assetName.trim() ||
+          formData.notes.trim() ||
+          formData.category.replace(/^[^\w]+/, '').trim() ||
+          'Purchased Asset';
+
+        if (resolvedValuation > 0) {
+          try {
+            await dashboardService.upsertExternalWealthItem(
+              {
+                name: resolvedName,
+                itemType: 'Asset',
+                category: assetCategory || 'Electronics & Equipment',
+                amountMad: resolvedValuation,
+                currency: 'MAD',
+                isLiquid: assetIsLiquid,
+                notes: `Declared from expense transaction on ${formData.transaction_date}${
+                  formData.notes.trim() ? ` (${formData.notes.trim()})` : ''
+                }`,
+              },
+              token
+            );
+            window.dispatchEvent(
+              new CustomEvent('truespend:toast', {
+                detail: {
+                  message: `Expense logged & "${resolvedName}" (${resolvedValuation.toFixed(0)} MAD) declared in External Wealth!`,
+                  type: 'success',
+                },
+              })
+            );
+          } catch (assetErr: any) {
+            console.warn('Unable to declare linked asset:', assetErr);
+          }
+        }
       }
 
       onSuccess();
@@ -479,6 +541,11 @@ export default function TransactionForm({
         setUnpaidContactName('');
         setUnpaidDueDate('');
         setLoanContactName('');
+        setDeclareAsAsset(false);
+        setAssetName('');
+        setAssetCategory('Electronics & Equipment');
+        setAssetValuationInput('');
+        setAssetIsLiquid(false);
       }
     } catch (err) {
       console.error(err);
@@ -1062,6 +1129,125 @@ export default function TransactionForm({
                       </div>
                     )}
                   </div>
+
+                  {/* Option 3: Declare Purchase as Physical / External Asset (Net Worth) */}
+                  {!isEditing && (
+                    <div
+                      className={`space-y-3 rounded-xl border p-4 transition-colors ${
+                        declareAsAsset
+                          ? 'border-emerald-300 bg-emerald-50/40 dark:border-emerald-800/70 dark:bg-emerald-950/20'
+                          : 'border-gray-200 dark:border-gray-800'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start space-x-2.5">
+                          <input
+                            type="checkbox"
+                            id="declareAsAsset"
+                            disabled={!isEditable}
+                            checked={declareAsAsset}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setDeclareAsAsset(checked);
+                              if (checked) {
+                                if (!assetName.trim() && formData.notes.trim()) {
+                                  setAssetName(formData.notes.trim());
+                                }
+                                const defaultVal =
+                                  isPartialPayment && computedTotalBill > 0
+                                    ? computedTotalBill
+                                    : Number.parseFloat(formData.amount) || 0;
+                                if (!assetValuationInput && defaultVal > 0) {
+                                  setAssetValuationInput(String(defaultVal));
+                                }
+                              }
+                            }}
+                            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-600 dark:border-gray-700 dark:bg-gray-900"
+                          />
+                          <div>
+                            <label
+                              htmlFor="declareAsAsset"
+                              className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <Landmark className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                              Also Declare as Physical / External Asset (Net Worth)
+                            </label>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              Bought hardware, gold, a vehicle, appliance, or property? Automatically
+                              register it in External Wealth so your Net Worth reflects the asset you own.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {declareAsAsset && (
+                        <div className="space-y-3 pt-2 border-t border-emerald-200/60 dark:border-emerald-800/50 animate-in fade-in">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-medium text-gray-700 dark:text-gray-300">
+                                Asset Name / Item Purchased
+                              </label>
+                              <Input
+                                value={assetName}
+                                onChange={(e) => setAssetName(e.target.value)}
+                                placeholder={formData.notes.trim() || 'e.g. MacBook Pro, Gold Coin, Car'}
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-medium text-gray-700 dark:text-gray-300">
+                                Asset Class / Category
+                              </label>
+                              <Select
+                                value={assetCategory}
+                                onChange={(e) => setAssetCategory(e.target.value)}
+                                className="h-9 text-sm"
+                              >
+                                <option value="Electronics & Equipment">Electronics &amp; Equipment</option>
+                                <option value="Vehicle">Vehicle / Transport Asset</option>
+                                <option value="Property">Real Estate / Property</option>
+                                <option value="Jewelry & Gold">Jewelry, Gold &amp; Bullion</option>
+                                <option value="Collectibles">Watch / Art / Collectibles</option>
+                                <option value="Private Equity / Business">Business / Equipment Investment</option>
+                                <option value="Other Asset">Other Physical Asset</option>
+                              </Select>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-center">
+                            <div className="space-y-1">
+                              <label className="text-[11px] font-medium text-gray-700 dark:text-gray-300">
+                                Asset Valuation in Net Worth (MAD)
+                              </label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                value={assetValuationInput}
+                                onChange={(e) => setAssetValuationInput(e.target.value)}
+                                placeholder={
+                                  (isPartialPayment && computedTotalBill > 0
+                                    ? computedTotalBill
+                                    : Number.parseFloat(formData.amount) || 0
+                                  ).toFixed(2)
+                                }
+                                className="h-9 text-sm font-mono font-semibold"
+                              />
+                            </div>
+                            <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 pt-4 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={assetIsLiquid}
+                                onChange={(e) => setAssetIsLiquid(e.target.checked)}
+                                className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-600"
+                              />
+                              <span>Liquid / easily convertible to cash (e.g. gold)</span>
+                            </label>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

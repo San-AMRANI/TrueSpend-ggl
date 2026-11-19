@@ -68,6 +68,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState('');
   const [devPreviewToken, setDevPreviewToken] = useState<string | null>(null);
   const [deliveryWarning, setDeliveryWarning] = useState<string | null>(null);
+  const [emailPreviewUrl, setEmailPreviewUrl] = useState<string | null>(null);
 
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -106,6 +107,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
     setError('');
     setNotice('');
     setDeliveryWarning(null);
+    setEmailPreviewUrl(null);
   };
 
   const switchMode = (next: AuthMode) => {
@@ -150,7 +152,16 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
     } catch (err: any) {
       if (err instanceof ApiError && err.code === 'EMAIL_VERIFICATION_REQUIRED') {
         setPendingVerifyEmail(err.extra?.email || identifier.trim());
-        setError(err.message);
+        const instantToken = err.extra?.devVerificationToken || null;
+        setDeliveryWarning(err.extra?.emailDeliveryWarning || null);
+        setEmailPreviewUrl(err.extra?.emailPreviewUrl || null);
+        if (instantToken) {
+          setDevPreviewToken(instantToken);
+          setVerifyTokenInput(instantToken);
+          setNotice(err.message);
+        } else {
+          setError(err.message);
+        }
         setMode('verify');
       } else {
         setError(err?.message || 'Sign in failed');
@@ -196,6 +207,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
           : res.message
       );
       setDeliveryWarning(res.emailDeliveryWarning || null);
+      setEmailPreviewUrl(res.emailPreviewUrl || null);
       setDevPreviewToken(res.devVerificationToken || null);
       setVerifyTokenInput(res.devVerificationToken || '');
       setPassword('');
@@ -242,6 +254,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
       const res = await dashboardService.resendVerificationEmail(targetEmail);
       setNotice(res.message);
       setDeliveryWarning(res.emailDeliveryWarning || null);
+      setEmailPreviewUrl(res.emailPreviewUrl || null);
       if (res.devVerificationToken) {
         setDevPreviewToken(res.devVerificationToken);
         setVerifyTokenInput(res.devVerificationToken);
@@ -261,6 +274,7 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
       const res = await dashboardService.forgotPasswordRequest(email.trim());
       setNotice(res.message);
       setDeliveryWarning(res.emailDeliveryWarning || null);
+      setEmailPreviewUrl(res.emailPreviewUrl || null);
       if (res.devResetToken) {
         setDevPreviewToken(res.devResetToken);
         setResetTokenInput(res.devResetToken);
@@ -658,13 +672,25 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
                 activate your account.
               </p>
               {deliveryWarning && (
-                <div className="mt-2 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 px-2.5 py-2 text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed">
+                <div className="mt-2 rounded border border-indigo-200 dark:border-indigo-800/80 bg-white/80 dark:bg-gray-900/70 px-2.5 py-2 text-[11px] text-gray-700 dark:text-gray-300 leading-relaxed">
                   {deliveryWarning}
                 </div>
               )}
               {devPreviewToken && (
-                <div className="mt-2 rounded bg-white dark:bg-gray-900 border border-indigo-200 dark:border-indigo-800 px-2.5 py-1.5 font-mono text-[11px] break-all">
-                  Local dev code: <strong>{devPreviewToken}</strong>
+                <div className="mt-2 rounded bg-white dark:bg-gray-900 border border-emerald-300 dark:border-emerald-800 px-2.5 py-1.5 font-mono text-[11px] break-all text-emerald-800 dark:text-emerald-300">
+                  Instant verification code (pre-filled): <strong>{devPreviewToken}</strong>
+                </div>
+              )}
+              {emailPreviewUrl && (
+                <div className="mt-1.5">
+                  <a
+                    href={emailPreviewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    Open Webmail Email Preview ↗
+                  </a>
                 </div>
               )}
             </div>
@@ -729,23 +755,35 @@ export const AuthPortal: React.FC<AuthPortalProps> = ({ appIconSrc }) => {
             </div>
 
             {deliveryWarning && (
-              <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/50 p-3 text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
+              <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-950/30 p-3 text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
                 {deliveryWarning}
               </div>
             )}
 
             {devPreviewToken && (
-              <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/30 p-3 text-xs space-y-2">
-                <div className="font-mono break-all">
-                  Local dev reset token: <strong>{devPreviewToken}</strong>
+              <div className="rounded-lg border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/30 p-3 text-xs space-y-2">
+                <div className="font-mono break-all text-emerald-900 dark:text-emerald-200">
+                  Instant reset token (pre-filled): <strong>{devPreviewToken}</strong>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setMode('reset')}
-                  className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer"
-                >
-                  Continue to Set New Password →
-                </button>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMode('reset')}
+                    className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline cursor-pointer"
+                  >
+                    Continue to Set New Password →
+                  </button>
+                  {emailPreviewUrl && (
+                    <a
+                      href={emailPreviewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-emerald-700 dark:text-emerald-300 font-medium hover:underline"
+                    >
+                      Open Webmail Preview ↗
+                    </a>
+                  )}
+                </div>
               </div>
             )}
 

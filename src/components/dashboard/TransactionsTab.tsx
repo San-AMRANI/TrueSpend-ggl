@@ -119,6 +119,15 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
   // Inspector modal state
   const [inspectingTx, setInspectingTx] = useState<Transaction | null>(null);
 
+  // Declare Purchase as Physical / External Asset modal state
+  const [declaringAssetTx, setDeclaringAssetTx] = useState<Transaction | null>(null);
+  const [assetModalName, setAssetModalName] = useState('');
+  const [assetModalCategory, setAssetModalCategory] = useState('Electronics & Equipment');
+  const [assetModalValuation, setAssetModalValuation] = useState('');
+  const [assetModalLiquid, setAssetModalLiquid] = useState(false);
+  const [isDeclaringAsset, setIsDeclaringAsset] = useState(false);
+  const [declareAssetError, setDeclareAssetError] = useState<string | null>(null);
+
   // Deletion modals
   const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -412,6 +421,65 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
     setDuplicateTransaction(null);
     setShowForm(false);
     setFormInitialType(undefined);
+  };
+
+  const openDeclareAssetModal = (tx: Transaction) => {
+    const rawTotal =
+      tx.isPartialPayment && parseFloat(tx.totalBillAmount || '0') > 0
+        ? parseFloat(tx.totalBillAmount!)
+        : parseFloat(tx.amount) || 0;
+    const defaultName =
+      (tx.notes || '').trim() ||
+      (tx.category || '').replace(/^[^\w]+/, '').trim() ||
+      'Purchased Asset';
+    setDeclaringAssetTx(tx);
+    setAssetModalName(defaultName);
+    setAssetModalCategory('Electronics & Equipment');
+    setAssetModalValuation(rawTotal > 0 ? rawTotal.toFixed(2) : '');
+    setAssetModalLiquid(false);
+    setDeclareAssetError(null);
+  };
+
+  const handleConfirmDeclareAsset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!declaringAssetTx) return;
+    const val = parseFloat(assetModalValuation);
+    if (!Number.isFinite(val) || val <= 0) {
+      setDeclareAssetError('Please enter a valid positive asset valuation in MAD.');
+      return;
+    }
+    setIsDeclaringAsset(true);
+    setDeclareAssetError(null);
+    try {
+      const txDateStr = format(new Date(declaringAssetTx.createdAt), 'yyyy-MM-dd');
+      const finalName = assetModalName.trim() || 'Purchased Asset';
+      await dashboardService.upsertExternalWealthItem(
+        {
+          name: finalName,
+          itemType: 'Asset',
+          category: assetModalCategory || 'Electronics & Equipment',
+          amountMad: val,
+          currency: 'MAD',
+          isLiquid: assetModalLiquid,
+          notes: `Declared from expense transaction #${declaringAssetTx.id.slice(0, 8)} on ${txDateStr}`,
+        },
+        token
+      );
+      window.dispatchEvent(
+        new CustomEvent('truespend:toast', {
+          detail: {
+            message: `"${finalName}" (${val.toFixed(0)} MAD) declared as an Asset in External Wealth!`,
+            type: 'success',
+          },
+        })
+      );
+      setDeclaringAssetTx(null);
+      await fetchData();
+    } catch (err: any) {
+      setDeclareAssetError(err?.message || 'Unable to declare asset.');
+    } finally {
+      setIsDeclaringAsset(false);
+    }
   };
 
   // Single delete
@@ -1028,20 +1096,37 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
             </div>
 
             {/* Modal Actions Footer */}
-            <div className="border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 px-6 py-3.5 flex items-center justify-between gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const tx = inspectingTx;
-                  setInspectingTx(null);
-                  openDuplicate(tx);
-                }}
-                className="gap-1.5"
-              >
-                <Copy className="h-3.5 w-3.5" /> Duplicate
-              </Button>
+            <div className="border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const tx = inspectingTx;
+                    setInspectingTx(null);
+                    openDuplicate(tx);
+                  }}
+                  className="gap-1.5"
+                >
+                  <Copy className="h-3.5 w-3.5" /> Duplicate
+                </Button>
+                {inspectingTx.type === 'Expense' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const tx = inspectingTx;
+                      setInspectingTx(null);
+                      openDeclareAssetModal(tx);
+                    }}
+                    className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                  >
+                    <Landmark className="h-3.5 w-3.5" /> Declare as Asset
+                  </Button>
+                )}
+              </div>
               <div className="flex items-center gap-2">
                 <Button
                   type="button"
@@ -1070,6 +1155,135 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                 </Button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Declare Purchase as External Wealth Asset Modal */}
+      {declaringAssetTx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                  <Landmark className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                    Declare Purchase as Net Worth Asset
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                    Promote this expense into your External Wealth registry so your total Net Worth reflects the asset you bought.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeclaringAssetTx(null)}
+                className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmDeclareAsset} className="space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  Asset Name / Item Purchased *
+                </label>
+                <Input
+                  required
+                  value={assetModalName}
+                  onChange={(e) => setAssetModalName(e.target.value)}
+                  placeholder="e.g. MacBook Pro, Gold Coin, Vehicle, Home Appliance"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Asset Class
+                  </label>
+                  <Select
+                    value={assetModalCategory}
+                    onChange={(e) => setAssetModalCategory(e.target.value)}
+                  >
+                    <option value="Electronics & Equipment">Electronics &amp; Equipment</option>
+                    <option value="Vehicle">Vehicle / Transport Asset</option>
+                    <option value="Property">Real Estate / Property</option>
+                    <option value="Jewelry & Gold">Jewelry, Gold &amp; Bullion</option>
+                    <option value="Collectibles">Watch / Art / Collectibles</option>
+                    <option value="Private Equity / Business">Business / Equipment</option>
+                    <option value="Other Asset">Other Physical Asset</option>
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    Valuation (MAD) *
+                  </label>
+                  <Input
+                    required
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={assetModalValuation}
+                    onChange={(e) => setAssetModalValuation(e.target.value)}
+                    className="font-mono font-semibold"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={assetModalLiquid}
+                  onChange={(e) => setAssetModalLiquid(e.target.checked)}
+                  className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-600"
+                />
+                <span>Liquid / easily sellable asset (e.g. gold bullion)</span>
+              </label>
+
+              {declareAssetError && (
+                <p className="text-xs text-red-600 dark:text-red-400">{declareAssetError}</p>
+              )}
+
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
+                {setActiveTab ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeclaringAssetTx(null);
+                      setActiveTab('accounts');
+                    }}
+                    className="text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1"
+                  >
+                    View External Wealth <ExternalLink className="h-3 w-3" />
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isDeclaringAsset}
+                    onClick={() => setDeclaringAssetTx(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isDeclaringAsset}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    {isDeclaringAsset ? 'Declaring...' : 'Declare Asset in Net Worth'}
+                  </Button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2047,6 +2261,19 @@ export const TransactionsTab: React.FC<TransactionsTabProps> = ({
                               >
                                 <Eye className="h-4 w-4" />
                               </Button>
+                              {transaction.type === 'Expense' && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label="Declare as Asset"
+                                  className="h-8 w-8 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400"
+                                  onClick={() => openDeclareAssetModal(transaction)}
+                                  title="Declare purchase as Physical / External Asset in Net Worth"
+                                >
+                                  <Landmark className="h-4 w-4" />
+                                </Button>
+                              )}
                               <Button
                                 type="button"
                                 variant="ghost"

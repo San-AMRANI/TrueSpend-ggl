@@ -4,6 +4,7 @@ import { db } from '../../src/db/index.js';
 import { emailOutbox } from '../../src/db/schema.js';
 import { eq } from 'drizzle-orm';
 import {
+  ActiveEmailSenderMode,
   DEFAULT_RESEND_FROM,
   EmailDeliveryFailureReason,
   EmailTransportChannel,
@@ -11,6 +12,7 @@ import {
   formatEmailDeliveryWarning,
   isResendSandboxRecipientRestriction,
   parseSmtpConfig,
+  resolveActiveEmailSenderMode,
   resolveEmailFromAddress,
   selectEmailTransportOrder,
 } from './emailDeliveryHelpers.js';
@@ -55,12 +57,269 @@ export interface EmailDeliveryResult {
   providerStatus?: number;
   providerResponse?: string;
   fromUsed?: string;
+  previewUrl?: string;
 }
 
-const SPEX_AVATAR_URL =
+const DEFAULT_GITHUB_SPEX_AVATAR_URL =
   'https://raw.githubusercontent.com/San-AMRANI/TrueSpend-ggl/main/public/spex-avatar.jpg';
-const APP_ICON_URL =
+const DEFAULT_GITHUB_APP_ICON_URL =
   'https://raw.githubusercontent.com/San-AMRANI/TrueSpend-ggl/main/public/app-icon.png';
+
+export interface EmailThemePalette {
+  id: string;
+  mode: 'light' | 'dark';
+  canvas: string;
+  surface: string;
+  surfaceMuted: string;
+  border: string;
+  text: string;
+  textMuted: string;
+  textSubtle: string;
+  accent: string;
+  secondaryAccent: string;
+  badgeBg: string;
+  badgeBorder: string;
+  badgeText: string;
+  fontBody: string;
+  fontDisplay: string;
+  fontMono: string;
+}
+
+const EMAIL_THEME_PALETTES: Record<string, EmailThemePalette> = {
+  light: {
+    id: 'light',
+    mode: 'light',
+    canvas: '#f8fafc',
+    surface: '#ffffff',
+    surfaceMuted: '#f1f5f9',
+    border: '#e2e8f0',
+    text: '#0f172a',
+    textMuted: '#475569',
+    textSubtle: '#64748b',
+    accent: '#4f46e5',
+    secondaryAccent: '#0d9488',
+    badgeBg: '#eef2ff',
+    badgeBorder: '#c7d2fe',
+    badgeText: '#4338ca',
+    fontBody: "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
+    fontDisplay: "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
+    fontMono: "'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace",
+  },
+  dark: {
+    id: 'dark',
+    mode: 'dark',
+    canvas: '#090d16',
+    surface: '#111827',
+    surfaceMuted: '#1a2234',
+    border: '#1f2937',
+    text: '#f8fafc',
+    textMuted: '#cbd5e1',
+    textSubtle: '#94a3b8',
+    accent: '#6366f1',
+    secondaryAccent: '#2dd4bf',
+    badgeBg: '#1e1b4b',
+    badgeBorder: '#3730a3',
+    badgeText: '#a5b4fc',
+    fontBody: "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
+    fontDisplay: "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif",
+    fontMono: "'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace",
+  },
+  vintage: {
+    id: 'vintage',
+    mode: 'light',
+    canvas: '#f3ebd9',
+    surface: '#fbf7ee',
+    surfaceMuted: '#eadec6',
+    border: '#d5c5a7',
+    text: '#24190d',
+    textMuted: '#59462d',
+    textSubtle: '#725d40',
+    accent: '#9a4422',
+    secondaryAccent: '#2f684a',
+    badgeBg: '#f6e8dc',
+    badgeBorder: '#deb08d',
+    badgeText: '#833518',
+    fontBody: "Lora,Georgia,Cambria,'Times New Roman',serif",
+    fontDisplay: "Fraunces,Georgia,serif",
+    fontMono: "'IBM Plex Mono','SFMono-Regular',Consolas,monospace",
+  },
+  espresso: {
+    id: 'espresso',
+    mode: 'light',
+    canvas: '#f4f0ea',
+    surface: '#fcfaf7',
+    surfaceMuted: '#ebe4da',
+    border: '#ded4c6',
+    text: '#1f1914',
+    textMuted: '#605243',
+    textSubtle: '#7d6d5b',
+    accent: '#875937',
+    secondaryAccent: '#3d6352',
+    badgeBg: '#f5eee7',
+    badgeBorder: '#d5b99f',
+    badgeText: '#6e4629',
+    fontBody: "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    fontDisplay: "Fraunces,Georgia,serif",
+    fontMono: "'IBM Plex Mono','SFMono-Regular',Consolas,monospace",
+  },
+  'sahara-dune': {
+    id: 'sahara-dune',
+    mode: 'light',
+    canvas: '#faf4eb',
+    surface: '#fffdf9',
+    surfaceMuted: '#f2e7d7',
+    border: '#e6d7c3',
+    text: '#261c14',
+    textMuted: '#695440',
+    textSubtle: '#876f57',
+    accent: '#c85a2b',
+    secondaryAccent: '#2a6349',
+    badgeBg: '#fdf2eb',
+    badgeBorder: '#f4c3a7',
+    badgeText: '#ab461e',
+    fontBody: "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    fontDisplay: "Fraunces,Georgia,serif",
+    fontMono: "'IBM Plex Mono','SFMono-Regular',Consolas,monospace",
+  },
+  'kyoto-zen': {
+    id: 'kyoto-zen',
+    mode: 'light',
+    canvas: '#f5f7f2',
+    surface: '#fcfffa',
+    surfaceMuted: '#e9eee4',
+    border: '#d2ded0',
+    text: '#192019',
+    textMuted: '#4e5d4d',
+    textSubtle: '#677865',
+    accent: '#2d6a4f',
+    secondaryAccent: '#b47834',
+    badgeBg: '#eef7f2',
+    badgeBorder: '#b2dbc6',
+    badgeText: '#22563f',
+    fontBody: "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    fontDisplay: "Lora,Georgia,serif",
+    fontMono: "'IBM Plex Mono','SFMono-Regular',Consolas,monospace",
+  },
+  'rose-atelier': {
+    id: 'rose-atelier',
+    mode: 'light',
+    canvas: '#faf5f2',
+    surface: '#fffcfb',
+    surfaceMuted: '#f4eae5',
+    border: '#ebd8d0',
+    text: '#281a17',
+    textMuted: '#745850',
+    textSubtle: '#93736a',
+    accent: '#b35d6b',
+    secondaryAccent: '#4a6b5d',
+    badgeBg: '#fdf2f4',
+    badgeBorder: '#f7ced7',
+    badgeText: '#9b4b58',
+    fontBody: "Lora,Georgia,serif",
+    fontDisplay: "Fraunces,Georgia,serif",
+    fontMono: "'IBM Plex Mono','SFMono-Regular',Consolas,monospace",
+  },
+  'emerald-night': {
+    id: 'emerald-night',
+    mode: 'dark',
+    canvas: '#050e0b',
+    surface: '#0b1b16',
+    surfaceMuted: '#132a22',
+    border: '#1b3b30',
+    text: '#ecfdf5',
+    textMuted: '#a7f3d0',
+    textSubtle: '#6ee7b7',
+    accent: '#10b981',
+    secondaryAccent: '#d4af37',
+    badgeBg: '#064e3b',
+    badgeBorder: '#047857',
+    badgeText: '#6ee7b7',
+    fontBody: "Outfit,'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif",
+    fontDisplay: "Fraunces,Outfit,sans-serif",
+    fontMono: "'JetBrains Mono','SFMono-Regular',Consolas,monospace",
+  },
+  terminal: {
+    id: 'terminal',
+    mode: 'dark',
+    canvas: '#08090b',
+    surface: '#111215',
+    surfaceMuted: '#1f2023',
+    border: '#2f2e2b',
+    text: '#f7f5f0',
+    textMuted: '#d2cbbd',
+    textSubtle: '#857e71',
+    accent: '#f59e0b',
+    secondaryAccent: '#fbbf24',
+    badgeBg: '#451a03',
+    badgeBorder: '#92400e',
+    badgeText: '#fcd34d',
+    fontBody: "'IBM Plex Mono','JetBrains Mono',monospace",
+    fontDisplay: "'IBM Plex Mono','JetBrains Mono',monospace",
+    fontMono: "'IBM Plex Mono','JetBrains Mono',monospace",
+  },
+  'tokyo-night': {
+    id: 'tokyo-night',
+    mode: 'dark',
+    canvas: '#0a0d17',
+    surface: '#111624',
+    surfaceMuted: '#182032',
+    border: '#1e293b',
+    text: '#f1f5f9',
+    textMuted: '#cbd5e1',
+    textSubtle: '#94a3b8',
+    accent: '#06b6d4',
+    secondaryAccent: '#d946ef',
+    badgeBg: '#083344',
+    badgeBorder: '#155e75',
+    badgeText: '#67e8f9',
+    fontBody: "Outfit,-apple-system,BlinkMacSystemFont,sans-serif",
+    fontDisplay: "Outfit,sans-serif",
+    fontMono: "'JetBrains Mono','SFMono-Regular',Consolas,monospace",
+  },
+  'wall-street': {
+    id: 'wall-street',
+    mode: 'dark',
+    canvas: '#070d17',
+    surface: '#0e1929',
+    surfaceMuted: '#14243b',
+    border: '#1d3553',
+    text: '#f0f6fc',
+    textMuted: '#c9dbed',
+    textSubtle: '#93b5d9',
+    accent: '#3b82f6',
+    secondaryAccent: '#f59e0b',
+    badgeBg: '#172554',
+    badgeBorder: '#1e40af',
+    badgeText: '#93c5fd',
+    fontBody: "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif",
+    fontDisplay: "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif",
+    fontMono: "'IBM Plex Mono','SFMono-Regular',Consolas,monospace",
+  },
+  'deep-abyss': {
+    id: 'deep-abyss',
+    mode: 'dark',
+    canvas: '#030b0f',
+    surface: '#06151c',
+    surfaceMuted: '#0a212a',
+    border: '#0f3440',
+    text: '#ecfeff',
+    textMuted: '#a5f3fc',
+    textSubtle: '#67e8f9',
+    accent: '#14b8a6',
+    secondaryAccent: '#38bdf8',
+    badgeBg: '#042f2e',
+    badgeBorder: '#115e59',
+    badgeText: '#5eead4',
+    fontBody: "Outfit,'JetBrains Mono',sans-serif",
+    fontDisplay: "Outfit,sans-serif",
+    fontMono: "'JetBrains Mono','SFMono-Regular',Consolas,monospace",
+  },
+};
+
+export function resolveEmailThemePalette(themeId?: string | null): EmailThemePalette {
+  const key = String(themeId || '').trim().toLowerCase();
+  return EMAIL_THEME_PALETTES[key] || EMAIL_THEME_PALETTES.light;
+}
 
 function escapeHtml(raw: string): string {
   return String(raw || '')
@@ -219,40 +478,78 @@ export class EmailService {
     }
   }
 
-  private renderHtml(
+  private resolvePublicBrandUrls(): { appIconUrl: string; spexAvatarUrl: string } {
+    const baseUrl = this.getAppBaseUrl();
+    const isPublicHttps =
+      baseUrl.startsWith('https://') &&
+      !baseUrl.includes('localhost') &&
+      !baseUrl.includes('127.0.0.1');
+    return {
+      appIconUrl: isPublicHttps ? `${baseUrl}/app-icon.png` : DEFAULT_GITHUB_APP_ICON_URL,
+      spexAvatarUrl: isPublicHttps ? `${baseUrl}/spex-avatar.jpg` : DEFAULT_GITHUB_SPEX_AVATAR_URL,
+    };
+  }
+
+  public renderHtml(
     templateName: EmailTemplateName,
     payload: Record<string, any>,
     subject = 'TrueSpend Security Notification',
     eventRef = crypto.randomUUID().slice(0, 8).toUpperCase()
   ): string {
     const model = this.buildTemplateModel(templateName, subject, payload);
+    const theme = resolveEmailThemePalette(payload?.theme || process.env.EMAIL_THEME);
+    const darkPalette = EMAIL_THEME_PALETTES.dark;
+    const { appIconUrl, spexAvatarUrl } = this.resolvePublicBrandUrls();
     const timestampUtc = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+    const preheader = escapeHtml(`${model.heading} — ${model.badgeLabel} for your TrueSpend account.`);
+    const isDarkTheme = theme.mode === 'dark';
 
     const ctaSectionHtml =
       model.actionUrl && model.actionLabel
-        ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="cta-wrap" style="margin:0 0 16px 0;">
+        ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="cta-wrap" style="margin:0 0 18px 0;">
             <tr>
-              <td align="center" class="cta-cell" style="border-radius:10px;background-color:#4f46e5;">
-                <a href="${model.actionUrl}" target="_blank" class="cta-btn" style="display:inline-block;padding:11px 20px;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.2;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;white-space:nowrap;">${model.actionLabel} &rarr;</a>
+              <td align="center" class="cta-cell ts-cta-cell" style="border-radius:10px;background-color:${theme.accent};">
+                <a href="${model.actionUrl}" target="_blank" class="cta-btn" style="display:inline-block;min-height:20px;padding:12px 22px;font-family:${theme.fontDisplay};font-size:13.5px;line-height:1.3;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;text-align:center;">${model.actionLabel} &rarr;</a>
               </td>
             </tr>
           </table>`
         : '';
 
     const tokenSectionHtml = model.token
-      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px dashed #cbd5e1;border-radius:10px;margin:0 0 16px 0;">
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="ts-token-box" style="background-color:${theme.surfaceMuted};border:1px dashed ${theme.border};border-radius:10px;margin:0 0 18px 0;">
             <tr>
-              <td style="padding:12px 14px;">
-                <div style="font-size:10px;line-height:1.3;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:4px;">Verification / Recovery Code</div>
-                <div style="font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:14px;line-height:1.4;font-weight:700;color:#0f172a;letter-spacing:0.05em;word-break:break-all;">${model.token}</div>
+              <td style="padding:14px 16px;">
+                <div class="ts-subtle" style="font-size:10px;line-height:1.3;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:${theme.textSubtle};margin-bottom:6px;">One-Time Verification / Recovery Code</div>
+                <div class="ts-token" style="font-family:${theme.fontMono};font-size:13.5px;line-height:1.45;font-weight:700;color:${theme.text};letter-spacing:0.04em;word-break:break-all;">${model.token}</div>
               </td>
             </tr>
           </table>`
       : '';
 
     const fallbackLinkHtml = model.actionUrl
-      ? `<div style="font-size:11px;line-height:1.45;color:#64748b;word-break:break-all;margin-top:8px;">Button not working? Paste this URL into your browser:<br /><a href="${model.actionUrl}" style="color:#4f46e5;text-decoration:underline;">${model.actionUrl}</a></div>`
+      ? `<div class="ts-subtle" style="font-size:11px;line-height:1.5;color:${theme.textSubtle};word-break:break-all;margin-top:10px;">Button not working? Copy &amp; paste this secure link into your browser:<br /><a href="${model.actionUrl}" class="ts-link" style="color:${theme.accent};text-decoration:underline;">${model.actionUrl}</a></div>`
       : '';
+
+    const adaptiveDarkCss = isDarkTheme
+      ? ''
+      : `
+    @media (prefers-color-scheme: dark) {
+      html, body, .ts-canvas { background-color: ${darkPalette.canvas} !important; color: ${darkPalette.text} !important; }
+      .ts-card { background-color: ${darkPalette.surface} !important; border-color: ${darkPalette.border} !important; }
+      .ts-surface-muted, .ts-token-box, .ts-footer { background-color: ${darkPalette.surfaceMuted} !important; border-color: ${darkPalette.border} !important; }
+      .ts-header-rule { border-bottom-color: ${darkPalette.border} !important; }
+      .ts-title, .ts-token, .ts-brand-name { color: ${darkPalette.text} !important; }
+      .ts-body { color: ${darkPalette.textMuted} !important; }
+      .ts-subtle { color: ${darkPalette.textSubtle} !important; }
+      .ts-badge { background-color: ${darkPalette.badgeBg} !important; border-color: ${darkPalette.badgeBorder} !important; color: ${darkPalette.badgeText} !important; }
+      .ts-eyebrow { color: ${darkPalette.secondaryAccent} !important; }
+      .ts-link { color: #818cf8 !important; }
+      .ts-cta-cell { background-color: ${darkPalette.accent} !important; }
+    }
+    [data-ogsc] .ts-canvas { background-color: ${darkPalette.canvas} !important; }
+    [data-ogsc] .ts-card { background-color: ${darkPalette.surface} !important; border-color: ${darkPalette.border} !important; }
+    [data-ogsc] .ts-title, [data-ogsc] .ts-token, [data-ogsc] .ts-brand-name { color: ${darkPalette.text} !important; }
+    [data-ogsc] .ts-body { color: ${darkPalette.textMuted} !important; }`;
 
     return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
@@ -260,74 +557,82 @@ export class EmailService {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="color-scheme" content="${isDarkTheme ? 'dark' : 'light dark'}" />
+  <meta name="supported-color-schemes" content="${isDarkTheme ? 'dark' : 'light dark'}" />
   <meta name="x-apple-disable-message-reformatting" />
   <meta name="format-detection" content="telephone=no,date=no,address=no,email=no" />
   <title>${escapeHtml(model.subject)}</title>
   <style type="text/css">
-    html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: #ffffff !important; -webkit-text-size-adjust: 100% !important; -ms-text-size-adjust: 100% !important; }
+    :root { color-scheme: ${isDarkTheme ? 'dark' : 'light dark'}; supported-color-schemes: ${isDarkTheme ? 'dark' : 'light dark'}; }
+    html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; background-color: ${theme.canvas} !important; -webkit-text-size-adjust: 100% !important; -ms-text-size-adjust: 100% !important; }
     table, td { mso-table-lspace: 0pt !important; mso-table-rspace: 0pt !important; border-collapse: collapse !important; }
     img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
-    @media only screen and (min-width: 600px) {
-      .sec-h { padding: 18px 24px 14px 24px !important; }
-      .sec-s { padding: 14px 24px 4px 24px !important; }
-      .sec-b { padding: 14px 24px 20px 24px !important; }
-      .sec-f { padding: 16px 24px !important; }
-      .e-h1 { font-size: 20px !important; }
-      .e-p { font-size: 14px !important; }
+    @media only screen and (max-width: 560px) {
+      .ts-outer-pad { padding: 12px 8px !important; }
+      .ts-card { border-radius: 12px !important; }
+      .sec-h { padding: 16px 16px 14px 16px !important; }
+      .sec-s { padding: 14px 16px 4px 16px !important; }
+      .sec-b { padding: 16px 16px 20px 16px !important; }
+      .sec-f { padding: 14px 16px !important; }
+      .e-h1 { font-size: 18px !important; }
+      .e-p { font-size: 13.5px !important; }
     }
     @media only screen and (max-width: 480px) {
       .h-stack { display: block !important; width: 100% !important; text-align: left !important; }
-      .h-badge { padding-top: 8px !important; }
+      .h-badge { padding-top: 10px !important; text-align: left !important; }
       .cta-wrap, .cta-cell { width: 100% !important; }
-      .cta-btn { display: block !important; width: 100% !important; box-sizing: border-box !important; text-align: center !important; }
-    }
+      .cta-btn { display: block !important; width: 100% !important; box-sizing: border-box !important; text-align: center !important; padding: 13px 16px !important; white-space: normal !important; }
+    }${adaptiveDarkCss}
   </style>
 </head>
-<body style="margin:0;padding:0;width:100%;background-color:#ffffff;font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:0;padding:0;background-color:#ffffff;">
+<body class="ts-canvas" style="margin:0;padding:0;width:100%;background-color:${theme.canvas};font-family:${theme.fontBody};color:${theme.text};-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <div style="display:none;font-size:1px;color:${theme.canvas};line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;mso-hide:all;">
+    ${preheader}
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="ts-canvas" style="width:100%;margin:0;padding:0;background-color:${theme.canvas};">
     <tr>
-      <td align="center" style="margin:0;padding:0;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;margin:0 auto;padding:0;background-color:#ffffff;">
+      <td align="center" class="ts-outer-pad" style="margin:0;padding:24px 12px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="ts-card" style="width:100%;max-width:580px;margin:0 auto;padding:0;background-color:${theme.surface};border:1px solid ${theme.border};border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(15,23,42,0.05);">
           <tr>
-            <td style="height:4px;background-color:#4f46e5;background:linear-gradient(90deg,#4f46e5 0%,#0d9488 100%);font-size:0;line-height:0;">&nbsp;</td>
+            <td style="height:4px;background-color:${theme.accent};background:linear-gradient(90deg,${theme.accent} 0%,${theme.secondaryAccent} 100%);font-size:0;line-height:0;">&nbsp;</td>
           </tr>
           <tr>
-            <td class="sec-h" style="padding:14px 16px 12px 16px;border-bottom:1px solid #f1f5f9;">
+            <td class="sec-h ts-header-rule" style="padding:18px 24px 16px 24px;border-bottom:1px solid ${theme.border};">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td valign="middle" class="h-stack">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
-                        <td valign="middle" width="36" style="width:36px;padding-right:10px;">
-                          <img src="${APP_ICON_URL}" alt="TrueSpend" width="28" height="28" style="display:block;width:28px;height:28px;border-radius:7px;border:1px solid #e2e8f0;" />
+                        <td valign="middle" width="38" style="width:38px;padding-right:10px;">
+                          <img src="${appIconUrl}" alt="TrueSpend" width="30" height="30" style="display:block;width:30px;height:30px;border-radius:8px;border:1px solid ${theme.border};" />
                         </td>
                         <td valign="middle">
-                          <span style="font-size:15px;font-weight:800;letter-spacing:-0.02em;color:#0f172a;display:block;line-height:1.15;">TrueSpend</span>
-                          <span style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;display:block;line-height:1.25;margin-top:2px;">Private Financial Intelligence</span>
+                          <span class="ts-brand-name" style="font-family:${theme.fontDisplay};font-size:15.5px;font-weight:800;letter-spacing:-0.02em;color:${theme.text};display:block;line-height:1.15;">TrueSpend</span>
+                          <span class="ts-subtle" style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:${theme.textSubtle};display:block;line-height:1.25;margin-top:2px;">Private Financial Intelligence</span>
                         </td>
                       </tr>
                     </table>
                   </td>
                   <td align="right" valign="middle" class="h-stack h-badge" style="white-space:nowrap;">
-                    <span style="display:inline-block;padding:4px 9px;border-radius:999px;background-color:#eef2ff;border:1px solid #c7d2fe;color:#4f46e5;font-size:10px;line-height:1.2;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap;">${escapeHtml(model.badgeLabel)}</span>
+                    <span class="ts-badge" style="display:inline-block;padding:4px 10px;border-radius:6px;background-color:${theme.badgeBg};border:1px solid ${theme.badgeBorder};color:${theme.badgeText};font-size:10px;line-height:1.2;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;">${escapeHtml(model.badgeLabel)}</span>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
           <tr>
-            <td class="sec-s" style="padding:14px 16px 4px 16px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
+            <td class="sec-s" style="padding:18px 24px 4px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="ts-surface-muted" style="background-color:${theme.surfaceMuted};border:1px solid ${theme.border};border-radius:12px;">
                 <tr>
-                  <td style="padding:12px;">
+                  <td style="padding:12px 14px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                       <tr>
                         <td width="48" valign="top" style="width:48px;padding-right:12px;">
-                          <img src="${SPEX_AVATAR_URL}" alt="Spex AI" width="40" height="40" style="display:block;width:40px;height:40px;border-radius:10px;background-color:#ffffff;border:1px solid #cbd5e1;object-fit:cover;" />
+                          <img src="${spexAvatarUrl}" alt="Spex AI" width="40" height="40" style="display:block;width:40px;height:40px;border-radius:10px;background-color:${theme.surface};border:1px solid ${theme.border};object-fit:cover;" />
                         </td>
                         <td valign="middle">
-                          <div style="font-size:10px;line-height:1.3;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#0d9488;margin-bottom:2px;">Spex Security Guardian &middot; ${timestampUtc}</div>
-                          <div style="font-size:13px;line-height:1.45;font-weight:600;color:#0f172a;">Hi ${model.displayName}, here is your ${escapeHtml(model.badgeLabel.toLowerCase())} update for TrueSpend.</div>
+                          <div class="ts-eyebrow" style="font-size:10px;line-height:1.3;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:${theme.secondaryAccent};margin-bottom:3px;">Spex Security Guardian &middot; ${timestampUtc}</div>
+                          <div class="ts-title" style="font-size:13px;line-height:1.45;font-weight:600;color:${theme.text};">Hi ${model.displayName}, here is your ${escapeHtml(model.badgeLabel.toLowerCase())} update for TrueSpend.</div>
                         </td>
                       </tr>
                     </table>
@@ -337,22 +642,22 @@ export class EmailService {
             </td>
           </tr>
           <tr>
-            <td class="sec-b" style="padding:14px 16px 18px 16px;">
-              <h1 class="e-h1" style="margin:0 0 8px 0;font-size:18px;font-weight:800;letter-spacing:-0.02em;color:#0f172a;line-height:1.3;">${model.heading}</h1>
-              <p class="e-p" style="margin:0 0 16px 0;font-size:13.5px;line-height:1.55;color:#475569;">${model.bodyHtml}</p>
+            <td class="sec-b" style="padding:18px 24px 24px 24px;">
+              <h1 class="e-h1 ts-title" style="margin:0 0 10px 0;font-family:${theme.fontDisplay};font-size:20px;font-weight:800;letter-spacing:-0.02em;color:${theme.text};line-height:1.3;">${model.heading}</h1>
+              <p class="e-p ts-body" style="margin:0 0 18px 0;font-size:14px;line-height:1.6;color:${theme.textMuted};">${model.bodyHtml}</p>
               ${ctaSectionHtml}
               ${tokenSectionHtml}
-              <p style="margin:0;font-size:12px;line-height:1.5;color:#64748b;">${escapeHtml(model.expiryNotice)}</p>
+              <p class="ts-subtle" style="margin:0;font-size:12px;line-height:1.55;color:${theme.textSubtle};">${escapeHtml(model.expiryNotice)}</p>
             </td>
           </tr>
           <tr>
-            <td class="sec-f" style="padding:14px 16px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
-              <div style="font-size:11.5px;line-height:1.5;color:#64748b;">
-                <strong style="color:#0f172a;">TrueSpend Security</strong> &middot; Ref #${escapeHtml(eventRef)}<br />
-                Review active sessions anytime in <strong style="color:#334155;">Settings &rarr; Security</strong>.
+            <td class="sec-f ts-footer" style="padding:16px 24px;background-color:${theme.surfaceMuted};border-top:1px solid ${theme.border};">
+              <div class="ts-subtle" style="font-size:11.5px;line-height:1.55;color:${theme.textSubtle};">
+                <strong class="ts-title" style="color:${theme.text};">TrueSpend Security</strong> &middot; Ref #${escapeHtml(eventRef)}<br />
+                Review active devices &amp; sessions anytime in <strong class="ts-body" style="color:${theme.textMuted};">Settings &rarr; Security</strong>.
               </div>
               ${fallbackLinkHtml}
-              <div style="font-size:11px;color:#94a3b8;line-height:1.4;margin-top:10px;">&copy; 2026 TrueSpend. Automated security notice (${escapeHtml(eventRef)}).</div>
+              <div class="ts-subtle" style="font-size:11px;color:${theme.textSubtle};line-height:1.4;margin-top:10px;">&copy; 2026 TrueSpend. Automated security notice (${escapeHtml(eventRef)}).</div>
             </td>
           </tr>
         </table>
@@ -429,6 +734,10 @@ export class EmailService {
     });
   }
 
+  private etherealAccountPromise: Promise<
+    Awaited<ReturnType<typeof nodemailer.createTestAccount>> | null
+  > | null = null;
+
   private async sendViaSmtp(
     smtpConfig: SmtpConfig,
     fromAddress: string,
@@ -438,6 +747,11 @@ export class EmailService {
     textFallback: string,
     entityRefId: string = crypto.randomUUID()
   ): Promise<{ messageId: string; response: string }> {
+    const isGmailHost = Boolean(smtpConfig.host?.toLowerCase().includes('gmail'));
+    const normalizedPass = isGmailHost
+      ? smtpConfig.pass.replace(/\s+/g, '')
+      : smtpConfig.pass;
+
     const transporter = smtpConfig.url
       ? nodemailer.createTransport(smtpConfig.url)
       : nodemailer.createTransport({
@@ -446,12 +760,17 @@ export class EmailService {
           secure: smtpConfig.secure,
           auth: {
             user: smtpConfig.user,
-            pass: smtpConfig.pass,
+            pass: normalizedPass,
           },
+          connectionTimeout: 10000,
+          greetingTimeout: 10000,
+          socketTimeout: 15000,
         });
 
     const smtpFrom =
-      fromAddress.toLowerCase().includes('onboarding@resend.dev') && smtpConfig.user.includes('@')
+      smtpConfig.user.includes('@') &&
+      (fromAddress.toLowerCase().includes('onboarding@resend.dev') ||
+        (isGmailHost && !fromAddress.toLowerCase().includes(smtpConfig.user.toLowerCase())))
         ? `TrueSpend Security <${smtpConfig.user}>`
         : fromAddress;
 
@@ -470,6 +789,63 @@ export class EmailService {
       messageId: String(info?.messageId || entityRefId),
       response: String(info?.response || '250 OK'),
     };
+  }
+
+  /**
+   * Free zero-domain Nodemailer Ethereal webmail relay for sandbox/unconfigured environments.
+   * Generates a real, inspectable webmail URL (https://ethereal.email/message/...) without
+   * requiring a paid domain or external SMTP credentials. Skipped during unit tests.
+   */
+  private async sendViaEtherealPreview(
+    recipientEmail: string,
+    subject: string,
+    html: string,
+    textFallback: string,
+    entityRefId: string
+  ): Promise<string | undefined> {
+    if (process.env.NODE_ENV === 'test') {
+      return undefined;
+    }
+    try {
+      if (!this.etherealAccountPromise) {
+        this.etherealAccountPromise = Promise.race([
+          nodemailer.createTestAccount(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500)),
+        ]).catch(() => null);
+      }
+      const testAccount = await this.etherealAccountPromise;
+      if (!testAccount) return undefined;
+
+      const transporter = nodemailer.createTransport({
+        host: testAccount.smtp.host,
+        port: testAccount.smtp.port,
+        secure: testAccount.smtp.secure,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+        connectionTimeout: 3500,
+        greetingTimeout: 3500,
+      });
+
+      const info = await Promise.race([
+        transporter.sendMail({
+          from: `TrueSpend Security <${testAccount.user}>`,
+          to: recipientEmail.trim(),
+          subject,
+          html,
+          text: textFallback,
+          headers: { 'X-Entity-Ref-ID': entityRefId },
+        }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500)),
+      ]);
+
+      if (!info) return undefined;
+      const url = nodemailer.getTestMessageUrl(info);
+      return typeof url === 'string' && url ? url : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private getResendApiKey(): string {
@@ -514,6 +890,13 @@ export class EmailService {
 
     if (transportOrder.length === 0) {
       const warning = formatEmailDeliveryWarning('NO_EMAIL_PROVIDER', cleanRecipient);
+      const previewUrl = await this.sendViaEtherealPreview(
+        cleanRecipient,
+        subject,
+        html,
+        model.textFallback,
+        entityRefId
+      );
       console.info(
         `[EmailService] Outbox queued (${templateName}) -> ${cleanRecipient} (no SMTP or RESEND_API_KEY configured).`
       );
@@ -528,6 +911,7 @@ export class EmailService {
         errorCode: 'NO_EMAIL_PROVIDER',
         warning,
         fromUsed: configuredFrom,
+        ...(previewUrl ? { previewUrl } : {}),
       };
     }
 
@@ -541,9 +925,11 @@ export class EmailService {
 
       if (channel === 'smtp' && smtpConfig) {
         try {
+          const isGmailHost = Boolean(smtpConfig.host?.toLowerCase().includes('gmail'));
           const smtpFrom =
-            configuredFrom.toLowerCase().includes('onboarding@resend.dev') &&
-            smtpConfig.user.includes('@')
+            smtpConfig.user.includes('@') &&
+            (configuredFrom.toLowerCase().includes('onboarding@resend.dev') ||
+              (isGmailHost && !configuredFrom.toLowerCase().includes(smtpConfig.user.toLowerCase())))
               ? `TrueSpend Security <${smtpConfig.user}>`
               : configuredFrom;
 
@@ -657,6 +1043,13 @@ export class EmailService {
     }
 
     const warning = formatEmailDeliveryWarning(lastErrorCode, cleanRecipient);
+    const previewUrl = await this.sendViaEtherealPreview(
+      cleanRecipient,
+      subject,
+      html,
+      model.textFallback,
+      entityRefId
+    );
     await this.updateOutboxStatus(outboxId, {
       status: 'failed',
       attempts,
@@ -671,6 +1064,7 @@ export class EmailService {
       providerStatus: lastProviderStatus,
       providerResponse: lastErrorMessage.slice(0, 240),
       fromUsed: configuredFrom,
+      ...(previewUrl ? { previewUrl } : {}),
     };
   }
 
@@ -719,7 +1113,15 @@ export class EmailService {
         }));
     } catch {}
 
+    const activeSenderMode: ActiveEmailSenderMode = resolveActiveEmailSenderMode(
+      process.env,
+      smtpConfig,
+      Boolean(rawKey)
+    );
+
     return {
+      activeSenderMode,
+      gmailAppPasswordActive: activeSenderMode === 'gmail_app_password',
       hasResendApiKey: Boolean(rawKey),
       resendKeyPrefix: rawKey ? `${rawKey.slice(0, 6)}...` : null,
       hasSmtpConfig: Boolean(smtpConfig),

@@ -23,15 +23,127 @@ function cleanEnvString(value?: string): string {
     .replace(/^["']|["']$/g, '');
 }
 
+export type ActiveEmailSenderMode =
+  | 'gmail_app_password'
+  | 'smtp'
+  | 'resend_verified_domain'
+  | 'resend_sandbox'
+  | 'none';
+
+const FREE_WEBMAIL_DOMAINS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'outlook.com',
+  'hotmail.com',
+  'live.com',
+  'msn.com',
+  'yahoo.com',
+  'ymail.com',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'zoho.com',
+  'zohomail.com',
+  'proton.me',
+  'protonmail.com',
+]);
+
+function extractEmailDomain(address: string): string {
+  const angleMatch = address.match(/<([^>]+)>/);
+  const emailOnly = (angleMatch ? angleMatch[1] : address).trim().toLowerCase();
+  const atIdx = emailOnly.lastIndexOf('@');
+  return atIdx >= 0 ? emailOnly.slice(atIdx + 1).trim() : '';
+}
+
+function isFreeWebmailAddress(address: string): boolean {
+  const domain = extractEmailDomain(address);
+  return Boolean(domain && FREE_WEBMAIL_DOMAINS.has(domain));
+}
+
+function inferFreeSmtpProviderFromEmail(email: string): {
+  host: string;
+  port: number;
+  secure: boolean;
+} | null {
+  const domain = (email.split('@')[1] || '').trim().toLowerCase();
+  if (!domain) return null;
+  if (domain === 'gmail.com' || domain === 'googlemail.com') {
+    return { host: 'smtp.gmail.com', port: 465, secure: true };
+  }
+  if (
+    domain === 'outlook.com' ||
+    domain === 'hotmail.com' ||
+    domain === 'live.com' ||
+    domain === 'msn.com'
+  ) {
+    return { host: 'smtp-mail.outlook.com', port: 587, secure: false };
+  }
+  if (domain === 'yahoo.com' || domain === 'ymail.com') {
+    return { host: 'smtp.mail.yahoo.com', port: 465, secure: true };
+  }
+  if (domain === 'icloud.com' || domain === 'me.com' || domain === 'mac.com') {
+    return { host: 'smtp.mail.me.com', port: 587, secure: false };
+  }
+  if (domain === 'zoho.com' || domain === 'zohomail.com') {
+    return { host: 'smtp.zoho.com', port: 465, secure: true };
+  }
+  return null;
+}
+
 /**
  * Resolves explicit SMTP or Gmail App-Password configuration from environment variables.
  * Never fabricates credentials or falls back to a hardcoded developer email.
  */
 export function parseSmtpConfig(env: NodeJS.ProcessEnv = process.env): SmtpConfig | null {
   const smtpUrl = cleanEnvString(env.SMTP_URL);
-  const smtpUser = cleanEnvString(env.SMTP_USER);
-  const smtpPass = cleanEnvString(env.SMTP_PASS);
-  const smtpHost = cleanEnvString(env.SMTP_HOST);
+  const smtpUser = cleanEnvString(
+    env.SMTP_USER || env.EMAIL_USER || env.MAIL_USER || env.GOOGLE_USER
+  );
+  const smtpPass = cleanEnvString(
+    env.SMTP_PASS ||
+      env.SMTP_PASSWORD ||
+      env.EMAIL_PASS ||
+      env.EMAIL_PASSWORD ||
+      env.EMAIL_APP_PASSWORD ||
+      env.MAIL_PASS ||
+      env.MAIL_PASSWORD ||
+      env.GOOGLE_APP_PASSWORD
+  );
+  const smtpHost = cleanEnvString(env.SMTP_HOST || env.EMAIL_HOST || env.MAIL_HOST);
+
+  const gmailUser = cleanEnvString(env.GMAIL_USER || env.GOOGLE_USER);
+  const gmailPass = cleanEnvString(
+    env.GMAIL_APP_PASSWORD ||
+      env.GMAIL_APP_PASS ||
+      env.GMAIL_PASS ||
+      env.GMAIL_PASSWORD ||
+      env.GOOGLE_APP_PASSWORD
+  );
+
+  // Explicit Gmail App Password configuration takes direct precedence when Gmail credentials are provided
+  if (gmailUser && (gmailPass || smtpPass)) {
+    const chosenPass = gmailPass || smtpPass;
+    return {
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      user: gmailUser,
+      pass: chosenPass.replace(/\s+/g, ''),
+      providerLabel: 'smtp.gmail.com',
+    };
+  }
+
+  // Fallback: GMAIL_APP_PASSWORD paired with SMTP_USER / EMAIL_USER (when Gmail address is in SMTP_USER)
+  if (smtpUser && gmailPass) {
+    return {
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      user: smtpUser,
+      pass: gmailPass.replace(/\s+/g, ''),
+      providerLabel: 'smtp.gmail.com',
+    };
+  }
 
   if (smtpUrl) {
     return {
@@ -48,27 +160,34 @@ export function parseSmtpConfig(env: NodeJS.ProcessEnv = process.env): SmtpConfi
     const port = Number(cleanEnvString(env.SMTP_PORT) || 587) || 587;
     const explicitSecure = cleanEnvString(env.SMTP_SECURE).toLowerCase();
     const secure = explicitSecure ? explicitSecure === 'true' : port === 465;
+    const normalizedPass = smtpHost.toLowerCase().includes('gmail')
+      ? smtpPass.replace(/\s+/g, '')
+      : smtpPass;
     return {
       host: smtpHost,
       port,
       secure,
       user: smtpUser,
-      pass: smtpPass,
+      pass: normalizedPass,
       providerLabel: smtpHost,
     };
   }
 
-  const gmailUser = cleanEnvString(env.GMAIL_USER);
-  const gmailPass = cleanEnvString(env.GMAIL_APP_PASSWORD);
-  if (gmailUser && gmailPass) {
-    return {
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      user: gmailUser,
-      pass: gmailPass,
-      providerLabel: 'smtp.gmail.com',
-    };
+  if (smtpUser && smtpPass) {
+    const inferred = inferFreeSmtpProviderFromEmail(smtpUser);
+    if (inferred) {
+      const normalizedPass = inferred.host.includes('gmail')
+        ? smtpPass.replace(/\s+/g, '')
+        : smtpPass;
+      return {
+        host: inferred.host,
+        port: inferred.port,
+        secure: inferred.secure,
+        user: smtpUser,
+        pass: normalizedPass,
+        providerLabel: inferred.host,
+      };
+    }
   }
 
   return null;
@@ -76,13 +195,25 @@ export function parseSmtpConfig(env: NodeJS.ProcessEnv = process.env): SmtpConfi
 
 /**
  * Resolves the sender "From" header strictly from explicit configuration or SMTP user,
- * only using Resend's default onboarding sender when no custom sender or SMTP user exists.
+ * preferring the authenticated Gmail/SMTP user whenever EMAIL_FROM is unset,
+ * onboarding@resend.dev, or a mismatched sender when using Gmail SMTP.
  */
 export function resolveEmailFromAddress(
   env: NodeJS.ProcessEnv = process.env,
   smtpConfig: SmtpConfig | null = null,
 ): string {
   const configured = cleanEnvString(env.EMAIL_FROM || env.SMTP_FROM);
+  if (smtpConfig?.user && smtpConfig.user.includes('@')) {
+    if (!configured || isOnboardingResendAddress(configured)) {
+      return `TrueSpend Security <${smtpConfig.user}>`;
+    }
+    if (
+      smtpConfig.host?.toLowerCase().includes('gmail') &&
+      !configured.toLowerCase().includes(smtpConfig.user.toLowerCase())
+    ) {
+      return `TrueSpend Security <${smtpConfig.user}>`;
+    }
+  }
   if (configured) {
     return configured;
   }
@@ -96,12 +227,37 @@ export function isOnboardingResendAddress(fromAddress: string): boolean {
   return fromAddress.toLowerCase().includes('onboarding@resend.dev');
 }
 
+export function hasVerifiedCustomResendFrom(env: NodeJS.ProcessEnv = process.env): boolean {
+  const configured = cleanEnvString(env.EMAIL_FROM);
+  if (!configured) return false;
+  if (isOnboardingResendAddress(configured)) return false;
+  // Resend never allows verifying free public webmail domains (e.g. @gmail.com, @outlook.com)
+  if (isFreeWebmailAddress(configured)) return false;
+  return configured.includes('@');
+}
+
+export function resolveActiveEmailSenderMode(
+  env: NodeJS.ProcessEnv,
+  smtpConfig: SmtpConfig | null,
+  hasResendKey: boolean
+): ActiveEmailSenderMode {
+  const order = selectEmailTransportOrder(env, smtpConfig, hasResendKey);
+  const primary = order[0];
+  if (primary === 'smtp' && smtpConfig) {
+    return smtpConfig.host?.toLowerCase().includes('gmail') ? 'gmail_app_password' : 'smtp';
+  }
+  if (primary === 'resend' && hasResendKey) {
+    return hasVerifiedCustomResendFrom(env) ? 'resend_verified_domain' : 'resend_sandbox';
+  }
+  return 'none';
+}
+
 /**
  * Chooses transport order cleanly:
- * - Explicit `EMAIL_PROVIDER=smtp` tries SMTP first.
- * - If custom `EMAIL_FROM` (verified domain) + Resend key exist, tries Resend first, then SMTP backup.
- * - If only Resend sandbox (`onboarding@resend.dev`) is available and SMTP is configured,
- *   tries SMTP first so external signup recipients actually receive their own emails.
+ * - Explicit `EMAIL_PROVIDER=smtp` or `EMAIL_PROVIDER=gmail` tries SMTP / Gmail App Password first.
+ * - If custom verified domain `EMAIL_FROM` (non-free-webmail, non-onboarding) + Resend key exist, tries Resend first, then SMTP backup.
+ * - Whenever Gmail App Password / SMTP is configured and no verified custom Resend domain exists,
+ *   tries Gmail/SMTP FIRST so every signup recipient receives real inbox emails!
  */
 export function selectEmailTransportOrder(
   env: NodeJS.ProcessEnv,
@@ -110,10 +266,9 @@ export function selectEmailTransportOrder(
 ): EmailTransportChannel[] {
   const hasSmtp = Boolean(smtpConfig);
   const preferred = cleanEnvString(env.EMAIL_PROVIDER).toLowerCase();
-  const fromAddress = resolveEmailFromAddress(env, smtpConfig);
-  const hasCustomResendFrom = Boolean(cleanEnvString(env.EMAIL_FROM)) && !isOnboardingResendAddress(fromAddress);
+  const hasCustomResend = hasVerifiedCustomResendFrom(env);
 
-  if (preferred === 'smtp') {
+  if (preferred === 'smtp' || preferred === 'gmail') {
     return [
       ...(hasSmtp ? (['smtp'] as const) : []),
       ...(hasResendKey ? (['resend'] as const) : []),
@@ -127,7 +282,7 @@ export function selectEmailTransportOrder(
     ];
   }
 
-  if (hasResendKey && hasCustomResendFrom) {
+  if (hasResendKey && hasCustomResend) {
     return hasSmtp ? ['resend', 'smtp'] : ['resend'];
   }
 
@@ -155,11 +310,11 @@ export function formatEmailDeliveryWarning(
 ): string {
   switch (reason) {
     case 'RESEND_DOMAIN_NOT_VERIFIED':
-      return `Unable to deliver email to ${recipientEmail}: Resend is still in unverified testing mode (onboarding@resend.dev only allows sending to the Resend owner address). Verify a sending domain in Resend + set EMAIL_FROM, or configure SMTP credentials (SMTP_HOST/SMTP_USER/SMTP_PASS or GMAIL_USER/GMAIL_APP_PASSWORD).`;
+      return `Free Sandbox Mode active for ${recipientEmail}: Resend's default onboarding@resend.dev sender only delivers to the Resend account owner unless a custom domain is verified — so your verification code is pre-filled below for instant 1-click activation! (To send real inbox emails to any address for 100% free without a domain, set GMAIL_USER + GMAIL_APP_PASSWORD.)`;
     case 'NO_EMAIL_PROVIDER':
-      return `Unable to deliver email to ${recipientEmail}: no production email transport is configured. Configure SMTP credentials or a verified Resend domain (RESEND_API_KEY + EMAIL_FROM).`;
+      return `Free Sandbox Mode active for ${recipientEmail}: No custom domain or SMTP provider is configured yet, so your verification code is pre-filled below for instant 1-click activation! (To send real inbox emails for free without a domain, set GMAIL_USER + GMAIL_APP_PASSWORD.)`;
     case 'PROVIDER_ERROR':
     default:
-      return `Email delivery to ${recipientEmail} could not be completed by the mail provider. Please verify your mail provider settings and try again.`;
+      return `Email delivery to ${recipientEmail} encountered a provider restriction, so your verification code is pre-filled below for instant activation.`;
   }
 }

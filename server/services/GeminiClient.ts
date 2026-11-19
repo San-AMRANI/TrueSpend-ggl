@@ -15,15 +15,17 @@ export const gemini = new GoogleGenAI({
   },
 });
 
-// Model Constants
-export const MODEL_FLASH_DEEP = 'gemini-3.8-flash';           // Premier reasoning (20 req/day)
-export const MODEL_FLASH_FAST = 'gemini-3-flash-preview';       // High-speed, high-availability resilient model
-export const MODEL_FLASH_LITE = 'gemini-3.1-flash-lite';       // 500 requests/day
-export const MODEL_FLASH_LITE_PREVIEW = 'gemini-3.1-flash-lite-preview'; // High-throughput fast preview
-export const MODEL_FLASH_LATEST = 'gemini-flash-latest';       // Standard fallback
-export const MODEL_TTS = 'gemini-3.8-flash-lite-tts';          // 10 requests/day (primary)
+// Model Constants (aligned with @google/genai valid model IDs)
+export const MODEL_FLASH_DEEP = 'gemini-4-hydrogen';           // Premier reasoning & multimodal Flash model
+export const MODEL_FLASH_FAST = 'gemini-3-flash-preview';      // High-speed, high-availability resilient model
+export const MODEL_FLASH_LITE = 'gemini-3.1-flash-lite';       // High-throughput 500 requests/day model
+export const MODEL_FLASH_LITE_PREVIEW = 'gemini-3.1-flash-lite'; // High-throughput fast model
+export const MODEL_FLASH_LATEST = 'gemini-2.5-flash';          // Standard reliable fallback
+export const MODEL_TRANSCRIBE = 'gemini-3.5-transcribe';       // Dedicated speech-to-text transcription model
+export const MODEL_TTS = 'gemini-3.8-flash-lite-tts';          // Primary low-latency TTS
 export const MODEL_FLASH_TTS = 'gemini-3.8-flash-tts';         // Standard Flash TTS fallback
 export const MODEL_LIVE = 'gemini-3.8-live';                   // Real-time bidirectional voice (Live API)
+export const MODEL_LIVE_EXTENDED = 'gemini-3.8-live-extended-thinking'; // Live API secondary failover
 
 export const PRIMARY_GEMINI_MODEL = MODEL_FLASH_FAST;
 export const FALLBACK_GEMINI_MODEL = MODEL_FLASH_DEEP;
@@ -53,15 +55,15 @@ export const SUPPORTED_MODELS_METADATA = [
   },
   {
     id: MODEL_FLASH_DEEP,
-    name: 'Gemini 3.8 Flash',
+    name: 'Gemini 4 Flash (Hydrogen)',
     badge: 'Deep Intelligence',
-    dailyQuota: 20,
-    rpm: 5,
+    dailyQuota: 50,
+    rpm: 10,
     description: 'Premier multimodal model with deep financial reasoning, simulation, and comprehensive audits.',
     recommendedFor: 'Complex financial queries & deep reviews',
   },
   {
-    id: MODEL_FLASH_LITE_PREVIEW,
+    id: MODEL_FLASH_LITE,
     name: 'Gemini 3.1 Flash Lite',
     badge: '500 Requests/Day',
     dailyQuota: 500,
@@ -71,10 +73,10 @@ export const SUPPORTED_MODELS_METADATA = [
   },
   {
     id: MODEL_FLASH_LATEST,
-    name: 'Gemini Flash Latest',
+    name: 'Gemini 2.5 Flash',
     badge: 'Reliable Fallback',
-    dailyQuota: 20,
-    rpm: 5,
+    dailyQuota: 100,
+    rpm: 10,
     description: 'Standard stable release fallback model for high reliability and general finance tasks.',
     recommendedFor: 'General usage & redundant failover',
   },
