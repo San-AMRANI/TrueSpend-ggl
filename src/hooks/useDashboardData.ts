@@ -112,7 +112,7 @@ export function useDashboardData(token: string | null, experienceTier?: Experien
   const ensureInvestmentsLoaded = useCallback(
     async (forceRefresh = false) => {
       if (!token || !isAdvancedTier) return;
-      if (!forceRefresh && hasInvestments && investmentsData) return;
+      if (!forceRefresh && hasInvestments) return;
       if (investmentsPromiseRef.current && !forceRefresh) return investmentsPromiseRef.current;
 
       setIsHydratingInvestments(true);
@@ -131,13 +131,13 @@ export function useDashboardData(token: string | null, experienceTier?: Experien
       investmentsPromiseRef.current = promise;
       return promise;
     },
-    [token, isAdvancedTier, hasInvestments, investmentsData]
+    [token, isAdvancedTier, hasInvestments]
   );
 
   const ensureRadarLoaded = useCallback(
     async (force = false) => {
       if (!token || !isAdvancedTier) return;
-      if (!force && hasRadar && operationalRadar) return;
+      if (!force && hasRadar) return;
       if (radarPromiseRef.current && !force) return radarPromiseRef.current;
 
       setIsHydratingRadar(true);
@@ -156,7 +156,7 @@ export function useDashboardData(token: string | null, experienceTier?: Experien
       radarPromiseRef.current = promise;
       return promise;
     },
-    [token, isAdvancedTier, hasRadar, operationalRadar]
+    [token, isAdvancedTier, hasRadar]
   );
 
   const fetchData = useCallback(async () => {

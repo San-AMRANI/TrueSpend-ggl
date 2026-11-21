@@ -8,6 +8,11 @@ import type {
   Subscription,
   FinancialContext,
   InvestmentsData,
+  CommitmentOccurrence,
+  FinancialReviewItem,
+  FinancialIntegrityReport,
+  ExternalWealthItem,
+  User,
 } from '../types/index.js';
 import {
   financialPeriodLabel,
@@ -16,7 +21,7 @@ import {
 } from './financialMonth.js';
 import { computeHolisticForecast } from './predictiveEngine.js';
 import { generateFinancialPeriodsLedger } from './cashFlowEngine.js';
-import { netExpenseOf, isReimbursementIncome, reimbursedAmountOf } from './finance.js';
+import { netExpenseOf, isReimbursementIncome } from './finance.js';
 
 export type AiDataFocusScope =
   | 'all'
@@ -25,9 +30,23 @@ export type AiDataFocusScope =
   | 'wallets'
   | 'budgets'
   | 'debts_goals'
+  | 'assets_radar'
   | 'forecast';
 
 export type AiResponseDepth = 'deep_creative' | 'balanced' | 'concise';
+
+export interface AiOperationalRadarSnapshot {
+  upcomingCommitments?: CommitmentOccurrence[];
+  pendingReviews?: FinancialReviewItem[];
+  integritySummary?: FinancialIntegrityReport | null;
+  externalWealthSummary?: {
+    items: ExternalWealthItem[];
+    totalExternalAssetsMad: number;
+    totalExternalLiabilitiesMad: number;
+    netExternalWealthMad: number;
+    staleCount: number;
+  } | null;
+}
 
 const amountOf = (value: string | number | null | undefined) =>
   Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : 0;
@@ -35,6 +54,33 @@ const amountOf = (value: string | number | null | undefined) =>
 const dateKey = (value: string | Date | null | undefined) => {
   const date = value ? new Date(value) : null;
   return date && !Number.isNaN(date.getTime()) ? date.toISOString().slice(0, 10) : 'unknown';
+};
+
+const daysUntilDate = (value: string | Date | null | undefined): number | null => {
+  if (!value) return null;
+  const target = new Date(value);
+  if (Number.isNaN(target.getTime())) return null;
+  const now = new Date();
+  const todayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const targetUtc = Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate());
+  return Math.round((targetUtc - todayUtc) / 86_400_000);
+};
+
+const normalizedMonthlySubCost = (amount: number, cycle?: string | null): number => {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const raw = (cycle || 'monthly').trim().toLowerCase();
+  if (raw === 'weekly') return amountOf((amount * 52) / 12);
+  if (raw === 'biweekly') return amountOf((amount * 26) / 12);
+  if (raw === 'yearly') return amountOf(amount / 12);
+  if (raw === 'quarterly' || raw === 'every_3_months') return amountOf(amount / 3);
+  if (raw === 'every_2_months') return amountOf(amount / 2);
+  if (raw === 'every_6_months') return amountOf(amount / 6);
+  if (raw === 'every_10_months') return amountOf(amount / 10);
+  const customMonths = raw.match(/^every_(\d+)_months?$/);
+  if (customMonths) return amountOf(amount / Math.max(1, parseInt(customMonths[1], 10)));
+  const customDays = raw.match(/^every_(\d+)_days?$/);
+  if (customDays) return amountOf((amount * 30.4375) / Math.max(1, parseInt(customDays[1], 10)));
+  return amountOf(amount);
 };
 
 export function buildAiContextSnapshot({
@@ -47,6 +93,9 @@ export function buildAiContextSnapshot({
   subscriptions = [],
   contexts = [],
   investmentsData = null,
+  operationalRadar = null,
+  userSettings = null,
+  userProfile = null,
   focusScopes = ['all'],
   responseDepth = 'deep_creative',
 }: {
@@ -59,6 +108,9 @@ export function buildAiContextSnapshot({
   subscriptions?: Subscription[];
   contexts?: FinancialContext[];
   investmentsData?: InvestmentsData | null;
+  operationalRadar?: AiOperationalRadarSnapshot | null;
+  userSettings?: Record<string, any> | null;
+  userProfile?: Partial<User> | null;
   focusScopes?: AiDataFocusScope[];
   responseDepth?: AiResponseDepth;
 }) {
@@ -122,18 +174,45 @@ export function buildAiContextSnapshot({
   }
 
   const allTimeCategoryTotals: Record<string, { spentMad: number; count: number }> = {};
+  const merchantSpendMap = new Map<
+    string,
+    { label: string; category: string; netSpentMad: number; count: number; lastDate: string }
+  >();
   for (const tx of transactions) {
     if (tx.type === 'Expense') {
       const cat = tx.category || 'Uncategorized';
+      const net = netExpenseOf(tx);
       if (!allTimeCategoryTotals[cat]) {
         allTimeCategoryTotals[cat] = { spentMad: 0, count: 0 };
       }
-      allTimeCategoryTotals[cat].spentMad = amountOf(
-        allTimeCategoryTotals[cat].spentMad + netExpenseOf(tx)
-      );
+      allTimeCategoryTotals[cat].spentMad = amountOf(allTimeCategoryTotals[cat].spentMad + net);
       allTimeCategoryTotals[cat].count += 1;
+
+      const rawLabel = (tx.notes || '').trim();
+      if (rawLabel) {
+        const key = rawLabel.toLowerCase().slice(0, 48);
+        const existing = merchantSpendMap.get(key);
+        const txDate = dateKey(tx.createdAt);
+        if (existing) {
+          existing.netSpentMad = amountOf(existing.netSpentMad + net);
+          existing.count += 1;
+          if (txDate > existing.lastDate) existing.lastDate = txDate;
+        } else {
+          merchantSpendMap.set(key, {
+            label: rawLabel.slice(0, 60),
+            category: cat,
+            netSpentMad: amountOf(net),
+            count: 1,
+            lastDate: txDate,
+          });
+        }
+      }
     }
   }
+
+  const topMerchantsByNetSpend = Array.from(merchantSpendMap.values())
+    .sort((a, b) => b.netSpentMad - a.netSpentMad)
+    .slice(0, 20);
 
   const sortedTransactions = [...transactions].sort(
     (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
@@ -146,11 +225,52 @@ export function buildAiContextSnapshot({
   const reconciliation = investmentsData?.capitalReconciliation;
   const usdToMad = investmentsData?.rates?.USD_TO_MAD || 9.95;
 
+  const walletNameMap = new Map<string, string>();
+  (kpis?.accounts || []).forEach((w) => walletNameMap.set(w.id, w.name));
+
+  const externalWealthSummary = operationalRadar?.externalWealthSummary || null;
+  const externalAssetsMad = amountOf(externalWealthSummary?.totalExternalAssetsMad);
+  const externalLiabilitiesMad = amountOf(externalWealthSummary?.totalExternalLiabilitiesMad);
+  const netExternalWealthMad = amountOf(externalWealthSummary?.netExternalWealthMad);
+
+  const creditCardLiabilitiesMad = amountOf(
+    (kpis?.accounts || []).reduce((sum, w) => {
+      const subtype = (w as any).accountSubtype;
+      if (subtype === 'CreditCard' || subtype === 'Overdraft') {
+        return sum + Math.max(0, amountOf((w as any).liabilityBalance));
+      }
+      return sum;
+    }, 0)
+  );
+
+  const resolvedUserProfile = {
+    name: userProfile?.displayName || userProfile?.username || userSettings?.displayName || null,
+    employmentType:
+      userSettings?.employmentType || userProfile?.employmentType || 'salaried',
+    financialCycleMode:
+      userSettings?.financialCycleMode ||
+      userProfile?.financialCycleMode ||
+      (payrolls.length >= 2 ? 'payday' : 'calendar'),
+    paydayDayOfMonth: userSettings?.payday ?? userProfile?.payday ?? null,
+    configuredMonthlySalaryMad: amountOf(
+      userSettings?.salary ?? userProfile?.salary ?? kpis?.salary ?? 0
+    ),
+    baseCurrency: userSettings?.baseCurrency || userProfile?.baseCurrency || 'MAD',
+    emergencyBufferTargetMad: amountOf(
+      userSettings?.emergencyBuffer ??
+        userProfile?.emergencyBuffer ??
+        kpis?.emergencyBuffer ??
+        0
+    ),
+    experienceTier: userSettings?.experienceTier || userProfile?.experienceTier || 'basic',
+  };
+
   return {
     asOf: dateKey(new Date()),
-    currency: 'MAD',
+    currency: resolvedUserProfile.baseCurrency || 'MAD',
     activeFocusScopes: activeScopes,
     requestedResponseDepth: responseDepth,
+    userProfile: resolvedUserProfile,
     financialPeriod: current
       ? {
           label: financialPeriodLabel(current),
@@ -164,16 +284,39 @@ export function buildAiContextSnapshot({
           message:
             'No complete financial period is configured. Add consecutive payroll dates in Financial Calendar.',
         },
-    // Core KPIs & Wallets are always included for grounding, with extra detail when 'wallets' or 'all' is selected
+    // Core KPIs & Wallets are always included for grounding, with full credit card / subtype / reconciliation metadata
     wallets: kpis
-      ? kpis.accounts.map((w) => ({
-          id: w.id,
-          name: w.name,
-          type: w.type,
-          isMain: Boolean((w as any).isMain),
-          balanceMad: amountOf(w.balance),
-          initialBalanceMad: amountOf((w as any).initialBalance),
-        }))
+      ? kpis.accounts.map((w) => {
+          const creditLimit = amountOf((w as any).creditLimit);
+          const liabilityBalance = amountOf((w as any).liabilityBalance);
+          const creditUtilizationPct =
+            creditLimit > 0 ? amountOf((liabilityBalance / creditLimit) * 100) : null;
+          return {
+            id: w.id,
+            name: w.name,
+            type: w.type,
+            accountSubtype: (w as any).accountSubtype || null,
+            institutionName: (w as any).institutionName || null,
+            currency: (w as any).currency || 'MAD',
+            isMain: Boolean((w as any).isMain),
+            balanceMad: amountOf(w.balance),
+            initialBalanceMad: amountOf((w as any).initialBalance),
+            ...(creditLimit > 0 || liabilityBalance > 0
+              ? {
+                  creditLimitMad: creditLimit,
+                  liabilityBalanceMad: liabilityBalance,
+                  creditUtilizationPct,
+                  statementClosingDay: (w as any).statementClosingDay ?? null,
+                  paymentDueDay: (w as any).paymentDueDay ?? null,
+                  minimumPaymentMad: amountOf((w as any).minimumPayment),
+                }
+              : {}),
+            valuationStatus: (w as any).valuationStatus || 'verified',
+            lastReconciledAt: (w as any).lastReconciledAt
+              ? dateKey((w as any).lastReconciledAt)
+              : null,
+          };
+        })
       : [],
     kpis: kpis
       ? {
@@ -184,6 +327,7 @@ export function buildAiContextSnapshot({
           emergencyBufferMad: amountOf(kpis.emergencyBuffer),
           investmentReserveMad: amountOf(kpis.investmentReserve),
           pendingPayablesMad: amountOf(kpis.pendingPayables),
+          creditCardLiabilitiesMad,
           monthlyIncomeMad: amountOf(kpis.monthlyIncome),
           monthlyExpensesMad: amountOf(kpis.monthlyExpenses),
           adjustedTrueSpendMad: amountOf(kpis.adjustedTrueSpend),
@@ -224,7 +368,7 @@ export function buildAiContextSnapshot({
       transactionCount: p.transactionCount,
     })),
 
-    // Unified Net Worth Breakdown (explains Actual Holdings vs Pending Receivables & Payables)
+    // Unified Net Worth Breakdown (Liquid + Live Investments + External Physical Assets - Debts & External/Credit Liabilities)
     unifiedNetWorthBreakdown: kpis
       ? (() => {
           const totalLiquidity = amountOf(kpis.totalLiquidity);
@@ -248,6 +392,12 @@ export function buildAiContextSnapshot({
               .reduce((s, d) => s + amountOf(d.remainingBalance ?? d.originalAmount), 0)
           );
           const netDebtPosition = amountOf(pendingReceivables - pendingPayables);
+          const liquidAndInvestmentNetWorthMad = amountOf(
+            actualLiquidAndInvestedHoldings + netDebtPosition - creditCardLiabilitiesMad
+          );
+          const totalUnifiedNetWorthMad = amountOf(
+            liquidAndInvestmentNetWorthMad + netExternalWealthMad
+          );
           return {
             actualLiquidAndInvestedHoldingsMad: actualLiquidAndInvestedHoldings,
             totalWalletLiquidityMad: totalLiquidity,
@@ -256,15 +406,100 @@ export function buildAiContextSnapshot({
             liveSyncedInvestmentPortfolioMad: liveInvestmentVal,
             pendingReceivablesOwedToUserMad: pendingReceivables,
             pendingPayablesUserOwesMad: pendingPayables,
+            creditCardLiabilitiesMad,
             netReceivablesMinusPayablesMad: netDebtPosition,
-            estimatedUnifiedNetWorthMad: amountOf(
-              actualLiquidAndInvestedHoldings + netDebtPosition
-            ),
+            liquidAndInvestmentNetWorthMad,
+            externalPhysicalAssetsMad: externalAssetsMad,
+            externalLiabilitiesMad,
+            netExternalWealthMad,
+            estimatedUnifiedNetWorthMad: totalUnifiedNetWorthMad,
             explanation:
-              'Estimated Unified Net Worth = Non-Investment Wallets (Bank + Cash + Simple Savings) + Live Investment Value (or Investment Reserve Wallet, never double-counted) + Pending Receivables (money owed to user) - Pending Payables (money user owes).',
+              'Total Unified Net Worth = Liquid/Investment Net Worth (Non-Investment Wallets + Live Investment Value without double-counting + Pending Receivables - Pending Payables - Credit Card Liabilities) + Net External Wealth (Declared Physical/Off-Platform Assets - External Liabilities). Always distinguish spendable liquid cash from illiquid physical assets.',
           };
         })()
       : null,
+
+    // External Wealth (Physical Assets like Electronics, Vehicles, Gold, Real Estate, and External Liabilities)
+    externalWealth:
+      externalWealthSummary && (hasScope('assets_radar') || hasScope('wallets') || isAll)
+        ? {
+            totalExternalAssetsMad: externalAssetsMad,
+            totalExternalLiabilitiesMad: externalLiabilitiesMad,
+            netExternalWealthMad,
+            staleValuationsCount: externalWealthSummary.staleCount || 0,
+            items: (externalWealthSummary.items || []).slice(0, 40).map((item) => ({
+              id: item.id,
+              name: item.name,
+              itemClass: item.itemClass,
+              kind: item.isLiability ? 'Liability' : 'Asset',
+              isLiquid: Boolean(item.isLiquid),
+              estimatedValue: amountOf(item.estimatedValue),
+              currency: item.currency || 'MAD',
+              valueMad: amountOf(item.valueMad ?? item.estimatedValue),
+              valuationDate: dateKey(item.valuationDate),
+              valuationSource: item.valuationSource || 'manual_estimate',
+              confidenceLevel: item.confidenceLevel || 'medium',
+              isStale: Boolean(item.isStaleEstimate),
+              ageDays: item.ageDays ?? null,
+              notes: item.notes || null,
+            })),
+          }
+        : null,
+
+    // Operational Radar (Upcoming 90d Commitments, Pending Review Inbox, Financial Integrity Report)
+    operationalRadar:
+      operationalRadar &&
+      (hasScope('assets_radar') || hasScope('forecast') || hasScope('debts_goals') || isAll)
+        ? {
+            upcomingCommitments: (operationalRadar.upcomingCommitments || [])
+              .slice(0, 25)
+              .map((c) => ({
+                id: c.id,
+                title: c.title,
+                sourceType: c.sourceType,
+                expectedAmountMad: amountOf(c.expectedAmount),
+                currency: c.currency || 'MAD',
+                dueDate: dateKey(c.expectedDate),
+                daysUntilDue: daysUntilDate(c.expectedDate),
+                status: c.status,
+                paidAmountMad: c.paidAmount != null ? amountOf(c.paidAmount) : 0,
+                varianceAmountMad: amountOf(c.varianceAmount),
+                notes: c.notes || null,
+              })),
+            pendingReviews: (operationalRadar.pendingReviews || []).slice(0, 20).map((r) => ({
+              id: r.id,
+              sourceType: r.sourceType,
+              description: r.parsedDescription,
+              category: r.parsedCategory,
+              parsedType: r.parsedType,
+              parsedAmount: amountOf(r.parsedAmount),
+              currency: r.parsedCurrency || 'MAD',
+              parsedDate: dateKey(r.parsedDate),
+              walletId: r.walletId || null,
+              walletName: r.walletId ? walletNameMap.get(r.walletId) || null : null,
+              confidenceScore: amountOf(r.confidenceScore),
+              status: r.status,
+              createdAt: dateKey(r.createdAt),
+            })),
+            integritySummary: operationalRadar.integritySummary
+              ? {
+                  healthy: Boolean(operationalRadar.integritySummary.healthy),
+                  checkedAt: dateKey(operationalRadar.integritySummary.checkedAt),
+                  totalExceptions: operationalRadar.integritySummary.totalExceptions ?? 0,
+                  unbalancedEntriesCount:
+                    operationalRadar.integritySummary.checks?.unbalancedJournalEntries?.length ?? 0,
+                  unjournaledTransactionsCount:
+                    operationalRadar.integritySummary.checks?.unjournaledTransactions?.length ?? 0,
+                  duplicateJournalPostingsCount:
+                    operationalRadar.integritySummary.checks?.duplicateJournalPostings?.length ?? 0,
+                  unreconciledGoalsCount:
+                    operationalRadar.integritySummary.checks?.unreconciledGoals?.length ?? 0,
+                  staleExternalValuationsCount:
+                    operationalRadar.integritySummary.checks?.staleExternalValuations?.length ?? 0,
+                }
+              : null,
+          }
+        : null,
 
     // Deep Investments, Live Binance Multi-Wallet, Trade Forensics & Stock Intelligence
     stockPortfolio:
@@ -293,7 +528,7 @@ export function buildAiContextSnapshot({
             deployableBuyingPowerUsd: investmentsData.buyingPower.deployableSurplusUsd,
             buyingPowerGuidance: investmentsData.buyingPower.guidanceText,
 
-            // Capital Reserve Reconciliation ($879 MAD vs Live Value)
+            // Capital Reserve Reconciliation (Initial Capital vs Live Value)
             capitalReconciliation: reconciliation
               ? {
                   initialCapitalMad: reconciliation.initialCapitalMad,
@@ -487,7 +722,14 @@ export function buildAiContextSnapshot({
             lowest30dDate: forecast.lowest30dDateLabel,
             survivalRunwayDays: forecast.survivalRunwayDays,
             hasLiquidityPinchBeforePayday: forecast.hasLiquidityPinchBeforePayday,
-            topSignals: forecast.signals.slice(0, 6).map((s) => ({
+            dayOfWeekSpendingPatterns: (forecast.dayOfWeekPatterns || []).map((d) => ({
+              day: d.shortName,
+              avgSpendMad: amountOf(d.avgSpendMad),
+              relativeMultiplier: amountOf(d.relativeMultiplier),
+              txCount: d.txCount,
+              isPeakDay: d.relativeMultiplier >= 1.25,
+            })),
+            topSignals: forecast.signals.slice(0, 8).map((s) => ({
               title: s.title,
               detail: s.detail,
               severity: s.severity,
@@ -514,11 +756,23 @@ export function buildAiContextSnapshot({
       currentPeriodTransactionsCount: periodTransactions.length,
       periodCategoryBreakdown: periodCategoryTotals,
       allTimeCategoryBreakdown: allTimeCategoryTotals,
+      topMerchantsByNetSpend: hasScope('transactions') || isAll ? topMerchantsByNetSpend : topMerchantsByNetSpend.slice(0, 8),
     },
 
     payrolls: payrolls.map((payroll) => ({
+      id: payroll.id,
       date: dateKey(payroll.scheduledFor),
       amount: amountOf(payroll.amount),
+      status: payroll.status || 'expected',
+      walletId: payroll.walletId || null,
+      walletName:
+        payroll.walletName ||
+        (payroll.walletId ? walletNameMap.get(payroll.walletId) || null : null),
+      confirmedAmount:
+        payroll.confirmedAmount != null ? amountOf(payroll.confirmedAmount) : null,
+      confirmedAt: payroll.confirmedAt ? dateKey(payroll.confirmedAt) : null,
+      varianceAmount:
+        payroll.varianceAmount != null ? amountOf(payroll.varianceAmount) : null,
     })),
 
     budgets:
@@ -534,15 +788,29 @@ export function buildAiContextSnapshot({
     emergencyBuffer: kpis ? amountOf(kpis.emergencyBuffer) : 0,
 
     debts:
-      hasScope('debts_goals') || isAll
+      hasScope('debts_goals') || hasScope('assets_radar') || isAll
         ? debts.slice(0, 40).map((debt) => ({
             id: debt.id,
             contact: debt.contactName,
+            counterpartyType: debt.counterpartyType || 'Person',
             type: debt.type,
             status: debt.status,
+            currency: debt.currency || 'MAD',
             totalAmount: amountOf(debt.originalAmount),
             remaining: amountOf(debt.remainingBalance),
             dueDate: dateKey(debt.dueDate),
+            daysUntilDue: daysUntilDate(debt.dueDate),
+            interestRateApr: amountOf(debt.interestRateApr),
+            rateType: debt.rateType || 'none',
+            installmentAmount: debt.installmentAmount ? amountOf(debt.installmentAmount) : null,
+            installmentFrequency: debt.installmentFrequency || 'one_time',
+            feesAmount: amountOf(debt.feesAmount),
+            forgivenAmount: debt.forgivenAmount ? amountOf(debt.forgivenAmount) : 0,
+            estimatedMonthsRemaining: debt.estimatedMonthsRemaining || null,
+            earlySettlementSavingsMad: amountOf(debt.earlySettlementSavingsMad),
+            totalPayoffWithFeesMad: debt.totalPayoffWithFeesMad
+              ? amountOf(debt.totalPayoffWithFeesMad)
+              : amountOf(debt.remainingBalance),
           }))
         : [],
 
@@ -550,42 +818,65 @@ export function buildAiContextSnapshot({
       hasScope('debts_goals') || isAll
         ? goals.map((goal) => {
             const linkedWallet = kpis?.accounts?.find((w) => w.id === goal.walletId);
+            const target = amountOf(goal.targetAmount);
+            const currentAmt = amountOf(goal.currentAmount);
             return {
               id: goal.id,
               name: goal.name,
               category: goal.category,
-              targetAmount: amountOf(goal.targetAmount),
-              currentAmount: amountOf(goal.currentAmount),
+              targetAmount: target,
+              currentAmount: currentAmt,
+              remainingToTargetMad: amountOf(Math.max(0, target - currentAmt)),
+              progressPercent: target > 0 ? amountOf((currentAmt / target) * 100) : 0,
               walletId: goal.walletId || null,
               linkedWalletName: linkedWallet ? `${linkedWallet.name} (${linkedWallet.type})` : null,
               autoSyncBalance: Boolean(goal.autoSyncBalance),
+              fundingCadence: goal.fundingCadence || 'monthly',
+              plannedContributionAmount: goal.plannedContributionAmount
+                ? amountOf(goal.plannedContributionAmount)
+                : null,
               deadline: dateKey(goal.deadline),
+              daysUntilDeadline: daysUntilDate(goal.deadline),
               notes: goal.notes,
             };
           })
         : [],
 
     subscriptions:
-      hasScope('debts_goals') || hasScope('budgets') || isAll
-        ? subscriptions.map((sub) => ({
-            id: sub.id,
-            name: sub.name,
-            amountMad: amountOf(sub.amount),
-            billingCycle: sub.billingCycle,
-            category: sub.category,
-            nextBillingDate: dateKey(sub.nextBillingDate),
-            status: sub.status,
-          }))
+      hasScope('debts_goals') || hasScope('budgets') || hasScope('assets_radar') || isAll
+        ? subscriptions.map((sub) => {
+            const amt = amountOf(sub.amount);
+            return {
+              id: sub.id,
+              name: sub.name,
+              amountMad: amt,
+              currency: sub.currency || 'MAD',
+              billingCycle: sub.billingCycle,
+              normalizedMonthlyMad: normalizedMonthlySubCost(amt, sub.billingCycle),
+              category: sub.category,
+              walletId: sub.walletId || null,
+              walletName:
+                sub.walletName ||
+                (sub.walletId ? walletNameMap.get(sub.walletId) || null : null),
+              nextBillingDate: dateKey(sub.nextBillingDate),
+              daysUntilNextBilling: daysUntilDate(sub.nextBillingDate),
+              status: sub.status,
+              notes: sub.notes || null,
+            };
+          })
         : [],
 
     spendingContexts:
-      hasScope('transactions') || isAll
+      hasScope('transactions') || hasScope('assets_radar') || isAll
         ? contexts.map((ctx) => ({
             id: ctx.id,
             name: ctx.name,
             type: ctx.type,
             budgetMad: amountOf(ctx.budget),
             status: ctx.status,
+            startDate: ctx.startDate ? dateKey(ctx.startDate) : null,
+            endDate: ctx.endDate ? dateKey(ctx.endDate) : null,
+            notes: ctx.notes || null,
           }))
         : [],
 
@@ -596,12 +887,41 @@ export function buildAiContextSnapshot({
         id: transaction.id,
         date: dateKey(transaction.createdAt),
         amount: amountOf(transaction.amount),
+        netExpenseMad:
+          transaction.type === 'Expense' ? amountOf(netExpenseOf(transaction)) : undefined,
         type: transaction.type,
         category: transaction.category,
         walletId: transaction.walletId,
+        destinationWalletId: transaction.destinationWalletId || null,
+        contextId: transaction.contextId || null,
         sourceWallet: transaction.sourceWallet,
+        currency: transaction.currency || 'MAD',
+        ...(transaction.currency && transaction.currency !== 'MAD'
+          ? {
+              nativeAmount: amountOf(transaction.nativeAmount),
+              exchangeRateUsed: amountOf(transaction.exchangeRateUsed),
+            }
+          : {}),
         note: transaction.notes,
         reimbursableAmount: amountOf(transaction.reimbursableAmount),
+        ...(transaction.isPartialPayment
+          ? {
+              isPartialPayment: true,
+              unpaidAmount: amountOf(transaction.unpaidAmount),
+              unpaidRemainingBalance: amountOf(transaction.unpaidRemainingBalance),
+              unpaidContactName: transaction.unpaidContactName || null,
+            }
+          : {}),
+        ...(transaction.splits && transaction.splits.length > 0
+          ? {
+              splits: transaction.splits.map((s) => ({
+                contactName: s.linkedContactName || null,
+                reimbursableAmount: amountOf(s.reimbursableAmount),
+                remainingBalance: s.remainingBalance != null ? amountOf(s.remainingBalance) : null,
+                status: s.status || null,
+              })),
+            }
+          : {}),
       })),
 
     allRecentTransactions: sortedTransactions.slice(0, txLimit).map((transaction) => ({
@@ -611,8 +931,13 @@ export function buildAiContextSnapshot({
       type: transaction.type,
       category: transaction.category,
       walletId: transaction.walletId,
+      destinationWalletId: transaction.destinationWalletId || null,
+      contextId: transaction.contextId || null,
       sourceWallet: transaction.sourceWallet,
+      currency: transaction.currency || 'MAD',
       note: transaction.notes,
+      reimbursableAmount: amountOf(transaction.reimbursableAmount),
     })),
   };
 }
+

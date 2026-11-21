@@ -86,9 +86,9 @@ function downsampleTo16kHz(samples: Float32Array, inputSampleRate: number): Floa
 // Audio chunk decoding lives in liveVoiceHelpers.decodeBase64AudioToPcmFloat32
 
 const LIVE_QUICK_PROMPTS = [
-  'What can I safely spend today and how are my wallets balanced?',
-  'Walk me through my live Binance and stock positions.',
-  'Where did I spend the most money this financial cycle?',
+  'What can I safely spend today, and what bills or commitments are due soon?',
+  'Walk me through my Unified Net Worth across wallets, Binance/stocks, and external assets.',
+  'Where did I spend the most this cycle, and which days do I burn the fastest?',
 ];
 
 const VAD_SPEECH_RMS_THRESHOLD = 0.022;
@@ -580,7 +580,7 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
           headers['X-Client-Platform'] = 'capacitor';
         }
 
-        const compactContext = compactLiveContext(aiContextRef.current, 18_000);
+        const compactContext = compactLiveContext(aiContextRef.current, 32_000);
         const turnPath = capabilitiesRef.current?.sseTurnPath || '/api/chat/live-turn';
 
         const response = await fetch(getApiUrl(turnPath), {
@@ -885,7 +885,7 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
             JSON.stringify({
               type: 'init',
               voiceName: voiceToUse,
-              contextData: compactLiveContext(aiContextRef.current, 24_000),
+              contextData: compactLiveContext(aiContextRef.current, 32_000),
               focusScopes: focusScopesRef.current,
             }),
           );
@@ -1167,11 +1167,11 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
             {status === 'processing' && 'Spex is thinking & synthesizing voice…'}
             {status === 'ready' &&
               (isMuted
-                ? 'Microphone muted — tap Unmute to speak or pick a starter'
+                ? 'Microphone muted — tap the mic icon or pick a starter'
                 : isVadSpeaking
                   ? 'Listening to you — pause briefly when finished'
                   : 'Listening — speak naturally with Spex')}
-            {status === 'speaking' && 'Spex is speaking — tap Stop anytime to interrupt'}
+            {status === 'speaking' && 'Spex is speaking'}
             {status === 'error' && 'Voice connection interrupted'}
             {status === 'closed' && 'Voice session ended'}
           </p>
@@ -1183,18 +1183,18 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
           )}
 
           {errorMessage && (
-            <div className="mt-3 w-full rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 px-3.5 py-2.5 text-left flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p>{errorMessage}</p>
-                <button
-                  type="button"
-                  onClick={() => startLiveSession(selectedVoice)}
-                  className="mt-1.5 inline-flex items-center gap-1 font-semibold underline"
-                >
-                  <RefreshCw className="w-3 h-3" /> Reconnect Live Session
-                </button>
-              </div>
+            <div className="mt-3 w-full rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 px-3.5 py-2.5 text-left flex items-center gap-2.5 text-xs text-rose-700 dark:text-rose-300">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <p className="flex-1 leading-snug">{errorMessage}</p>
+              <button
+                type="button"
+                onClick={() => startLiveSession(selectedVoice)}
+                aria-label="Reconnect live session"
+                title="Reconnect live session"
+                className="h-9 w-9 shrink-0 rounded-full inline-flex items-center justify-center bg-rose-600 hover:bg-rose-700 text-white transition-colors shadow-2xs"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
             </div>
           )}
         </div>
@@ -1288,57 +1288,73 @@ export const LiveVoiceSessionModal: React.FC<LiveVoiceSessionModalProps> = ({
           </button>
         </form>
 
-        {/* Bottom Control Bar */}
-        <div className="px-5 py-3.5 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleToggleMute}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold border transition-colors',
-                isMuted
-                  ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200'
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700',
-              )}
-            >
-              {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-              <span>{isMuted ? 'Unmute Mic' : 'Mute Mic'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleToggleSpeaker}
-              title={isSpeakerMuted ? 'Unmute speaker' : 'Mute speaker'}
-              className={cn(
-                'p-2 rounded-xl border transition-colors',
-                isSpeakerMuted
-                  ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-300'
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700',
-              )}
-            >
-              {isSpeakerMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-            </button>
-
-            {(isSpeaking || isProcessing) && (
-              <button
-                type="button"
-                onClick={handleInterrupt}
-                title="Interrupt Spex"
-                className="inline-flex items-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              >
-                <Square className="w-3.5 h-3.5 fill-current" />
-                <span>Stop</span>
-              </button>
+        {/* Bottom Control Bar — Pure Icon-Only Dock */}
+        <div
+          data-testid="live-voice-controls"
+          className="px-5 py-4 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex items-center justify-center gap-4"
+        >
+          <button
+            type="button"
+            onClick={handleToggleMute}
+            aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+            title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+            className={cn(
+              'h-12 w-12 rounded-full inline-flex items-center justify-center border transition-all active:scale-95',
+              isMuted
+                ? 'bg-amber-100 dark:bg-amber-950/70 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 shadow-2xs',
             )}
-          </div>
+          >
+            {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleToggleSpeaker}
+            aria-label={isSpeakerMuted ? 'Unmute speaker' : 'Mute speaker'}
+            title={isSpeakerMuted ? 'Unmute speaker' : 'Mute speaker'}
+            className={cn(
+              'h-12 w-12 rounded-full inline-flex items-center justify-center border transition-all active:scale-95',
+              isSpeakerMuted
+                ? 'bg-rose-100 dark:bg-rose-950/60 border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-300'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 shadow-2xs',
+            )}
+          >
+            {isSpeakerMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+          </button>
+
+          {(isSpeaking || isProcessing) && (
+            <button
+              type="button"
+              onClick={handleInterrupt}
+              aria-label="Interrupt Spex"
+              title="Interrupt Spex"
+              className="h-12 w-12 rounded-full inline-flex items-center justify-center bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/70 transition-all active:scale-95 shadow-2xs"
+            >
+              <Square className="w-4 h-4 fill-current" />
+            </button>
+          )}
+
+          {(status === 'error' || status === 'closed') && (
+            <button
+              type="button"
+              onClick={() => startLiveSession(selectedVoice)}
+              aria-label="Reconnect live session"
+              title="Reconnect live session"
+              className="h-12 w-12 rounded-full inline-flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white transition-all active:scale-95 shadow-xs"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          )}
 
           <button
             type="button"
             onClick={handleClose}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 text-xs font-semibold transition-colors shadow-2xs"
+            aria-label="End live voice session"
+            title="End live voice session"
+            className="h-12 w-12 rounded-full inline-flex items-center justify-center bg-rose-600 hover:bg-rose-700 text-white transition-all active:scale-95 shadow-sm"
           >
-            <PhoneOff className="w-3.5 h-3.5" />
-            <span>End Live</span>
+            <PhoneOff className="w-5 h-5" />
           </button>
         </div>
       </div>

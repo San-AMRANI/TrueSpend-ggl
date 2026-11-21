@@ -39,6 +39,7 @@ import {
   FolderOpen,
   AlertTriangle,
   AudioLines,
+  Landmark,
 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -150,12 +151,12 @@ export const DATA_FOCUS_SCOPES: FocusScopeDefinition[] = [
     label: 'All Data (360° Full Context)',
     shortLabel: 'All at Once',
     description:
-      'Complete visibility across Investments & Binance, All Transactions, Wallets, Budgets, Debts, Goals & Forecast simultaneously.',
+      'Complete visibility across Investments & Binance, External Assets, Operational Radar, All Transactions, Wallets, Budgets, Debts, Variable Bills, Goals & Forecast.',
     icon: Layers,
     prompts: [
-      '🌐 Run a deep 360° executive audit across my Wallets, Transactions, Budgets & Live Binance Portfolio',
-      '📈 How do my Binance & Stock investments interact with my Safe-to-Spend liquidity and 879 MAD reserve?',
-      '💡 Give me 4 creative, high-impact strategies to optimize both my cash burn and investment portfolio this cycle',
+      '🌐 Run a deep 360° executive audit across my Wallets, External Assets, Operational Radar, Budgets & Live Portfolio',
+      '📈 Break down my Unified Net Worth (Liquid Cash + Stocks/Binance + External Physical Assets vs Debts & Credit Cards)',
+      '💡 Give me 4 high-impact strategies to optimize my cash burn, upcoming commitments, and wealth allocation this cycle',
     ],
   },
   {
@@ -221,6 +222,19 @@ export const DATA_FOCUS_SCOPES: FocusScopeDefinition[] = [
       '🤝 Review all my Payable & Receivable debts, active Subscriptions, and Savings Goals with a prioritized payoff/funding plan',
       '🔁 Audit my recurring subscriptions and fixed obligations: how much monthly burn can I optimize?',
       '🎯 How fast can I hit my savings goals while keeping my daily allowance comfortable?',
+    ],
+  },
+  {
+    id: 'assets_radar',
+    label: 'External Assets & Operational Radar',
+    shortLabel: 'Assets & Radar',
+    description:
+      'Deep focus on External Physical Assets & Liabilities, Upcoming Commitments, Variable Utility Bills, Pending Reviews & Ledger Integrity.',
+    icon: Landmark,
+    prompts: [
+      '🏛️ Audit my External Assets & Liabilities, flag stale valuations, and compute my True Unified Net Worth vs Liquid Net Worth',
+      '📡 Review my Operational Radar: upcoming commitments, variable utility bills due soon, and any pending reviews or integrity warnings',
+      '⚡ Help me declare a new external asset, create an automation rule, or record a variable bill payment right now',
     ],
   },
   {
@@ -323,6 +337,16 @@ const PROMPT_TOPICS = [
     ],
   },
   {
+    id: 'assets_radar',
+    label: 'Assets & Radar',
+    icon: Landmark,
+    prompts: [
+      '🏛️ Audit my External Assets & Liabilities and compare Liquid vs Total Unified Net Worth',
+      '📡 Check my Operational Radar: what bills, commitments, or pending reviews need my attention?',
+      '⚙️ Create an automation rule or roll over my category budgets into the new cycle',
+    ],
+  },
+  {
     id: 'receipt',
     label: 'Receipts & Multi-Log',
     icon: Camera,
@@ -357,7 +381,7 @@ export const AVAILABLE_MODELS: ModelOption[] = [
     badge: 'Recommended',
     quotaSummary: 'Dynamic • Auto failover',
     description:
-      'Prioritizes high-speed Gemini 3 Flash and auto-cascades to Gemini 3.8 Flash & Flash Lite with local engine failover.',
+      'Prioritizes high-speed Gemini 3 Flash and auto-cascades to Gemini 4 Flash (Hydrogen), 3.1 Flash Lite & 2.5 Flash.',
   },
   {
     id: 'gemini-3-flash-preview',
@@ -369,16 +393,16 @@ export const AVAILABLE_MODELS: ModelOption[] = [
       'Ultra-responsive, high-capacity model with exceptional resilience during peak traffic and demand spikes.',
   },
   {
-    id: 'gemini-3.8-flash',
-    name: 'Gemini 3.8 Flash',
-    shortName: '3.8 Flash',
+    id: 'gemini-4-hydrogen',
+    name: 'Gemini 4 Flash (Hydrogen)',
+    shortName: '4 Hydrogen',
     badge: 'Deep Intelligence',
-    quotaSummary: '20 req/day (Free Tier)',
+    quotaSummary: '50 req/day (Free Tier)',
     description:
-      'Deep financial reasoning, stock forensics, scenario forecasting, and high accuracy receipt parsing.',
+      'Premier multimodal financial reasoning, stock forensics, scenario forecasting, and high-accuracy receipt parsing.',
   },
   {
-    id: 'gemini-3.1-flash-lite-preview',
+    id: 'gemini-3.1-flash-lite',
     name: 'Gemini 3.1 Flash Lite',
     shortName: '3.1 Flash Lite',
     badge: '500 req/day',
@@ -387,11 +411,11 @@ export const AVAILABLE_MODELS: ModelOption[] = [
       'Massive daily free quota, ultra-low latency, optimal for high-frequency day-to-day transaction logging.',
   },
   {
-    id: 'gemini-flash-latest',
-    name: 'Gemini Flash Latest',
-    shortName: 'Flash Latest',
-    badge: 'Standard Stable',
-    quotaSummary: '20 req/day (Free Tier)',
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    shortName: '2.5 Flash',
+    badge: 'Reliable Fallback',
+    quotaSummary: '100 req/day (Free Tier)',
     description:
       'Production stable release fallback for high reliability and general finance management.',
   },
@@ -1362,7 +1386,8 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
 
   // Model Routing & Quota Failover state
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    return localStorage.getItem('truespend_selected_model') || 'auto';
+    const saved = localStorage.getItem('truespend_selected_model') || 'auto';
+    return AVAILABLE_MODELS.some((m) => m.id === saved) ? saved : 'auto';
   });
   const [allowFallback, setAllowFallback] = useState<boolean>(() => {
     return localStorage.getItem('truespend_allow_fallback') !== 'false';
@@ -1470,8 +1495,25 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     subscriptions,
     contexts,
     investmentsData,
+    operationalRadar,
+    userSettings,
+    loading: isDashboardLoading,
+    ensureHistoryLoaded,
+    ensureInvestmentsLoaded,
+    ensureRadarLoaded,
     fetchData,
-  } = useDashboardData(token);
+  } = useDashboardData(token, 'advanced');
+
+  // Hydrate full 360° financial slices once per token after core bootstrap settles
+  const hydratedContextTokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!token || isDashboardLoading) return;
+    if (hydratedContextTokenRef.current === token) return;
+    hydratedContextTokenRef.current = token;
+    void ensureHistoryLoaded();
+    void ensureInvestmentsLoaded();
+    void ensureRadarLoaded();
+  }, [token, isDashboardLoading, ensureHistoryLoaded, ensureInvestmentsLoaded, ensureRadarLoaded]);
 
   const aiContext = useMemo(
     () =>
@@ -1485,6 +1527,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         subscriptions,
         contexts,
         investmentsData,
+        operationalRadar,
+        userSettings,
+        userProfile: user,
         focusScopes,
         responseDepth,
       }),
@@ -1498,6 +1543,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       subscriptions,
       contexts,
       investmentsData,
+      operationalRadar,
+      userSettings,
+      user,
       focusScopes,
       responseDepth,
     ],
@@ -1511,6 +1559,10 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     const budgetCount = budgets?.length || 0;
     const debtGoalCount =
       (debts?.length || 0) + (goals?.length || 0) + (subscriptions?.length || 0);
+    const radarCount =
+      (operationalRadar?.externalWealthSummary?.items?.length || 0) +
+      (operationalRadar?.upcomingCommitments?.length || 0) +
+      (operationalRadar?.pendingReviews?.length || 0);
     return {
       all: '360°',
       investments: `${posCount} pos`,
@@ -1518,6 +1570,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
       wallets: `${walletCount} accts`,
       budgets: `${budgetCount} caps`,
       debts_goals: `${debtGoalCount} items`,
+      assets_radar: `${radarCount} signals`,
       forecast: '90d/12m',
     };
   }, [
@@ -1528,6 +1581,9 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
     debts?.length,
     goals?.length,
     subscriptions?.length,
+    operationalRadar?.externalWealthSummary?.items?.length,
+    operationalRadar?.upcomingCommitments?.length,
+    operationalRadar?.pendingReviews?.length,
   ]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1884,7 +1940,7 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         ),
       );
       try {
-        const simRes = await fetch(getApiUrl('/api/chat/simulate-actions'), {
+        const simRes = await fetch('/api/chat/simulate-actions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ actions: message.actions }),
@@ -1935,7 +1991,11 @@ export function AIChat({ onDataChange }: AIChatProps = {}) {
         const errData = await response.json().catch(() => ({}));
         throw new Error(errData.error || 'Action could not be completed');
       }
-      await fetchData();
+      await Promise.all([
+        fetchData(),
+        ensureRadarLoaded(true),
+        ensureInvestmentsLoaded(true),
+      ]);
       onDataChange?.();
       setMessages((prev) =>
         prev.map((item, i) => (i === index ? { ...item, actionStatus: 'approved' } : item)),

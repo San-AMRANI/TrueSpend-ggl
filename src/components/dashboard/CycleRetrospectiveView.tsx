@@ -315,11 +315,13 @@ Golden Rule: ${retrospective.goldenRule}`;
               <span>
                 {selectedModel === 'auto'
                   ? 'Auto Smart Routing'
-                  : selectedModel === 'gemini-3.8-flash'
-                  ? 'Gemini 3.8 Flash'
+                  : selectedModel === 'gemini-3-flash-preview'
+                  ? 'Gemini 3 Flash'
+                  : selectedModel === 'gemini-4-hydrogen'
+                  ? 'Gemini 4 Flash'
                   : selectedModel === 'gemini-3.1-flash-lite'
                   ? '3.1 Flash Lite'
-                  : 'Flash Latest'}
+                  : 'Gemini 2.5 Flash'}
               </span>
               <ChevronDown className="w-3 h-3 text-gray-400" />
             </button>
@@ -330,10 +332,11 @@ Golden Rule: ${retrospective.goldenRule}`;
                   Select Routing Model
                 </div>
                 {[
-                  { id: 'auto', label: 'Auto (Smart Fallback)', desc: 'Prioritizes deep analysis, fails over smoothly' },
-                  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash', desc: 'Deep intelligence & reasoning' },
+                  { id: 'auto', label: 'Auto (Smart Fallback)', desc: 'Prioritizes fast/deep routing, fails over smoothly' },
+                  { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', desc: 'High availability & speed' },
+                  { id: 'gemini-4-hydrogen', label: 'Gemini 4 Flash (Hydrogen)', desc: 'Deep intelligence & reasoning' },
                   { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', desc: '500 calls/day high quota' },
-                  { id: 'gemini-flash-latest', label: 'Gemini Flash Latest', desc: 'Standard production fallback' },
+                  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', desc: 'Standard production fallback' },
                 ].map((m) => (
                   <button
                     key={m.id}
