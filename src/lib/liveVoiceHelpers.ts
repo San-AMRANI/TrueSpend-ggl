@@ -263,7 +263,7 @@ export function decodeBase64AudioToPcmFloat32(
  * Produces a bounded, valid JSON string for Live Voice system instructions without
  * cutting JSON syntax mid-object or overflowing WebSocket setup frames.
  */
-export function compactLiveContext(contextData: unknown, maxChars: number = 24_000): string {
+export function compactLiveContext(contextData: unknown, maxChars: number = 32_000): string {
   if (!contextData || typeof contextData !== 'object') {
     return typeof contextData === 'string' && contextData.trim()
       ? contextData.slice(0, maxChars)
@@ -277,17 +277,21 @@ export function compactLiveContext(contextData: unknown, maxChars: number = 24_0
     const record = contextData as Record<string, unknown>;
     const compacted: Record<string, unknown> = {};
     const arrayLimits: Record<string, number> = {
-      currentPeriodTransactions: 20,
-      allRecentTransactions: 15,
-      recentTransactions: 15,
-      positions: 20,
-      recentTrades: 12,
+      currentPeriodTransactions: 24,
+      allRecentTransactions: 16,
+      recentTransactions: 16,
+      positions: 22,
+      recentTrades: 14,
       manualStockOrders: 12,
-      wallets: 15,
-      categoryBudgets: 20,
-      debts: 15,
-      goals: 15,
-      subscriptions: 15,
+      wallets: 16,
+      budgets: 24,
+      categoryBudgets: 24,
+      debts: 18,
+      goals: 16,
+      subscriptions: 18,
+      payrolls: 12,
+      historicalFinancialPeriods: 8,
+      spendingContexts: 10,
     };
 
     for (const [key, val] of Object.entries(record)) {
@@ -316,12 +320,20 @@ export function compactLiveContext(contextData: unknown, maxChars: number = 24_0
 
     // Final deterministic priority pick
     const priorityKeys = [
+      'userProfile',
       'financialPeriod',
       'kpis',
+      'unifiedNetWorthBreakdown',
       'safeToSpend',
       'wallets',
+      'externalWealth',
+      'operationalRadar',
       'stockPortfolio',
+      'historicalFinancialPeriods',
+      'predictiveForecast',
+      'budgets',
       'categoryBudgets',
+      'payrolls',
       'debts',
       'goals',
       'subscriptions',

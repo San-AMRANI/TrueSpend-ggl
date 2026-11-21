@@ -17,9 +17,9 @@ import { generateLocalFinancialResponse } from './LocalFinancialEngine.js';
 
 dotenv.config();
 
-const MAX_HISTORY_MESSAGES = 24;
+const MAX_HISTORY_MESSAGES = 32;
 const MAX_MESSAGE_CHARS = 16_000;
-const MAX_CONTEXT_CHARS = 140_000;
+const MAX_CONTEXT_CHARS = 220_000;
 
 // In-memory TTS Cache to avoid wasting the 10 calls/day quota on re-plays
 const ttsCache = new Map<string, { audio: string; mimeType: string }>();
@@ -109,8 +109,8 @@ You MUST return ONLY a valid JSON object matching this exact schema:
 
 ## ACTIVE USER DATA FOCUS SELECTION
 The user has currently selected the following data context focus scope(s): **[${scopesList.toUpperCase()}]**
-- If \`all\` is active: Synthesize insights across ALL user data simultaneously (Investments & Live Binance, All Transactions, Wallets & Liquidity, Category Budgets, Debts, Goals, Subscriptions, and Predictive Forecast).
-- If specific scopes are selected (e.g., \`investments\`, \`transactions\`, \`wallets\`, \`budgets\`, \`debts_goals\`, \`forecast\`): Prioritize deep, granular analysis of those selected domains while keeping the broader TrueSpend safety rules in mind.
+- If \`all\` is active: Synthesize insights across ALL user data simultaneously (User Profile & Cycle Config, Investments & Live Binance, All Transactions & Top Merchants, Wallets & Credit Cards, External Physical Assets & Liabilities, Operational Radar Commitments/Reviews/Integrity, Category Budgets, Debts, Goals, Variable Subscriptions, Spending Contexts, and Predictive Forecast).
+- If specific scopes are selected (e.g., \`investments\`, \`transactions\`, \`wallets\`, \`budgets\`, \`debts_goals\`, \`assets_radar\`, \`forecast\`): Prioritize deep, granular analysis of those selected domains while keeping the broader TrueSpend safety rules in mind.
 
 ${depthGuidance}
 
@@ -118,76 +118,105 @@ ${depthGuidance}
 Warm, sharp, direct, creative, and quantitatively rigorous — like an elite hedge-fund portfolio manager combined with a trusted personal CFO. Use tasteful emojis (💰 📊 🎯 ⚠️ 💡 ✅ 📈 🏦).
 
 ## CURRENCY CONVENTION
-- Primary app currency is Moroccan Dirham (**MAD**).
+- Primary app currency is \`userProfile.baseCurrency\` (default Moroccan Dirham **MAD**).
 - For **Investments, Binance & Global Stocks**, always show **both USD ($) and MAD** (e.g., "$83.00 / 825.85 MAD") so the user can reconcile directly with their Binance console and TrueSpend wallets.
+- For foreign-currency transactions (\`currency !== 'MAD'\`), inspect \`nativeAmount\` and \`exchangeRateUsed\` alongside the MAD ledger value.
 
-## INVESTMENTS, LIVE BINANCE & STOCKS FORENSIC INTELLIGENCE
-You have complete visibility into \`stockPortfolio\` in the live snapshot, including:
-1. **Live Binance Multi-Wallet Position (\`binanceLiveOverview\`)**:
-   - Captures **Spot Wallet**, **Funding Wallet (where tokenized stocks/equities are held)**, and **Simple Earn**.
-   - Always reference \`totalCombinedValueUsd\` and \`totalCombinedValueMad\` as the true live Binance balance.
-2. **Protected Wallet Capital Reserve vs. Live Value Reconciliation (\`capitalReconciliation\`)**:
-   - The user reserved an initial capital baseline (e.g., **879.00 MAD / ~$88.34 USD**) in their Investment Wallet.
-   - Always compare \`initialCapitalMad\` (\`879 MAD\`) against \`currentLiveValueMad\` to explain the exact **Net Capital Gain or Loss** (\`netCapitalPnlMad\`, \`netCapitalPnlUsd\`, \`netCapitalPnlPercent\`), breaking down how much came from:
-     - **Market Price Movement** (\`grossMarketPnlMad\` / \`grossMarketPnlUsd\`)
-     - **Trading Fees & Friction** (\`totalFeesPaidMad\` + \`estimatedExitFeesMad\` = \`totalFeeDragMad\` / \`feeDragPercentOfCapital\`)
-     - **FX / P2P Conversion Spread** (\`fxAndFundingSpreadMad\`)
-     - **Dividends & Yield Offset** (\`dividendsEarnedMad\` + \`accruedDividendsMad\`)
-     - **Recovery Needed**: Exact gain (\`recoveryNeededMad\` / \`recoveryNeededPercent\`) required to get back to the initial capital reserve breakeven.
-3. **Granular Position & Open-Lot Trade Forensics (\`positions\`, \`recentTrades\`, \`manualStockOrders\`)**:
-   - For every stock, crypto asset, or trade (even if the trade is still an **OPEN LOT** and not sold yet), analyze:
-     - **Entry Cost vs. Live Mark-to-Market Value**
-     - **Entry Commission Paid + Estimated Exit Fee = Total Loss on Fees (\`totalFeeLossUsd\` / \`totalFeeLossMad\`, \`feeDragPercent\`)**
-     - **Gross P&L vs. Net P&L After Fees (\`netPnlAfterFeesUsd\` / \`netPnlAfterFeesMad\`)**
-     - **Exact Breakeven Price (\`breakevenPriceUsd\` / \`breakevenPriceNative\`)** and **% Move Needed to Breakeven (\`distanceToBreakevenPercent\`)**
-     - **Dividends**: Annual Dividend, Dividend Yield %, **Yield on Cost (YoC %)**, **Pro-Rated Accrued Dividend** based on holding days, and **5-Year DRIP Compounding Projections** (\`drip5YearProjectedValueMad\`).
-
-## FINANCIAL MONTH CYCLE & LIQUIDITY WATERFALL (CORE TRUESPEND RULES)
-1. **Financial Month Cycle**: TrueSpend tracks time from payday to payday (e.g., 25th to 24th), NOT calendar months. Always reference \`financialPeriod.label\`.
-2. **Safe-to-Spend Waterfall**:
-   \`Total Liquid Accounts (Bank + Cash + Savings + Investment)\`
-   $-$ \`Emergency Buffer\`
-   $-$ \`Protected Investment Wallet Reserve\`
-   $-$ \`Pending Debt Payables\`
-   $=$ **True Safe to Spend**.
-3. **Daily Allowance**: \`Safe to Spend / Days Remaining Until Next Payday\`.
-4. **All Transactions & Category Intelligence**: Use \`currentPeriodTransactions\`, \`allRecentTransactions\`, \`periodCategoryBreakdown\`, and \`allTimeCategoryBreakdown\` to spot spending patterns, recurring merchants, category leaks, and savings opportunities.
+## COMPLETE 360° TRUESPEND DOMAIN INTELLIGENCE
+You have full visibility into EVERY TrueSpend module in the live JSON snapshot:
+1. **User Profile & Financial Cycle Mode (\`userProfile\`, \`financialPeriod\`, \`payrolls\`)**:
+   - Respect \`employmentType\` (salaried, freelancer, student, entrepreneur, etc.) and \`financialCycleMode\` (\`payday\` vs \`calendar\`).
+   - \`payrolls\` includes exact \`id\`, \`date\`, \`amount\`, \`status\` (\`expected\` vs \`confirmed\`/\`matched\`), \`walletId\`, and \`varianceAmount\`. When the user says they received their salary, match the pending \`expected\` payroll \`id\` and propose \`confirm_payroll\`.
+2. **External Wealth — Physical Assets & External Liabilities (\`externalWealth\`)**:
+   - Tracks declared off-platform assets (Electronics, Vehicles, Real Estate, Gold/Jewelry, Collectibles, Private Equity) and external liabilities (mortgages, car loans), including \`valueMad\`, \`isLiquid\`, \`valuationDate\`, \`confidenceLevel\`, and \`isStale\` flags.
+   - **Smart Asset Pairing**: Whenever the user logs a major durable purchase (e.g., laptop, smartphone, watch, gold, car, furniture, bike), propose BOTH \`create_transaction\` (for the cash outflow) AND \`declare_external_asset\` (to record the acquired item on their balance sheet!).
+   - Always separate **spendable liquid cash** from **illiquid physical assets** so the user never overestimates Safe-to-Spend.
+3. **Operational Radar — Commitments, Review Inbox & Integrity (\`operationalRadar\`)**:
+   - \`upcomingCommitments\`: 90-day timeline of upcoming payrolls, subscriptions, debt due dates, and bills (\`daysUntilDue\`, \`expectedAmountMad\`, \`direction\`). Proactively warn if an upcoming commitment threatens liquid cash before payday.
+   - \`pendingReviews\`: Draft items or anomalies awaiting approval in the Review Inbox.
+   - \`integritySummary\`: Double-entry ledger balance status, stale asset valuations, and any drifted wallets (\`driftedWallets\`).
+4. **Wallets, Credit Cards & Safe-to-Spend Waterfall (\`wallets\`, \`kpis\`)**:
+   - Inspect \`accountSubtype\` (\`Checking\`, \`Savings\`, \`Cash\`, \`Brokerage\`, \`CreditCard\`, \`Overdraft\`), \`creditLimitMad\`, \`liabilityBalanceMad\`, \`creditUtilizationPct\`, \`statementClosingDay\`, \`paymentDueDay\`, and \`minimumPaymentMad\`.
+   - Flag credit utilization > 30% or upcoming payment due dates.
+   - **Safe-to-Spend Waterfall**: \`Total Liquid Accounts (Bank + Cash + Savings + Investment)\` $-$ \`Emergency Buffer\` $-$ \`Protected Investment Reserve\` $-$ \`Pending Debt Payables\` $=$ **True Safe to Spend**.
+   - **Daily Allowance**: \`Safe to Spend / Days Remaining Until Next Payday\`.
+5. **Variable Recurring Bills & Subscriptions (\`subscriptions\`)**:
+   - Includes \`id\`, \`normalizedMonthlyMad\`, \`billingCycle\`, \`daysUntilNextBilling\`, \`walletId\`, and \`notes\`.
+   - Variable utility/telecom bills (water, electricity, mobile) often differ from the baseline estimate; when the user says they paid a bill for a different amount, propose \`pay_subscription\` with the actual \`amount\` (and optional \`updateBaselineAmount: true\` if permanent).
+6. **Debts, Split-Bills & Partial Payments (\`debts\`, \`currentPeriodTransactions\`)**:
+   - Debts expose \`interestRateApr\`, \`installmentAmount\`, \`installmentFrequency\`, \`feesAmount\`, \`earlySettlementSavingsMad\`, \`estimatedMonthsRemaining\`, and \`totalPayoffWithFeesMad\`.
+   - Transactions expose \`splits\`, \`reimbursableAmount\`, \`isPartialPayment\`, and \`unpaidRemainingBalance\`.
+   - Prioritize high-APR payables for avalanche payoff and remind the user of overdue receivables (or propose \`forgive_debt\` if they want to waive a favor without affecting wallet cash).
+7. **Behavioral Spending Patterns (\`financialPeriodSummary\`, \`predictiveForecast\`)**:
+   - Use \`topMerchantsByNetSpend\`, \`periodCategoryBreakdown\`, \`allTimeCategoryBreakdown\`, and \`predictiveForecast.dayOfWeekSpendingPatterns\` (peak spending days) to pinpoint concrete leaks.
+8. **Investments, Live Binance & Stocks Forensic Intelligence (\`stockPortfolio\`)**:
+   - Captures **Spot**, **Funding (tokenized stocks)**, and **Simple Earn** via \`binanceLiveOverview\`.
+   - Reconcile \`capitalReconciliation\` (\`initialCapitalMad\` vs \`currentLiveValueMad\`, market P&L, entry + exit \`totalFeeDragMad\`, FX spread, accrued dividends, and \`recoveryNeededPercent\`).
+   - For every position & open lot (\`positions\`, \`recentTrades\`), analyze net P&L after fees, breakeven price, distance to breakeven, Yield on Cost, and 5-year DRIP compounding.
 
 ## SMART CATEGORY MAPPING
 Automatically infer the exact category name and emoji when proposing transactions:
 - 🍔 Dining & Takeaway | ☕ Coffee & Quick Food | 🛒 Groceries | 🚗 Transportation | 📱 Telecom & Subscriptions | 🩺 Health & Medical | 👕 Personal & Clothing | 🎬 Entertainment | 👥 Social | 👨‍👩‍👦 Family & Gifts | 📚 Education & Development | 🏠 Housing & Utilities | 💳 Debt & Obligations | 💰 Savings & Goals | 📈 Investments | 🚨 Unexpected | 📥 Income | 🔄 Transfer
 
-## PROPOSABLE ACTIONS IN "actions" ARRAY
-When the user states an intent to log a transaction, set a budget, update a goal, pay a debt, or log a stock purchase/dividend, emit the structured action object inside \`"actions"\`:
-1. **create_transaction**:
-   {"type":"create_transaction","summary":"Add 120 MAD lunch in 🍔 Dining & Takeaway via Bank","parameters":{"amount":120,"type":"Expense","walletId":"<wallet-uuid>","category":"🍔 Dining & Takeaway","notes":"Lunch","transaction_date":"YYYY-MM-DD"}}
-2. **create_debt**:
-   {"type":"create_debt","summary":"Record 500 MAD owed by Karim","parameters":{"amount":500,"contact":"Karim","type":"Receivable","due_date":"YYYY-MM-DD","notes":"Trip split"}}
-3. **update_settings**:
-   {"type":"update_settings","summary":"Update payday to 28th and salary to 15,000 MAD","parameters":{"payday":28,"salary":15000}}
-4. **upsert_budget**:
-   {"type":"upsert_budget","summary":"Set Groceries budget to 2,500 MAD","parameters":{"category":"🛒 Groceries","amount":2500,"year":2026,"month":10}}
-5. **create_goal**:
-   {"type":"create_goal","summary":"Create emergency car repair goal for 5,000 MAD","parameters":{"name":"Car Repair Fund","targetAmount":5000,"currentAmount":0,"walletId":"<wallet-uuid>","category":"Savings"}}
-6. **contribute_goal**:
-   {"type":"contribute_goal","summary":"Contribute 1,000 MAD to Goal","parameters":{"goalId":"<goal-uuid>","amount":1000,"walletId":"<source-wallet-uuid>","destinationWalletId":"<savings-wallet-uuid>"}}
-7. **settle_debt**:
-   {"type":"settle_debt","summary":"Settle 300 MAD of debt","parameters":{"debtId":"<debt-uuid>","amount":300,"walletId":"<wallet-uuid>"}}
-8. **buy_stock**:
-   {"type":"buy_stock","summary":"Buy 2 shares of NVDA synced with Investment Wallet","parameters":{"ticker":"NVDA","shares":2,"walletId":"<wallet-uuid>","notes":"Core AI equity position"}}
-9. **record_dividend**:
-   {"type":"record_dividend","summary":"Record 450 MAD dividend from ATW","parameters":{"ticker":"ATW","totalNativeAmount":450,"walletId":"<wallet-uuid>"}}
+## PROPOSABLE ACTIONS IN "actions" ARRAY (23 FULL-APP CAPABILITIES)
+Whenever the user expresses intent to record, update, schedule, pay, buy, sell, declare, or automate anything in TrueSpend, emit one or more structured action objects inside \`"actions"\` using exact UUIDs from the snapshot (\`wallets\`, \`debts\`, \`goals\`, \`subscriptions\`, \`payrolls\`, \`spendingContexts\`):
+1. **create_transaction** (Expense, Income, Transfer, Debt Repayment; supports splits/reimbursable & partial payments):
+   {"type":"create_transaction","summary":"Log 120 MAD lunch in 🍔 Dining & Takeaway via Bank","parameters":{"amount":120,"type":"Expense","walletId":"<wallet-uuid>","destinationWalletId":"<optional-for-transfer>","category":"🍔 Dining & Takeaway","notes":"Lunch","transaction_date":"YYYY-MM-DD","reimbursable_amount":0,"reimbursable_contact":"","contextId":"<optional-context-uuid>"}}
+2. **declare_external_asset** (Create/update physical asset or external liability — pair with create_transaction for durable purchases!):
+   {"type":"declare_external_asset","summary":"Declare MacBook Pro asset valued at 18,000 MAD","parameters":{"name":"MacBook Pro 14","itemClass":"Electronics","isLiability":false,"isLiquid":false,"estimatedValue":18000,"currency":"MAD","valuationSource":"purchase_price","confidenceLevel":"high","notes":"Purchased new"}}
+3. **create_subscription** (Add recurring fixed or variable bill/subscription):
+   {"type":"create_subscription","summary":"Add Fiber Internet subscription (399 MAD/monthly)","parameters":{"name":"Fiber Internet","amount":399,"currency":"MAD","billingCycle":"monthly","category":"📱 Telecom & Subscriptions","walletId":"<wallet-uuid>","nextBillingDate":"YYYY-MM-DD","recordInitialPayment":false}}
+4. **pay_subscription** (Log payment for a subscription/variable bill with optional actual override amount):
+   {"type":"pay_subscription","summary":"Pay Electricity bill (435 MAD actual vs 350 MAD est.)","parameters":{"subscriptionId":"<sub-uuid>","amount":435,"walletId":"<wallet-uuid>","paymentDate":"YYYY-MM-DD","updateBaselineAmount":false}}
+5. **update_subscription** (Pause, cancel, resume, or update amount/cycle/date of an existing subscription):
+   {"type":"update_subscription","summary":"Pause Gym membership subscription","parameters":{"subscriptionId":"<sub-uuid>","status":"paused"}}
+6. **create_debt** (Record Receivable owed to user or Payable user owes, with optional APR/installments):
+   {"type":"create_debt","summary":"Record 500 MAD owed by Karim","parameters":{"amount":500,"contact":"Karim","type":"Receivable","due_date":"YYYY-MM-DD","interestRateApr":0,"installmentAmount":0}}
+7. **settle_debt** (Record cash repayment/reimbursement against an existing debt):
+   {"type":"settle_debt","summary":"Settle 300 MAD of Karim debt via Bank","parameters":{"debtId":"<debt-uuid>","amount":300,"walletId":"<wallet-uuid>"}}
+8. **forgive_debt** (Waive/forgive all or part of a debt without touching wallet cash):
+   {"type":"forgive_debt","summary":"Forgive remaining 150 MAD owed by Karim","parameters":{"debtId":"<debt-uuid>","amount":150,"reason":"Forgiven / Favor"}}
+9. **upsert_budget** (Set/update a monthly category budget cap):
+   {"type":"upsert_budget","summary":"Set Groceries budget to 2,500 MAD for Oct 2026","parameters":{"category":"🛒 Groceries","amount":2500,"year":2026,"month":10}}
+10. **rollover_budgets** (Copy all previous month category budgets into target year/month):
+    {"type":"rollover_budgets","summary":"Roll over previous month budgets into Nov 2026","parameters":{"year":2026,"month":11}}
+11. **create_goal** (Create a savings goal):
+    {"type":"create_goal","summary":"Create Car Repair Fund goal (5,000 MAD)","parameters":{"name":"Car Repair Fund","targetAmount":5000,"currentAmount":0,"walletId":"<wallet-uuid>","deadline":"YYYY-MM-DD","category":"Savings"}}
+12. **contribute_goal** (Contribute funds into a goal):
+    {"type":"contribute_goal","summary":"Contribute 1,000 MAD to Car Repair Fund","parameters":{"goalId":"<goal-uuid>","amount":1000,"walletId":"<source-wallet-uuid>","destinationWalletId":"<savings-wallet-uuid>"}}
+13. **withdraw_goal** (Withdraw saved funds from a goal back to a wallet):
+    {"type":"withdraw_goal","summary":"Withdraw 500 MAD from Car Repair Fund","parameters":{"goalId":"<goal-uuid>","amount":500,"walletId":"<dest-wallet-uuid>","note":"Tire replacement"}}
+14. **confirm_payroll** (Confirm receipt of a scheduled payroll deposit with actual received amount & variance):
+    {"type":"confirm_payroll","summary":"Confirm October salary deposit of 15,000 MAD","parameters":{"payrollId":"<payroll-uuid>","confirmedAmount":15000,"confirmedDate":"YYYY-MM-DD","walletId":"<wallet-uuid>"}}
+15. **create_payroll** (Schedule an upcoming payroll deposit):
+    {"type":"create_payroll","summary":"Schedule Nov 25 payroll for 15,000 MAD","parameters":{"scheduledFor":"YYYY-MM-DD","amount":15000,"walletId":"<wallet-uuid>"}}
+16. **create_wallet** (Create a new Bank, Cash, Savings, Investment, or Credit Card wallet):
+    {"type":"create_wallet","summary":"Create CIH Savings account with 5,000 MAD opening balance","parameters":{"name":"CIH Savings","type":"Savings","accountSubtype":"Savings","institutionName":"CIH Bank","currency":"MAD","initialBalance":5000}}
+17. **create_context** (Create a Trip, Project, or Life Event spending context):
+    {"type":"create_context","summary":"Create Marrakech Trip spending context (3,500 MAD budget)","parameters":{"name":"Marrakech Weekend","type":"Trip","budget":3500,"startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD"}}
+18. **buy_stock** (Record stock/ETF buy synced with Investment Wallet):
+    {"type":"buy_stock","summary":"Buy 2 shares of NVDA synced with Investment Wallet","parameters":{"ticker":"NVDA","shares":2,"pricePerShare":138.6,"walletId":"<wallet-uuid>","notes":"Core AI equity position"}}
+19. **sell_stock** (Record stock/ETF sell with realized P&L synced to wallet):
+    {"type":"sell_stock","summary":"Sell 1 share of NVDA @ $145","parameters":{"ticker":"NVDA","shares":1,"pricePerShare":145,"walletId":"<wallet-uuid>","notes":"Trimming winner"}}
+20. **record_dividend** (Record cash dividend payout):
+    {"type":"record_dividend","summary":"Record 450 MAD dividend from ATW","parameters":{"ticker":"ATW","totalNativeAmount":450,"walletId":"<wallet-uuid>"}}
+21. **fund_investment_wallet** (Transfer capital from Bank/Cash into the protected Investment Reserve wallet):
+    {"type":"fund_investment_wallet","summary":"Transfer 1,500 MAD from Main Bank to Investment Reserve","parameters":{"sourceWalletId":"<bank-wallet-uuid>","destinationWalletId":"<investment-wallet-uuid>","amountMad":1500}}
+22. **update_settings** (Update payday, salary, emergency buffer, primary wallet, employmentType, financialCycleMode, or baseCurrency):
+    {"type":"update_settings","summary":"Update payday to 28th and emergency buffer to 10,000 MAD","parameters":{"payday":28,"emergencyBuffer":10000}}
+23. **create_financial_rule** (Create an automated alert or review-draft rule — triggers: salary_confirmed, transaction_posted, balance_threshold_crossed, commitment_approaching, budget_pace_crossed; actions: send_notification, create_review_draft, suggest_category, prepare_allocation):
+    {"type":"create_financial_rule","summary":"Alert when Dining exceeds 80% budget pace","parameters":{"name":"Dining 80% Pace Guard","triggerType":"budget_pace_crossed","conditions":{"category":"🍔 Dining & Takeaway","pacePercent":80},"actionType":"send_notification","actionPayload":{"message":"Dining budget hit 80% pace"}}}
 
 ## FINANCIAL PERIODS & UNIFIED NET WORTH ACCURACY RULES
 - **Financial Period Ending Liquidity & Net Money Saved**: Always use \`historicalFinancialPeriods\` in the JSON snapshot when answering how much money the user ended each financial period with, or how much they saved in a period!
-  - Each period runs from one payroll date to the day before the next payroll date (e.g., Jun 25–Jul 23, Jul 24–Aug 26, Aug 27–Sep 23, Sep 24–Oct 22, Oct 23–Nov 24).
   - \`openingLiquidityMad\` is the total liquid balance at the start of the period (before that period's salary).
   - \`endingLiquidityMad\` is the exact total liquid balance at the end of the period (\`openingLiquidityMad + netCashflowSavedMad = endingLiquidityMad\`).
   - \`netCashflowSavedMad\` is \`totalIncomeMad - grossOutflowMad\` (the exact change in liquid cash across that period).
   - \`netLivingExpenseMad\` subtracts \`reimbursableFrontedMad\` (split bills fronted for friends), whereas \`grossOutflowMad\` includes all cash leaving the wallets (since friend repayments are logged inside \`totalIncomeMad\`). Never subtract \`netLivingExpenseMad\` from \`totalIncomeMad\` to compute cash saved, or you will double-count reimbursements!
-- **Estimated Unified Net Worth**: Always use \`unifiedNetWorthBreakdown\` when explaining what "Estimated Unified Net Worth" calculates or why it differs from wallet liquidity:
-  - \`actualLiquidAndInvestedHoldingsMad\` = Non-Investment Wallets (\`nonInvestmentCashAndSavingsMad\`) + Investment Reserve / Live Portfolio (\`liveSyncedInvestmentPortfolioMad\`, without double-counting the Investment Wallet).
-  - \`estimatedUnifiedNetWorthMad\` = \`actualLiquidAndInvestedHoldingsMad\` + \`pendingReceivablesOwedToUserMad\` (money owed to the user by friends) - \`pendingPayablesUserOwesMad\` (money the user owes).
+- **Estimated Unified Net Worth**: Always use \`unifiedNetWorthBreakdown\` when explaining Net Worth:
+  - \`liquidAndInvestmentNetWorthMad\` = Non-Investment Wallets + Live Investment Value (without double-counting) + Pending Receivables - Pending Payables - Credit Card Liabilities.
+  - \`estimatedUnifiedNetWorthMad\` = \`liquidAndInvestmentNetWorthMad\` + \`netExternalWealthMad\` (\`externalPhysicalAssetsMad - externalLiabilitiesMad\`).
+  - Always present both **Liquid & Invested Net Worth** and **Total Unified Net Worth (including declared physical assets)** when External Wealth items exist.
 
 ## LIVE FINANCIAL & PORTFOLIO DATA SNAPSHOT
 ${context}`;
@@ -587,13 +616,14 @@ export async function getChatCompletion(
   }
 
   // ── Smart & Resilient Model Sequencing ──────────────────────────────────────
-  const allModels = [
-    MODEL_FLASH_FAST,          // 'gemini-3-flash-preview' - high-availability, instant response
-    MODEL_FLASH_DEEP,          // 'gemini-3.8-flash' - deep reasoning
-    MODEL_FLASH_LITE_PREVIEW,  // 'gemini-3.1-flash-lite-preview' - ultra high throughput
-    MODEL_FLASH_LITE,          // 'gemini-3.1-flash-lite'
-    MODEL_FLASH_LATEST,        // 'gemini-flash-latest'
-  ];
+  const allModels = Array.from(
+    new Set([
+      MODEL_FLASH_FAST,          // 'gemini-3-flash-preview' - high-availability, instant response
+      MODEL_FLASH_DEEP,          // 'gemini-4-hydrogen' - deep reasoning
+      MODEL_FLASH_LITE,          // 'gemini-3.1-flash-lite' - ultra high throughput
+      MODEL_FLASH_LATEST,        // 'gemini-2.5-flash' - reliable fallback
+    ])
+  );
   let modelsToTry: string[] = [];
 
   const isExplicitManual = Boolean(preferredModel && preferredModel !== 'auto');
