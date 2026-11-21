@@ -9,18 +9,22 @@ import { coreAuditService } from './CoreAuditService.js';
 export interface SettleDebtDTO {
   amount: number;
   contact?: string;
-  counterpartyType?: 'Person' | 'Institution' | 'Merchant';
+  counterpartyType?: 'Person' | 'Institution' | 'Merchant' | 'person' | 'institution' | 'merchant' | 'employer';
   type?: 'Receivable' | 'Payable';
   debt_id?: string;
   due_date?: string;
+  /** Optional YYYY-MM-DD date when the loan was given or received. */
+  loanDate?: string;
   interestRateApr?: number;
-  rateType?: 'none' | 'fixed' | 'variable';
+  rateType?: 'none' | 'zero' | 'fixed' | 'variable';
   installmentAmount?: number;
   installmentFrequency?: 'one_time' | 'monthly' | 'biweekly' | 'weekly';
   feesAmount?: number;
   currency?: string;
-  /** Wallet that sends or receives the settlement money. */
+  /** Wallet that sends or receives the settlement or loan disbursement money. */
   walletId?: string;
+  /** If true when creating a new debt, deducts from wallet (Receivable / Loan Given) or deposits into wallet (Payable / Loan Received). */
+  recordWalletMovement?: boolean;
   category?: string;
   /** If true, waives/forgives the debt without creating a wallet reimbursement/repayment transaction. */
   isForgiven?: boolean;
@@ -266,6 +270,20 @@ export class DebtService {
     };
   }
 
+  private async resolveOwnedWalletId(userId: string, requestedWalletId?: string): Promise<string | null> {
+    const userWallets = await walletService.getWallets(userId);
+    if (requestedWalletId) {
+      const match =
+        userWallets.find((w) => w.id === requestedWalletId) ||
+        userWallets.find((w) => w.name.toLowerCase() === requestedWalletId.trim().toLowerCase());
+      if (!match) {
+        throw new Error('Selected wallet does not belong to your account.');
+      }
+      return match.id;
+    }
+    return userWallets.find((w) => w.isMain)?.id || userWallets[0]?.id || null;
+  }
+
   async processDebt(userId: string, dto: SettleDebtDTO) {
     if (dto.debt_id) {
       if (dto.isForgiven) {
@@ -276,18 +294,21 @@ export class DebtService {
         });
       }
 
+      const settleAmount = Number(dto.amount);
+      if (!Number.isFinite(settleAmount) || settleAmount <= 0) {
+        throw new Error('Settlement amount must be greater than zero.');
+      }
+
       const debt = await debtRepository.findByIdAndUserId(dto.debt_id, userId);
       if (!debt) {
         throw new Error('Debt not found');
       }
 
       const currentRemaining = parseFloat(debt.remainingBalance as unknown as string);
-      const newRemaining = Math.max(0, Number((currentRemaining - dto.amount).toFixed(2)));
+      const newRemaining = Math.max(0, Number((currentRemaining - settleAmount).toFixed(2)));
       const txType: 'Income' | 'Expense' = debt.type === 'Receivable' ? 'Income' : 'Expense';
-      const txCategory = dto.category || (debt.type === 'Receivable' ? '📥 Income' : '💳 Debt & Obligations');
-      const userWallets = await walletService.getWallets(userId);
-      const targetWalletId =
-        dto.walletId || userWallets.find((w) => w.isMain)?.id || userWallets[0]?.id || null;
+      const txCategory = dto.category || (debt.type === 'Receivable' ? '🔙 Reimbursement' : '💳 Debt & Obligations');
+      const targetWalletId = await this.resolveOwnedWalletId(userId, dto.walletId);
 
       await db.transaction(async (txDb) => {
         await debtRepository.update(
@@ -303,7 +324,7 @@ export class DebtService {
         const newTx = await transactionRepository.create(
           {
             userId,
-            amount: String(dto.amount),
+            amount: String(settleAmount),
             type: txType,
             walletId: targetWalletId,
             category: txCategory,
@@ -315,7 +336,7 @@ export class DebtService {
         await transactionRepository.createSplit(
           {
             transactionId: newTx.id,
-            reimbursableAmount: debt.type === 'Receivable' ? String(dto.amount) : '0',
+            reimbursableAmount: debt.type === 'Receivable' ? String(settleAmount) : '0',
             linkedContactId: dto.debt_id,
           },
           txDb
@@ -334,31 +355,122 @@ export class DebtService {
 
       return { message: 'Debt settled' };
     } else {
-      const newDebt = await debtRepository.create({
-        userId,
-        contactName: dto.contact || 'Unknown',
-        type: dto.type || 'Receivable',
-        originalAmount: String(dto.amount),
-        remainingBalance: String(dto.amount),
-        status: 'Pending',
-        dueDate: this.parseDueDate(dto.due_date),
+      const principalAmount = Number(dto.amount);
+      if (!Number.isFinite(principalAmount) || principalAmount <= 0) {
+        throw new Error('Loan or debt amount must be greater than zero.');
+      }
+
+      const contactName = (dto.contact || '').trim();
+      if (!contactName) {
+        throw new Error('Contact or counterparty name is required.');
+      }
+
+      const debtType: 'Receivable' | 'Payable' = dto.type === 'Payable' ? 'Payable' : 'Receivable';
+      const parsedDueDate = this.parseDueDate(dto.due_date);
+      const parsedLoanDate = this.parseDueDate(dto.loanDate);
+      const recordWalletMovement = Boolean(dto.recordWalletMovement);
+
+      let targetWalletId: string | null = null;
+      if (recordWalletMovement) {
+        targetWalletId = await this.resolveOwnedWalletId(userId, dto.walletId);
+        if (!targetWalletId) {
+          throw new Error('Select a wallet to record this loan cash movement.');
+        }
+      }
+
+      const normalizedRateType =
+        dto.rateType === 'zero' ? 'none' : dto.rateType || 'none';
+
+      const createdResult = await db.transaction(async (txDb) => {
+        const newDebt = await debtRepository.create(
+          {
+            userId,
+            contactName,
+            type: debtType,
+            originalAmount: String(principalAmount),
+            remainingBalance: String(principalAmount),
+            status: 'Pending',
+            dueDate: parsedDueDate,
+            createdAt: parsedLoanDate,
+          },
+          txDb
+        );
+
+        await txDb
+          .update(debts)
+          .set({
+            counterpartyType: dto.counterpartyType || 'person',
+            principalBalance: String(principalAmount),
+            interestRateApr: String(Number(dto.interestRateApr ?? 0) || 0),
+            rateType: normalizedRateType,
+            installmentAmount:
+              dto.installmentAmount && Number(dto.installmentAmount) > 0
+                ? String(dto.installmentAmount)
+                : null,
+            installmentFrequency: dto.installmentFrequency || 'one_time',
+            feesAmount: String(Number(dto.feesAmount ?? 0) || 0),
+            currency: (dto.currency || 'MAD').toUpperCase(),
+          })
+          .where(eq(debts.id, newDebt.id));
+
+        let originTransactionId: string | null = null;
+
+        if (recordWalletMovement && targetWalletId) {
+          const isLoanGiven = debtType === 'Receivable';
+          const originTxType: 'Expense' | 'Income' = isLoanGiven ? 'Expense' : 'Income';
+          const originCategory = isLoanGiven ? '🤝 Loan Given' : '🤝 Loan Received';
+          const customNote = dto.note?.trim();
+          const originNotes = customNote
+            ? `${isLoanGiven ? 'Loan given to' : 'Loan received from'} ${contactName} — ${customNote}`
+            : `${isLoanGiven ? 'Loan given to' : 'Loan received from'} ${contactName}`;
+
+          const originTx = await transactionRepository.create(
+            {
+              userId,
+              amount: String(principalAmount),
+              type: originTxType,
+              walletId: targetWalletId,
+              category: originCategory,
+              notes: originNotes,
+              createdAt: parsedLoanDate,
+            },
+            txDb
+          );
+
+          originTransactionId = originTx.id;
+
+          await transactionRepository.createSplit(
+            {
+              transactionId: originTx.id,
+              reimbursableAmount: String(principalAmount),
+              linkedContactId: newDebt.id,
+            },
+            txDb
+          );
+
+          await coreAuditService.postJournalEntryForTransaction(
+            userId,
+            originTx,
+            {
+              idempotencyKey: `debt-origin-${originTx.id}`,
+              memo: originNotes,
+            },
+            txDb
+          );
+        }
+
+        return { debtId: newDebt.id, originTransactionId };
       });
 
-      await db
-        .update(debts)
-        .set({
-          counterpartyType: dto.counterpartyType || 'Person',
-          principalBalance: String(dto.amount),
-          interestRateApr: String(dto.interestRateApr ?? 0),
-          rateType: dto.rateType || 'none',
-          installmentAmount: dto.installmentAmount ? String(dto.installmentAmount) : null,
-          installmentFrequency: dto.installmentFrequency || 'one_time',
-          feesAmount: String(dto.feesAmount ?? 0),
-          currency: (dto.currency || 'MAD').toUpperCase(),
-        })
-        .where(eq(debts.id, newDebt.id));
-
-      return { message: 'Debt created', id: newDebt.id };
+      return {
+        message: recordWalletMovement
+          ? debtType === 'Receivable'
+            ? 'Loan given recorded and deducted from wallet'
+            : 'Loan received recorded and added to wallet'
+          : 'Debt created',
+        id: createdResult.debtId,
+        originTransactionId: createdResult.originTransactionId,
+      };
     }
   }
 

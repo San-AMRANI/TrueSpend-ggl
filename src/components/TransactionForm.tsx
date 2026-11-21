@@ -12,7 +12,7 @@ import { Trash2, AlertCircle, Plus, Users, Clock, Percent, Landmark } from 'luci
 
 type FormData = {
   amount: string;
-  type: 'Income' | 'Expense' | 'Transfer' | 'Loan Received' | 'Debt Repayment';
+  type: 'Income' | 'Expense' | 'Transfer' | 'Loan Given' | 'Loan Received' | 'Debt Repayment';
   walletId: string;
   toWalletId?: string;
   category: string;
@@ -52,7 +52,7 @@ interface TransactionFormProps {
   onSuccess: () => void;
   transaction?: Transaction | null;
   duplicateFrom?: Transaction | null;
-  initialType?: 'Income' | 'Expense' | 'Transfer';
+  initialType?: 'Income' | 'Expense' | 'Transfer' | 'Loan Given' | 'Loan Received';
   onCancel?: () => void;
   wallets?: { id: string; name: string; type?: string; isMain?: boolean }[];
   contexts?: any[];
@@ -95,6 +95,8 @@ export default function TransactionForm({
   const [unpaidDueDate, setUnpaidDueDate] = useState('');
 
   const [loanContactName, setLoanContactName] = useState('');
+  const [loanGivenContactName, setLoanGivenContactName] = useState('');
+  const [loanGivenDueDate, setLoanGivenDueDate] = useState('');
 
   // Declare purchased item as a Physical / External Asset in Net Worth
   const [declareAsAsset, setDeclareAsAsset] = useState(false);
@@ -132,6 +134,8 @@ export default function TransactionForm({
       setUnpaidContactName('');
       setUnpaidDueDate('');
       setLoanContactName('');
+      setLoanGivenContactName('');
+      setLoanGivenDueDate('');
       return;
     }
     if (transaction && transaction.type === 'Debt Repayment') {
@@ -139,12 +143,20 @@ export default function TransactionForm({
       return;
     }
     setError('');
+    const isSourceLoanReceived =
+      sourceTx.category === '🤝 Loan Received' && sourceTx.linkedDebtType === 'Payable';
+    const isSourceLoanGiven =
+      sourceTx.type === 'Expense' &&
+      sourceTx.category === '🤝 Loan Given' &&
+      sourceTx.linkedDebtType === 'Receivable';
+
     setFormData({
       amount: sourceTx.amount,
-      type:
-        sourceTx.category === '🤝 Loan Received' && sourceTx.linkedDebtType === 'Payable'
-          ? 'Loan Received'
-          : sourceTx.type,
+      type: isSourceLoanReceived
+        ? 'Loan Received'
+        : isSourceLoanGiven
+        ? 'Loan Given'
+        : sourceTx.type,
       walletId: sourceTx.walletId || wallets?.[0]?.id || '',
       toWalletId:
         sourceTx.destinationWalletId || (sourceTx as any).toWalletId || wallets?.[1]?.id || '',
@@ -156,8 +168,8 @@ export default function TransactionForm({
       contextId: sourceTx.contextId || null,
     });
 
-    // Populate Receivable Splits
-    if (sourceTx.splits && sourceTx.splits.length > 0) {
+    // Populate Receivable Splits (skip if this transaction is a dedicated Loan Given)
+    if (!isSourceLoanGiven && sourceTx.splits && sourceTx.splits.length > 0) {
       const receivableSplits = sourceTx.splits
         .filter((s) => s.linkedDebtType !== 'Payable')
         .map((s) => ({
@@ -172,7 +184,11 @@ export default function TransactionForm({
         setIsSplit(false);
         setSplits([{ reimbursable_amount: '', linked_contact_name: '' }]);
       }
-    } else if (sourceTx.reimbursableAmount && Number.parseFloat(sourceTx.reimbursableAmount) > 0) {
+    } else if (
+      !isSourceLoanGiven &&
+      sourceTx.reimbursableAmount &&
+      Number.parseFloat(sourceTx.reimbursableAmount) > 0
+    ) {
       setIsSplit(true);
       setSplits([
         {
@@ -208,6 +224,10 @@ export default function TransactionForm({
         ? sourceTx.linkedContactName || ''
         : ''
     );
+    setLoanGivenContactName(
+      isSourceLoanGiven ? sourceTx.linkedContactName || '' : ''
+    );
+    setLoanGivenDueDate('');
   }, [transaction, duplicateFrom, initialType]);
 
   useEffect(() => {
@@ -358,7 +378,7 @@ export default function TransactionForm({
       return;
     }
 
-    if (isSplit) {
+    if (formData.type === 'Expense' && isSplit) {
       const validSplits = splits.filter(
         (s) => s.linked_contact_name.trim() || Number.parseFloat(s.reimbursable_amount) > 0
       );
@@ -405,6 +425,11 @@ export default function TransactionForm({
       return;
     }
 
+    if (formData.type === 'Loan Given' && !loanGivenContactName.trim()) {
+      setError('Enter the person you lent money to.');
+      return;
+    }
+
     setLoading(true);
     try {
       const destWallet = (wallets || []).find((w) => w.id === formData.toWalletId);
@@ -412,6 +437,8 @@ export default function TransactionForm({
       let assignedCategory = formData.category;
       if (formData.type === 'Loan Received') {
         assignedCategory = '🤝 Loan Received';
+      } else if (formData.type === 'Loan Given') {
+        assignedCategory = '🤝 Loan Given';
       } else if (formData.type === 'Transfer') {
         if (destType === 'investment') {
           assignedCategory = '📈 Investments';
@@ -428,7 +455,12 @@ export default function TransactionForm({
 
       const payload = {
         amount,
-        type: formData.type === 'Loan Received' ? 'Income' : formData.type,
+        type:
+          formData.type === 'Loan Received'
+            ? 'Income'
+            : formData.type === 'Loan Given'
+            ? 'Expense'
+            : formData.type,
         walletId: formData.walletId,
         destinationWalletId: formData.type === 'Transfer' ? formData.toWalletId : undefined,
         category: assignedCategory,
@@ -437,6 +469,12 @@ export default function TransactionForm({
         contextId: formData.contextId || null,
         ...(formData.type === 'Loan Received'
           ? { loan_contact_name: loanContactName.trim() }
+          : {}),
+        ...(formData.type === 'Loan Given'
+          ? {
+              loan_given_contact_name: loanGivenContactName.trim(),
+              ...(loanGivenDueDate ? { loan_given_due_date: loanGivenDueDate } : {}),
+            }
           : {}),
         ...(formData.type === 'Expense' && isSplit
           ? {
@@ -541,6 +579,8 @@ export default function TransactionForm({
         setUnpaidContactName('');
         setUnpaidDueDate('');
         setLoanContactName('');
+        setLoanGivenContactName('');
+        setLoanGivenDueDate('');
         setDeclareAsAsset(false);
         setAssetName('');
         setAssetCategory('Electronics & Equipment');
@@ -557,6 +597,7 @@ export default function TransactionForm({
 
   const isEditable = transaction?.type !== 'Debt Repayment';
   const isLoanReceived = formData.type === 'Loan Received';
+  const isLoanGiven = formData.type === 'Loan Given';
   const activeCategories =
     formData.type === 'Expense' ? expenseCategories : incomeAndTransferCategories;
   const hasLegacyCategory =
@@ -622,12 +663,18 @@ export default function TransactionForm({
                       setFormData({
                         ...formData,
                         type,
-                        category: type === 'Loan Received' ? '🤝 Loan Received' : formData.category,
+                        category:
+                          type === 'Loan Received'
+                            ? '🤝 Loan Received'
+                            : type === 'Loan Given'
+                            ? '🤝 Loan Given'
+                            : formData.category,
                       });
                     }}
                   >
                     <option value="Expense">Expense</option>
                     <option value="Income">Income</option>
+                    <option value="Loan Given">Loan given (lent to someone)</option>
                     <option value="Loan Received">Loan received (to repay)</option>
                     <option value="Transfer">Transfer (e.g. ATM)</option>
                   </Select>
@@ -727,7 +774,7 @@ export default function TransactionForm({
                     <label className="text-sm font-medium">Category</label>
                     <Select
                       required
-                      disabled={!isEditable || isPayroll || isLoanReceived}
+                      disabled={!isEditable || isPayroll || isLoanReceived || isLoanGiven}
                       value={formData.category}
                       onChange={(event) =>
                         setFormData({ ...formData, category: event.target.value })
@@ -765,6 +812,48 @@ export default function TransactionForm({
                   </div>
                 )}
               </div>
+              {isLoanGiven && (
+                <div className="space-y-3 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/70 dark:bg-blue-950/25 p-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        Who did you lend money to?
+                      </label>
+                      <Input
+                        required
+                        disabled={!isEditable}
+                        value={loanGivenContactName}
+                        onChange={(event) => setLoanGivenContactName(event.target.value)}
+                        placeholder="e.g. Brother, Youssef..."
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        Expected Repayment Date <span className="text-gray-400 font-normal">(Optional)</span>
+                      </label>
+                      <Input
+                        type="date"
+                        disabled={!isEditable}
+                        value={loanGivenDueDate}
+                        onChange={(event) => setLoanGivenDueDate(event.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-blue-800 dark:text-blue-200 leading-relaxed">
+                    Deducts{' '}
+                    <span className="font-mono tabular-nums font-semibold">
+                      {(Number.parseFloat(formData.amount) || 0).toFixed(2)} MAD
+                    </span>{' '}
+                    from{' '}
+                    <strong>
+                      {(wallets || []).find((w) => w.id === formData.walletId)?.name || 'your wallet'}
+                    </strong>{' '}
+                    and tracks it in <strong>Debts (Owed to You)</strong>. Counts as{' '}
+                    <span className="font-mono tabular-nums font-semibold">0.00 MAD</span> personal
+                    spending.
+                  </p>
+                </div>
+              )}
               {isLoanReceived && (
                 <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/70 dark:bg-amber-950/20">
                   <label className="text-sm font-medium">Who did you borrow from?</label>

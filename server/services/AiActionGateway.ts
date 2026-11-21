@@ -228,8 +228,19 @@ export async function simulateAiActionsImpact(
       } else if (initBal > 0) {
         deltaLiq = initBal;
       }
-    } else if (action.type === 'create_debt' && p.type === 'Payable') {
-      deltaSts = -amt;
+    } else if (action.type === 'create_debt') {
+      if (p.type === 'Receivable' && p.recordWalletMovement) {
+        // Lending cash out of a wallet reduces liquid cash and Safe-to-Spend until repaid
+        deltaSts = -amt;
+        deltaLiq = -amt;
+        if (afterWalletBal !== undefined) afterWalletBal -= amt;
+      } else if (p.type === 'Payable' && p.recordWalletMovement) {
+        // Borrowing cash into a wallet increases liquid cash while creating an equal Payable obligation
+        deltaLiq = amt;
+        if (afterWalletBal !== undefined) afterWalletBal += amt;
+      } else if (p.type === 'Payable') {
+        deltaSts = -amt;
+      }
     }
 
     const afterSts = beforeSts + deltaSts;
@@ -336,7 +347,12 @@ export async function executeApprovedAiActions(userId: string, actions: AiAction
           `Debt proposal is missing required fields. Amount: ${p.amount}, Contact: ${p.contact}, Type: ${p.type}`
         );
       }
-      results.push(await debtService.processDebt(userId, p));
+      results.push(
+        await debtService.processDebt(userId, {
+          ...p,
+          recordWalletMovement: Boolean(p.recordWalletMovement ?? p.walletId),
+        })
+      );
     }
 
     if (action.type === 'update_settings') {

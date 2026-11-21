@@ -20,6 +20,7 @@ export const expenseCategories = [
 export const incomeAndTransferCategories = [
   '📥 Income',
   '🤝 Loan Received',
+  '🤝 Loan Given',
   '🔄 Transfer',
   '🔙 Reimbursement',
 ] as const;
@@ -255,6 +256,10 @@ const aliases = new Map<string, string>([
   ['refund', '📥 Income'],
   ['other income', '📥 Income'],
   ['loan received', '🤝 Loan Received'],
+  ['loan given', '🤝 Loan Given'],
+  ['lent money', '🤝 Loan Given'],
+  ['money lent', '🤝 Loan Given'],
+  ['loan out', '🤝 Loan Given'],
 
   // Transfer
   ['transfer', '🔄 Transfer'],
