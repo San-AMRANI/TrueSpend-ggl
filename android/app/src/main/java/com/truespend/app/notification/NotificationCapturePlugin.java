@@ -3,8 +3,9 @@ package com.truespend.app.notification;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.os.Build;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
@@ -67,8 +68,7 @@ public class NotificationCapturePlugin extends Plugin {
         String packageAndClass = listener.getPackageName() + "/" + listener.getClassName();
         boolean granted = enabled != null && (
             enabled.contains(flattened)
-                || enabled.contains(packageAndClass)
-                || enabled.contains(listener.getPackageName()));
+                || enabled.contains(packageAndClass));
         JSObject result = new JSObject();
         result.put("granted", granted);
         result.put("listenerConnected", granted && BankNotificationListenerService.isConnected());
@@ -88,16 +88,35 @@ public class NotificationCapturePlugin extends Plugin {
         openAccessSettings(call);
     }
 
+    private boolean isValidAndroidPackageName(String packageName) {
+        if (TextUtils.isEmpty(packageName) || packageName.length() > 255) return false;
+        String[] segments = packageName.split("\\.", -1);
+        if (segments.length < 2) return false;
+        for (String segment : segments) {
+            if (segment.isEmpty() || !segment.matches("^[A-Za-z][A-Za-z0-9_]*$")) return false;
+        }
+        return true;
+    }
+
     @PluginMethod
     public void getInstalledApps(PluginCall call) {
         try {
             PackageManager pm = getContext().getPackageManager();
             List<JSObject> apps = new ArrayList<>();
             java.util.LinkedHashMap<String, JSObject> appByPackage = new java.util.LinkedHashMap<>();
-            int flags = PackageManager.MATCH_UNINSTALLED_PACKAGES | PackageManager.GET_META_DATA;
-            List<ApplicationInfo> installed = pm.getInstalledApplications(flags);
-            for (ApplicationInfo info : installed) {
-                String packageName = info.packageName;
+            Intent launcher = new Intent(Intent.ACTION_MAIN);
+            launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> resolved;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                resolved = pm.queryIntentActivities(launcher,
+                    PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_ALL));
+            } else {
+                resolved = pm.queryIntentActivities(launcher,
+                    PackageManager.MATCH_ALL);
+            }
+            for (ResolveInfo info : resolved) {
+                if (info.activityInfo == null) continue;
+                String packageName = info.activityInfo.packageName;
                 if (packageName.equals(getContext().getPackageName())) continue;
                 if (appByPackage.containsKey(packageName)) continue;
                 CharSequence label = info.loadLabel(pm);
@@ -114,6 +133,8 @@ public class NotificationCapturePlugin extends Plugin {
             for (JSObject app : apps) output.put(app);
             JSObject result = new JSObject();
             result.put("apps", output);
+            result.put("count", output.length());
+            result.put("queryType", "launcher");
             call.resolve(result);
         } catch (Exception error) {
             call.reject("Unable to read installed launcher apps.", error);
@@ -147,9 +168,15 @@ public class NotificationCapturePlugin extends Plugin {
         try {
             JSONObject rule = call.getData();
             if (TextUtils.isEmpty(rule.optString("id"))) rule.put("id", UUID.randomUUID().toString());
+            String packageName = rule.optString("packageName").trim();
+            if (!isValidAndroidPackageName(packageName)) {
+                call.reject("Enter a valid Android package name, such as com.example.app.");
+                return;
+            }
+            rule.put("packageName", packageName);
             boolean saved = NotificationCaptureDatabase.getInstance(getContext()).saveRule(rule);
             if (!saved) {
-                call.reject("A selected package and at least one keyword are required.");
+                call.reject("Could not save the rule. Enter a package and at least one keyword, and make sure you are signed in.");
                 return;
             }
             JSObject result = new JSObject();

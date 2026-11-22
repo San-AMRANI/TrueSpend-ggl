@@ -138,6 +138,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [bankNotificationMode, setBankNotificationMode] = useState<'ANY' | 'ALL'>('ANY');
   const [bankNotificationStatus, setBankNotificationStatus] = useState<string | null>(null);
   const [notificationApps, setNotificationApps] = useState<InstalledNotificationApp[]>([]);
+  const [notificationAppsLoading, setNotificationAppsLoading] = useState(false);
+  const [notificationAppsError, setNotificationAppsError] = useState<string | null>(null);
   const [notificationRules, setNotificationRules] = useState<NotificationRule[]>([]);
   const [notificationAutomationEnabled, setNotificationAutomationEnabled] = useState(true);
   const [notificationQueue, setNotificationQueue] = useState({
@@ -233,8 +235,16 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         .then((result) => setBankNotificationAccess(result.granted))
         .catch(() => setBankNotificationAccess(false));
       bankNotificationCapture.getInstalledApps()
-        .then(setNotificationApps)
-        .catch(() => setNotificationApps([]));
+        .then((apps) => {
+          setNotificationApps(apps);
+          setNotificationAppsError(apps.length === 0
+            ? 'No launchable apps were returned by Android.'
+            : null);
+        })
+        .catch((error) => {
+          setNotificationApps([]);
+          setNotificationAppsError(error instanceof Error ? error.message : 'Unable to query Android apps.');
+        });
       bankNotificationCapture.getRules()
         .then(setNotificationRules)
         .catch(() => setNotificationRules([]));
@@ -2344,7 +2354,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <div className="grid gap-2 sm:grid-cols-2">
                   <select
                     value={bankNotificationSelectedApp}
-                    onChange={(e) => setBankNotificationSelectedApp(e.target.value)}
+                    onChange={(e) => {
+                      const packageName = e.target.value;
+                      setBankNotificationSelectedApp(packageName);
+                      setBankNotificationManualPackage(packageName);
+                    }}
                     className="px-3 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
                   >
                     <option value="">Select an installed app</option>
@@ -2358,9 +2372,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     placeholder="Or enter exact app package name"
                     className="px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
                   />
-                  {notificationApps.length === 0 && (
+                  {notificationAppsError && (
                     <p className="text-[11px] text-amber-700 dark:text-amber-300">
-                      No installed apps were returned by Android. Enter the exact package name above, for example from App Info.
+                      {notificationAppsError} Manual package entry is still available below.
                     </p>
                   )}
                   <input
@@ -2385,25 +2399,38 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                       const keywords = bankNotificationKeywords.split(',').map((value) => value.trim()).filter(Boolean);
                       const packageName = app?.packageName || manualPackageName;
                       const appLabel = app?.appName || manualPackageName;
-                      if (!packageName || keywords.length === 0) {
-                        setBankNotificationStatus('Select or enter an app package and enter at least one keyword.');
+                      const packageSegments = packageName.split('.');
+                      const validPackageName = packageSegments.length >= 2
+                        && packageSegments.every((segment) => /^[A-Za-z][A-Za-z0-9_]*$/.test(segment));
+                      if (!validPackageName) {
+                        setBankNotificationStatus('Enter a valid Android package name, such as com.example.app.');
+                        return;
+                      }
+                      if (keywords.length === 0) {
+                        setBankNotificationStatus('Enter at least one notification keyword.');
                         return;
                       }
                       const now = new Date().toISOString();
-                      await bankNotificationCapture.saveRule({
-                        id: crypto.randomUUID(),
-                        enabled: true,
-                        packageName,
-                        appLabel,
-                        keywords,
-                        keywordMode: bankNotificationMode,
-                        matchFields: ['TITLE', 'TEXT'],
-                        caseSensitive: false,
-                        createdAt: now,
-                        updatedAt: now,
-                      });
-                      setBankNotificationStatus('Notification rule saved.');
-                      setNotificationRules(await bankNotificationCapture.getRules());
+                      try {
+                        await bankNotificationCapture.saveRule({
+                          id: crypto.randomUUID(),
+                          enabled: true,
+                          packageName,
+                          appLabel,
+                          keywords,
+                          keywordMode: bankNotificationMode,
+                          matchFields: ['TITLE', 'TEXT'],
+                          caseSensitive: false,
+                          createdAt: now,
+                          updatedAt: now,
+                        });
+                        setBankNotificationStatus('Notification rule saved.');
+                        setNotificationRules(await bankNotificationCapture.getRules());
+                      } catch (error) {
+                        setBankNotificationStatus(error instanceof Error
+                          ? error.message
+                          : 'The notification rule could not be saved.');
+                      }
                     }}
                   >
                     Save Rule
@@ -2411,9 +2438,26 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={async () => {
-                    setNotificationApps(await bankNotificationCapture.getInstalledApps());
-                    setBankNotificationStatus('Installed app list refreshed.');
-                  }}>Refresh Apps</Button>
+                    setNotificationAppsLoading(true);
+                    setNotificationAppsError(null);
+                    try {
+                      const apps = await bankNotificationCapture.getInstalledApps();
+                      setNotificationApps(apps);
+                      setNotificationAppsError(apps.length === 0
+                        ? 'No launchable apps were returned by Android.'
+                        : null);
+                      setBankNotificationStatus(apps.length === 0
+                        ? 'No launchable apps were returned. You can enter a package manually.'
+                        : `${apps.length} installed apps refreshed.`);
+                    } catch (error) {
+                      setNotificationApps([]);
+                      const message = error instanceof Error ? error.message : 'Unable to query Android apps.';
+                      setNotificationAppsError(message);
+                      setBankNotificationStatus(message);
+                    } finally {
+                      setNotificationAppsLoading(false);
+                    }
+                  }}>{notificationAppsLoading ? 'Refreshing...' : 'Refresh Apps'}</Button>
                   <Button size="sm" variant={bankNotificationAccess ? 'outline' : 'default'} onClick={async () => {
                     await bankNotificationCapture.openNotificationAccessSettings();
                     setBankNotificationStatus('In Android Notification Access, enable TrueSpend, then return to the app.');
