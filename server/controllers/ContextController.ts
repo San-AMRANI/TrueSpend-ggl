@@ -2,8 +2,15 @@ import { Response } from 'express';
 import { db } from '../../src/db/index.js';
 import { financialContexts, transactions } from '../../src/db/schema.js';
 import { eq, and, desc, inArray } from 'drizzle-orm';
-import { FinancialContext } from '../../src/types/index.js';
 import { AuthRequest } from '../../src/middleware/auth.js';
+import { parseProjectPlannedItems } from '../../src/lib/finance.js';
+
+export function serializeContext<T extends Record<string, any>>(row: T): T & { plannedItems: ReturnType<typeof parseProjectPlannedItems> } {
+  return {
+    ...row,
+    plannedItems: parseProjectPlannedItems(row?.plannedItems ?? row?.plannedItemsJson ?? null),
+  };
+}
 
 function toDateKey(d: Date | string | null | undefined): string | null {
   if (!d) return null;
@@ -85,7 +92,7 @@ export const contextController = {
         })
       );
 
-      res.json(syncedContexts);
+      res.json(syncedContexts.map((ctx) => serializeContext(ctx)));
     } catch (error) {
       console.error('Error fetching contexts:', error);
       res.status(500).json({ error: 'Failed to fetch contexts' });
@@ -99,7 +106,12 @@ export const contextController = {
         return res.status(401).json({ error: 'Unauthorized' });
       }
 
-      const newContext = req.body;
+      const newContext = req.body || {};
+      const name = typeof newContext.name === 'string' ? newContext.name.trim() : '';
+      if (!name) {
+        return res.status(400).json({ error: 'Context name is required' });
+      }
+
       const startDateObj = newContext.startDate ? new Date(newContext.startDate) : null;
       const endDateObj = newContext.endDate ? new Date(newContext.endDate) : null;
       const computedStatus = resolveContextStatusFromDates(
@@ -108,18 +120,30 @@ export const contextController = {
         newContext.status || 'Planned'
       );
 
+      const sanitizedItems =
+        newContext.plannedItems !== undefined
+          ? parseProjectPlannedItems(newContext.plannedItems)
+          : newContext.plannedItemsJson !== undefined
+          ? parseProjectPlannedItems(newContext.plannedItemsJson)
+          : [];
+      const plannedItemsJson = sanitizedItems.length > 0 ? JSON.stringify(sanitizedItems) : null;
+
       const [insertedContext] = await db.insert(financialContexts).values({
         userId: userId,
-        name: newContext.name,
-        type: newContext.type,
+        name,
+        type: newContext.type || 'Project',
         startDate: startDateObj,
         endDate: endDateObj,
-        budget: newContext.budget ? newContext.budget.toString() : null,
+        budget:
+          newContext.budget !== undefined && newContext.budget !== null && String(newContext.budget).trim() !== ''
+            ? String(newContext.budget)
+            : null,
         status: computedStatus,
         notes: newContext.notes || null,
+        plannedItemsJson,
       }).returning();
 
-      res.json(insertedContext);
+      res.json(serializeContext(insertedContext));
     } catch (error) {
       console.error('Error creating context:', error);
       res.status(500).json({ error: 'Failed to create context' });
@@ -134,24 +158,69 @@ export const contextController = {
       }
 
       const { id } = req.params;
-      const updates = req.body;
-      const startDateObj = updates.startDate ? new Date(updates.startDate) : null;
-      const endDateObj = updates.endDate ? new Date(updates.endDate) : null;
+      const updates = req.body || {};
+
+      const [existing] = await db
+        .select()
+        .from(financialContexts)
+        .where(and(eq(financialContexts.id, id), eq(financialContexts.userId, userId)));
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Context not found' });
+      }
+
+      const startDateObj =
+        updates.startDate !== undefined
+          ? updates.startDate
+            ? new Date(updates.startDate)
+            : null
+          : existing.startDate;
+      const endDateObj =
+        updates.endDate !== undefined
+          ? updates.endDate
+            ? new Date(updates.endDate)
+            : null
+          : existing.endDate;
+      const nextStatus = updates.status !== undefined ? updates.status : existing.status;
       const computedStatus =
         startDateObj || endDateObj
-          ? resolveContextStatusFromDates(startDateObj, endDateObj, updates.status || 'Planned')
-          : updates.status || 'Planned';
+          ? resolveContextStatusFromDates(startDateObj, endDateObj, (nextStatus as any) || 'Planned')
+          : (nextStatus as any) || 'Planned';
+
+      let nextPlannedItemsJson = existing.plannedItemsJson ?? null;
+      if (updates.plannedItems !== undefined) {
+        const sanitized = parseProjectPlannedItems(updates.plannedItems);
+        nextPlannedItemsJson = sanitized.length > 0 ? JSON.stringify(sanitized) : null;
+      } else if (updates.plannedItemsJson !== undefined) {
+        const sanitized = parseProjectPlannedItems(updates.plannedItemsJson);
+        nextPlannedItemsJson = sanitized.length > 0 ? JSON.stringify(sanitized) : null;
+      }
+
+      const nextName =
+        updates.name !== undefined
+          ? typeof updates.name === 'string' && updates.name.trim()
+            ? updates.name.trim()
+            : existing.name
+          : existing.name;
+
+      const nextBudget =
+        updates.budget !== undefined
+          ? updates.budget !== null && String(updates.budget).trim() !== ''
+            ? String(updates.budget)
+            : null
+          : existing.budget;
 
       const [updatedContext] = await db.update(financialContexts)
         .set({
-          name: updates.name,
-          type: updates.type,
+          name: nextName,
+          type: updates.type !== undefined ? updates.type : existing.type,
           startDate: startDateObj,
           endDate: endDateObj,
-          budget: updates.budget ? updates.budget.toString() : null,
+          budget: nextBudget,
           status: computedStatus,
-          notes: updates.notes,
-          updatedAt: new Date()
+          notes: updates.notes !== undefined ? updates.notes : existing.notes,
+          plannedItemsJson: nextPlannedItemsJson,
+          updatedAt: new Date(),
         })
         .where(and(eq(financialContexts.id, id), eq(financialContexts.userId, userId)))
         .returning();
@@ -160,7 +229,7 @@ export const contextController = {
         return res.status(404).json({ error: 'Context not found' });
       }
 
-      res.json(updatedContext);
+      res.json(serializeContext(updatedContext));
     } catch (error) {
       console.error('Error updating context:', error);
       res.status(500).json({ error: 'Failed to update context' });

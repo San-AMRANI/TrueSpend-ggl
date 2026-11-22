@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { CategoryBudget, Payroll, Transaction, Debt, Goal, Subscription, DashboardTab, InvestmentsData } from '../../types';
+import { CategoryBudget, Payroll, Transaction, Debt, Goal, Subscription, DashboardTab, InvestmentsData, FinancialContext } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { dashboardService } from '../../services/api/dashboardService';
 import { SpexAvatar } from '../common/SpexAvatar';
@@ -18,6 +18,8 @@ import {
   computeFourPillarBreakdown,
   buildChronologicalPeriodPatternSummary,
   getCategoryPillar,
+  getProjectContextIds,
+  parseProjectPlannedItems,
   isSavingsRetentionCategory,
   isWealthAllocationCategory,
   isInvestmentCategory,
@@ -80,11 +82,12 @@ const BUDGET_PLANS: Record<FixedPlanKey, { name: string; description: string; ru
       '📱 Telecom & Subscriptions': 3,
       '🛡️ Insurance / Annual Costs': 3,
       '🏠 Household & Family': 3,
-      '🍔 Dining & Takeaway': 6,
+      '🍔 Dining & Takeaway': 5,
       '👕 Personal & Clothing': 4,
-      '🎬 Entertainment': 4,
+      '🎬 Entertainment': 3,
       '👥 Social': 3,
       '☕ Coffee & Quick Food': 3,
+      '🛠️ Home, Tech & Equipment': 2,
       '⚠️ Unexpected': 3,
       '🛟 Emergency & goals Fund': 10,
       '📈 Investments': 7,
@@ -104,9 +107,10 @@ const BUDGET_PLANS: Record<FixedPlanKey, { name: string; description: string; ru
       '🏠 Household & Family': 4,
       '🍔 Dining & Takeaway': 4,
       '👕 Personal & Clothing': 4,
-      '🎬 Entertainment': 3,
-      '👥 Social': 3,
+      '🎬 Entertainment': 2,
+      '👥 Social': 2,
       '☕ Coffee & Quick Food': 2,
+      '🛠️ Home, Tech & Equipment': 2,
       '⚠️ Unexpected': 3,
       '🛟 Emergency & goals Fund': 12,
       '📈 Investments': 8,
@@ -124,11 +128,12 @@ const BUDGET_PLANS: Record<FixedPlanKey, { name: string; description: string; ru
       '📱 Telecom & Subscriptions': 4,
       '🛡️ Insurance / Annual Costs': 4,
       '🏠 Household & Family': 4,
-      '🍔 Dining & Takeaway': 5,
+      '🍔 Dining & Takeaway': 4,
       '👕 Personal & Clothing': 4,
-      '🎬 Entertainment': 3,
+      '🎬 Entertainment': 2,
       '👥 Social': 2,
       '☕ Coffee & Quick Food': 2,
+      '🛠️ Home, Tech & Equipment': 2,
       '⚠️ Unexpected': 3,
       '🛟 Emergency & goals Fund': 5,
       '📈 Investments': 3,
@@ -144,6 +149,7 @@ interface BudgetsTabProps {
   debts?: Debt[];
   goals?: Goal[];
   subscriptions?: Subscription[];
+  contexts?: FinancialContext[];
   wallets?: Array<{ id: string; name: string; type?: string; balance?: number }>;
   investmentsData?: InvestmentsData | null;
   onSaveBudget: (category: string, year: number, month: number, amount: number) => Promise<void>;
@@ -177,6 +183,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   '⚠️ Unexpected': '#f59e0b',
   '🛟 Emergency & goals Fund': '#10b981',
   '📈 Investments': '#3b82f6',
+  '🛠️ Home, Tech & Equipment': '#0ea5e9',
 };
 
 const DEFAULT_COLOR = '#6b7280';
@@ -883,6 +890,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   debts = [],
   goals = [],
   subscriptions = [],
+  contexts = [],
   wallets = [],
   investmentsData = null,
   onSaveBudget,
@@ -898,6 +906,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   const [monthRef, setMonthRef] = useState(() => getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 });
   const [budgetModel, setBudgetModel] = useState<BudgetModel>('category');
   const [pillarFilter, setPillarFilter] = useState<PillarFilter>('all');
+  const [excludeProjectSpend, setExcludeProjectSpend] = useState<boolean>(true);
   const [newCategory, setNewCategory] = useState<string>(expenseCategories[0]);
   const [newAmount, setNewAmount] = useState('');
   const [addSaving, setAddSaving] = useState(false);
@@ -934,6 +943,48 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
     return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
   });
 
+  // ─── Project Budget Scope & Separation ────────────────────────────────────────
+  const projectContextIds = useMemo(() => getProjectContextIds(contexts), [contexts]);
+  const activeExcludedProjectIds = useMemo(
+    () => (excludeProjectSpend && projectContextIds.size > 0 ? projectContextIds : undefined),
+    [excludeProjectSpend, projectContextIds]
+  );
+
+  const projectBudgetSummaries = useMemo(() => {
+    return (contexts || [])
+      .filter((ctx) => ctx.type === 'Project')
+      .map((ctx) => {
+        const linkedTxs = transactions.filter((tx) => tx.contextId === ctx.id && tx.type === 'Expense');
+        const totalSpent = linkedTxs.reduce((sum, tx) => sum + netExpenseOf(tx), 0);
+        const monthSpent = linkedTxs
+          .filter((tx) => isInMonth(tx, monthRef.year, monthRef.month, payrolls))
+          .reduce((sum, tx) => sum + netExpenseOf(tx), 0);
+        const budgetCap = ctx.budget ? Number.parseFloat(ctx.budget) || 0 : 0;
+        const plannedItems = parseProjectPlannedItems(ctx.plannedItems ?? ctx.plannedItemsJson);
+        const plannedEstimateTotal = plannedItems.reduce((sum, item) => sum + (item.estimatedAmount || 0), 0);
+        const purchasedCount = plannedItems.filter((item) => item.purchased).length;
+        return {
+          context: ctx,
+          totalSpent,
+          monthSpent,
+          budgetCap,
+          plannedItemsCount: plannedItems.length,
+          purchasedCount,
+          plannedEstimateTotal,
+          txCount: linkedTxs.length,
+        };
+      })
+      .sort((a, b) => {
+        const order: Record<string, number> = { Active: 0, Planned: 1, Completed: 2 };
+        return (order[a.context.status] ?? 3) - (order[b.context.status] ?? 3) || b.monthSpent - a.monthSpent;
+      });
+  }, [contexts, transactions, monthRef, payrolls]);
+
+  const activeOrPlannedProjects = useMemo(
+    () => projectBudgetSummaries.filter((p) => p.context.status !== 'Completed' || p.monthSpent > 0),
+    [projectBudgetSummaries]
+  );
+
   // ─── Unified 4-Pillar & Bank-as-Savings Retention Breakdown ───────────────────
   const fourPillar = useMemo(
     () =>
@@ -945,8 +996,9 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         payrolls,
         wallets,
         isCurrentMonth,
+        excludeContextIds: activeExcludedProjectIds,
       }),
-    [transactions, budgets, monthRef, payrolls, wallets, isCurrentMonth]
+    [transactions, budgets, monthRef, payrolls, wallets, isCurrentMonth, activeExcludedProjectIds]
   );
 
   // Effective spent/allocated for any category (automatically crediting Bank Retention for 🛟 Emergency & goals Fund)
@@ -956,9 +1008,17 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
       if (isSavingsRetentionCategory(norm)) {
         return fourPillar.effectiveSavedForBudget;
       }
-      return getCategorySpending(transactions, norm, monthRef.year, monthRef.month, payrolls, wallets);
+      return getCategorySpending(
+        transactions,
+        norm,
+        monthRef.year,
+        monthRef.month,
+        payrolls,
+        wallets,
+        activeExcludedProjectIds
+      );
     },
-    [fourPillar.effectiveSavedForBudget, transactions, monthRef, payrolls, wallets]
+    [fourPillar.effectiveSavedForBudget, transactions, monthRef, payrolls, wallets, activeExcludedProjectIds]
   );
 
   // All active categories for current view (have budget or have spending/allocations or retained savings)
@@ -968,6 +1028,14 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
     transactions
       .filter((tx) => {
         if (!isInMonth(tx, monthRef.year, monthRef.month, payrolls)) return false;
+        if (
+          activeExcludedProjectIds &&
+          tx.type === 'Expense' &&
+          tx.contextId &&
+          activeExcludedProjectIds.has(tx.contextId)
+        ) {
+          return false;
+        }
         if (tx.type === 'Expense' || tx.type === 'Debt Repayment') return true;
         if (tx.type === 'Transfer') {
           let norm = normalizeCategory(tx.category);
@@ -999,7 +1067,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
     }
 
     return Array.from(active).sort((a, b) => a.localeCompare(b));
-  }, [budgets, monthRef, transactions, payrolls, wallets, fourPillar.effectiveSavedForBudget, fourPillar.liveRetainedInBank]);
+  }, [budgets, monthRef, transactions, payrolls, wallets, activeExcludedProjectIds, fourPillar.effectiveSavedForBudget, fourPillar.liveRetainedInBank]);
 
   const filteredBudgetRows = useMemo(() => {
     if (pillarFilter === 'all') return budgetRows;
@@ -1246,8 +1314,9 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         subscriptions,
         debts,
         wallets,
+        excludeContextIds: activeExcludedProjectIds,
       }),
-    [transactions, payrolls, monthRef.year, monthRef.month, totalIncome, subscriptions, debts, wallets]
+    [transactions, payrolls, monthRef.year, monthRef.month, totalIncome, subscriptions, debts, wallets, activeExcludedProjectIds]
   );
 
   const effectiveTargetIncome = useMemo(
@@ -1450,28 +1519,60 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
       </AnimatePresence>
 
       {/* ── Header ── */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Budget &amp; Salary Retention Planner</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Bank-as-Savings hybrid engine: plan what you spend on Obligations &amp; Yourself, and automatically retain the rest in your bank.
           </p>
         </div>
-        {/* Month navigator & Auto Budget */}
-        <div className="flex items-center gap-2">
-          <Button type="button" onClick={() => setAutoBudgetOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-600 dark:hover:bg-indigo-700 dark:text-white mr-2 whitespace-nowrap shrink-0">
+        {/* Scope toggle, Month navigator & Auto Budget */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="group"
+            aria-label="Monthly budget scope"
+            className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-100/80 dark:bg-gray-800/80 text-xs"
+          >
+            <button
+              type="button"
+              aria-pressed={excludeProjectSpend}
+              onClick={() => setExcludeProjectSpend(true)}
+              className={`px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap transition-colors ${
+                excludeProjectSpend
+                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-2xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Routine Monthly
+            </button>
+            <button
+              type="button"
+              aria-pressed={!excludeProjectSpend}
+              onClick={() => setExcludeProjectSpend(false)}
+              className={`px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap transition-colors ${
+                !excludeProjectSpend
+                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-2xs'
+                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Combined
+            </button>
+          </div>
+          <Button type="button" onClick={() => setAutoBudgetOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-600 dark:hover:bg-indigo-700 dark:text-white whitespace-nowrap shrink-0">
             <Sparkles className="mr-2 h-4 w-4" />
             Auto-Budget
           </Button>
-          <Button type="button" variant="outline" size="icon" onClick={() => navigate(-1)} aria-label="Previous month">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button type="button" variant="outline" onClick={() => setMonthRef(getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 })} className="whitespace-nowrap shrink-0">
-            {monthLabel(monthRef.year, monthRef.month)}
-          </Button>
-          <Button type="button" variant="outline" size="icon" onClick={() => navigate(1)} aria-label="Next month">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+          <div className="inline-flex items-center gap-1.5 shrink-0">
+            <Button type="button" variant="outline" size="icon" onClick={() => navigate(-1)} aria-label="Previous month">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setMonthRef(getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 })} className="whitespace-nowrap shrink-0">
+              {monthLabel(monthRef.year, monthRef.month)}
+            </Button>
+            <Button type="button" variant="outline" size="icon" onClick={() => navigate(1)} aria-label="Next month">
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1491,6 +1592,15 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                 Your salary account is your savings account: you only spend what you allocate to <strong>Obligations</strong> &amp; <strong>Yourself</strong>, and the rest stays protected in your bank without needing a dummy savings transaction.
+                {excludeProjectSpend && fourPillar.excludedProjectSpent > 0 && (
+                  <>
+                    {' '}
+                    <strong className="text-sky-700 dark:text-sky-400 font-mono tabular-nums">
+                      {fourPillar.excludedProjectSpent.toFixed(0)} MAD
+                    </strong>{' '}
+                    in Project spending is tracked separately below so routine caps stay clean.
+                  </>
+                )}
               </p>
             </div>
             <div className="text-left sm:text-right shrink-0">
@@ -1521,6 +1631,13 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                   style={{ width: `${Math.min(100, (fourPillar.spentOnMyself / totalIncome) * 100)}%` }}
                   title={`Spent on Myself: ${fourPillar.spentOnMyself.toFixed(0)} MAD`}
                 />
+                {fourPillar.excludedProjectSpent > 0 && (
+                  <div
+                    className="h-full bg-sky-500 transition-all duration-500"
+                    style={{ width: `${Math.min(100, (fourPillar.excludedProjectSpent / totalIncome) * 100)}%` }}
+                    title={`Projects (Separate): ${fourPillar.excludedProjectSpent.toFixed(0)} MAD`}
+                  />
+                )}
                 <div
                   className="h-full bg-blue-500 transition-all duration-500"
                   style={{ width: `${Math.min(100, (fourPillar.investedAmount / totalIncome) * 100)}%` }}
@@ -1541,6 +1658,12 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                   <span className="h-2 w-2 rounded-full bg-amber-500" />
                   Myself: {fourPillar.myselfPctOfIncome.toFixed(1)}%
                 </span>
+                {fourPillar.excludedProjectSpent > 0 && (
+                  <span className="flex items-center gap-1.5 text-sky-700 dark:text-sky-400 font-semibold">
+                    <span className="h-2 w-2 rounded-full bg-sky-500" />
+                    Projects: {((fourPillar.excludedProjectSpent / totalIncome) * 100).toFixed(1)}%
+                  </span>
+                )}
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-blue-500" />
                   Invested: {fourPillar.investedPctOfIncome.toFixed(1)}%
@@ -1647,6 +1770,9 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
           </p>
           <p className="text-xs text-gray-400 font-mono">
             Oblig: {fourPillar.spentOnObligations.toFixed(0)} • Myself: {fourPillar.spentOnMyself.toFixed(0)}
+            {excludeProjectSpend && fourPillar.excludedProjectSpent > 0
+              ? ` (+${fourPillar.excludedProjectSpent.toFixed(0)} proj.)`
+              : ''}
           </p>
         </Card>
         <Card className="p-4">
@@ -1697,6 +1823,114 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
               <span>Ideal today: {pace.ideal.toFixed(0)} MAD</span>
               <span>{livingBudgetTotal.toFixed(0)} MAD Living Cap</span>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Active Projects & Setup Budgets Hub ── */}
+      {(activeOrPlannedProjects.length > 0 || setActiveTab) && (
+        <Card className="border-sky-200/80 dark:border-sky-900/50 overflow-hidden shadow-xs">
+          <CardContent className="p-4 sm:p-5 space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                  <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-gray-100">
+                    Active Projects &amp; Setup Budgets
+                  </h3>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  {excludeProjectSpend
+                    ? 'Project-tagged expenses (like Room Setup, desks, chairs, or gear) are isolated from routine monthly category caps so big upgrades never trigger false overspend alerts.'
+                    : 'Currently showing Combined mode — Project expenses are merged into your routine monthly category caps.'}
+                </p>
+              </div>
+              {setActiveTab && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setActiveTab('contexts')}
+                  className="shrink-0 whitespace-nowrap"
+                >
+                  Manage Projects
+                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+
+            {activeOrPlannedProjects.length > 0 ? (
+              <div className="divide-y divide-gray-100 dark:divide-gray-800 border-t border-gray-100 dark:border-gray-800">
+                {activeOrPlannedProjects.map((proj) => {
+                  const pct =
+                    proj.budgetCap > 0 ? Math.min(100, (proj.totalSpent / proj.budgetCap) * 100) : 0;
+                  const isOver = proj.budgetCap > 0 && proj.totalSpent > proj.budgetCap;
+                  return (
+                    <div
+                      key={proj.context.id}
+                      className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0 space-y-1 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                            {proj.context.name}
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">
+                            {proj.context.status}
+                          </span>
+                          {proj.plannedItemsCount > 0 && (
+                            <span className="text-xs font-mono tabular-nums text-sky-700 dark:text-sky-400">
+                              • {proj.purchasedCount}/{proj.plannedItemsCount} items (Est. {proj.plannedEstimateTotal.toFixed(0)} MAD)
+                            </span>
+                          )}
+                        </div>
+                        {proj.budgetCap > 0 && (
+                          <div className="max-w-md flex items-center gap-2.5">
+                            <div className="h-2 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${
+                                  isOver
+                                    ? 'bg-red-500'
+                                    : pct >= 80
+                                    ? 'bg-amber-500'
+                                    : 'bg-sky-500'
+                                }`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="text-[11px] font-mono tabular-nums text-gray-500 dark:text-gray-400 shrink-0">
+                              {pct.toFixed(0)}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-left sm:text-right font-mono tabular-nums shrink-0">
+                        <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                          {proj.totalSpent.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {proj.budgetCap > 0 ? (
+                            <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                              {' '}
+                              / {proj.budgetCap.toLocaleString()} MAD
+                            </span>
+                          ) : (
+                            <span className="text-xs font-normal text-gray-500 dark:text-gray-400"> MAD</span>
+                          )}
+                        </p>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                          This cycle: {proj.monthSpent.toFixed(0)} MAD
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400">
+                <span>
+                  Planning a Room Setup, tech upgrade, or multi-purchase project? Create a Project context to track a dedicated cap and planned item checklist separately from monthly caps.
+                </span>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

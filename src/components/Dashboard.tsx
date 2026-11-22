@@ -553,6 +553,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               debts={debts}
               goals={goals}
               subscriptions={subscriptions}
+              contexts={contexts}
               wallets={kpis?.accounts || []}
               investmentsData={investmentsData}
               onSaveBudget={handleSaveCategoryBudget}

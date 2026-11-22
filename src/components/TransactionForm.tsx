@@ -5,7 +5,7 @@ import { Select } from './ui/Select';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { useAuth } from '../context/AuthContext';
 import { Transaction } from '../types';
-import { expenseCategories, incomeAndTransferCategories } from '../lib/categories';
+import { expenseCategories, incomeAndTransferCategories, normalizeCategory } from '../lib/categories';
 import { getApiUrl } from '../lib/capacitorBridge';
 import { dashboardService } from '../services/api/dashboardService';
 import { Trash2, AlertCircle, Plus, Users, Clock, Percent, Landmark } from 'lucide-react';
@@ -873,7 +873,7 @@ export default function TransactionForm({
               {contexts.length > 0 && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">
-                    Financial Context <span className="text-gray-400 font-normal">(Optional)</span>
+                    Financial Context / Project <span className="text-gray-400 font-normal">(Optional)</span>
                   </label>
                   <Select
                     disabled={!isEditable || isPayroll}
@@ -882,7 +882,7 @@ export default function TransactionForm({
                       setFormData({ ...formData, contextId: event.target.value || null })
                     }
                   >
-                    <option value="">None</option>
+                    <option value="">None (Routine Monthly Budget)</option>
                     {contexts
                       .filter(
                         (c) =>
@@ -892,10 +892,17 @@ export default function TransactionForm({
                       )
                       .map((ctx) => (
                         <option key={ctx.id} value={ctx.id}>
-                          {ctx.name} {ctx.status === 'Completed' ? '(Completed)' : ''}
+                          {ctx.type === 'Project' ? `[Project] ${ctx.name}` : ctx.name}{' '}
+                          {ctx.status === 'Completed' ? '(Completed)' : ''}
                         </option>
                       ))}
                   </Select>
+                  {formData.type === 'Expense' &&
+                    normalizeCategory(formData.category) === '🛠️ Home, Tech & Equipment' && (
+                      <p className="text-xs text-sky-700 dark:text-sky-400">
+                        Tip: Link this purchase to a <strong>Project</strong> (like Room Setup) to track it against your project cap without distorting monthly budgets, and optionally declare durable gear as a Physical Asset below.
+                      </p>
+                    )}
                 </div>
               )}
               <div className="space-y-2">

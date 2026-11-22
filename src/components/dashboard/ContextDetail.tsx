@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react';
-import { FinancialContext, Transaction } from '../../types';
+import React, { useEffect, useMemo, useState } from 'react';
+import { FinancialContext, ProjectPlannedItem, Transaction } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
+import { Select } from '../ui/Select';
 import { format } from 'date-fns';
 import {
   ArrowLeft,
@@ -21,8 +23,14 @@ import {
   CheckCircle2,
   AlertTriangle,
   TrendingUp,
+  ListChecks,
+  Plus,
+  Square,
+  CheckSquare,
+  X,
 } from 'lucide-react';
-import { netExpenseOf } from '../../lib/finance';
+import { netExpenseOf, parseProjectPlannedItems } from '../../lib/finance';
+import { expenseCategories } from '../../lib/categories';
 import {
   computeRealTimeContextStatus,
   getContextTimelineMeta,
@@ -54,6 +62,7 @@ interface ContextDetailProps {
   onEdit: (e: React.MouseEvent) => void;
   onDelete: () => void;
   onLinkTransactions?: (transactionIds: string[], contextId: string) => Promise<any>;
+  onUpdateContext?: (id: string, data: any) => Promise<any>;
 }
 
 export const ContextDetail: React.FC<ContextDetailProps> = ({
@@ -64,11 +73,106 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
   onEdit,
   onDelete,
   onLinkTransactions,
+  onUpdateContext,
 }) => {
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
   const [linkingAll, setLinkingAll] = useState(false);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+
+  const initialPlannedItems = useMemo(
+    () => parseProjectPlannedItems(context.plannedItems ?? context.plannedItemsJson),
+    [context.plannedItems, context.plannedItemsJson]
+  );
+  const [plannedItems, setPlannedItems] = useState<ProjectPlannedItem[]>(initialPlannedItems);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemEstimate, setNewItemEstimate] = useState('');
+  const [newItemCategory, setNewItemCategory] = useState<string>('🛠️ Home, Tech & Equipment');
+  const [savingItems, setSavingItems] = useState(false);
+  const [itemError, setItemError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPlannedItems(initialPlannedItems);
+  }, [initialPlannedItems]);
+
+  const persistPlannedItems = async (nextItems: ProjectPlannedItem[]) => {
+    const previous = plannedItems;
+    setPlannedItems(nextItems);
+    setItemError(null);
+    if (!onUpdateContext) return;
+    setSavingItems(true);
+    try {
+      await onUpdateContext(context.id, { plannedItems: nextItems });
+    } catch (err: any) {
+      setPlannedItems(previous);
+      setItemError(err?.message || 'Failed to save project checklist');
+    } finally {
+      setSavingItems(false);
+    }
+  };
+
+  const handleAddPlannedItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newItemName.trim();
+    if (!trimmed) return;
+    const parsedEst = Number.parseFloat(newItemEstimate);
+    const estimatedAmount = Number.isFinite(parsedEst) && parsedEst >= 0 ? Math.round(parsedEst * 100) / 100 : 0;
+    const itemId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const nextItem: ProjectPlannedItem = {
+      id: itemId,
+      name: trimmed,
+      estimatedAmount,
+      category: newItemCategory || '🛠️ Home, Tech & Equipment',
+      purchased: false,
+      linkedTransactionId: null,
+      notes: null,
+    };
+    setNewItemName('');
+    setNewItemEstimate('');
+    await persistPlannedItems([...plannedItems, nextItem]);
+  };
+
+  const handleTogglePlannedItem = async (itemId: string) => {
+    const next = plannedItems.map((item) =>
+      item.id === itemId ? { ...item, purchased: !item.purchased } : item
+    );
+    await persistPlannedItems(next);
+  };
+
+  const handleLinkPlannedItemTx = async (itemId: string, txId: string) => {
+    const linkedTransactionId = txId || null;
+    const next = plannedItems.map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            linkedTransactionId,
+            purchased: linkedTransactionId ? true : item.purchased,
+          }
+        : item
+    );
+    await persistPlannedItems(next);
+  };
+
+  const handleRemovePlannedItem = async (itemId: string) => {
+    const next = plannedItems.filter((item) => item.id !== itemId);
+    await persistPlannedItems(next);
+  };
+
+  const plannedTotalEstimate = useMemo(
+    () => plannedItems.reduce((sum, item) => sum + (item.estimatedAmount || 0), 0),
+    [plannedItems]
+  );
+  const purchasedItemsCount = useMemo(
+    () => plannedItems.filter((item) => item.purchased).length,
+    [plannedItems]
+  );
+  const contextExpenseTxs = useMemo(
+    () => transactions.filter((t) => t.type === 'Expense'),
+    [transactions]
+  );
 
   const autoStatusMeta = computeRealTimeContextStatus(
     context.startDate,
@@ -572,6 +676,258 @@ export const ContextDetail: React.FC<ContextDetailProps> = ({
           </CardContent>
         </Card>
       </div>
+
+      {/* Planned Project Items Checklist */}
+      <Card>
+        <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <ListChecks className="w-5 h-5 text-sky-600 dark:text-sky-400 shrink-0" />
+              <div>
+                <CardTitle className="text-base">
+                  Planned Project Items Checklist
+                </CardTitle>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Plan items before you buy (e.g., desk, chair, hard drive), track estimates vs. your project budget cap, and check them off or link actual purchases.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-xs font-mono tabular-nums shrink-0">
+              <div className="text-right">
+                <p className="text-[11px] font-sans text-gray-500 dark:text-gray-400">Progress</p>
+                <p className="font-semibold text-gray-900 dark:text-gray-100">
+                  {purchasedItemsCount} / {plannedItems.length} items
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[11px] font-sans text-gray-500 dark:text-gray-400">Planned Est.</p>
+                <p
+                  className={`font-bold ${
+                    budget > 0 && plannedTotalEstimate > budget
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-gray-900 dark:text-gray-100'
+                  }`}
+                >
+                  {plannedTotalEstimate.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}{' '}
+                  MAD
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4">
+          {onUpdateContext && (
+            <form
+              onSubmit={handleAddPlannedItem}
+              className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end"
+            >
+              <div className="sm:col-span-5 space-y-1">
+                <label
+                  htmlFor="planned-item-name"
+                  className="text-xs font-medium text-gray-600 dark:text-gray-400"
+                >
+                  Item Name
+                </label>
+                <Input
+                  id="planned-item-name"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  placeholder="e.g., Standing Desk, Ergonomic Chair, 2TB SSD"
+                  disabled={savingItems}
+                  required
+                />
+              </div>
+              <div className="sm:col-span-2 space-y-1">
+                <label
+                  htmlFor="planned-item-estimate"
+                  className="text-xs font-medium text-gray-600 dark:text-gray-400"
+                >
+                  Est. Cost (MAD)
+                </label>
+                <Input
+                  id="planned-item-estimate"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={newItemEstimate}
+                  onChange={(e) => setNewItemEstimate(e.target.value)}
+                  placeholder="0.00"
+                  disabled={savingItems}
+                />
+              </div>
+              <div className="sm:col-span-3 space-y-1">
+                <label
+                  htmlFor="planned-item-category"
+                  className="text-xs font-medium text-gray-600 dark:text-gray-400"
+                >
+                  Category
+                </label>
+                <Select
+                  id="planned-item-category"
+                  value={newItemCategory}
+                  onChange={(e) => setNewItemCategory(e.target.value)}
+                  disabled={savingItems}
+                >
+                  {expenseCategories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="sm:col-span-2">
+                <Button
+                  type="submit"
+                  disabled={savingItems || !newItemName.trim()}
+                  className="w-full whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Add Item
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {itemError && (
+            <p className="text-xs text-red-600 dark:text-red-400" role="alert">
+              {itemError}
+            </p>
+          )}
+
+          {budget > 0 && plannedItems.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600 dark:text-gray-400 pt-1">
+              <span>
+                Planned estimates total{' '}
+                <strong className="font-mono tabular-nums text-gray-900 dark:text-gray-100">
+                  {plannedTotalEstimate.toLocaleString(undefined, { maximumFractionDigits: 2 })} MAD
+                </strong>{' '}
+                vs. project cap{' '}
+                <strong className="font-mono tabular-nums text-gray-900 dark:text-gray-100">
+                  {budget.toLocaleString()} MAD
+                </strong>
+              </span>
+              <span
+                className={`font-mono tabular-nums font-semibold ${
+                  plannedTotalEstimate > budget
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                }`}
+              >
+                {plannedTotalEstimate > budget
+                  ? `${(plannedTotalEstimate - budget).toFixed(0)} MAD over planned cap`
+                  : `${(budget - plannedTotalEstimate).toFixed(0)} MAD unallocated buffer`}
+              </span>
+            </div>
+          )}
+
+          {plannedItems.length > 0 ? (
+            <div className="divide-y divide-gray-100 dark:divide-gray-800 border-t border-gray-100 dark:border-gray-800">
+              {plannedItems.map((item) => {
+                const linkedTx = item.linkedTransactionId
+                  ? contextExpenseTxs.find((tx) => tx.id === item.linkedTransactionId) || null
+                  : null;
+                const actualAmt = linkedTx ? netExpenseOf(linkedTx) : null;
+                const variance = actualAmt !== null ? actualAmt - item.estimatedAmount : null;
+
+                return (
+                  <div
+                    key={item.id}
+                    className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePlannedItem(item.id)}
+                        disabled={savingItems || !onUpdateContext}
+                        aria-label={`Mark ${item.name} as ${item.purchased ? 'not purchased' : 'purchased'}`}
+                        className="mt-0.5 text-gray-500 hover:text-emerald-600 dark:text-gray-400 dark:hover:text-emerald-400 transition-colors shrink-0 min-h-[24px] min-w-[24px] flex items-center justify-center"
+                      >
+                        {item.purchased ? (
+                          <CheckSquare className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                        ) : (
+                          <Square className="w-5 h-5" />
+                        )}
+                      </button>
+                      <div className="min-w-0">
+                        <p
+                          className={`text-sm font-medium truncate ${
+                            item.purchased
+                              ? 'line-through text-gray-400 dark:text-gray-500'
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`}
+                        >
+                          {item.name}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          <span>{item.category}</span>
+                          <span>•</span>
+                          <span className="font-mono tabular-nums">
+                            Est. {item.estimatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
+                          </span>
+                          {actualAmt !== null && (
+                            <>
+                              <span>•</span>
+                              <span
+                                className={`font-mono tabular-nums font-medium ${
+                                  variance && variance > 0
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : 'text-emerald-600 dark:text-emerald-400'
+                                }`}
+                              >
+                                Actual: {actualAmt.toFixed(2)} MAD
+                                {variance !== null && variance !== 0
+                                  ? ` (${variance > 0 ? '+' : ''}${variance.toFixed(0)})`
+                                  : ''}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                      {contextExpenseTxs.length > 0 && onUpdateContext && (
+                        <select
+                          aria-label={`Link purchase transaction for ${item.name}`}
+                          value={item.linkedTransactionId || ''}
+                          disabled={savingItems}
+                          onChange={(e) => handleLinkPlannedItemTx(item.id, e.target.value)}
+                          className="text-xs h-8 px-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 max-w-[180px]"
+                        >
+                          <option value="">Link purchase...</option>
+                          {contextExpenseTxs.map((tx) => (
+                            <option key={tx.id} value={tx.id}>
+                              {(tx.notes || tx.category || 'Expense').slice(0, 22)} ({netExpenseOf(tx).toFixed(0)} MAD)
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {onUpdateContext && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePlannedItem(item.id)}
+                          disabled={savingItems}
+                          aria-label={`Remove planned item ${item.name}`}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-gray-400 py-3 text-center">
+              No planned items yet. Add items like Desk, Chair, or Hard Drive above to map out your project cost before buying.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Smart Unlinked Transactions Suggestion Banner */}
       {matchingUnlinked.length > 0 && (
