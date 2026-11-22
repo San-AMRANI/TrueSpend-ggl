@@ -133,6 +133,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [apiBaseInput, setApiBaseInput] = useState<string>(() => getCapacitorApiBaseUrl());
   const [bankNotificationAccess, setBankNotificationAccess] = useState(false);
   const [bankNotificationSelectedApp, setBankNotificationSelectedApp] = useState('');
+  const [bankNotificationManualPackage, setBankNotificationManualPackage] = useState('');
   const [bankNotificationKeywords, setBankNotificationKeywords] = useState('');
   const [bankNotificationMode, setBankNotificationMode] = useState<'ANY' | 'ALL'>('ANY');
   const [bankNotificationStatus, setBankNotificationStatus] = useState<string | null>(null);
@@ -2352,6 +2353,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     ))}
                   </select>
                   <input
+                    value={bankNotificationManualPackage}
+                    onChange={(e) => setBankNotificationManualPackage(e.target.value)}
+                    placeholder="Or enter exact app package name"
+                    className="px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+                  />
+                  {notificationApps.length === 0 && (
+                    <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                      No launcher apps were returned by Android. Enter the exact package name above, for example from App Info.
+                    </p>
+                  )}
+                  <input
                     value={bankNotificationKeywords}
                     onChange={(e) => setBankNotificationKeywords(e.target.value)}
                     placeholder="Keywords separated by commas"
@@ -2369,17 +2381,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     size="sm"
                     onClick={async () => {
                       const app = notificationApps.find((item) => item.packageName === bankNotificationSelectedApp);
+                      const manualPackageName = bankNotificationManualPackage.trim();
                       const keywords = bankNotificationKeywords.split(',').map((value) => value.trim()).filter(Boolean);
-                      if (!app || keywords.length === 0) {
-                        setBankNotificationStatus('Select an app and enter at least one keyword.');
+                      const packageName = app?.packageName || manualPackageName;
+                      const appLabel = app?.appName || manualPackageName;
+                      if (!packageName || keywords.length === 0) {
+                        setBankNotificationStatus('Select or enter an app package and enter at least one keyword.');
                         return;
                       }
                       const now = new Date().toISOString();
                       await bankNotificationCapture.saveRule({
                         id: crypto.randomUUID(),
                         enabled: true,
-                        packageName: app.packageName,
-                        appLabel: app.appName,
+                        packageName,
+                        appLabel,
                         keywords,
                         keywordMode: bankNotificationMode,
                         matchFields: ['TITLE', 'TEXT'],
@@ -2395,6 +2410,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   </Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    setNotificationApps(await bankNotificationCapture.getInstalledApps());
+                    setBankNotificationStatus('Launcher app list refreshed.');
+                  }}>Refresh Apps</Button>
                   <Button size="sm" variant="outline" onClick={async () => {
                     await bankNotificationCapture.openNotificationAccessSettings();
                     setBankNotificationStatus('Choose TrueSpend in Android Notification Access settings.');

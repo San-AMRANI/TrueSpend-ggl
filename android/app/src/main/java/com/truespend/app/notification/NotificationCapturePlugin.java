@@ -91,18 +91,21 @@ public class NotificationCapturePlugin extends Plugin {
             Intent launcher = new Intent(Intent.ACTION_MAIN);
             launcher.addCategory(Intent.CATEGORY_LAUNCHER);
             List<ResolveInfo> resolved = pm.queryIntentActivities(launcher,
-                PackageManager.MATCH_DEFAULT_ONLY);
+                PackageManager.MATCH_ALL);
             List<JSObject> apps = new ArrayList<>();
+            java.util.LinkedHashMap<String, JSObject> appByPackage = new java.util.LinkedHashMap<>();
             for (ResolveInfo info : resolved) {
                 String packageName = info.activityInfo.packageName;
                 if (packageName.equals(getContext().getPackageName())) continue;
+                if (appByPackage.containsKey(packageName)) continue;
                 CharSequence label = info.loadLabel(pm);
                 JSObject app = new JSObject();
                 app.put("packageName", packageName);
                 app.put("appName", label == null ? packageName : label.toString());
                 app.put("icon", drawableToBase64(info.loadIcon(pm)));
-                apps.add(app);
+                appByPackage.put(packageName, app);
             }
+            apps.addAll(appByPackage.values());
             Collections.sort(apps, Comparator.comparing(
                 app -> app.getString("appName").toLowerCase(java.util.Locale.ROOT)));
             JSArray output = new JSArray();
