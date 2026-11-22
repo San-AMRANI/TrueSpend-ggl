@@ -394,10 +394,12 @@ const CORE_DDL_STATEMENTS: Array<{ sql: string; optional?: boolean; label: strin
       "budget" numeric,
       "status" text NOT NULL DEFAULT 'Planned',
       "notes" text,
+      "planned_items_json" text,
       "created_at" timestamp NOT NULL DEFAULT now(),
       "updated_at" timestamp NOT NULL DEFAULT now()
     )`,
   },
+  { label: 'financial_contexts.planned_items_json', sql: `ALTER TABLE "financial_contexts" ADD COLUMN IF NOT EXISTS "planned_items_json" text` },
 
   {
     label: 'table transactions',
@@ -1293,7 +1295,7 @@ const CORE_DDL_STATEMENTS: Array<{ sql: string; optional?: boolean; label: strin
   { label: 'idx domain_event_outbox_user_status_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "domain_event_outbox_user_status_idx" ON "domain_event_outbox"("user_id", "status")` },
 ];
 
-const CURRENT_SCHEMA_VERSION = 2026111801;
+const CURRENT_SCHEMA_VERSION = 2026112101;
 
 export async function ensureDatabaseSchema(): Promise<void> {
   if (!global._schemaReadyPromise) {

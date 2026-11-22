@@ -16,7 +16,7 @@ import { subscriptionService } from '../services/SubscriptionService.js';
 import { transactionService } from '../services/TransactionService.js';
 import { walletService } from '../services/WalletService.js';
 import { coreAuditService } from '../services/CoreAuditService.js';
-import { resolveContextStatusFromDates } from './ContextController.js';
+import { resolveContextStatusFromDates, serializeContext } from './ContextController.js';
 
 import { sliceTransactionsWindow } from '../../src/lib/bootstrapScopes.js';
 
@@ -89,9 +89,9 @@ export class KpiController {
       .orderBy(desc(financialContexts.createdAt))
       .catch(() => []);
     const now = new Date();
-    return Promise.all(
+    const resolved = await Promise.all(
       userContexts.map(async (ctx: any) => {
-        if (!ctx.startDate && !ctx.endDate) return ctx;
+        if (!ctx.startDate && !ctx.endDate) return serializeContext(ctx);
         const computedStatus = resolveContextStatusFromDates(
           ctx.startDate,
           ctx.endDate,
@@ -105,14 +105,15 @@ export class KpiController {
               .set({ status: computedStatus, updatedAt: now })
               .where(and(eq(financialContexts.id, ctx.id), eq(financialContexts.userId, userId)))
               .returning();
-            return updated || { ...ctx, status: computedStatus };
+            return serializeContext(updated || { ...ctx, status: computedStatus });
           } catch {
-            return { ...ctx, status: computedStatus };
+            return serializeContext({ ...ctx, status: computedStatus });
           }
         }
-        return ctx;
+        return serializeContext(ctx);
       })
     );
+    return resolved;
   }
 
   async getBootstrapData(req: AuthRequest, res: Response) {
@@ -218,7 +219,7 @@ export class KpiController {
         });
       }
 
-      // Core bootstrap load (fast Frame-1 Overview): query core ledger + settings + goals + subs
+      // Core bootstrap load (fast Frame-1 Overview): query core ledger + settings + goals + subs + contexts
       const [
         rawTransactions,
         allSplits,
@@ -228,6 +229,7 @@ export class KpiController {
         settings,
         goals,
         subscriptions,
+        contexts,
       ] = await Promise.all([
         transactionRepository.findAllByUserId(userId),
         transactionRepository.findSplitsByUserId(userId),
@@ -237,6 +239,7 @@ export class KpiController {
         settingsService.getSettings(dbUser),
         goalService.getGoalsForUser(userId),
         subscriptionService.getSubscriptionsForUser(userId, userWallets),
+        this.loadResolvedContexts(userId),
       ]);
 
       const fullTransactions = await transactionService.getTransactionsForUser(userId, {
@@ -267,12 +270,12 @@ export class KpiController {
           settings,
           goals,
           subscriptions,
+          contexts,
         });
       }
 
       // Legacy scope=all fallback (retained for backwards compatibility)
-      const [contexts, investmentsData, operationalRadar] = await Promise.all([
-        isAdvanced ? this.loadResolvedContexts(userId) : Promise.resolve([]),
+      const [investmentsData, operationalRadar] = await Promise.all([
         isAdvanced
           ? investmentService
               .getInvestmentsData(userId, {

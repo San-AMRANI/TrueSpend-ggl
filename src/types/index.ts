@@ -274,6 +274,16 @@ export interface KPI {
 export type FinancialContextType = 'Trip' | 'Work / Mission' | 'Project' | 'Life Event' | 'Other';
 export type FinancialContextStatus = 'Planned' | 'Active' | 'Completed';
 
+export interface ProjectPlannedItem {
+  id: string;
+  name: string;
+  estimatedAmount: number;
+  category: string;
+  purchased: boolean;
+  linkedTransactionId?: string | null;
+  notes?: string | null;
+}
+
 export interface FinancialContext {
   id: string;
   userId: string;
@@ -284,6 +294,8 @@ export interface FinancialContext {
   budget: string | null;
   status: FinancialContextStatus;
   notes: string | null;
+  plannedItems?: ProjectPlannedItem[];
+  plannedItemsJson?: string | null;
   createdAt: string;
   updatedAt: string;
 }

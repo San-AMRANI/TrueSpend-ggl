@@ -424,6 +424,7 @@ export const financialContexts = pgTable('financial_contexts', {
   budget: decimal('budget'),
   status: financialContextStatusEnum('status').default('Planned').notNull(),
   notes: text('notes'),
+  plannedItemsJson: text('planned_items_json'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => [

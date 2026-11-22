@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Debt, CategoryBudget, DashboardTab } from '../../types';
-import DebtForm from '../DebtForm';
+import DebtForm, { DebtFormMode, DebtFormWalletOption } from '../DebtForm';
 import { SettleDebtModal } from '../SettleDebtModal';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -31,7 +31,7 @@ import { AnimatedMetricValue, MotionModal } from '../ui/MotionPrimitives';
 
 interface DebtsTabProps {
   debts: Debt[];
-  wallets?: { id: string; name: string }[];
+  wallets?: DebtFormWalletOption[];
   budgets?: CategoryBudget[];
   fetchData: () => void;
   handleSettle: (debtId: string, amount: number, category?: string, walletId?: string) => Promise<void> | void;
@@ -66,6 +66,7 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
   const [deletingDebt, setDeletingDebt] = useState<Debt | null>(null);
   const [activeTab, setActiveTab] = useState<'receivable' | 'payable' | 'cleared' | 'all'>('receivable');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [addFormMode, setAddFormMode] = useState<DebtFormMode>('lend');
   const [reservingInBudget, setReservingInBudget] = useState(false);
   const [budgetSuccessMsg, setBudgetSuccessMsg] = useState<string | null>(null);
   const [expandedScheduleDebtId, setExpandedScheduleDebtId] = useState<string | null>(null);
@@ -613,7 +614,7 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
         </Card>
       )}
 
-      {/* Add New Debt Form / Button */}
+      {/* Add New Loan / Debt Action Bar & Form */}
       <AnimatePresence mode="wait" initial={false}>
         {!showAddForm ? (
           <motion.div
@@ -622,9 +623,36 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.14 }}
+            className="flex flex-wrap items-center gap-2.5"
           >
-            <Button onClick={() => setShowAddForm(true)} className="w-full sm:w-auto shadow-sm">
-              <Plus className="h-4 w-4 mr-1.5" /> Add New Debt, Split, or Amortized Loan
+            <Button
+              onClick={() => {
+                setAddFormMode('lend');
+                setShowAddForm(true);
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm whitespace-nowrap"
+            >
+              <ArrowUpRight className="h-4 w-4 mr-1.5" /> Lend Money
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAddFormMode('borrow');
+                setShowAddForm(true);
+              }}
+              className="shadow-xs whitespace-nowrap"
+            >
+              <ArrowDownRight className="h-4 w-4 mr-1.5" /> Borrow Money
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setAddFormMode('iou');
+                setShowAddForm(true);
+              }}
+              className="text-gray-600 dark:text-gray-300 whitespace-nowrap"
+            >
+              <Plus className="h-4 w-4 mr-1.5" /> Track Existing IOU
             </Button>
           </motion.div>
         ) : (
@@ -634,22 +662,16 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-            className="relative"
           >
             <DebtForm
+              wallets={wallets}
+              initialMode={addFormMode}
+              onCancel={() => setShowAddForm(false)}
               onSuccess={() => {
                 fetchData();
                 setShowAddForm(false);
               }}
             />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute top-3 right-3 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
-              onClick={() => setShowAddForm(false)}
-            >
-              Cancel
-            </Button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1022,16 +1044,30 @@ export const DebtsTab: React.FC<DebtsTabProps> = ({
                     ? "You don't owe anyone anything right now."
                     : "You haven't settled or freed any debts yet."}
                 </p>
-                {activeTab !== 'all' && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setActiveTab('all')}
-                    className="mt-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
-                  >
-                    View all debts
-                  </Button>
-                )}
+                <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+                  {activeTab === 'receivable' && (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setAddFormMode('lend');
+                        setShowAddForm(true);
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap"
+                    >
+                      <ArrowUpRight className="h-3.5 w-3.5 mr-1" /> Lend Money
+                    </Button>
+                  )}
+                  {activeTab !== 'all' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setActiveTab('all')}
+                      className="text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
+                    >
+                      View all debts
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
           </div>

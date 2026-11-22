@@ -31,6 +31,9 @@ export interface CreateTransactionDTO {
   splits?: SplitInput[];
   /** When present on an Income transaction, this income is money borrowed and creates a payable debt. */
   loan_contact_name?: string;
+  /** When present on an Expense transaction, this outflow is money lent to someone and creates a Receivable debt. */
+  loan_given_contact_name?: string;
+  loan_given_due_date?: string;
   /** When present on an Expense transaction, represents the unpaid portion of a partially paid bill (creates a Payable debt). */
   unpaid_amount?: number;
   unpaid_contact_name?: string;
@@ -317,21 +320,36 @@ export class TransactionService {
     }
 
     const loanContactName = dto.loan_contact_name?.trim();
+    const loanGivenContactName = dto.loan_given_contact_name?.trim();
     if (loanContactName && dto.type !== 'Income') {
       throw new Error('A loan received must be an income transaction');
     }
     if (loanContactName && splitList.length > 0) {
       throw new Error('A loan received cannot also be reimbursable');
     }
+    if (loanGivenContactName) {
+      if (dto.type !== 'Expense') {
+        throw new Error('A loan given must be an expense outflow from a wallet');
+      }
+      if (loanContactName) {
+        throw new Error('A transaction cannot be both a loan received and a loan given');
+      }
+      if (splitList.length > 0 || unpaidAmount > 0) {
+        throw new Error('A loan given cannot also include bill splits or partial payments');
+      }
+    }
 
     const createdAt = this.parseTransactionDate(dto.transaction_date);
     const unpaidDueDate = this.parseTransactionDate(dto.unpaid_due_date);
+    const loanGivenDueDate = this.parseTransactionDate(dto.loan_given_due_date);
     const resolvedWalletId = await this.resolveWalletId(userId, dto.walletId);
     const resolvedDestWalletId = await this.resolveOptionalWalletId(userId, dto.destinationWalletId);
 
     let assignedCategory = dto.category;
     if (loanContactName) {
       assignedCategory = '🤝 Loan Received';
+    } else if (loanGivenContactName) {
+      assignedCategory = '🤝 Loan Given';
     } else if (dto.type === 'Transfer' && resolvedDestWalletId) {
       try {
         const wallets = await walletService.getWallets(userId);
@@ -381,7 +399,7 @@ export class TransactionService {
       createdTx = await db.transaction(async (txDb) => {
         const matchedCpId = await this.resolveMatchingCounterpartyId(
           userId,
-          dto.notes || loanContactName || unpaidContactName || '',
+          dto.notes || loanGivenContactName || loanContactName || unpaidContactName || '',
           dto.counterpartyId,
           txDb
         );
@@ -391,6 +409,14 @@ export class TransactionService {
           dto.contextId,
           txDb
         );
+
+        const resolvedNotes =
+          dto.notes?.trim() ||
+          (loanGivenContactName
+            ? `Loan given to ${loanGivenContactName}`
+            : loanContactName
+            ? `Loan received from ${loanContactName}`
+            : dto.notes);
 
         const newTx = await transactionRepository.create(
           {
@@ -405,7 +431,7 @@ export class TransactionService {
             walletId: resolvedWalletId,
             destinationWalletId: resolvedDestWalletId,
             category: normalizedCat,
-            notes: dto.notes,
+            notes: resolvedNotes,
             createdAt,
             contextId: validatedContextId,
             counterpartyId: matchedCpId,
@@ -461,6 +487,37 @@ export class TransactionService {
               transactionId: newTx.id,
               reimbursableAmount: String(unpaidAmount),
               linkedContactId: newPayableDebt.id,
+            },
+            txDb
+          );
+        }
+
+        if (loanGivenContactName) {
+          const loanGivenCpId = await this.resolveMatchingCounterpartyId(
+            userId,
+            loanGivenContactName,
+            null,
+            txDb
+          );
+          const newReceivableDebt = await debtRepository.create(
+            {
+              userId,
+              contactName: loanGivenContactName,
+              type: 'Receivable',
+              originalAmount: String(amountMadNum),
+              remainingBalance: String(amountMadNum),
+              status: 'Pending',
+              dueDate: loanGivenDueDate,
+              createdAt,
+              counterpartyId: loanGivenCpId,
+            },
+            txDb
+          );
+          await transactionRepository.createSplit(
+            {
+              transactionId: newTx.id,
+              reimbursableAmount: String(amountMadNum),
+              linkedContactId: newReceivableDebt.id,
             },
             txDb
           );
@@ -553,11 +610,15 @@ export class TransactionService {
 
     const createdAt = this.parseTransactionDate(dto.transaction_date);
     const unpaidDueDate = this.parseTransactionDate(dto.unpaid_due_date);
+    const loanGivenDueDate = this.parseTransactionDate(dto.loan_given_due_date);
 
     let assignedCategory = dto.category;
     const loanContactName = dto.loan_contact_name?.trim();
+    const loanGivenContactName = dto.loan_given_contact_name?.trim();
     if (loanContactName) {
       assignedCategory = '🤝 Loan Received';
+    } else if (loanGivenContactName) {
+      assignedCategory = '🤝 Loan Given';
     } else if (current.type === 'Transfer' && (dto.destinationWalletId !== undefined || !assignedCategory)) {
       const targetDestId =
         dto.destinationWalletId !== undefined
@@ -829,6 +890,39 @@ export class TransactionService {
             await transactionRepository.deleteSplitById(existingPartialPayableSplit.id, txDb);
           }
         }
+      }
+
+      if (loanGivenContactName) {
+        const loanGivenSplit = existingReceivableSplits[0] || existingSplits[0];
+        if (current.type !== 'Expense' || !loanGivenSplit?.linkedContactId) {
+          throw new Error('This transaction is not a loan given');
+        }
+        const debt = await debtRepository.findByIdAndUserId(loanGivenSplit.linkedContactId, userId, txDb);
+        if (!debt || debt.type !== 'Receivable') throw new Error('Linked loan receivable not found');
+        const originalAmount = parseFloat(debt.originalAmount as unknown as string);
+        const remainingAmount = parseFloat(debt.remainingBalance as unknown as string);
+        const settledAmount = originalAmount - remainingAmount;
+        if (dto.amount < settledAmount) {
+          throw new Error('The loan amount cannot be lower than the amount already repaid.');
+        }
+        const nextRemaining = Math.max(0, Number((dto.amount - settledAmount).toFixed(2)));
+        await debtRepository.update(
+          debt.id,
+          userId,
+          {
+            contactName: loanGivenContactName,
+            originalAmount: String(dto.amount),
+            remainingBalance: nextRemaining <= 0.001 ? '0' : String(nextRemaining),
+            status: nextRemaining <= 0.001 ? 'Cleared' : 'Pending',
+            ...(loanGivenDueDate ? { dueDate: loanGivenDueDate } : {}),
+          },
+          txDb
+        );
+        await transactionRepository.updateSplit(
+          loanGivenSplit.id,
+          { reimbursableAmount: String(dto.amount) },
+          txDb
+        );
       }
 
       if (loanContactName) {

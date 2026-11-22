@@ -3,7 +3,7 @@ import { FinancialContext, FinancialContextStatus, FinancialContextType, Transac
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { format, differenceInCalendarDays, addDays } from 'date-fns';
-import { netExpenseOf } from '../../lib/finance';
+import { netExpenseOf, parseProjectPlannedItems } from '../../lib/finance';
 import {
   Map as MapIcon,
   Briefcase,
@@ -235,7 +235,16 @@ const QUICK_TEMPLATES: {
   defaultName: string;
   daysOffsetStart: number;
   durationDays: number;
+  openEnded?: boolean;
 }[] = [
+  {
+    label: '💻 Room / Workspace Setup',
+    type: 'Project',
+    defaultName: 'Room Setup',
+    daysOffsetStart: 0,
+    durationDays: 0,
+    openEnded: true,
+  },
   {
     label: '🚆 Today Excursion',
     type: 'Trip',
@@ -580,6 +589,17 @@ export const ContextsTab: React.FC<ContextsTabProps> = ({
   };
 
   const applyTemplate = (tpl: (typeof QUICK_TEMPLATES)[number]) => {
+    if (tpl.openEnded) {
+      setFormData((prev) => ({
+        ...prev,
+        name: prev.name || tpl.defaultName,
+        type: tpl.type,
+        startDate: '',
+        endDate: '',
+        status: 'Active',
+      }));
+      return;
+    }
     const now = new Date();
     const start = addDays(now, tpl.daysOffsetStart);
     const end = addDays(start, Math.max(0, tpl.durationDays - 1));
@@ -696,6 +716,9 @@ export const ContextsTab: React.FC<ContextsTabProps> = ({
 
     const startStr = toDateKeyStr(ctx.startDate);
     const endStr = toDateKeyStr(ctx.endDate);
+    const plannedItems = parseProjectPlannedItems(ctx.plannedItems ?? ctx.plannedItemsJson);
+    const purchasedItemsCount = plannedItems.filter((item) => item.purchased).length;
+    const plannedEstimateTotal = plannedItems.reduce((sum, item) => sum + (item.estimatedAmount || 0), 0);
 
     return (
       <Card
@@ -856,8 +879,13 @@ export const ContextsTab: React.FC<ContextsTabProps> = ({
             )}
 
             {/* Bottom telemetry chips */}
-            {(topCategory || reimbursable > 0 || refunds > 0) && (
+            {(topCategory || reimbursable > 0 || refunds > 0 || plannedItems.length > 0) && (
               <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                {plannedItems.length > 0 && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 font-mono">
+                    {purchasedItemsCount}/{plannedItems.length} items · Est. {plannedEstimateTotal.toFixed(0)} MAD
+                  </span>
+                )}
                 {topCategory && (
                   <span className="text-[10px] px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 truncate max-w-[180px]">
                     Top: {topCategory[0]} ({topCategory[1].toFixed(0)} MAD)
@@ -895,6 +923,7 @@ export const ContextsTab: React.FC<ContextsTabProps> = ({
             setSelectedContextId(null);
           }}
           onLinkTransactions={handleLinkTransactions}
+          onUpdateContext={handleUpdateContext}
         />
       ) : (
         <>

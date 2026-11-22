@@ -1,4 +1,4 @@
-import { CategoryBudget, KPI, Transaction } from '../types/index.js';
+import { CategoryBudget, FinancialContext, KPI, ProjectPlannedItem, Transaction } from '../types/index.js';
 import { normalizeCategory } from './categories.js';
 import { FinancialMonthRef, PayrollLike, getFinancialMonthBounds, getFinancialMonthRef, getFinancialPeriods, getPreviousFinancialMonth, isInFinancialMonth } from './financialMonth.js';
 
@@ -177,7 +177,85 @@ export const SPENT_ON_MYSELF_CATEGORIES = [
   '👕 Personal & Clothing',
   '🎬 Entertainment',
   '👥 Social',
+  '🛠️ Home, Tech & Equipment',
 ] as const;
+
+const toContextIdSet = (ids?: Set<string> | string[] | null): Set<string> | null => {
+  if (!ids) return null;
+  if (ids instanceof Set) return ids.size > 0 ? ids : null;
+  return ids.length > 0 ? new Set(ids) : null;
+};
+
+/**
+ * Returns the Set of context IDs whose type is 'Project', so monthly routine
+ * budgets can cleanly separate one-off project/setup purchases from everyday caps.
+ */
+export const getProjectContextIds = (
+  contexts?: Array<Pick<FinancialContext, 'id' | 'type'>> | null,
+): Set<string> => {
+  const ids = new Set<string>();
+  if (!Array.isArray(contexts)) return ids;
+  for (const ctx of contexts) {
+    if (ctx && ctx.type === 'Project' && ctx.id) {
+      ids.add(ctx.id);
+    }
+  }
+  return ids;
+};
+
+/**
+ * Safely parses and sanitizes planned project checklist items from either an array
+ * or a serialized JSON string stored on financial_contexts.planned_items_json.
+ */
+export const parseProjectPlannedItems = (
+  raw: unknown,
+): ProjectPlannedItem[] => {
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+  const result: ProjectPlannedItem[] = [];
+  for (let i = 0; i < Math.min(parsed.length, 100); i += 1) {
+    const item = parsed[i] as Record<string, unknown> | null;
+    if (!item || typeof item !== 'object') continue;
+    const name = typeof item.name === 'string' ? item.name.trim().slice(0, 120) : '';
+    if (!name) continue;
+    const estNum = Number(item.estimatedAmount);
+    const estimatedAmount = Number.isFinite(estNum) && estNum >= 0 ? Math.round(estNum * 100) / 100 : 0;
+    const id =
+      typeof item.id === 'string' && item.id.trim()
+        ? item.id.trim().slice(0, 64)
+        : `item-${i + 1}`;
+    const rawCat = typeof item.category === 'string' && item.category.trim()
+      ? normalizeCategory(item.category)
+      : '🛠️ Home, Tech & Equipment';
+    const linkedTransactionId =
+      typeof item.linkedTransactionId === 'string' && item.linkedTransactionId.trim()
+        ? item.linkedTransactionId.trim().slice(0, 64)
+        : null;
+    const notes =
+      typeof item.notes === 'string' && item.notes.trim()
+        ? item.notes.trim().slice(0, 240)
+        : null;
+    result.push({
+      id,
+      name,
+      estimatedAmount,
+      category: rawCat,
+      purchased: Boolean(item.purchased || linkedTransactionId),
+      linkedTransactionId,
+      notes,
+    });
+  }
+  return result;
+};
 
 /**
  * Pillar 2: Spent on Obligations (Fixed Needs, Essentials, Household/Family & Debt Servicing)
@@ -240,10 +318,12 @@ export const getExpensesForMonth = (
     excludeWealthAllocations?: boolean;
     includeBudgetTransfers?: boolean;
     wallets?: Array<{ id: string; type?: string }>;
+    excludeContextIds?: Set<string> | string[];
   },
 ) => {
   const bounds = getFinancialMonthBounds(payrolls, year, month);
   const walletMap = options?.wallets ? new Map(options.wallets.map((w) => [w.id, w])) : null;
+  const excludedContexts = toContextIdSet(options?.excludeContextIds);
   const matchesMonth = (date: Date) => {
     if (!bounds) {
       return (
@@ -257,6 +337,7 @@ export const getExpensesForMonth = (
   return transactions.filter((transaction) => {
     if (!matchesMonth(transactionDate(transaction))) return false;
     if (transaction.type === 'Expense') {
+      if (excludedContexts && transaction.contextId && excludedContexts.has(transaction.contextId)) return false;
       if (options?.excludeInvestments && isInvestmentTransaction(transaction, options.wallets)) return false;
       if (options?.excludeWealthAllocations && (isInvestmentTransaction(transaction, options.wallets) || isSavingsRetentionCategory(transaction.category))) {
         return false;
@@ -288,10 +369,12 @@ export const getCategorySpending = (
   month: number,
   payrolls: PayrollLike[],
   wallets?: Array<{ id: string; type?: string }>,
+  excludeContextIds?: Set<string> | string[],
 ) => {
   const normCategory = normalizeCategory(category);
   const bounds = getFinancialMonthBounds(payrolls, year, month);
   const walletMap = wallets ? new Map(wallets.map((w) => [w.id, w])) : null;
+  const excludedContexts = toContextIdSet(excludeContextIds);
   const matchesMonth = (date: Date) => {
     if (!bounds) {
       return (
@@ -305,6 +388,14 @@ export const getCategorySpending = (
   let total = 0;
   for (const transaction of transactions) {
     if (!matchesMonth(transactionDate(transaction))) continue;
+    if (
+      excludedContexts &&
+      transaction.type === 'Expense' &&
+      transaction.contextId &&
+      excludedContexts.has(transaction.contextId)
+    ) {
+      continue;
+    }
 
     let txCategory = normalizeCategory(transaction.category);
     if (transaction.type === 'Transfer' && walletMap && transaction.destinationWalletId) {
@@ -460,6 +551,8 @@ export interface FourPillarBreakdown {
   // Total Wealth Built (Saved + Invested)
   totalWealthBuilt: number;
   totalWealthPctOfIncome: number;
+  // Project Expenses Separated from Routine Monthly Living Spend (when excludeContextIds is active)
+  excludedProjectSpent: number;
 }
 
 /**
@@ -476,6 +569,7 @@ export const computeFourPillarBreakdown = ({
   wallets = [],
   isCurrentMonth = true,
   overrideTransactions,
+  excludeContextIds,
 }: {
   transactions: Transaction[];
   budgets?: CategoryBudget[];
@@ -486,6 +580,8 @@ export const computeFourPillarBreakdown = ({
   isCurrentMonth?: boolean;
   /** Optional pre-filtered transaction list (e.g. for 'All Time' in Analytics) */
   overrideTransactions?: Transaction[];
+  /** Optional set/array of Project context IDs to keep separated from routine monthly living spend */
+  excludeContextIds?: Set<string> | string[];
 }): FourPillarBreakdown => {
   const incomeData = overrideTransactions
     ? (() => {
@@ -527,6 +623,7 @@ export const computeFourPillarBreakdown = ({
   const targetTxs = overrideTransactions
     ? overrideTransactions
     : transactions.filter((tx) => isInMonth(tx, year, month, payrolls));
+  const excludedContexts = toContextIdSet(excludeContextIds);
 
   const catSpentMap = new Map<string, { spent: number; count: number }>();
   let explicitInvested = 0;
@@ -534,6 +631,7 @@ export const computeFourPillarBreakdown = ({
   let essentialNeedsSpent = 0;
   let familyHouseholdSpent = 0;
   let debtObligationsSpent = 0;
+  let excludedProjectSpent = 0;
 
   targetTxs.forEach((tx) => {
     let normCat = normalizeCategory(tx.category || '');
@@ -553,6 +651,16 @@ export const computeFourPillarBreakdown = ({
 
       const amt = netExpenseOf(tx);
       if (amt <= 0) return;
+
+      // If this expense is linked to a separated Project context, track it separately
+      // so routine monthly living spend stays clean while cash-retained math stays exact.
+      if (excludedContexts && tx.contextId && excludedContexts.has(tx.contextId)) {
+        const pillar = getCategoryPillar(normCat);
+        if (pillar === 'myself' || pillar === 'obligations') {
+          excludedProjectSpent += amt;
+          return;
+        }
+      }
 
       const cur = catSpentMap.get(normCat) || { spent: 0, count: 0 };
       catSpentMap.set(normCat, { spent: cur.spent + amt, count: cur.count + 1 });
@@ -651,15 +759,15 @@ export const computeFourPillarBreakdown = ({
   const plannedSavingsBudget = budgetMap.get('🛟 Emergency & goals Fund') || 0;
 
   // Bank-as-Savings Retention Logic:
-  // 1. Live Retained in Bank = Income - Living Spent - Invested - Explicit Savings Tx
+  // 1. Live Retained in Bank = Income - Living Spent - Separated Project Spend - Invested - Explicit Savings Tx
   const liveRetainedInBank = Math.max(
     0,
-    periodIncome - totalLivingSpent - explicitInvested - explicitSavingsTx
+    periodIncome - totalLivingSpent - excludedProjectSpent - explicitInvested - explicitSavingsTx
   );
 
   // 2. Protected Bank Retention (for active month budget allocation):
-  // Any income not committed to living budgets (or actual living spend if higher) and investment budgets
-  // is automatically retained in the bank as savings without requiring a transaction.
+  // Any income not committed to living budgets (or actual living spend if higher), separated project spend,
+  // and investment budgets is automatically retained in the bank as savings without requiring a transaction.
   const committedLiving = isCurrentMonth && plannedLivingBudget > 0
     ? Math.max(totalLivingSpent, plannedLivingBudget)
     : totalLivingSpent;
@@ -669,7 +777,7 @@ export const computeFourPillarBreakdown = ({
 
   const protectedBankRetention = Math.max(
     0,
-    periodIncome - committedLiving - committedInvestments - explicitSavingsTx
+    periodIncome - committedLiving - excludedProjectSpent - committedInvestments - explicitSavingsTx
   );
 
   // Effective saved credited toward '🛟 Emergency & goals Fund' budget card
@@ -711,6 +819,7 @@ export const computeFourPillarBreakdown = ({
     savedPctOfIncome: periodIncome > 0 ? (totalActualRetainedAndSaved / periodIncome) * 100 : 0,
     totalWealthBuilt,
     totalWealthPctOfIncome: periodIncome > 0 ? (totalWealthBuilt / periodIncome) * 100 : 0,
+    excludedProjectSpent,
   };
 };
 
@@ -925,6 +1034,7 @@ export const buildChronologicalPeriodPatternSummary = ({
   subscriptions = [],
   debts = [],
   wallets = [],
+  excludeContextIds,
   now = new Date(),
 }: {
   transactions: Transaction[];
@@ -935,8 +1045,10 @@ export const buildChronologicalPeriodPatternSummary = ({
   subscriptions?: Array<{ name: string; amount: string | number; billingCycle?: string; category?: string; status?: string }>;
   debts?: Array<{ type: string; status: string; remainingBalance: string | number; dueDate?: string | null; contactName?: string }>;
   wallets?: Array<{ id: string; type?: string }>;
+  excludeContextIds?: Set<string> | string[];
   now?: Date;
 }): ChronologicalPatternAnalysis => {
+  const excludedContexts = toContextIdSet(excludeContextIds);
   const allPeriods = getFinancialPeriods(payrolls);
   // Filter to periods that have started on or before `now` (or up to targetYear/targetMonth), sorted OLDEST -> CURRENT
   const nonFuturePeriods = allPeriods
@@ -1023,6 +1135,7 @@ export const buildChronologicalPeriodPatternSummary = ({
       }
 
       if (tx.type === 'Expense') {
+        if (excludedContexts && tx.contextId && excludedContexts.has(tx.contextId)) return;
         const sourceWallet = wallets?.find((w) => w.id === tx.walletId);
         const sourceType = sourceWallet?.type?.toLowerCase();
         if (normCat === '📈 Investments' && sourceType === 'investment') return;

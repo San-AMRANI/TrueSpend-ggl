@@ -181,12 +181,16 @@ export function useDashboardData(token: string | null, experienceTier?: Experien
         setPayrolls(bootstrap.payrolls || []);
         setGoals(bootstrap.goals || []);
         setSubscriptions(bootstrap.subscriptions || []);
+        if (Array.isArray(bootstrap.contexts)) {
+          setContexts(bootstrap.contexts);
+          setHasContexts(true);
+        } else {
+          setHasContexts(false);
+        }
         // Reset lazy secondary flags so on-demand tabs/bands re-sync cleanly when needed
-        setHasContexts(false);
         setHasRadar(false);
         setHasInvestments(false);
         if (!isAdvancedTier) {
-          setContexts([]);
           setInvestmentsData(null);
           setOperationalRadar(null);
         }

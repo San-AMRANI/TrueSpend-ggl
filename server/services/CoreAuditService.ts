@@ -277,9 +277,10 @@ export class CoreAuditService {
       };
     }
 
-    // Default: Expense (including Credit-Card purchase or Investment purchase)
+    // Default: Expense (including Credit-Card purchase, Investment purchase, or Loan Given receivable)
     const catLower = (tx.category || '').toLowerCase();
     const isInvestmentAllocation = catLower.includes('investment');
+    const isLoanGiven = catLower.includes('loan given');
     return {
       entryType: isSourceCreditCard
         ? 'credit_purchase'
@@ -289,9 +290,15 @@ export class CoreAuditService {
       lines: [
         {
           walletId: null,
-          accountCode: isInvestmentAllocation ? '1300-ASSET-INVESTMENTS' : '5010-EXPENSE-OPERATING',
-          accountName: tx.category || 'Operating Expense',
-          accountClass: isInvestmentAllocation ? 'Asset' : 'Expense',
+          accountCode: isLoanGiven
+            ? '1200-ASSET-RECEIVABLE'
+            : isInvestmentAllocation
+            ? '1300-ASSET-INVESTMENTS'
+            : '5010-EXPENSE-OPERATING',
+          accountName: isLoanGiven
+            ? 'Loans & Receivables'
+            : tx.category || 'Operating Expense',
+          accountClass: isLoanGiven || isInvestmentAllocation ? 'Asset' : 'Expense',
           debitMad: amountMad,
           creditMad: 0,
           nativeAmount,
