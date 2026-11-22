@@ -159,7 +159,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           saveTabSessionCache(detail.token, detail.user);
         }
         const ownerUserId = detail.user?.id || detail.user?.uid;
-        if (ownerUserId) {
+        if (ownerUserId && !detail.fromNative) {
           syncNativeAuthSession({
             ownerUserId,
             accessToken: detail.token,
@@ -199,6 +199,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       accessToken: newToken,
       refreshToken: nativeRefreshToken || getStoredNativeRefreshToken(),
       apiBaseUrl: getApiUrl('/api').replace(/\/api\/?$/, ''),
+      enableAutomation: true,
     }).catch(() => {});
     if (newUser.emailVerified && newUser.status === 'active') {
       loadOnboardingForToken(newToken);

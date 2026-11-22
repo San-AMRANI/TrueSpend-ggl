@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { setApiAccessToken, setStoredNativeRefreshToken } from '../services/api/apiClient';
 
 export interface NotificationRule {
   id: string;
@@ -30,8 +31,8 @@ export interface CapturedNotificationEvent {
   receivedAt: string;
   status: 'PENDING' | 'PROCESSING' | 'SUCCEEDED' | 'RETRYABLE_FAILED' | 'PERMANENT_FAILED';
   attemptCount: number;
-  lastErrorCode?: string;
-  serverTransactionId?: string;
+  lastErrorCode?: string | null;
+  serverTransactionId?: string | null;
 }
 
 interface NotificationCapturePlugin {
@@ -67,6 +68,10 @@ interface NotificationCapturePlugin {
     eventName: 'notificationCaptured',
     listenerFunc: (notification: CapturedNotificationEvent) => void
   ): Promise<{ remove(): Promise<void> }>;
+  addListener(
+    eventName: 'nativeSessionRefreshed',
+    listenerFunc: (session: { accessToken?: string; refreshToken?: string }) => void
+  ): Promise<{ remove(): Promise<void> }>;
   setEnabledPackages(options: { packages: string[] }): Promise<{ packages: string[] }>;
   getEnabledPackages(): Promise<{ packages: string[] }>;
   getCapturedNotifications(): Promise<{ notifications: CapturedNotificationEvent[] }>;
@@ -75,19 +80,54 @@ interface NotificationCapturePlugin {
 
 const NotificationCapture = registerPlugin<NotificationCapturePlugin>('NotificationCapture');
 
+let listenersInitialized = false;
+
 export async function initBankNotificationCapture(): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return;
+  if (!Capacitor.isNativePlatform() || listenersInitialized) return;
+  listenersInitialized = true;
+  try {
+    await NotificationCapture.addListener('nativeSessionRefreshed', (session) => {
+      if (session?.accessToken) {
+        setApiAccessToken(session.accessToken);
+      }
+      if (session?.refreshToken) {
+        setStoredNativeRefreshToken(session.refreshToken);
+      }
+      if (session?.accessToken) {
+        window.dispatchEvent(
+          new CustomEvent('auth:refreshed', {
+            detail: { token: session.accessToken, fromNative: true },
+          })
+        );
+      }
+    });
+    await NotificationCapture.addListener('notificationCaptured', (notification) => {
+      window.dispatchEvent(
+        new CustomEvent('truespend:notification-captured', {
+          detail: notification,
+        })
+      );
+    });
+  } catch {
+    listenersInitialized = false;
+  }
 }
 
 export async function syncNativeAuthSession(options: {
   ownerUserId?: string;
   accessToken?: string;
-  refreshToken?: string;
+  refreshToken?: string | null;
   apiBaseUrl?: string;
+  enableAutomation?: boolean;
 }): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
-  await NotificationCapture.setNativeSession(options);
-  if (options.ownerUserId) {
+  await NotificationCapture.setNativeSession({
+    ownerUserId: options.ownerUserId,
+    accessToken: options.accessToken,
+    refreshToken: options.refreshToken || undefined,
+    apiBaseUrl: options.apiBaseUrl,
+  });
+  if (options.ownerUserId && options.enableAutomation) {
     await NotificationCapture.setAutomationEnabled({ enabled: true }).catch(() => {});
   }
 }

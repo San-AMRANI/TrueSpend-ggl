@@ -36,6 +36,19 @@ import okhttp3.Response;
 public class NotificationCaptureQueueWorker extends Worker {
     public static final String UNIQUE_PREFIX = "truespend-notification-";
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
+    private static final String DEFAULT_API_BASE_URL = "https://true-spend-ggl.vercel.app";
+    private static final String PRIMARY_INGEST_PATH = "/api/transactions/from-bank-notification";
+    private static final String FALLBACK_INGEST_PATH = "/api/notifications/ingest";
+    private static final Object TOKEN_REFRESH_LOCK = new Object();
+
+    private static final class IngestResult {
+        final int code;
+        final String body;
+        IngestResult(int code, String body) {
+            this.code = code;
+            this.body = body;
+        }
+    }
 
     public NotificationCaptureQueueWorker(@NonNull Context context, @NonNull WorkerParameters params) {
         super(context, params);
@@ -73,6 +86,7 @@ public class NotificationCaptureQueueWorker extends Worker {
     public Result doWork() {
         NotificationCaptureDatabase db = NotificationCaptureDatabase.getInstance(getApplicationContext());
         if (getInputData().getBoolean("drain", false) || getInputData().getString("drain") != null) {
+            db.claimStaleProcessingEvents(120_000L);
             JSONArray history = db.getEventHistory(200, 0);
             for (int i = 0; i < history.length(); i++) {
                 JSONObject event = history.optJSONObject(i);
@@ -92,7 +106,7 @@ public class NotificationCaptureQueueWorker extends Worker {
         String ownerId = event.optString("ownerUserId");
         String activeOwner = db.getActiveOwnerUserId();
         if (TextUtils.isEmpty(ownerId) || !ownerId.equals(activeOwner)) {
-            db.updateEventStatus(eventId, "PERMANENT_FAILED", "ACCOUNT_MISMATCH", null);
+            updateAndNotify(db, eventId, "PERMANENT_FAILED", "ACCOUNT_MISMATCH", null);
             return Result.success();
         }
 
@@ -101,20 +115,25 @@ public class NotificationCaptureQueueWorker extends Worker {
             String accessToken = session.getString("accessToken", "");
             String refreshToken = session.getString("refreshToken", "");
             String apiBaseUrl = session.getString("apiBaseUrl", "");
-            if (apiBaseUrl.isEmpty()) apiBaseUrl = "https://true-spend-ggl.vercel.app";
-            if (accessToken.isEmpty() && refreshToken.isEmpty()) {
-                db.updateEventStatus(eventId, "PERMANENT_FAILED", "SIGN_IN_REQUIRED", null);
+            if (TextUtils.isEmpty(apiBaseUrl)) apiBaseUrl = DEFAULT_API_BASE_URL;
+            String normalizedBaseUrl = apiBaseUrl.replaceAll("/+$", "");
+
+            if (TextUtils.isEmpty(accessToken) && TextUtils.isEmpty(refreshToken)) {
+                updateAndNotify(db, eventId, "PERMANENT_FAILED", "SIGN_IN_REQUIRED", null);
                 return Result.success();
             }
-            if (!refreshToken.isEmpty()) {
-                String refreshed = refreshAccessToken(apiBaseUrl, refreshToken, session);
-                if (!refreshed.isEmpty()) accessToken = refreshed;
+
+            OkHttpClient client = new OkHttpClient.Builder()
+                .connectTimeout(20, TimeUnit.SECONDS)
+                .readTimeout(45, TimeUnit.SECONDS)
+                .build();
+
+            // Only refresh before sending if we have no cached access token at all.
+            if (TextUtils.isEmpty(accessToken)) {
+                accessToken = refreshAccessTokenLocked(client, normalizedBaseUrl, "", session);
             }
-            if (accessToken.isEmpty()) {
-                accessToken = refreshAccessToken(apiBaseUrl, refreshToken, session);
-            }
-            if (accessToken.isEmpty()) {
-                db.updateEventStatus(eventId, "PERMANENT_FAILED", "AUTH_REQUIRED", null);
+            if (TextUtils.isEmpty(accessToken)) {
+                updateAndNotify(db, eventId, "PERMANENT_FAILED", "AUTH_REQUIRED", null);
                 return Result.success();
             }
 
@@ -130,55 +149,89 @@ public class NotificationCaptureQueueWorker extends Worker {
             payload.put("packageName", event.optString("packageName"));
             payload.put("postedAt", System.currentTimeMillis());
 
-            OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(20, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .build();
-            Request request = new Request.Builder()
-                .url(apiBaseUrl.replaceAll("/+$", "") + "/api/notifications/ingest")
-                .post(RequestBody.create(payload.toString(), JSON))
-                .header("Authorization", "Bearer " + accessToken)
-                .header("X-Client-Platform", "capacitor")
-                .header("Idempotency-Key", eventId)
-                .build();
+            IngestResult result = postIngestWithFallback(client, normalizedBaseUrl, accessToken, eventId, payload);
 
-            try (Response response = client.newCall(request).execute()) {
-                int code = response.code();
-                String responseBody = response.body() == null ? "" : response.body().string();
-                JSONObject data = new JSONObject();
-                try { data = new JSONObject(responseBody); } catch (Exception ignored) {}
-                String transactionId = data.optString("transactionId");
-                String serverStatus = data.optString("status");
+            // Lazy single-retry token refresh on 401 behind TOKEN_REFRESH_LOCK.
+            if (result.code == 401 && !TextUtils.isEmpty(session.getString("refreshToken", ""))) {
+                String refreshedAccess = refreshAccessTokenLocked(client, normalizedBaseUrl, accessToken, session);
+                if (!TextUtils.isEmpty(refreshedAccess)) {
+                    result = postIngestWithFallback(client, normalizedBaseUrl, refreshedAccess, eventId, payload);
+                }
+            }
 
-                if (response.isSuccessful()) {
-                    if ("ignored".equals(serverStatus) || code == 422) {
-                        db.updateEventStatus(eventId, "PERMANENT_FAILED", "IGNORED", transactionId);
-                    } else {
-                        db.updateEventStatus(eventId, "SUCCEEDED", null, transactionId);
-                    }
-                    return Result.success();
+            int code = result.code;
+            JSONObject data = new JSONObject();
+            try {
+                if (!TextUtils.isEmpty(result.body)) data = new JSONObject(result.body);
+            } catch (Exception ignored) {}
+            String transactionId = data.optString("transactionId");
+            String serverStatus = data.optString("status");
+
+            if (code >= 200 && code < 300) {
+                if ("ignored".equalsIgnoreCase(serverStatus)) {
+                    updateAndNotify(db, eventId, "PERMANENT_FAILED", "IGNORED", transactionId);
+                } else {
+                    updateAndNotify(db, eventId, "SUCCEEDED", null, transactionId);
                 }
-                if (code == 401 || code == 403) {
-                    db.updateEventStatus(eventId, "PERMANENT_FAILED", "AUTH_REQUIRED", null);
-                    return Result.success();
-                }
-                if (code == 422) {
-                    db.updateEventStatus(eventId, "PERMANENT_FAILED", "VALIDATION_FAILED", null);
-                    return Result.success();
-                }
-                if (code >= 400 && code < 500) {
-                    db.updateEventStatus(eventId, "PERMANENT_FAILED", "HTTP_" + code, null);
-                    return Result.success();
-                }
-                db.updateEventStatus(eventId, "RETRYABLE_FAILED", "HTTP_" + code, null);
+                return Result.success();
+            }
+            if (code == 401 || code == 403) {
+                updateAndNotify(db, eventId, "PERMANENT_FAILED", "AUTH_REQUIRED", null);
+                return Result.success();
+            }
+            if (code == 422) {
+                updateAndNotify(db, eventId, "PERMANENT_FAILED", "NO_AMOUNT_DETECTED", null);
+                return Result.success();
+            }
+            if (code == 429) {
+                updateAndNotify(db, eventId, "RETRYABLE_FAILED", "RATE_LIMITED", null);
                 return db.getAttemptCount(eventId) >= 8 ? Result.success() : Result.retry();
             }
+            if (code >= 400 && code < 500) {
+                updateAndNotify(db, eventId, "PERMANENT_FAILED", "HTTP_" + code, null);
+                return Result.success();
+            }
+            updateAndNotify(db, eventId, "RETRYABLE_FAILED", "HTTP_" + code, null);
+            return db.getAttemptCount(eventId) >= 8 ? Result.success() : Result.retry();
         } catch (IOException error) {
-            db.updateEventStatus(eventId, "RETRYABLE_FAILED", "NETWORK_ERROR", null);
+            updateAndNotify(db, eventId, "RETRYABLE_FAILED", "NETWORK_ERROR", null);
             return db.getAttemptCount(eventId) >= 8 ? Result.success() : Result.retry();
         } catch (Exception error) {
-            db.updateEventStatus(eventId, "RETRYABLE_FAILED", "WORKER_ERROR", null);
+            updateAndNotify(db, eventId, "RETRYABLE_FAILED", "WORKER_ERROR", null);
             return db.getAttemptCount(eventId) >= 8 ? Result.success() : Result.retry();
+        }
+    }
+
+    private IngestResult postIngestWithFallback(OkHttpClient client, String baseUrl, String accessToken,
+                                                String eventId, JSONObject payload) throws IOException {
+        IngestResult primary = executeIngestPost(client, baseUrl + PRIMARY_INGEST_PATH, accessToken, eventId, payload);
+        if (primary.code == 404) {
+            return executeIngestPost(client, baseUrl + FALLBACK_INGEST_PATH, accessToken, eventId, payload);
+        }
+        return primary;
+    }
+
+    private IngestResult executeIngestPost(OkHttpClient client, String url, String accessToken,
+                                           String eventId, JSONObject payload) throws IOException {
+        Request request = new Request.Builder()
+            .url(url)
+            .post(RequestBody.create(payload.toString(), JSON))
+            .header("Authorization", "Bearer " + accessToken)
+            .header("X-Client-Platform", "capacitor")
+            .header("Idempotency-Key", eventId)
+            .build();
+        try (Response response = client.newCall(request).execute()) {
+            String body = response.body() == null ? "" : response.body().string();
+            return new IngestResult(response.code(), body);
+        }
+    }
+
+    private void updateAndNotify(NotificationCaptureDatabase db, String eventId, String status,
+                                 String errorCode, String transactionId) {
+        db.updateEventStatus(eventId, status, errorCode, transactionId);
+        JSONObject updated = db.getEvent(eventId);
+        if (updated != null) {
+            NotificationCapturePlugin.emitNotificationCaptured(updated);
         }
     }
 
@@ -195,28 +248,41 @@ public class NotificationCaptureQueueWorker extends Worker {
         );
     }
 
-    private String refreshAccessToken(String apiBaseUrl, String refreshToken,
-                                      SharedPreferences secureSession) throws IOException {
-        JSONObject body = new JSONObject();
-        try { body.put("refreshToken", refreshToken); } catch (Exception ignored) {}
-        OkHttpClient client = new OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build();
-        Request request = new Request.Builder()
-            .url(apiBaseUrl.replaceAll("/+$", "") + "/api/auth/refresh")
-            .post(RequestBody.create(body.toString(), JSON))
-            .header("X-Client-Platform", "capacitor")
-            .build();
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful() || response.body() == null) return "";
-            JSONObject data = new JSONObject(response.body().string());
-            String access = data.optString("accessToken");
-            if (access.isEmpty()) access = data.optString("token");
-            String rotatedRefresh = data.optString("refreshToken");
-            if (!access.isEmpty()) secureSession.edit().putString("accessToken", access).apply();
-            if (!rotatedRefresh.isEmpty()) secureSession.edit().putString("refreshToken", rotatedRefresh).apply();
-            return access;
-        } catch (Exception error) {
-            return "";
+    private String refreshAccessTokenLocked(OkHttpClient client, String baseUrl, String failedAccessToken,
+                                            SharedPreferences secureSession) throws IOException {
+        synchronized (TOKEN_REFRESH_LOCK) {
+            String latestAccess = secureSession.getString("accessToken", "");
+            if (!TextUtils.isEmpty(latestAccess) && !latestAccess.equals(failedAccessToken)) {
+                return latestAccess;
+            }
+            String currentRefresh = secureSession.getString("refreshToken", "");
+            if (TextUtils.isEmpty(currentRefresh)) {
+                return "";
+            }
+            JSONObject body = new JSONObject();
+            try { body.put("refreshToken", currentRefresh); } catch (Exception ignored) {}
+            Request request = new Request.Builder()
+                .url(baseUrl + "/api/auth/refresh")
+                .post(RequestBody.create(body.toString(), JSON))
+                .header("X-Client-Platform", "capacitor")
+                .build();
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null) return "";
+                JSONObject data = new JSONObject(response.body().string());
+                String access = data.optString("accessToken");
+                if (TextUtils.isEmpty(access)) access = data.optString("token");
+                String rotatedRefresh = data.optString("refreshToken");
+                SharedPreferences.Editor editor = secureSession.edit();
+                if (!TextUtils.isEmpty(access)) editor.putString("accessToken", access);
+                if (!TextUtils.isEmpty(rotatedRefresh)) editor.putString("refreshToken", rotatedRefresh);
+                editor.commit();
+                if (!TextUtils.isEmpty(access)) {
+                    NotificationCapturePlugin.emitSessionRefreshed(access, rotatedRefresh);
+                }
+                return access;
+            } catch (Exception error) {
+                return "";
+            }
         }
     }
 }

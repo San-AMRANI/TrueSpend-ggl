@@ -47,9 +47,12 @@ import {
 import { fetchLatestAndroidRelease, getLatestAndroidApkUrl, type AndroidRelease } from '../../lib/androidRelease';
 import {
   bankNotificationCapture,
+  syncNativeAuthSession,
+  type CapturedNotificationEvent,
   type InstalledNotificationApp,
   type NotificationRule,
 } from '../../lib/bankNotificationCapture';
+import { getStoredNativeRefreshToken } from '../../services/api/apiClient';
 import type {
   NotifChannelPrefs,
   NotifSettings,
@@ -149,6 +152,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     retryableFailed: 0,
     permanentFailed: 0,
   });
+  const [notificationEvents, setNotificationEvents] = useState<CapturedNotificationEvent[]>([]);
   const [backupPreview, setBackupPreview] = useState<BackupValidationPreview | null>(null);
   const [rules, setRules] = useState<FinancialRuleItem[]>([]);
   const [ruleLogs, setRuleLogs] = useState<FinancialRuleLogItem[]>([]);
@@ -230,6 +234,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
   useEffect(() => {
     if (!isNativePlatform()) return;
+    const refreshQueueAndHistory = () => {
+      bankNotificationCapture.getQueueSummary()
+        .then(setNotificationQueue)
+        .catch(() => {});
+      bankNotificationCapture.getEventHistory(5, 0)
+        .then(setNotificationEvents)
+        .catch(() => setNotificationEvents([]));
+    };
     const loadNativeStatus = () => {
       bankNotificationCapture.getPermissionStatus()
         .then((result) => setBankNotificationAccess(result.granted))
@@ -251,18 +263,25 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       bankNotificationCapture.getAutomationStatus()
         .then((result) => setNotificationAutomationEnabled(result.enabled))
         .catch(() => setNotificationAutomationEnabled(true));
-      bankNotificationCapture.getQueueSummary()
-        .then(setNotificationQueue)
-        .catch(() => {});
+      refreshQueueAndHistory();
+    };
+    const handleNotificationCaptured = (event: Event) => {
+      refreshQueueAndHistory();
+      const detail = (event as CustomEvent<CapturedNotificationEvent>).detail;
+      if (detail?.status === 'SUCCEEDED' && onDataChange) {
+        Promise.resolve(onDataChange()).catch(() => {});
+      }
     };
     loadNativeStatus();
     window.addEventListener('focus', loadNativeStatus);
     document.addEventListener('resume', loadNativeStatus);
+    window.addEventListener('truespend:notification-captured', handleNotificationCaptured);
     return () => {
       window.removeEventListener('focus', loadNativeStatus);
       document.removeEventListener('resume', loadNativeStatus);
+      window.removeEventListener('truespend:notification-captured', handleNotificationCaptured);
     };
-  }, []);
+  }, [onDataChange]);
 
   const loadSecurityData = React.useCallback(async () => {
     if (!token) return;
@@ -2470,8 +2489,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   <Button size="sm" variant="outline" onClick={async () => {
                     await bankNotificationCapture.retryPendingEvents();
                     setNotificationQueue(await bankNotificationCapture.getQueueSummary());
+                    setNotificationEvents(await bankNotificationCapture.getEventHistory(5, 0));
                     setBankNotificationStatus('Eligible queued events were rescheduled.');
                   }}>Retry Queue</Button>
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    await bankNotificationCapture.clearCompletedHistory();
+                    setNotificationQueue(await bankNotificationCapture.getQueueSummary());
+                    setNotificationEvents(await bankNotificationCapture.getEventHistory(5, 0));
+                    setBankNotificationStatus('Completed and failed history cleared.');
+                  }}>Clear History</Button>
                 </div>
                 {notificationRules.length > 0 && (
                   <div className="space-y-2">
@@ -2500,6 +2526,40 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   {' '}{notificationQueue.succeeded} succeeded · {notificationQueue.retryableFailed} retryable failed ·
                   {' '}{notificationQueue.permanentFailed} permanent failed
                 </p>
+                {notificationEvents.length > 0 && (
+                  <div className="space-y-1.5 pt-1">
+                    {notificationEvents.map((ev) => (
+                      <div
+                        key={ev.eventId}
+                        className="flex items-start justify-between gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-900/40 px-2.5 py-1.5 text-[11px]"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                            {ev.appLabel}{ev.title ? ` · ${ev.title}` : ''}
+                          </p>
+                          {ev.text && (
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{ev.text}</p>
+                          )}
+                        </div>
+                        <span
+                          className={`shrink-0 font-mono text-[10px] font-semibold ${
+                            ev.status === 'SUCCEEDED'
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : ev.status === 'PERMANENT_FAILED'
+                              ? 'text-rose-600 dark:text-rose-400'
+                              : 'text-amber-600 dark:text-amber-400'
+                          }`}
+                        >
+                          {ev.status === 'SUCCEEDED'
+                            ? 'LOGGED'
+                            : ev.lastErrorCode
+                            ? `${ev.status} (${ev.lastErrorCode})`
+                            : ev.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {bankNotificationStatus && (
                   <p className="text-[11px] text-indigo-600 dark:text-indigo-400">{bankNotificationStatus}</p>
                 )}
@@ -2525,6 +2585,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   size="sm"
                   onClick={() => {
                     setCapacitorApiBaseUrl(apiBaseInput);
+                    const resolvedBase = getCapacitorApiBaseUrl();
+                    if (isNativePlatform() && user) {
+                      syncNativeAuthSession({
+                        ownerUserId: user.id || user.uid,
+                        accessToken: token || undefined,
+                        refreshToken: getStoredNativeRefreshToken(),
+                        apiBaseUrl: resolvedBase,
+                      }).catch(() => {});
+                    }
                     showNotifToast('Mobile API Server URL saved!');
                   }}
                 >
@@ -2537,6 +2606,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     setCapacitorApiBaseUrl('');
                     const def = getCapacitorApiBaseUrl();
                     setApiBaseInput(def);
+                    if (isNativePlatform() && user) {
+                      syncNativeAuthSession({
+                        ownerUserId: user.id || user.uid,
+                        accessToken: token || undefined,
+                        refreshToken: getStoredNativeRefreshToken(),
+                        apiBaseUrl: def,
+                      }).catch(() => {});
+                    }
                     showNotifToast('Reset to default Cloud Run endpoint.');
                   }}
                 >

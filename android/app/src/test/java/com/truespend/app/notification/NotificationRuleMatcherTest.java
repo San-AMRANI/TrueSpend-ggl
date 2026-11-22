@@ -34,4 +34,18 @@ public class NotificationRuleMatcherTest {
         assertFalse(disabled.matches("Payment", "150 MAD"));
         assertFalse(empty.matches("Payment", "150 MAD"));
     }
+
+    @Test
+    public void matchFieldsRestrictsTitleOrText() {
+        NotificationCaptureDatabase.Rule titleOnly = new NotificationCaptureDatabase.Rule(
+            "rule-5", true, "com.example.app", "Example",
+            new String[]{"payment"}, "ANY", new String[]{"TITLE"}, false);
+        NotificationCaptureDatabase.Rule textOnly = new NotificationCaptureDatabase.Rule(
+            "rule-6", true, "com.example.app", "Example",
+            new String[]{"150"}, "ANY", new String[]{"TEXT"}, false);
+        assertTrue(titleOnly.matches("Payment alert", "150 MAD"));
+        assertFalse(titleOnly.matches("Bank alert", "Payment 150 MAD"));
+        assertTrue(textOnly.matches("Bank alert", "150 MAD"));
+        assertFalse(textOnly.matches("150 MAD", "Bank alert"));
+    }
 }

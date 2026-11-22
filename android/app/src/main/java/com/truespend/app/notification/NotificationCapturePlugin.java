@@ -32,15 +32,41 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @CapacitorPlugin(name = "NotificationCapture")
 public class NotificationCapturePlugin extends Plugin {
-    private static NotificationCapturePlugin instance;
+    private static volatile NotificationCapturePlugin instance;
+    private static final ExecutorService APP_LIST_EXECUTOR = Executors.newSingleThreadExecutor();
 
     @Override
     public void load() {
         instance = this;
+        NotificationCaptureDatabase.getInstance(getContext()).claimStaleProcessingEvents(120_000L);
         NotificationCaptureQueueWorker.enqueueDrain(getContext());
+    }
+
+    public static void emitNotificationCaptured(JSONObject event) {
+        NotificationCapturePlugin plugin = instance;
+        if (plugin == null || event == null) return;
+        try {
+            JSObject payload = JSObject.fromJSONObject(event);
+            plugin.notifyListeners("notificationCaptured", payload, true);
+        } catch (Exception ignored) {}
+    }
+
+    public static void emitSessionRefreshed(String accessToken, String refreshToken) {
+        NotificationCapturePlugin plugin = instance;
+        if (plugin == null || TextUtils.isEmpty(accessToken)) return;
+        try {
+            JSObject payload = new JSObject();
+            payload.put("accessToken", accessToken);
+            if (!TextUtils.isEmpty(refreshToken)) {
+                payload.put("refreshToken", refreshToken);
+            }
+            plugin.notifyListeners("nativeSessionRefreshed", payload, true);
+        } catch (Exception ignored) {}
     }
 
     @PluginMethod
@@ -100,45 +126,47 @@ public class NotificationCapturePlugin extends Plugin {
 
     @PluginMethod
     public void getInstalledApps(PluginCall call) {
-        try {
-            PackageManager pm = getContext().getPackageManager();
-            List<JSObject> apps = new ArrayList<>();
-            java.util.LinkedHashMap<String, JSObject> appByPackage = new java.util.LinkedHashMap<>();
-            Intent launcher = new Intent(Intent.ACTION_MAIN);
-            launcher.addCategory(Intent.CATEGORY_LAUNCHER);
-            List<ResolveInfo> resolved;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                resolved = pm.queryIntentActivities(launcher,
-                    PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_ALL));
-            } else {
-                resolved = pm.queryIntentActivities(launcher,
-                    PackageManager.MATCH_ALL);
+        APP_LIST_EXECUTOR.execute(() -> {
+            try {
+                PackageManager pm = getContext().getPackageManager();
+                List<JSObject> apps = new ArrayList<>();
+                java.util.LinkedHashMap<String, JSObject> appByPackage = new java.util.LinkedHashMap<>();
+                Intent launcher = new Intent(Intent.ACTION_MAIN);
+                launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+                List<ResolveInfo> resolved;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    resolved = pm.queryIntentActivities(launcher,
+                        PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_ALL));
+                } else {
+                    resolved = pm.queryIntentActivities(launcher,
+                        PackageManager.MATCH_ALL);
+                }
+                for (ResolveInfo info : resolved) {
+                    if (info.activityInfo == null) continue;
+                    String packageName = info.activityInfo.packageName;
+                    if (packageName.equals(getContext().getPackageName())) continue;
+                    if (appByPackage.containsKey(packageName)) continue;
+                    CharSequence label = info.loadLabel(pm);
+                    JSObject app = new JSObject();
+                    app.put("packageName", packageName);
+                    app.put("appName", label == null ? packageName : label.toString());
+                    app.put("icon", drawableToBase64(info.loadIcon(pm)));
+                    appByPackage.put(packageName, app);
+                }
+                apps.addAll(appByPackage.values());
+                Collections.sort(apps, Comparator.comparing(
+                    app -> app.getString("appName").toLowerCase(java.util.Locale.ROOT)));
+                JSArray output = new JSArray();
+                for (JSObject app : apps) output.put(app);
+                JSObject result = new JSObject();
+                result.put("apps", output);
+                result.put("count", output.length());
+                result.put("queryType", "launcher");
+                call.resolve(result);
+            } catch (Exception error) {
+                call.reject("Unable to read installed launcher apps.", error);
             }
-            for (ResolveInfo info : resolved) {
-                if (info.activityInfo == null) continue;
-                String packageName = info.activityInfo.packageName;
-                if (packageName.equals(getContext().getPackageName())) continue;
-                if (appByPackage.containsKey(packageName)) continue;
-                CharSequence label = info.loadLabel(pm);
-                JSObject app = new JSObject();
-                app.put("packageName", packageName);
-                app.put("appName", label == null ? packageName : label.toString());
-                app.put("icon", drawableToBase64(info.loadIcon(pm)));
-                appByPackage.put(packageName, app);
-            }
-            apps.addAll(appByPackage.values());
-            Collections.sort(apps, Comparator.comparing(
-                app -> app.getString("appName").toLowerCase(java.util.Locale.ROOT)));
-            JSArray output = new JSArray();
-            for (JSObject app : apps) output.put(app);
-            JSObject result = new JSObject();
-            result.put("apps", output);
-            result.put("count", output.length());
-            result.put("queryType", "launcher");
-            call.resolve(result);
-        } catch (Exception error) {
-            call.reject("Unable to read installed launcher apps.", error);
-        }
+        });
     }
 
     private String drawableToBase64(Drawable drawable) {
@@ -258,7 +286,14 @@ public class NotificationCapturePlugin extends Plugin {
                 if (!TextUtils.isEmpty(apiBaseUrl)) editor.putString("apiBaseUrl", apiBaseUrl);
                 NotificationCaptureDatabase.getInstance(getContext()).setActiveOwnerUserId(ownerUserId);
             }
-            editor.apply();
+            editor.commit();
+            if (!TextUtils.isEmpty(ownerUserId)) {
+                SharedPreferences prefs = getContext().getSharedPreferences(
+                    BankNotificationListenerService.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+                if (prefs.getBoolean("automation_enabled", true)) {
+                    NotificationCaptureQueueWorker.enqueueDrain(getContext());
+                }
+            }
             call.resolve();
         } catch (Exception error) {
             call.reject("Unable to store native notification session.", error);

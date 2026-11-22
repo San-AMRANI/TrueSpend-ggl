@@ -19,26 +19,54 @@ export interface BankNotificationProposal {
   notes: string;
 }
 
-function parseNumber(value: string): number | null {
+export function parseNumber(value: string): number | null {
   let clean = value.replace(/\s/g, '').replace(/[^\d.,-]/g, '');
   if (!clean) return null;
-  if (clean.includes(',') && clean.includes('.')) {
-    clean = clean.replace(/\./g, '').replace(',', '.');
-  } else if (clean.includes(',')) {
-    clean = clean.replace(',', '.');
+  const lastComma = clean.lastIndexOf(',');
+  const lastDot = clean.lastIndexOf('.');
+  if (lastComma !== -1 && lastDot !== -1) {
+    if (lastDot > lastComma) {
+      // US/UK format: 1,250.50
+      clean = clean.replace(/,/g, '');
+    } else {
+      // EU/FR format: 1.250,50
+      clean = clean.replace(/\./g, '').replace(',', '.');
+    }
+  } else if (lastComma !== -1) {
+    const decimals = clean.length - lastComma - 1;
+    if (decimals === 3 && clean.indexOf(',') === lastComma && clean.slice(0, lastComma).length >= 1) {
+      // Thousands separator: 1,250
+      clean = clean.replace(/,/g, '');
+    } else {
+      clean = clean.replace(/,/g, '.');
+    }
   }
   const amount = Number(clean);
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
-function fallbackParse(text: string): BankNotificationProposal {
+export function fallbackParse(text: string): BankNotificationProposal {
+  const numPattern =
+    '([0-9]{1,3}(?:[\\s.,][0-9]{3})+(?:[.,][0-9]{1,2})?(?!\\d)|[0-9]+(?:[.,][0-9]{1,2})?)';
   const amountMatch =
-    text.match(/(?:MAD|DH|Dhs)\s*([0-9][0-9\s]*(?:[.,][0-9]{1,2})?)/i) ||
-    text.match(/([0-9][0-9\s]*(?:[.,][0-9]{1,2})?)\s*(?:MAD|DH|Dhs)/i) ||
-    text.match(/(?:amount|montant|total|purchase|achat)\s*:?\s*([0-9][0-9\s]*(?:[.,][0-9]{1,2})?)/i);
+    text.match(new RegExp(`(?:MAD|DH|Dhs|EUR|€|USD|\\$|GBP|£)\\s*${numPattern}`, 'i')) ||
+    text.match(new RegExp(`${numPattern}\\s*(?:MAD|DH|Dhs|EUR|€|USD|\\$|GBP|£)`, 'i')) ||
+    text.match(
+      new RegExp(
+        `(?:amount|montant|total|purchase|achat|paiement|payment|d[eé]bit|debit|virement)\\s*(?:de|:)?\\s*${numPattern}`,
+        'i'
+      )
+    );
   const amount = amountMatch ? parseNumber(amountMatch[1]) : null;
   const lower = text.toLowerCase();
-  const isIncome = /\b(received|deposit|credited|credit|salary|recu|reçu|virement recu)\b/i.test(lower);
+  const isCardSpend = /\b(credit\s*card|carte\s*(?:de\s*)?cr[eé]dit|debit\s*card|carte\s*bancaire|paiement|achat|purchase|spent|d[eé]bit[eé]?)\b/i.test(
+    lower
+  );
+  const isIncome =
+    !isCardSpend &&
+    /\b(received|deposit|credited|cr[eé]dit[eé]|salary|salaire|recu|reçu|virement\s+re[cç]u|remboursement|refund)\b/i.test(
+      lower
+    );
   const category = normalizeCategory(
     /restaurant|cafe|coffee|meal|food|glovo|delivery/i.test(lower)
       ? '🍔 Dining & Takeaway'
@@ -52,10 +80,17 @@ function fallbackParse(text: string): BankNotificationProposal {
       ? '🩺 Health & Medical'
       : '⚠️ Unexpected'
   );
-  const merchantMatch = text.match(/(?:at|chez|chez le|merchant|commercant)\s+([^,\n.;]+)/i);
+  const merchantMatch = text.match(/(?:at|chez|chez le|merchant|commercant|commerçant)\s+([^,\n.;]+)/i);
+  const currency = /(?:€|\bEUR\b)/i.test(text)
+    ? 'EUR'
+    : /(?:\$|\bUSD\b)/i.test(text)
+    ? 'USD'
+    : /(?:£|\bGBP\b)/i.test(text)
+    ? 'GBP'
+    : 'MAD';
   return {
     amount,
-    currency: /(?:€|EUR)/i.test(text) ? 'EUR' : /(?:\$|USD)/i.test(text) ? 'USD' : 'MAD',
+    currency,
     type: isIncome ? 'Income' : 'Expense',
     transactionDate: new Date().toISOString().slice(0, 10),
     merchant: merchantMatch?.[1]?.trim() || null,
@@ -94,7 +129,8 @@ Respond ONLY with valid JSON:
         config: { responseMimeType: 'application/json', temperature: 0.1 },
       });
       const parsed = JSON.parse((response.text || '{}').trim());
-      const amount = typeof parsed.amount === 'number' && parsed.amount > 0 ? parsed.amount : null;
+      const amount =
+        typeof parsed.amount === 'number' && parsed.amount > 0 ? parsed.amount : fallback.amount;
       const type = parsed.type === 'Income' ? 'Income' : 'Expense';
       return {
         amount,

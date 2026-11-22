@@ -60,38 +60,66 @@ public class NotificationCaptureDatabase extends SQLiteOpenHelper {
         public final String appLabel;
         public final String[] keywords;
         public final String keywordMode;
+        public final String[] matchFields;
         public final boolean caseSensitive;
 
         Rule(String id, boolean enabled, String packageName, String appLabel, String[] keywords,
              String keywordMode, boolean caseSensitive) {
+            this(id, enabled, packageName, appLabel, keywords, keywordMode,
+                new String[]{"TITLE", "TEXT"}, caseSensitive);
+        }
+
+        Rule(String id, boolean enabled, String packageName, String appLabel, String[] keywords,
+             String keywordMode, String[] matchFields, boolean caseSensitive) {
             this.id = id;
             this.enabled = enabled;
             this.packageName = packageName;
             this.appLabel = appLabel;
             this.keywords = keywords;
             this.keywordMode = keywordMode;
+            this.matchFields = (matchFields == null || matchFields.length == 0)
+                ? new String[]{"TITLE", "TEXT"}
+                : matchFields;
             this.caseSensitive = caseSensitive;
         }
 
         public boolean matches(String title, String text) {
             if (!enabled) return false;
-            String combined = (title == null ? "" : title) + "\n" + (text == null ? "" : text);
-            String normalized = Normalizer.normalize(combined, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
-            if (caseSensitive) normalized = combined;
+            boolean includeTitle = false;
+            boolean includeText = false;
+            for (String field : matchFields) {
+                if ("TITLE".equalsIgnoreCase(field)) includeTitle = true;
+                if ("TEXT".equalsIgnoreCase(field)) includeText = true;
+            }
+            if (!includeTitle && !includeText) {
+                includeTitle = true;
+                includeText = true;
+            }
+            StringBuilder builder = new StringBuilder();
+            if (includeTitle && title != null && !title.isEmpty()) {
+                builder.append(title);
+            }
+            if (includeText && text != null && !text.isEmpty()) {
+                if (builder.length() > 0) builder.append('\n');
+                builder.append(text);
+            }
+            String combined = builder.toString();
+            String normalized = Normalizer.normalize(combined, Normalizer.Form.NFKC);
+            if (!caseSensitive) normalized = normalized.toLowerCase(Locale.ROOT);
             if (keywords == null || keywords.length == 0) return false;
             if ("ALL".equalsIgnoreCase(keywordMode)) {
                 for (String keyword : keywords) {
-                    String needle = caseSensitive
-                        ? keyword
-                        : Normalizer.normalize(keyword, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+                    if (keyword == null) return false;
+                    String needle = Normalizer.normalize(keyword.trim(), Normalizer.Form.NFKC);
+                    if (!caseSensitive) needle = needle.toLowerCase(Locale.ROOT);
                     if (needle.isEmpty() || !normalized.contains(needle)) return false;
                 }
                 return true;
             }
             for (String keyword : keywords) {
-                String needle = caseSensitive
-                    ? keyword
-                    : Normalizer.normalize(keyword, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+                if (keyword == null) continue;
+                String needle = Normalizer.normalize(keyword.trim(), Normalizer.Form.NFKC);
+                if (!caseSensitive) needle = needle.toLowerCase(Locale.ROOT);
                 if (!needle.isEmpty() && normalized.contains(needle)) return true;
             }
             return false;
@@ -113,13 +141,14 @@ public class NotificationCaptureDatabase extends SQLiteOpenHelper {
         String owner = getActiveOwnerUserId();
         if (TextUtils.isEmpty(owner) || TextUtils.isEmpty(packageName)) return output;
         try (Cursor cursor = getReadableDatabase().rawQuery(
-            "SELECT id, package_name, app_label, keywords_json, keyword_mode, case_sensitive " +
+            "SELECT id, package_name, app_label, keywords_json, keyword_mode, match_fields_json, case_sensitive " +
             "FROM rules WHERE enabled=1 AND owner_user_id=? AND package_name=?",
             new String[]{owner, packageName})) {
             while (cursor.moveToNext()) {
                 String[] keywords = jsonStringArray(cursor.getString(3));
+                String[] matchFields = jsonStringArray(cursor.getString(5));
                 output.add(new Rule(cursor.getString(0), true, cursor.getString(1),
-                    cursor.getString(2), keywords, cursor.getString(4), cursor.getInt(5) == 1));
+                    cursor.getString(2), keywords, cursor.getString(4), matchFields, cursor.getInt(6) == 1));
             }
         }
         return output;
@@ -139,6 +168,18 @@ public class NotificationCaptureDatabase extends SQLiteOpenHelper {
                 if (!keyword.isEmpty()) cleanKeywords.put(keyword);
             }
             if (cleanKeywords.length() == 0) return false;
+            JSONArray requestedFields = rule.optJSONArray("matchFields");
+            JSONArray cleanFields = new JSONArray();
+            if (requestedFields != null) {
+                for (int i = 0; i < requestedFields.length(); i++) {
+                    String field = requestedFields.optString(i).trim().toUpperCase(Locale.ROOT);
+                    if ("TITLE".equals(field) || "TEXT".equals(field)) cleanFields.put(field);
+                }
+            }
+            if (cleanFields.length() == 0) {
+                cleanFields.put("TITLE");
+                cleanFields.put("TEXT");
+            }
             String owner = getActiveOwnerUserId();
             if (TextUtils.isEmpty(owner)) return false;
             String now = isoNow();
@@ -150,7 +191,7 @@ public class NotificationCaptureDatabase extends SQLiteOpenHelper {
             values.put("app_label", appLabel.isEmpty() ? packageName : appLabel);
             values.put("keywords_json", cleanKeywords.toString());
             values.put("keyword_mode", mode);
-            values.put("match_fields_json", "[\"TITLE\",\"TEXT\"]");
+            values.put("match_fields_json", cleanFields.toString());
             values.put("case_sensitive", rule.optBoolean("caseSensitive", false) ? 1 : 0);
             values.put("created_at", rule.optString("createdAt", now));
             values.put("updated_at", now);
@@ -176,7 +217,7 @@ public class NotificationCaptureDatabase extends SQLiteOpenHelper {
     public JSONArray getRules() {
         JSONArray output = new JSONArray();
         try (Cursor cursor = getReadableDatabase().rawQuery(
-            "SELECT id, enabled, package_name, app_label, keywords_json, keyword_mode, case_sensitive, created_at, updated_at " +
+            "SELECT id, enabled, package_name, app_label, keywords_json, keyword_mode, match_fields_json, case_sensitive, created_at, updated_at " +
             "FROM rules WHERE owner_user_id=? ORDER BY created_at DESC",
             new String[]{getActiveOwnerUserId()})) {
             while (cursor.moveToNext()) {
@@ -187,10 +228,11 @@ public class NotificationCaptureDatabase extends SQLiteOpenHelper {
                 rule.put("appLabel", cursor.getString(3));
                 rule.put("keywords", new JSONArray(cursor.getString(4)));
                 rule.put("keywordMode", cursor.getString(5));
-                rule.put("matchFields", new JSONArray("[\"TITLE\",\"TEXT\"]"));
-                rule.put("caseSensitive", cursor.getInt(6) == 1);
-                rule.put("createdAt", cursor.getString(7));
-                rule.put("updatedAt", cursor.getString(8));
+                String rawFields = cursor.getString(6);
+                rule.put("matchFields", TextUtils.isEmpty(rawFields) ? new JSONArray("[\"TITLE\",\"TEXT\"]") : new JSONArray(rawFields));
+                rule.put("caseSensitive", cursor.getInt(7) == 1);
+                rule.put("createdAt", cursor.getString(8));
+                rule.put("updatedAt", cursor.getString(9));
                 output.put(rule);
             }
         } catch (Exception ignored) {}
@@ -273,8 +315,14 @@ public class NotificationCaptureDatabase extends SQLiteOpenHelper {
     public void updateEventStatus(String eventId, String status, String errorCode, String transactionId) {
         ContentValues values = new ContentValues();
         values.put("status", status);
-        if (errorCode != null) values.put("last_error_code", errorCode);
-        if (transactionId != null) values.put("server_transaction_id", transactionId);
+        if ("SUCCEEDED".equals(status) || errorCode == null) {
+            values.putNull("last_error_code");
+        } else {
+            values.put("last_error_code", errorCode);
+        }
+        if (transactionId != null && !transactionId.isEmpty()) {
+            values.put("server_transaction_id", transactionId);
+        }
         values.put("updated_at", isoNow());
         getWritableDatabase().update("events", values, "event_id=?", new String[]{eventId});
     }
@@ -328,6 +376,9 @@ public class NotificationCaptureDatabase extends SQLiteOpenHelper {
     public void retryEligibleEvents() {
         ContentValues values = new ContentValues();
         values.put("status", "PENDING");
+        values.put("attempt_count", 0);
+        values.putNull("last_error_code");
+        values.put("updated_at", isoNow());
         getWritableDatabase().update("events", values,
             "owner_user_id=? AND status IN (?,?)",
             new String[]{getActiveOwnerUserId(), "RETRYABLE_FAILED", "PERMANENT_FAILED"});
@@ -340,10 +391,17 @@ public class NotificationCaptureDatabase extends SQLiteOpenHelper {
     }
 
     public void claimStaleProcessingEvents() {
+        claimStaleProcessingEvents(120_000L);
+    }
+
+    public void claimStaleProcessingEvents(long staleAfterMs) {
+        String cutoff = isoTime(System.currentTimeMillis() - Math.max(0L, staleAfterMs));
         ContentValues values = new ContentValues();
         values.put("status", "RETRYABLE_FAILED");
+        values.put("updated_at", isoNow());
         getWritableDatabase().update("events", values,
-            "owner_user_id=? AND status='PROCESSING'", new String[]{getActiveOwnerUserId()});
+            "owner_user_id=? AND status='PROCESSING' AND updated_at <= ?",
+            new String[]{getActiveOwnerUserId(), cutoff});
     }
 
     private String[] jsonStringArray(String raw) {
