@@ -3,8 +3,18 @@ package com.truespend.app.notification;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.util.Base64;
+
+import androidx.security.crypto.EncryptedSharedPreferences;
+import androidx.security.crypto.MasterKey;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -16,9 +26,12 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Set;
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.UUID;
 
 @CapacitorPlugin(name = "NotificationCapture")
 public class NotificationCapturePlugin extends Plugin {
@@ -27,140 +40,260 @@ public class NotificationCapturePlugin extends Plugin {
     @Override
     public void load() {
         instance = this;
+        NotificationCaptureQueueWorker.enqueueDrain(getContext());
     }
 
-    public static void notifyCaptured(JSONObject item) {
-        if (instance == null) return;
-        try {
-            JSObject payload = new JSObject();
-            Iterator<String> keys = item.keys();
-            while (keys.hasNext()) {
-                String key = keys.next();
-                payload.put(key, item.get(key));
-            }
-            instance.notifyListeners("notificationCaptured", payload, true);
-        } catch (Exception ignored) {
-        }
+    @PluginMethod
+    public void isSupported(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("supported", true);
+        call.resolve(result);
     }
 
     @PluginMethod
     public void isAccessGranted(PluginCall call) {
+        call.resolve(permissionStatus());
+    }
+
+    @PluginMethod
+    public void getPermissionStatus(PluginCall call) {
+        call.resolve(permissionStatus());
+    }
+
+    private JSObject permissionStatus() {
         String enabled = Settings.Secure.getString(
-            getContext().getContentResolver(),
-            "enabled_notification_listeners"
-        );
+            getContext().getContentResolver(), "enabled_notification_listeners");
         boolean granted = enabled != null && enabled.contains(
-            new ComponentName(getContext(), BankNotificationListenerService.class).flattenToString()
-        );
+            new ComponentName(getContext(), BankNotificationListenerService.class).flattenToString());
         JSObject result = new JSObject();
         result.put("granted", granted);
-        call.resolve(result);
+        result.put("listenerConnected", granted && BankNotificationListenerService.isConnected());
+        return result;
     }
 
     @PluginMethod
     public void openAccessSettings(PluginCall call) {
         getContext().startActivity(
             new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        );
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         call.resolve();
     }
 
     @PluginMethod
+    public void openNotificationAccessSettings(PluginCall call) {
+        openAccessSettings(call);
+    }
+
+    @PluginMethod
+    public void getInstalledApps(PluginCall call) {
+        try {
+            PackageManager pm = getContext().getPackageManager();
+            Intent launcher = new Intent(Intent.ACTION_MAIN);
+            launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> resolved = pm.queryIntentActivities(launcher,
+                PackageManager.MATCH_DEFAULT_ONLY);
+            List<JSObject> apps = new ArrayList<>();
+            for (ResolveInfo info : resolved) {
+                String packageName = info.activityInfo.packageName;
+                if (packageName.equals(getContext().getPackageName())) continue;
+                CharSequence label = info.loadLabel(pm);
+                JSObject app = new JSObject();
+                app.put("packageName", packageName);
+                app.put("appName", label == null ? packageName : label.toString());
+                app.put("icon", drawableToBase64(info.loadIcon(pm)));
+                apps.add(app);
+            }
+            Collections.sort(apps, Comparator.comparing(
+                app -> app.getString("appName").toLowerCase(java.util.Locale.ROOT)));
+            JSArray output = new JSArray();
+            for (JSObject app : apps) output.put(app);
+            JSObject result = new JSObject();
+            result.put("apps", output);
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("Unable to read installed launcher apps.", error);
+        }
+    }
+
+    private String drawableToBase64(Drawable drawable) {
+        try {
+            Bitmap bitmap = Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            drawable.setBounds(0, 0, 48, 48);
+            drawable.draw(canvas);
+            ByteArrayOutputStream stream = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.PNG, 85, stream);
+            bitmap.recycle();
+            return "data:image/png;base64," + Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP);
+        } catch (Exception error) {
+            return "";
+        }
+    }
+
+    @PluginMethod
+    public void getRules(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("rules", NotificationCaptureDatabase.getInstance(getContext()).getRules());
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void saveRule(PluginCall call) {
+        try {
+            JSONObject rule = call.getData();
+            if (TextUtils.isEmpty(rule.optString("id"))) rule.put("id", UUID.randomUUID().toString());
+            boolean saved = NotificationCaptureDatabase.getInstance(getContext()).saveRule(rule);
+            if (!saved) {
+                call.reject("A selected package and at least one keyword are required.");
+                return;
+            }
+            JSObject result = new JSObject();
+            result.put("rule", rule);
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("Unable to save notification rule.", error);
+        }
+    }
+
+    @PluginMethod
+    public void deleteRule(PluginCall call) {
+        String id = call.getString("ruleId");
+        if (TextUtils.isEmpty(id)) {
+            call.reject("ruleId is required.");
+            return;
+        }
+        NotificationCaptureDatabase.getInstance(getContext()).deleteRule(id);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setRuleEnabled(PluginCall call) {
+        String id = call.getString("ruleId");
+        if (TextUtils.isEmpty(id)) {
+            call.reject("ruleId is required.");
+            return;
+        }
+        NotificationCaptureDatabase.getInstance(getContext()).setRuleEnabled(id,
+            call.getBoolean("enabled", false));
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setAutomationEnabled(PluginCall call) {
+        boolean enabled = call.getBoolean("enabled", false);
+        getContext().getSharedPreferences(BankNotificationListenerService.PREFS_NAME,
+            android.content.Context.MODE_PRIVATE).edit()
+            .putBoolean("automation_enabled", enabled).apply();
+        JSObject result = new JSObject();
+        result.put("enabled", enabled);
+        call.resolve(result);
+        if (enabled) NotificationCaptureQueueWorker.enqueueDrain(getContext());
+    }
+
+    @PluginMethod
+    public void getAutomationStatus(PluginCall call) {
+        SharedPreferences prefs = getContext().getSharedPreferences(
+            BankNotificationListenerService.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+        JSObject result = new JSObject();
+        result.put("enabled", prefs.getBoolean("automation_enabled", true));
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void setNativeSession(PluginCall call) {
+        try {
+            String ownerUserId = call.getString("ownerUserId");
+            String accessToken = call.getString("accessToken");
+            String refreshToken = call.getString("refreshToken");
+            String apiBaseUrl = call.getString("apiBaseUrl");
+            MasterKey masterKey = new MasterKey.Builder(getContext())
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build();
+            SharedPreferences secure = EncryptedSharedPreferences.create(
+                getContext(), "truespend_notification_secure", masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM);
+            SharedPreferences.Editor editor = secure.edit();
+            if (TextUtils.isEmpty(ownerUserId)) {
+                editor.clear();
+                NotificationCaptureDatabase.getInstance(getContext()).setActiveOwnerUserId("");
+                getContext().getSharedPreferences(BankNotificationListenerService.PREFS_NAME,
+                    android.content.Context.MODE_PRIVATE).edit()
+                    .putBoolean("automation_enabled", false).apply();
+            } else {
+                editor.putString("ownerUserId", ownerUserId);
+                if (!TextUtils.isEmpty(accessToken)) editor.putString("accessToken", accessToken);
+                if (!TextUtils.isEmpty(refreshToken)) editor.putString("refreshToken", refreshToken);
+                if (!TextUtils.isEmpty(apiBaseUrl)) editor.putString("apiBaseUrl", apiBaseUrl);
+                NotificationCaptureDatabase.getInstance(getContext()).setActiveOwnerUserId(ownerUserId);
+            }
+            editor.apply();
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("Unable to store native notification session.", error);
+        }
+    }
+
+    @PluginMethod
+    public void getQueueSummary(PluginCall call) {
+        JSONObject summary = NotificationCaptureDatabase.getInstance(getContext()).getQueueSummary();
+        JSObject result = new JSObject();
+        result.put("pending", summary.optInt("pending"));
+        result.put("processing", summary.optInt("processing"));
+        result.put("succeeded", summary.optInt("succeeded"));
+        result.put("retryableFailed", summary.optInt("retryableFailed"));
+        result.put("permanentFailed", summary.optInt("permanentFailed"));
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getEventHistory(PluginCall call) {
+        int limit = call.getInt("limit", 50);
+        int offset = call.getInt("offset", 0);
+        JSObject result = new JSObject();
+        result.put("events",
+            NotificationCaptureDatabase.getInstance(getContext()).getEventHistory(limit, offset));
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void retryPendingEvents(PluginCall call) {
+        NotificationCaptureDatabase db = NotificationCaptureDatabase.getInstance(getContext());
+        db.retryEligibleEvents();
+        NotificationCaptureQueueWorker.enqueueDrain(getContext());
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void clearCompletedHistory(PluginCall call) {
+        NotificationCaptureDatabase.getInstance(getContext()).clearCompletedHistory();
+        call.resolve();
+    }
+
+    // Backward-compatible package-only methods for existing web builds.
+    @PluginMethod
     public void setEnabledPackages(PluginCall call) {
         try {
             JSArray packages = call.getArray("packages");
-            Set<String> enabled = new HashSet<>();
-            if (packages != null) {
-                for (Object value : packages.toList()) {
-                    if (value != null) {
-                        String packageName = String.valueOf(value).trim();
-                        if (!packageName.isEmpty()) enabled.add(packageName);
-                    }
-                }
-            }
-            SharedPreferences prefs = getContext().getSharedPreferences(
-                BankNotificationListenerService.PREFS_NAME,
-                android.content.Context.MODE_PRIVATE
-            );
-            prefs.edit().putStringSet(BankNotificationListenerService.ENABLED_PACKAGES, enabled).apply();
-            JSObject result = new JSObject();
-            result.put("packages", new JSArray(enabled.toArray(new String[0])));
-            call.resolve(result);
+            call.resolve();
         } catch (Exception error) {
-            call.reject("Unable to save notification package settings.", error);
+            call.reject("Unable to save notification packages.", error);
         }
     }
 
     @PluginMethod
     public void getEnabledPackages(PluginCall call) {
+        JSONArray rules = NotificationCaptureDatabase.getInstance(getContext()).getRules();
+        JSArray packages = new JSArray();
         try {
-            SharedPreferences prefs = getContext().getSharedPreferences(
-                BankNotificationListenerService.PREFS_NAME,
-                android.content.Context.MODE_PRIVATE
-            );
-            Set<String> enabled = prefs.getStringSet(BankNotificationListenerService.ENABLED_PACKAGES, new HashSet<>());
-            JSObject result = new JSObject();
-            result.put("packages", new JSArray(enabled.toArray(new String[0])));
-            call.resolve(result);
-        } catch (Exception error) {
-            call.reject("Unable to read notification package settings.", error);
-        }
-    }
-
-    @PluginMethod
-    public void getCapturedNotifications(PluginCall call) {
-        SharedPreferences prefs = getContext().getSharedPreferences(
-            BankNotificationListenerService.PREFS_NAME,
-            android.content.Context.MODE_PRIVATE
-        );
-        JSArray output = new JSArray();
-        try {
-            JSONArray queue = new JSONArray(
-                prefs.getString(BankNotificationListenerService.QUEUE, "[]")
-            );
-            for (int i = 0; i < queue.length(); i++) {
-                JSONObject item = queue.optJSONObject(i);
-                if (item != null) {
-                    JSObject copy = new JSObject();
-                    Iterator<String> keys = item.keys();
-                    while (keys.hasNext()) {
-                        String key = keys.next();
-                        copy.put(key, item.get(key));
-                    }
-                    output.put(copy);
+            for (int i = 0; i < rules.length(); i++) {
+                String packageName = rules.optJSONObject(i).optString("packageName");
+                if (!TextUtils.isEmpty(packageName) && packages.toList().indexOf(packageName) < 0) {
+                    packages.put(packageName);
                 }
             }
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
         JSObject result = new JSObject();
-        result.put("notifications", output);
+        result.put("packages", packages);
         call.resolve(result);
-    }
-
-    @PluginMethod
-    public void removeCapturedNotification(PluginCall call) {
-        String idempotencyKey = call.getString("idempotencyKey");
-        if (!TextUtils.isEmpty(idempotencyKey)) {
-            SharedPreferences prefs = getContext().getSharedPreferences(
-                BankNotificationListenerService.PREFS_NAME,
-                android.content.Context.MODE_PRIVATE
-            );
-            try {
-                JSONArray queue = new JSONArray(
-                    prefs.getString(BankNotificationListenerService.QUEUE, "[]")
-                );
-                JSONArray remaining = new JSONArray();
-                for (int i = 0; i < queue.length(); i++) {
-                    JSONObject item = queue.optJSONObject(i);
-                    if (item == null || !idempotencyKey.equals(item.optString("idempotencyKey"))) {
-                        if (item != null) remaining.put(item);
-                    }
-                }
-                prefs.edit().putString(BankNotificationListenerService.QUEUE, remaining.toString()).apply();
-            } catch (Exception ignored) {
-            }
-        }
-        call.resolve();
     }
 }

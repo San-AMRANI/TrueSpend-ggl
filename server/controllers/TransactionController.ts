@@ -3,6 +3,9 @@ import { AuthRequest } from '../../src/middleware/auth.js';
 import { transactionService } from '../services/TransactionService.js';
 import { payrollService } from '../services/PayrollService.js';
 import { parseBankNotification } from '../services/BankNotificationParser.js';
+import { db } from '../../src/db/index.js';
+import { transactions } from '../../src/db/schema.js';
+import { and, eq } from 'drizzle-orm';
 
 export class TransactionController {
   async getTransactions(req: AuthRequest, res: Response) {
@@ -55,17 +58,39 @@ export class TransactionController {
       const text = typeof req.body?.text === 'string' ? req.body.text : '';
       const packageName = typeof req.body?.packageName === 'string' ? req.body.packageName : '';
       const idempotencyKey =
-        typeof req.body?.idempotencyKey === 'string' && req.body.idempotencyKey.trim()
-          ? req.body.idempotencyKey.trim()
-          : null;
+        (typeof req.headers['idempotency-key'] === 'string' && req.headers['idempotency-key'].trim()) ||
+        (typeof req.body?.eventId === 'string' && req.body.eventId.trim()) ||
+        (typeof req.body?.idempotencyKey === 'string' && req.body.idempotencyKey.trim()) ||
+        null;
       if (!title && !text) {
         res.status(400).json({ error: 'Notification text is required.' });
         return;
       }
 
+      if (idempotencyKey) {
+        const existing = await db
+          .select({ id: transactions.id })
+          .from(transactions)
+          .where(and(
+            eq(transactions.userId, req.dbUser.id),
+            eq(transactions.idempotencyKey, `bank-${idempotencyKey}`)
+          ))
+          .limit(1);
+        if (existing.length > 0) {
+          res.json({
+            eventId: idempotencyKey,
+            status: 'duplicate',
+            transactionId: existing[0].id,
+          });
+          return;
+        }
+      }
+
       const proposal = await parseBankNotification([title, text].filter(Boolean).join('\n'));
       if (!proposal.amount) {
         res.status(422).json({
+          eventId: idempotencyKey,
+          status: 'ignored',
           error: 'No transaction amount could be detected.',
           proposal,
         });
@@ -84,6 +109,8 @@ export class TransactionController {
         idempotencyKey: idempotencyKey ? `bank-${idempotencyKey}` : undefined,
       });
       res.status(201).json({
+        eventId: idempotencyKey,
+        status: 'created',
         transactionId: created.id,
         proposal,
       });

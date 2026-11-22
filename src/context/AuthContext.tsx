@@ -9,6 +9,7 @@ import {
   loadTabSessionCache,
 } from '../services/api/apiClient';
 import { getApiUrl, isNativePlatform } from '../lib/capacitorBridge';
+import { syncNativeAuthSession } from '../lib/bankNotificationCapture';
 import type { ExperienceTier, OnboardingState, User } from '../types';
 
 const SESSION_HINT_KEY = 'truespend_has_session';
@@ -74,6 +75,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setToken(null);
     setUser(null);
     setOnboarding(null);
+    syncNativeAuthSession({}).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -90,6 +92,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const cachedTab = loadTabSessionCache();
         if (cachedTab?.token && cachedTab?.user) {
           setApiAccessToken(cachedTab.token);
+          syncNativeAuthSession({
+            ownerUserId: cachedTab.user.id || cachedTab.user.uid,
+            accessToken: cachedTab.token,
+            refreshToken: getStoredNativeRefreshToken(),
+            apiBaseUrl: getApiUrl('/api').replace(/\/api\/?$/, ''),
+          }).catch(() => {});
           if (!cancelled) {
             setToken(cachedTab.token);
             setUser(cachedTab.user);
@@ -118,6 +126,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (cancelled) return;
           if (refreshed.status === 'ok' && refreshed.token) {
             setToken(refreshed.token);
+            syncNativeAuthSession({
+              ownerUserId: refreshed.user?.id || refreshed.user?.uid,
+              accessToken: refreshed.token,
+              refreshToken: getStoredNativeRefreshToken(),
+              apiBaseUrl: getApiUrl('/api').replace(/\/api\/?$/, ''),
+            }).catch(() => {});
             if (refreshed.user) {
               setUser(refreshed.user);
               if (refreshed.user.emailVerified && refreshed.user.status === 'active') {
@@ -143,6 +157,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (detail.user) {
           setUser(detail.user);
           saveTabSessionCache(detail.token, detail.user);
+        }
+        const ownerUserId = detail.user?.id || detail.user?.uid;
+        if (ownerUserId) {
+          syncNativeAuthSession({
+            ownerUserId,
+            accessToken: detail.token,
+            refreshToken: getStoredNativeRefreshToken(),
+            apiBaseUrl: getApiUrl('/api').replace(/\/api\/?$/, ''),
+          }).catch(() => {});
         }
       }
     };
@@ -171,6 +194,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     } catch {}
     setToken(newToken);
     setUser(newUser);
+    syncNativeAuthSession({
+      ownerUserId: newUser.id || newUser.uid,
+      accessToken: newToken,
+      refreshToken: nativeRefreshToken || getStoredNativeRefreshToken(),
+      apiBaseUrl: getApiUrl('/api').replace(/\/api\/?$/, ''),
+    }).catch(() => {});
     if (newUser.emailVerified && newUser.status === 'active') {
       loadOnboardingForToken(newToken);
     }

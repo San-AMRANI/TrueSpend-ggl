@@ -45,7 +45,11 @@ import {
   type OfflineOutboxItem,
 } from '../../lib/offlineOutbox';
 import { fetchLatestAndroidRelease, getLatestAndroidApkUrl, type AndroidRelease } from '../../lib/androidRelease';
-import { bankNotificationCapture, drainCapturedBankNotifications } from '../../lib/bankNotificationCapture';
+import {
+  bankNotificationCapture,
+  type InstalledNotificationApp,
+  type NotificationRule,
+} from '../../lib/bankNotificationCapture';
 import type {
   NotifChannelPrefs,
   NotifSettings,
@@ -128,8 +132,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [latestAndroidRelease, setLatestAndroidRelease] = useState<AndroidRelease | null>(null);
   const [apiBaseInput, setApiBaseInput] = useState<string>(() => getCapacitorApiBaseUrl());
   const [bankNotificationAccess, setBankNotificationAccess] = useState(false);
-  const [bankNotificationPackages, setBankNotificationPackages] = useState('');
+  const [bankNotificationSelectedApp, setBankNotificationSelectedApp] = useState('');
+  const [bankNotificationKeywords, setBankNotificationKeywords] = useState('');
+  const [bankNotificationMode, setBankNotificationMode] = useState<'ANY' | 'ALL'>('ANY');
   const [bankNotificationStatus, setBankNotificationStatus] = useState<string | null>(null);
+  const [notificationApps, setNotificationApps] = useState<InstalledNotificationApp[]>([]);
+  const [notificationRules, setNotificationRules] = useState<NotificationRule[]>([]);
+  const [notificationAutomationEnabled, setNotificationAutomationEnabled] = useState(true);
+  const [notificationQueue, setNotificationQueue] = useState({
+    pending: 0,
+    processing: 0,
+    succeeded: 0,
+    retryableFailed: 0,
+    permanentFailed: 0,
+  });
   const [backupPreview, setBackupPreview] = useState<BackupValidationPreview | null>(null);
   const [rules, setRules] = useState<FinancialRuleItem[]>([]);
   const [ruleLogs, setRuleLogs] = useState<FinancialRuleLogItem[]>([]);
@@ -211,12 +227,30 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
   useEffect(() => {
     if (!isNativePlatform()) return;
-    bankNotificationCapture.isAccessGranted()
-      .then((result) => setBankNotificationAccess(result.granted))
-      .catch(() => setBankNotificationAccess(false));
-    bankNotificationCapture.getEnabledPackages()
-      .then((result) => setBankNotificationPackages((result.packages || []).join(', ')))
-      .catch(() => setBankNotificationPackages(''));
+    const loadNativeStatus = () => {
+      bankNotificationCapture.getPermissionStatus()
+        .then((result) => setBankNotificationAccess(result.granted))
+        .catch(() => setBankNotificationAccess(false));
+      bankNotificationCapture.getInstalledApps()
+        .then(setNotificationApps)
+        .catch(() => setNotificationApps([]));
+      bankNotificationCapture.getRules()
+        .then(setNotificationRules)
+        .catch(() => setNotificationRules([]));
+      bankNotificationCapture.getAutomationStatus()
+        .then((result) => setNotificationAutomationEnabled(result.enabled))
+        .catch(() => setNotificationAutomationEnabled(true));
+      bankNotificationCapture.getQueueSummary()
+        .then(setNotificationQueue)
+        .catch(() => {});
+    };
+    loadNativeStatus();
+    window.addEventListener('focus', loadNativeStatus);
+    document.addEventListener('resume', loadNativeStatus);
+    return () => {
+      window.removeEventListener('focus', loadNativeStatus);
+      document.removeEventListener('resume', loadNativeStatus);
+    };
   }, []);
 
   const loadSecurityData = React.useCallback(async () => {
@@ -2291,63 +2325,118 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1">
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                      Bank Notification Transaction Capture
+                      Notification Automations
                     </h3>
                     <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                      Grant notification access, then select only the exact Android package names of your bank apps.
-                      TrueSpend parses matched notifications and creates a deduplicated transaction using Gemini with a local fallback.
-                      Notification text is sent only to the authenticated TrueSpend server.
+                      Android notification access is explicit opt-in. Only selected app notifications matching your keywords are
+                      stored locally and sent to your authenticated TrueSpend account. Capture is inactive when access is revoked.
                     </p>
                   </div>
                   <span className={`shrink-0 px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                    bankNotificationAccess
+                    bankNotificationAccess && notificationAutomationEnabled
                       ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
                       : 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300'
                   }`}>
-                    {bankNotificationAccess ? 'Access granted' : 'Access required'}
+                    {!bankNotificationAccess ? 'Access required' : notificationAutomationEnabled ? 'Capture enabled' : 'Paused'}
                   </span>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <select
+                    value={bankNotificationSelectedApp}
+                    onChange={(e) => setBankNotificationSelectedApp(e.target.value)}
+                    className="px-3 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+                  >
+                    <option value="">Select a launcher app</option>
+                    {notificationApps.map((app) => (
+                      <option key={app.packageName} value={app.packageName}>{app.appName} ({app.packageName})</option>
+                    ))}
+                  </select>
                   <input
-                    value={bankNotificationPackages}
-                    onChange={(e) => setBankNotificationPackages(e.target.value)}
-                    placeholder="e.g. com.example.bank, ma.example.bank"
-                    className="flex-1 px-3 py-2 text-xs font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    value={bankNotificationKeywords}
+                    onChange={(e) => setBankNotificationKeywords(e.target.value)}
+                    placeholder="Keywords separated by commas"
+                    className="px-3 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
                   />
+                  <select
+                    value={bankNotificationMode}
+                    onChange={(e) => setBankNotificationMode(e.target.value as 'ANY' | 'ALL')}
+                    className="px-3 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+                  >
+                    <option value="ANY">Match ANY keyword</option>
+                    <option value="ALL">Match ALL keywords</option>
+                  </select>
                   <Button
                     size="sm"
                     onClick={async () => {
-                      const packages = bankNotificationPackages
-                        .split(',')
-                        .map((value) => value.trim())
-                        .filter(Boolean);
-                      await bankNotificationCapture.setEnabledPackages(packages);
-                      setBankNotificationStatus(`Saved ${packages.length} allowed app package(s).`);
+                      const app = notificationApps.find((item) => item.packageName === bankNotificationSelectedApp);
+                      const keywords = bankNotificationKeywords.split(',').map((value) => value.trim()).filter(Boolean);
+                      if (!app || keywords.length === 0) {
+                        setBankNotificationStatus('Select an app and enter at least one keyword.');
+                        return;
+                      }
+                      const now = new Date().toISOString();
+                      await bankNotificationCapture.saveRule({
+                        id: crypto.randomUUID(),
+                        enabled: true,
+                        packageName: app.packageName,
+                        appLabel: app.appName,
+                        keywords,
+                        keywordMode: bankNotificationMode,
+                        matchFields: ['TITLE', 'TEXT'],
+                        caseSensitive: false,
+                        createdAt: now,
+                        updatedAt: now,
+                      });
+                      setBankNotificationStatus('Notification rule saved.');
+                      setNotificationRules(await bankNotificationCapture.getRules());
                     }}
                   >
-                    Save Apps
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      await bankNotificationCapture.openAccessSettings();
-                      setBankNotificationStatus('Choose TrueSpend in Android Notification Access settings.');
-                    }}
-                  >
-                    Open Android Access
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      const result = await drainCapturedBankNotifications();
-                      setBankNotificationStatus(`Processed ${result.processed}; ${result.remaining} notification(s) remain queued.`);
-                    }}
-                  >
-                    Sync Captures
+                    Save Rule
                   </Button>
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    await bankNotificationCapture.openNotificationAccessSettings();
+                    setBankNotificationStatus('Choose TrueSpend in Android Notification Access settings.');
+                  }}>Open Android Access</Button>
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    await bankNotificationCapture.setAutomationEnabled(!notificationAutomationEnabled);
+                    setNotificationAutomationEnabled(!notificationAutomationEnabled);
+                    setBankNotificationStatus(notificationAutomationEnabled ? 'Capture paused.' : 'Capture enabled.');
+                  }}>{notificationAutomationEnabled ? 'Pause All' : 'Enable All'}</Button>
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    await bankNotificationCapture.retryPendingEvents();
+                    setNotificationQueue(await bankNotificationCapture.getQueueSummary());
+                    setBankNotificationStatus('Eligible queued events were rescheduled.');
+                  }}>Retry Queue</Button>
+                </div>
+                {notificationRules.length > 0 && (
+                  <div className="space-y-2">
+                    {notificationRules.map((rule) => (
+                      <div key={rule.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold truncate">{rule.appLabel}</p>
+                          <p className="text-[10px] text-gray-500 truncate">{rule.keywords.join(', ')} · {rule.keywordMode}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={async () => {
+                            await bankNotificationCapture.setRuleEnabled(rule.id, !rule.enabled);
+                            setNotificationRules(await bankNotificationCapture.getRules());
+                          }}>{rule.enabled ? 'Disable' : 'Enable'}</Button>
+                          <Button size="sm" variant="outline" onClick={async () => {
+                            await bankNotificationCapture.deleteRule(rule.id);
+                            setNotificationRules(await bankNotificationCapture.getRules());
+                          }}>Delete</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                  Queue: {notificationQueue.pending} pending · {notificationQueue.processing} processing ·
+                  {' '}{notificationQueue.succeeded} succeeded · {notificationQueue.retryableFailed} retryable failed ·
+                  {' '}{notificationQueue.permanentFailed} permanent failed
+                </p>
                 {bankNotificationStatus && (
                   <p className="text-[11px] text-indigo-600 dark:text-indigo-400">{bankNotificationStatus}</p>
                 )}
