@@ -2347,7 +2347,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                     onChange={(e) => setBankNotificationSelectedApp(e.target.value)}
                     className="px-3 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
                   >
-                    <option value="">Select a launcher app</option>
+                    <option value="">Select an installed app</option>
                     {notificationApps.map((app) => (
                       <option key={app.packageName} value={app.packageName}>{app.appName} ({app.packageName})</option>
                     ))}
@@ -2360,7 +2360,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   />
                   {notificationApps.length === 0 && (
                     <p className="text-[11px] text-amber-700 dark:text-amber-300">
-                      No launcher apps were returned by Android. Enter the exact package name above, for example from App Info.
+                      No installed apps were returned by Android. Enter the exact package name above, for example from App Info.
                     </p>
                   )}
                   <input
@@ -2412,12 +2412,12 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={async () => {
                     setNotificationApps(await bankNotificationCapture.getInstalledApps());
-                    setBankNotificationStatus('Launcher app list refreshed.');
+                    setBankNotificationStatus('Installed app list refreshed.');
                   }}>Refresh Apps</Button>
-                  <Button size="sm" variant="outline" onClick={async () => {
+                  <Button size="sm" variant={bankNotificationAccess ? 'outline' : 'default'} onClick={async () => {
                     await bankNotificationCapture.openNotificationAccessSettings();
-                    setBankNotificationStatus('Choose TrueSpend in Android Notification Access settings.');
-                  }}>Open Android Access</Button>
+                    setBankNotificationStatus('In Android Notification Access, enable TrueSpend, then return to the app.');
+                  }}>{bankNotificationAccess ? 'Open Android Access' : 'Grant Notification Access'}</Button>
                   <Button size="sm" variant="outline" onClick={async () => {
                     await bankNotificationCapture.setAutomationEnabled(!notificationAutomationEnabled);
                     setNotificationAutomationEnabled(!notificationAutomationEnabled);

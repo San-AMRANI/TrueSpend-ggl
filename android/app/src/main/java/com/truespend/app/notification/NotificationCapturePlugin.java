@@ -5,7 +5,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
@@ -63,8 +62,13 @@ public class NotificationCapturePlugin extends Plugin {
     private JSObject permissionStatus() {
         String enabled = Settings.Secure.getString(
             getContext().getContentResolver(), "enabled_notification_listeners");
-        boolean granted = enabled != null && enabled.contains(
-            new ComponentName(getContext(), BankNotificationListenerService.class).flattenToString());
+        ComponentName listener = new ComponentName(getContext(), BankNotificationListenerService.class);
+        String flattened = listener.flattenToString();
+        String packageAndClass = listener.getPackageName() + "/" + listener.getClassName();
+        boolean granted = enabled != null && (
+            enabled.contains(flattened)
+                || enabled.contains(packageAndClass)
+                || enabled.contains(listener.getPackageName()));
         JSObject result = new JSObject();
         result.put("granted", granted);
         result.put("listenerConnected", granted && BankNotificationListenerService.isConnected());
@@ -88,14 +92,12 @@ public class NotificationCapturePlugin extends Plugin {
     public void getInstalledApps(PluginCall call) {
         try {
             PackageManager pm = getContext().getPackageManager();
-            Intent launcher = new Intent(Intent.ACTION_MAIN);
-            launcher.addCategory(Intent.CATEGORY_LAUNCHER);
-            List<ResolveInfo> resolved = pm.queryIntentActivities(launcher,
-                PackageManager.MATCH_ALL);
             List<JSObject> apps = new ArrayList<>();
             java.util.LinkedHashMap<String, JSObject> appByPackage = new java.util.LinkedHashMap<>();
-            for (ResolveInfo info : resolved) {
-                String packageName = info.activityInfo.packageName;
+            int flags = PackageManager.MATCH_UNINSTALLED_PACKAGES | PackageManager.GET_META_DATA;
+            List<ApplicationInfo> installed = pm.getInstalledApplications(flags);
+            for (ApplicationInfo info : installed) {
+                String packageName = info.packageName;
                 if (packageName.equals(getContext().getPackageName())) continue;
                 if (appByPackage.containsKey(packageName)) continue;
                 CharSequence label = info.loadLabel(pm);
