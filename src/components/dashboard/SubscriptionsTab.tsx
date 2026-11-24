@@ -18,6 +18,7 @@ import {
   shiftDateByCycle,
   computeTermProgress,
 } from '../../lib/subscriptionCycles';
+import { expenseCategories, resolveSubscriptionCategory } from '../../lib/categories';
 import {
   Repeat,
   Plus,
@@ -85,7 +86,7 @@ const PRESETS: PresetItem[] = [
   {
     name: 'Car / Auto Insurance (3 Months)',
     icon: '🛡️',
-    category: 'Insurance',
+    category: '🛡️ Insurance / Annual Costs',
     defaultAmount: 1150,
     cycle: 'every_3_months',
     badge: '3-Mo Pass',
@@ -93,7 +94,7 @@ const PRESETS: PresetItem[] = [
   {
     name: 'Gym / Fitness Membership (3 Months)',
     icon: '💪',
-    category: 'Health & Fitness',
+    category: '🩺 Health & Medical',
     defaultAmount: 900,
     cycle: 'every_3_months',
     defaultStatus: 'planned',
@@ -102,7 +103,7 @@ const PRESETS: PresetItem[] = [
   {
     name: 'Health / Mutuelle Insurance',
     icon: '🏥',
-    category: 'Insurance',
+    category: '🛡️ Insurance / Annual Costs',
     defaultAmount: 750,
     cycle: 'every_3_months',
     badge: '3-Mo Pass',
@@ -110,7 +111,7 @@ const PRESETS: PresetItem[] = [
   {
     name: 'Electricity & Water Utility (Variable)',
     icon: '💡',
-    category: 'Bills & Utilities',
+    category: '🏢 Housing & Utilities',
     defaultAmount: 280,
     cycle: 'monthly',
     badge: 'Variable Bill',
@@ -118,7 +119,7 @@ const PRESETS: PresetItem[] = [
   {
     name: 'Monthly Fuel / Transport (Variable)',
     icon: '⛽',
-    category: 'Bills & Utilities',
+    category: '🚗 Transportation',
     defaultAmount: 650,
     cycle: 'monthly',
     badge: 'Variable Bill',
@@ -126,82 +127,70 @@ const PRESETS: PresetItem[] = [
   {
     name: 'Fiber Internet',
     icon: '🌐',
-    category: 'Bills & Utilities',
+    category: '📱 Telecom & Subscriptions',
     defaultAmount: 349,
     cycle: 'monthly',
   },
   {
     name: 'Mobile Phone Plan',
     icon: '📱',
-    category: 'Internet & Telecom',
+    category: '📱 Telecom & Subscriptions',
     defaultAmount: 120,
     cycle: 'monthly',
   },
   {
     name: 'Netflix',
     icon: '🎬',
-    category: 'Streaming & Media',
+    category: '📱 Telecom & Subscriptions',
     defaultAmount: 95,
     cycle: 'monthly',
   },
   {
     name: 'Spotify',
     icon: '🎵',
-    category: 'Streaming & Media',
+    category: '📱 Telecom & Subscriptions',
     defaultAmount: 65,
     cycle: 'monthly',
   },
   {
     name: 'YouTube Premium',
     icon: '▶️',
-    category: 'Streaming & Media',
+    category: '📱 Telecom & Subscriptions',
     defaultAmount: 70,
     cycle: 'monthly',
   },
   {
     name: 'ChatGPT Plus',
     icon: '🤖',
-    category: 'AI & Software',
+    category: '📱 Telecom & Subscriptions',
     defaultAmount: 220,
     cycle: 'monthly',
   },
   {
     name: 'GitHub Pro',
     icon: '💻',
-    category: 'Software & Dev',
+    category: '📱 Telecom & Subscriptions',
     defaultAmount: 45,
     cycle: 'monthly',
   },
   {
     name: 'iCloud / Google One',
     icon: '☁️',
-    category: 'Cloud Storage',
+    category: '📱 Telecom & Subscriptions',
     defaultAmount: 30,
     cycle: 'monthly',
   },
   {
     name: 'Rent / Loyer',
     icon: '🏠',
-    category: 'Housing & Rent',
+    category: '🏢 Housing & Utilities',
     defaultAmount: 4000,
     cycle: 'monthly',
   },
 ];
 
-const CATEGORIES = [
-  'Insurance',
-  'Health & Fitness',
-  'Internet & Telecom',
-  'Bills & Utilities',
-  'Subscriptions & Streaming',
-  'Streaming & Media',
-  'Housing & Rent',
-  'AI & Software',
-  'Software & Dev',
-  'Cloud Storage',
-  'Education & Learning',
-  'Other Subscriptions',
-];
+// Always target canonical TrueSpend monthly budget categories so logged payments match budgets
+const CATEGORIES: readonly string[] = expenseCategories;
 
 type CycleFilter = 'all' | '3_months' | 'monthly' | 'multi_month';
 type SortOption = 'renewal_soon' | 'monthly_desc' | 'lump_desc' | 'name_asc';
@@ -277,12 +266,12 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
     name: '',
     amount: '',
     currency: 'MAD',
-    billingCycle: 'every_3_months' as SubscriptionBillingCycle,
-    category: 'Insurance',
+    billingCycle: 'monthly' as SubscriptionBillingCycle,
+    category: '📱 Telecom & Subscriptions',
     walletId: '',
     nextBillingDate: '',
     status: 'active' as SubscriptionStatus,
-    icon: '🛡️',
+    icon: '📱',
     notes: '',
     websiteUrl: '',
   });
@@ -430,7 +419,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
   const categoryBreakdown = useMemo(() => {
     const map = new Map<string, { category: string; monthly: number; count: number }>();
     activeSubs.forEach((s) => {
-      const cat = s.category || 'Other Subscriptions';
+      const cat = resolveSubscriptionCategory(s.category);
       const m = getNormalizedMonthlyAmount(s.amount, s.billingCycle);
       const existing = map.get(cat) || { category: cat, monthly: 0, count: 0 };
       existing.monthly += m;
@@ -452,8 +441,10 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
+        const canonicalCat = resolveSubscriptionCategory(sub.category).toLowerCase();
         return (
           sub.name.toLowerCase().includes(q) ||
+          canonicalCat.includes(q) ||
           sub.category.toLowerCase().includes(q) ||
           meta.label.toLowerCase().includes(q) ||
           (sub.notes && sub.notes.toLowerCase().includes(q))
@@ -563,11 +554,11 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
       amount: preset ? String(preset.defaultAmount) : '',
       currency: 'MAD',
       billingCycle: cycle,
-      category: preset ? preset.category : 'Insurance',
+      category: preset ? resolveSubscriptionCategory(preset.category) : '📱 Telecom & Subscriptions',
       walletId: bankWallet ? bankWallet.id : '',
       nextBillingDate: nextDateStr,
       status,
-      icon: preset ? preset.icon : '🛡️',
+      icon: preset ? preset.icon : '📱',
       notes: '',
       websiteUrl: '',
     });
@@ -605,7 +596,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
       amount: sub.amount,
       currency: sub.currency || 'MAD',
       billingCycle: normalizedCycle,
-      category: sub.category,
+      category: resolveSubscriptionCategory(sub.category),
       walletId: sub.walletId || '',
       nextBillingDate: sub.nextBillingDate ? new Date(sub.nextBillingDate).toISOString().slice(0, 10) : '',
       status: sub.status,
@@ -632,7 +623,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
           amount: formData.amount,
           currency: formData.currency,
           billingCycle: finalCycle,
-          category: formData.category,
+          category: resolveSubscriptionCategory(formData.category),
           walletId: formData.walletId || null,
           nextBillingDate: formData.nextBillingDate ? new Date(formData.nextBillingDate).toISOString() : null,
           status: formData.status,
@@ -647,7 +638,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
           amount: formData.amount,
           currency: formData.currency,
           billingCycle: finalCycle,
-          category: formData.category,
+          category: resolveSubscriptionCategory(formData.category),
           walletId: formData.walletId || null,
           nextBillingDate: formData.nextBillingDate ? new Date(formData.nextBillingDate).toISOString() : null,
           status: formData.status,
@@ -679,7 +670,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
         amount: String(candidate.suggestedAmount),
         currency: 'MAD',
         billingCycle: candidate.suggestedCycle,
-        category: candidate.suggestedCategory,
+        category: resolveSubscriptionCategory(candidate.suggestedCategory),
         walletId: bankWallet ? bankWallet.id : null,
         nextBillingDate: nextDate.toISOString(),
         status: 'active',
@@ -1479,7 +1470,7 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                             {sub.name}
                           </h4>
                           <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                            <span className="truncate">{sub.category}</span>
+                            <span className="truncate">{resolveSubscriptionCategory(sub.category)}</span>
                             <span aria-hidden="true">·</span>
                             <span className="font-medium text-indigo-600 dark:text-indigo-400 shrink-0">
                               {meta.shortLabel}
@@ -2169,10 +2160,10 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Category
+                    Budget Category
                   </label>
                   <select
-                    value={formData.category}
+                    value={resolveSubscriptionCategory(formData.category)}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                     className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
                   >
@@ -2182,6 +2173,9 @@ export const SubscriptionsTab: React.FC<SubscriptionsTabProps> = ({
                       </option>
                     ))}
                   </select>
+                  <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+                    Payments log directly to this TrueSpend monthly budget category.
+                  </p>
                 </div>
 
                 <div>

@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { db } from '../../src/db/index.js';
+import { db, ensureDatabaseSchema } from '../../src/db/index.js';
 import {
   debts,
   goals,
@@ -94,6 +94,7 @@ export class NotificationScheduler {
 
   async processAutomatedBackups() {
     try {
+      await ensureDatabaseSchema();
       const backupUsers = await db
         .select()
         .from(users)
@@ -140,6 +141,7 @@ export class NotificationScheduler {
   }
 
   async processNotifications() {
+    await ensureDatabaseSchema();
     const allPrefs = await db
       .select({
         prefs: notificationPreferences,

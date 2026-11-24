@@ -2,6 +2,7 @@ import { subscriptionRepository, CreateSubscriptionParams } from '../repositorie
 import { transactionService } from './TransactionService.js';
 import { walletRepository } from '../repositories/WalletRepository.js';
 import { transactionRepository } from '../repositories/TransactionRepository.js';
+import { resolveSubscriptionCategory } from '../../src/lib/categories.js';
 
 export interface CreateSubscriptionDTO {
   name: string;
@@ -135,6 +136,7 @@ export class SubscriptionService {
 
     return subs.map((s) => ({
       ...s,
+      category: resolveSubscriptionCategory(s.category),
       walletName: s.walletId ? walletMap.get(s.walletId) || null : null,
     }));
   }
@@ -160,6 +162,7 @@ export class SubscriptionService {
     }
 
     const nextBillingDate = dto.nextBillingDate ? new Date(dto.nextBillingDate) : null;
+    const canonicalCategory = resolveSubscriptionCategory(dto.category);
 
     const createdSub = await subscriptionRepository.create({
       userId,
@@ -167,7 +170,7 @@ export class SubscriptionService {
       amount: amountNum.toFixed(2),
       currency: dto.currency || 'MAD',
       billingCycle: dto.billingCycle || 'monthly',
-      category: dto.category?.trim() || 'Subscriptions & Streaming',
+      category: canonicalCategory,
       walletId,
       nextBillingDate,
       status: dto.status || 'active',
@@ -193,7 +196,7 @@ export class SubscriptionService {
         await transactionService.createTransaction(userId, {
           amount: amountNum,
           type: 'Expense',
-          category: dto.category?.trim() || 'Subscriptions & Streaming',
+          category: canonicalCategory,
           notes: `Subscription: ${name}`,
           walletId: targetWalletId,
           transaction_date: payDateStr,
@@ -224,7 +227,7 @@ export class SubscriptionService {
 
     if (dto.currency !== undefined) updateData.currency = dto.currency;
     if (dto.billingCycle !== undefined) updateData.billingCycle = dto.billingCycle;
-    if (dto.category !== undefined) updateData.category = dto.category.trim();
+    if (dto.category !== undefined) updateData.category = resolveSubscriptionCategory(dto.category);
     if (dto.status !== undefined) updateData.status = dto.status;
     if (dto.notes !== undefined) updateData.notes = dto.notes;
     if (dto.icon !== undefined) updateData.icon = dto.icon;
@@ -283,10 +286,11 @@ export class SubscriptionService {
     const varianceNote = hasVariance
       ? ` (Variable bill: paid ${paidAmount.toFixed(2)} vs est. ${baselineAmountNum.toFixed(2)})`
       : '';
+    const canonicalCategory = resolveSubscriptionCategory(sub.category);
     const createdTx = await transactionService.createTransaction(userId, {
       amount: paidAmount,
       type: 'Expense',
-      category: sub.category || 'Subscriptions & Streaming',
+      category: canonicalCategory,
       notes: `Subscription: ${sub.name}${varianceNote}`,
       walletId,
       transaction_date: dateToUse,
@@ -398,7 +402,7 @@ export class SubscriptionService {
       createdTx = await transactionService.createTransaction(userId, {
         amount: Math.round(chargedAmount * 100) / 100,
         type: 'Expense',
-        category: sub.category || 'Subscriptions & Streaming',
+        category: resolveSubscriptionCategory(sub.category),
         notes: noteText,
         walletId: targetWalletId,
         transaction_date: effectiveIso,
@@ -454,30 +458,30 @@ export class SubscriptionService {
 
     const existingNames = new Set(existingSubs.map((s) => s.name.toLowerCase().trim()));
 
-    // Keywords to recognize subscription services
+    // Keywords to recognize subscription services (mapped directly to canonical TrueSpend budget categories)
     const knownPatterns = [
-      { name: 'Netflix', category: 'Streaming & Media', icon: '🎬', defaultCycle: 'monthly' },
-      { name: 'Spotify', category: 'Streaming & Media', icon: '🎵', defaultCycle: 'monthly' },
-      { name: 'YouTube', category: 'Streaming & Media', icon: '▶️', defaultCycle: 'monthly' },
-      { name: 'Apple', category: 'Digital Services', icon: '🍏', defaultCycle: 'monthly' },
-      { name: 'iCloud', category: 'Cloud Storage', icon: '☁️', defaultCycle: 'monthly' },
-      { name: 'Google', category: 'Digital Services', icon: '🌐', defaultCycle: 'monthly' },
-      { name: 'Amazon Prime', category: 'Subscriptions & Streaming', icon: '📦', defaultCycle: 'monthly' },
-      { name: 'ChatGPT / OpenAI', category: 'AI & Software', icon: '🤖', defaultCycle: 'monthly' },
-      { name: 'Claude / Anthropic', category: 'AI & Software', icon: '🧠', defaultCycle: 'monthly' },
-      { name: 'GitHub', category: 'Software & Dev', icon: '💻', defaultCycle: 'monthly' },
-      { name: 'Gym / Fitness', category: 'Health & Fitness', icon: '💪', defaultCycle: 'every_3_months' },
-      { name: 'Maroc Telecom', category: 'Internet & Telecom', icon: '📶', defaultCycle: 'monthly' },
-      { name: 'Orange', category: 'Internet & Telecom', icon: '📱', defaultCycle: 'monthly' },
-      { name: 'Inwi', category: 'Internet & Telecom', icon: '📡', defaultCycle: 'monthly' },
-      { name: 'Fiber / Internet', category: 'Bills & Utilities', icon: '🌐', defaultCycle: 'monthly' },
-      { name: 'Rent / Loyer', category: 'Housing & Rent', icon: '🏠', defaultCycle: 'monthly' },
-      { name: 'Lydec / Redal / Amendis', category: 'Bills & Utilities', icon: '💡', defaultCycle: 'monthly' },
-      { name: 'Assurance / Insurance', category: 'Insurance', icon: '🛡️', defaultCycle: 'every_3_months' },
-      { name: 'Adobe', category: 'Software & Dev', icon: '🎨', defaultCycle: 'monthly' },
-      { name: 'Notion', category: 'Software & Dev', icon: '📝', defaultCycle: 'monthly' },
-      { name: 'Canva', category: 'Software & Dev', icon: '✨', defaultCycle: 'monthly' },
-      { name: 'Disney+', category: 'Streaming & Media', icon: '🏰', defaultCycle: 'monthly' },
+      { name: 'Netflix', category: '📱 Telecom & Subscriptions', icon: '🎬', defaultCycle: 'monthly' },
+      { name: 'Spotify', category: '📱 Telecom & Subscriptions', icon: '🎵', defaultCycle: 'monthly' },
+      { name: 'YouTube', category: '📱 Telecom & Subscriptions', icon: '▶️', defaultCycle: 'monthly' },
+      { name: 'Apple', category: '📱 Telecom & Subscriptions', icon: '🍏', defaultCycle: 'monthly' },
+      { name: 'iCloud', category: '📱 Telecom & Subscriptions', icon: '☁️', defaultCycle: 'monthly' },
+      { name: 'Google', category: '📱 Telecom & Subscriptions', icon: '🌐', defaultCycle: 'monthly' },
+      { name: 'Amazon Prime', category: '📱 Telecom & Subscriptions', icon: '📦', defaultCycle: 'monthly' },
+      { name: 'ChatGPT / OpenAI', category: '📱 Telecom & Subscriptions', icon: '🤖', defaultCycle: 'monthly' },
+      { name: 'Claude / Anthropic', category: '📱 Telecom & Subscriptions', icon: '🧠', defaultCycle: 'monthly' },
+      { name: 'GitHub', category: '📱 Telecom & Subscriptions', icon: '💻', defaultCycle: 'monthly' },
+      { name: 'Gym / Fitness', category: '🩺 Health & Medical', icon: '💪', defaultCycle: 'every_3_months' },
+      { name: 'Maroc Telecom', category: '📱 Telecom & Subscriptions', icon: '📶', defaultCycle: 'monthly' },
+      { name: 'Orange', category: '📱 Telecom & Subscriptions', icon: '📱', defaultCycle: 'monthly' },
+      { name: 'Inwi', category: '📱 Telecom & Subscriptions', icon: '📡', defaultCycle: 'monthly' },
+      { name: 'Fiber / Internet', category: '📱 Telecom & Subscriptions', icon: '🌐', defaultCycle: 'monthly' },
+      { name: 'Rent / Loyer', category: '🏢 Housing & Utilities', icon: '🏠', defaultCycle: 'monthly' },
+      { name: 'Lydec / Redal / Amendis', category: '🏢 Housing & Utilities', icon: '💡', defaultCycle: 'monthly' },
+      { name: 'Assurance / Insurance', category: '🛡️ Insurance / Annual Costs', icon: '🛡️', defaultCycle: 'every_3_months' },
+      { name: 'Adobe', category: '📱 Telecom & Subscriptions', icon: '🎨', defaultCycle: 'monthly' },
+      { name: 'Notion', category: '📱 Telecom & Subscriptions', icon: '📝', defaultCycle: 'monthly' },
+      { name: 'Canva', category: '📱 Telecom & Subscriptions', icon: '✨', defaultCycle: 'monthly' },
+      { name: 'Disney+', category: '📱 Telecom & Subscriptions', icon: '🏰', defaultCycle: 'monthly' },
     ];
 
     const detected: Array<{
@@ -564,7 +568,7 @@ export class SubscriptionService {
             name: nameGuess.slice(0, 35),
             suggestedAmount: amt,
             suggestedCycle: 'monthly',
-            suggestedCategory: group[0].category || 'Bills & Utilities',
+            suggestedCategory: resolveSubscriptionCategory(group[0].category),
             frequencyCount: group.length,
             lastSeenDate: group[0].createdAt ? new Date(group[0].createdAt).toISOString() : new Date().toISOString(),
             sampleTransactionNotes: group[0].notes || `${amt} MAD charge`,

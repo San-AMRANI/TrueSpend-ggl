@@ -149,6 +149,22 @@ function getOrCreateDb(): NodePgDatabase<typeof schema> {
   return global._dbInstance;
 }
 
+export async function closeDatabase(): Promise<void> {
+  try {
+    if (global._pgliteInstance) {
+      await global._pgliteInstance.close();
+      global._pgliteInstance = undefined;
+    } else if (global._postgresPool && typeof global._postgresPool.end === 'function') {
+      await global._postgresPool.end();
+    }
+    global._postgresPool = undefined;
+    global._dbInstance = undefined;
+    global._schemaReadyPromise = undefined;
+  } catch (err: any) {
+    console.warn('[DB Shutdown] Notice while closing database:', err?.message || err);
+  }
+}
+
 const CORE_DDL_STATEMENTS: Array<{ sql: string; optional?: boolean; label: string }> = [
   // Enum types (idempotent)
   {
@@ -564,7 +580,7 @@ const CORE_DDL_STATEMENTS: Array<{ sql: string; optional?: boolean; label: strin
       "amount" numeric NOT NULL,
       "currency" text NOT NULL DEFAULT 'MAD',
       "billing_cycle" text NOT NULL DEFAULT 'monthly',
-      "category" text NOT NULL DEFAULT 'Subscriptions & Streaming',
+      "category" text NOT NULL DEFAULT '📱 Telecom & Subscriptions',
       "wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
       "next_billing_date" timestamp,
       "status" text NOT NULL DEFAULT 'active',

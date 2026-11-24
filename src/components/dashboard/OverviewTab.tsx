@@ -5,6 +5,7 @@ import {
   DashboardTab,
   Debt,
   ExternalWealthItem,
+  FinancialContext,
   FinancialIntegrityReport,
   FinancialReviewItem,
   Goal,
@@ -99,6 +100,7 @@ interface OverviewTabProps {
   budgets: CategoryBudget[];
   goals?: Goal[];
   subscriptions?: Subscription[];
+  contexts?: FinancialContext[];
   investmentsData?: InvestmentsData | null;
   initialOperationalRadar?: OperationalRadarPayload | null;
   isHydratingRadar?: boolean;
@@ -151,6 +153,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   budgets,
   goals = [],
   subscriptions = [],
+  contexts = [],
   investmentsData = null,
   initialOperationalRadar = null,
   isHydratingRadar = false,
@@ -816,6 +819,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               budgets={budgets}
               payrolls={payrolls}
               goals={goals}
+              subscriptions={subscriptions}
+              contexts={contexts}
               investmentsData={investmentsData}
               isPrivacyMode={isPrivacyMode}
               setActiveTab={setActiveTab}

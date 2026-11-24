@@ -56,6 +56,7 @@ const aliases = new Map<string, string>([
   ['baby', '🏠 Household & Family'],
   ['education', '🏠 Household & Family'],
   ['education and development', '🏠 Household & Family'],
+  ['education and learning', '🏠 Household & Family'],
   ['books', '🏠 Household & Family'],
   ['school', '🏠 Household & Family'],
 
@@ -68,6 +69,8 @@ const aliases = new Map<string, string>([
   ['housing and rent', '🏢 Housing & Utilities'],
   ['utilities', '🏢 Housing & Utilities'],
   ['bills', '🏢 Housing & Utilities'],
+  ['bills and utilities', '🏢 Housing & Utilities'],
+  ['fixed bills and utilities', '🏢 Housing & Utilities'],
   ['electricity', '🏢 Housing & Utilities'],
   ['water', '🏢 Housing & Utilities'],
   ['syndic', '🏢 Housing & Utilities'],
@@ -109,6 +112,7 @@ const aliases = new Map<string, string>([
 
   // Transportation
   ['transport', '🚗 Transportation'],
+  ['transport and fuel', '🚗 Transportation'],
   ['transportation', '🚗 Transportation'],
   ['transportation and fuel', '🚗 Transportation'],
   ['fuel', '🚗 Transportation'],
@@ -129,6 +133,7 @@ const aliases = new Map<string, string>([
   ['clothing', '👕 Personal & Clothing'],
   ['clothes', '👕 Personal & Clothing'],
   ['shopping', '👕 Personal & Clothing'],
+  ['shopping and lifestyle', '👕 Personal & Clothing'],
   ['grooming', '👕 Personal & Clothing'],
   ['personal care', '👕 Personal & Clothing'],
   ['personal and clothing', '👕 Personal & Clothing'],
@@ -141,16 +146,35 @@ const aliases = new Map<string, string>([
   // Telecom & Subscriptions
   ['telecom', '📱 Telecom & Subscriptions'],
   ['telecom and subscriptions', '📱 Telecom & Subscriptions'],
+  ['internet and telecom', '📱 Telecom & Subscriptions'],
+  ['telecom and internet', '📱 Telecom & Subscriptions'],
   ['phone', '📱 Telecom & Subscriptions'],
+  ['phone plan', '📱 Telecom & Subscriptions'],
   ['mobile', '📱 Telecom & Subscriptions'],
+  ['mobile phone', '📱 Telecom & Subscriptions'],
+  ['mobile phone plan', '📱 Telecom & Subscriptions'],
   ['internet', '📱 Telecom & Subscriptions'],
+  ['fiber internet', '📱 Telecom & Subscriptions'],
+  ['fiber and internet', '📱 Telecom & Subscriptions'],
   ['wifi', '📱 Telecom & Subscriptions'],
   ['fibre', '📱 Telecom & Subscriptions'],
   ['inwi', '📱 Telecom & Subscriptions'],
   ['iam', '📱 Telecom & Subscriptions'],
+  ['maroc telecom', '📱 Telecom & Subscriptions'],
   ['orange', '📱 Telecom & Subscriptions'],
   ['subscriptions', '📱 Telecom & Subscriptions'],
   ['subscription', '📱 Telecom & Subscriptions'],
+  ['subscriptions and streaming', '📱 Telecom & Subscriptions'],
+  ['streaming and media', '📱 Telecom & Subscriptions'],
+  ['streaming', '📱 Telecom & Subscriptions'],
+  ['ai and software', '📱 Telecom & Subscriptions'],
+  ['software and dev', '📱 Telecom & Subscriptions'],
+  ['software', '📱 Telecom & Subscriptions'],
+  ['saas', '📱 Telecom & Subscriptions'],
+  ['cloud storage', '📱 Telecom & Subscriptions'],
+  ['cloud', '📱 Telecom & Subscriptions'],
+  ['digital services', '📱 Telecom & Subscriptions'],
+  ['other subscriptions', '📱 Telecom & Subscriptions'],
   ['netflix', '📱 Telecom & Subscriptions'],
   ['spotify', '📱 Telecom & Subscriptions'],
   ['icloud', '📱 Telecom & Subscriptions'],
@@ -178,7 +202,10 @@ const aliases = new Map<string, string>([
   // Health & Medical
   ['medical', '🩺 Health & Medical'],
   ['health', '🩺 Health & Medical'],
+  ['healthcare', '🩺 Health & Medical'],
+  ['healthcare and pharmacy', '🩺 Health & Medical'],
   ['health and medical', '🩺 Health & Medical'],
+  ['health and fitness', '🩺 Health & Medical'],
   ['health fitness', '🩺 Health & Medical'],
   ['medical expenses', '🩺 Health & Medical'],
   ['pharmacy', '🩺 Health & Medical'],
@@ -331,4 +358,19 @@ export const normalizeCategory = (category?: string | null): string => {
 
   const key = categoryKey(trimmedCategory);
   return canonicalByKey.get(key) ?? aliases.get(key) ?? trimmedCategory;
+};
+
+const expenseCategorySet = new Set<string>(expenseCategories);
+
+/**
+ * Resolves any subscription category (including legacy labels like "Internet & Telecom"
+ * or "Streaming & Media") into an exact canonical TrueSpend budget expense category so
+ * logged subscription payments always match monthly category budgets.
+ */
+export const resolveSubscriptionCategory = (category?: string | null): string => {
+  const normalized = normalizeCategory(category);
+  if (normalized && expenseCategorySet.has(normalized)) {
+    return normalized;
+  }
+  return '📱 Telecom & Subscriptions';
 };

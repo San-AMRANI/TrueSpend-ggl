@@ -9,10 +9,12 @@ import type {
   CategoryBudget,
   DashboardTab,
   Debt,
+  FinancialContext,
   Goal,
   InvestmentsData,
   KPI,
   Payroll,
+  Subscription,
   Transaction,
 } from '../../../types';
 
@@ -23,6 +25,8 @@ interface OverviewBand6Props {
   budgets: CategoryBudget[];
   payrolls: Payroll[];
   goals: Goal[];
+  subscriptions?: Subscription[];
+  contexts?: FinancialContext[];
   investmentsData: InvestmentsData | null;
   isPrivacyMode: boolean;
   setActiveTab: (tab: DashboardTab) => void;
@@ -35,13 +39,22 @@ export const OverviewBand6GoalsAndSignals: React.FC<OverviewBand6Props> = ({
   budgets,
   payrolls,
   goals,
+  subscriptions = [],
+  contexts = [],
   investmentsData,
   isPrivacyMode,
   setActiveTab,
 }) => {
   const facts = useMemo(
-    () => selectFacts(generateFacts(kpis, transactions, debts, budgets, payrolls, investmentsData)),
-    [kpis, transactions, debts, budgets, payrolls, investmentsData],
+    () =>
+      selectFacts(
+        generateFacts(kpis, transactions, debts, budgets, payrolls, investmentsData, {
+          subscriptions,
+          goals,
+          contexts,
+        }),
+      ),
+    [kpis, transactions, debts, budgets, payrolls, investmentsData, subscriptions, goals, contexts],
   );
 
   return (

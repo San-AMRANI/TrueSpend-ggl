@@ -185,6 +185,13 @@ export const FinancialFactsCarousel: React.FC<FinancialFactsCarouselProps> = ({ 
   const dragOffsetRef = useRef(0);
 
   const total = facts.length;
+  const safeIndex = Math.max(0, Math.min(currentIndex, Math.max(0, total - 1)));
+
+  useEffect(() => {
+    if (currentIndex !== safeIndex) {
+      setCurrentIndex(safeIndex);
+    }
+  }, [currentIndex, safeIndex]);
 
   const goTo = useCallback(
     (index: number) => {
@@ -193,12 +200,22 @@ export const FinancialFactsCarousel: React.FC<FinancialFactsCarouselProps> = ({ 
     [total],
   );
 
-  const prev = useCallback(() => goTo(currentIndex - 1), [currentIndex, goTo]);
-  const next = useCallback(() => goTo(currentIndex + 1), [currentIndex, goTo]);
+  const prev = useCallback(() => goTo(safeIndex - 1), [safeIndex, goTo]);
+  const next = useCallback(() => goTo(safeIndex + 1), [safeIndex, goTo]);
 
-  // Keyboard navigation
+  // Keyboard navigation (ignore when user is typing in a form field)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
       if (e.key === 'ArrowLeft') prev();
       else if (e.key === 'ArrowRight') next();
     };
@@ -233,6 +250,10 @@ export const FinancialFactsCarousel: React.FC<FinancialFactsCarouselProps> = ({ 
 
   if (total === 0) return null;
 
+  const activeFact = facts[safeIndex];
+  const activeDotColor = TYPE_STYLES[activeFact?.type]?.dot || 'bg-indigo-500';
+  const progressPct = total > 1 ? ((safeIndex + 1) / total) * 100 : 100;
+
   return (
     <div className="min-w-0 w-full">
       {/* Card window */}
@@ -250,7 +271,7 @@ export const FinancialFactsCarousel: React.FC<FinancialFactsCarouselProps> = ({ 
         <div
           ref={trackRef}
           className="flex transition-transform duration-300 ease-out"
-          style={{ transform: `translateX(-${currentIndex * 100}%)` }}
+          style={{ transform: `translateX(-${safeIndex * 100}%)` }}
         >
           {facts.map((fact) => (
             <div key={fact.id} className="w-full shrink-0" style={{ minWidth: '100%' }}>
@@ -263,45 +284,69 @@ export const FinancialFactsCarousel: React.FC<FinancialFactsCarouselProps> = ({ 
       </div>
 
       {/* Controls row */}
-      <div className="mt-3 flex items-center justify-between gap-2">
-        {/* Dot indicators */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%] sm:max-w-[75%] py-1">
-          {facts.map((fact, i) => {
-            const dotColor = TYPE_STYLES[fact.type]?.dot || 'bg-gray-400';
-            return (
-              <button
-                key={fact.id}
-                type="button"
-                aria-label={`Go to fact ${i + 1}`}
-                onClick={() => goTo(i)}
-                className={`h-1.5 shrink-0 rounded-full transition-all duration-200 ${dotColor} ${
-                  i === currentIndex
-                    ? (facts.length > 15 ? 'w-4' : 'w-5') + ' opacity-100'
-                    : 'w-1.5 opacity-30 hover:opacity-60'
-                }`}
+      <div className="mt-3 flex items-center justify-between gap-3">
+        {/* Progress indicator: dots for <= 18 facts, crisp progress bar for larger decks */}
+        {total <= 18 ? (
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar max-w-[60%] sm:max-w-[75%] py-1">
+            {facts.map((fact, i) => {
+              const dotColor = TYPE_STYLES[fact.type]?.dot || 'bg-gray-400';
+              return (
+                <button
+                  key={fact.id}
+                  type="button"
+                  aria-label={`Go to fact ${i + 1}`}
+                  onClick={() => goTo(i)}
+                  className={`h-1.5 shrink-0 rounded-full transition-all duration-200 ${dotColor} ${
+                    i === safeIndex
+                      ? (total > 12 ? 'w-4' : 'w-5') + ' opacity-100'
+                      : 'w-1.5 opacity-30 hover:opacity-60'
+                  }`}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-1 items-center gap-2.5 min-w-0">
+            <div
+              className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200/80 dark:bg-gray-800 cursor-pointer"
+              role="progressbar"
+              aria-valuenow={safeIndex + 1}
+              aria-valuemin={1}
+              aria-valuemax={total}
+              aria-label="Financial fact progress"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                if (rect.width <= 0) return;
+                const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                goTo(Math.min(total - 1, Math.floor(ratio * total)));
+              }}
+            >
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${activeDotColor}`}
+                style={{ width: `${progressPct}%` }}
               />
-            );
-          })}
-        </div>
+            </div>
+          </div>
+        )}
 
         {/* Prev / Next buttons */}
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={prev}
-            disabled={currentIndex === 0}
+            disabled={safeIndex === 0}
             aria-label="Previous fact"
             className="flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 transition hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <span className="min-w-[3rem] text-center text-xs tabular-nums text-gray-400 dark:text-gray-500">
-            {currentIndex + 1} / {total}
+          <span className="min-w-[3.25rem] text-center text-xs tabular-nums text-gray-400 dark:text-gray-500">
+            {safeIndex + 1} / {total}
           </span>
           <button
             type="button"
             onClick={next}
-            disabled={currentIndex === total - 1}
+            disabled={safeIndex === total - 1}
             aria-label="Next fact"
             className="flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 transition hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed"
           >

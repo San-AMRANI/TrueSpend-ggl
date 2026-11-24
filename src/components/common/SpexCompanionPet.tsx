@@ -56,9 +56,12 @@ import type {
   CategoryBudget,
   DashboardTab,
   Debt,
+  FinancialContext,
+  Goal,
   InvestmentsData,
   KPI,
   Payroll,
+  Subscription,
   Transaction,
 } from '../../types';
 
@@ -77,6 +80,9 @@ interface SpexCompanionPetProps {
   debts?: Debt[];
   budgets?: CategoryBudget[];
   payrolls?: Payroll[];
+  goals?: Goal[];
+  subscriptions?: Subscription[];
+  contexts?: FinancialContext[];
   investmentsData?: InvestmentsData | null;
   onOpenChat: () => void;
 }
@@ -257,6 +263,9 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
   debts = [],
   budgets = [],
   payrolls = [],
+  goals = [],
+  subscriptions = [],
+  contexts = [],
   investmentsData = null,
   onOpenChat,
 }) => {
@@ -264,9 +273,13 @@ export const SpexCompanionPet: React.FC<SpexCompanionPetProps> = ({
     if (propFacts) return propFacts;
     if (!kpis) return [];
     return selectFacts(
-      generateFacts(kpis, transactions, debts, budgets, payrolls, investmentsData)
+      generateFacts(kpis, transactions, debts, budgets, payrolls, investmentsData, {
+        goals,
+        subscriptions,
+        contexts,
+      })
     );
-  }, [propFacts, kpis, transactions, debts, budgets, payrolls, investmentsData]);
+  }, [propFacts, kpis, transactions, debts, budgets, payrolls, goals, subscriptions, contexts, investmentsData]);
   const [mode, setMode] = useState<PetDisplayMode>(() => {
     if (typeof window === 'undefined') return 'perched';
     const saved = localStorage.getItem(PET_STORAGE_KEY);

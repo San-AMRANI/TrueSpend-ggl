@@ -19,5 +19,6 @@ verify_db.js
 bun.lock
 bun.lockb
 .data/
+.playwright-cli/
 
 

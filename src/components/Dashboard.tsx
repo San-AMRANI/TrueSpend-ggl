@@ -426,6 +426,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               budgets={budgets}
               goals={goals}
               subscriptions={subscriptions}
+              contexts={contexts}
               investmentsData={investmentsData}
               initialOperationalRadar={operationalRadar}
               isHydratingRadar={isHydratingRadar}
@@ -861,6 +862,9 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
             debts={debts}
             budgets={budgets}
             payrolls={payrolls}
+            goals={goals}
+            subscriptions={subscriptions}
+            contexts={contexts}
             investmentsData={investmentsData}
             onOpenChat={() => setActiveTab('chat')}
           />

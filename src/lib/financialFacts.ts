@@ -1,7 +1,23 @@
-import { CategoryBudget, Debt, KPI, Transaction, InvestmentsData } from '../types/index.js';
+import {
+  CategoryBudget,
+  Debt,
+  FinancialContext,
+  Goal,
+  KPI,
+  Subscription,
+  Transaction,
+  InvestmentsData,
+} from '../types/index.js';
 import { amountOf as rawAmountOf, netExpenseOf, isReimbursementIncome, getExpensesForMonth, isInMonth, transactionDate } from './finance.js';
 import { normalizeCategory } from './categories.js';
 import { getCurrentFinancialMonth, getPreviousFinancialMonth, type PayrollLike } from './financialMonth.js';
+import { getCycleMeta, getNormalizedMonthlyAmount } from './subscriptionCycles.js';
+
+export interface FinancialFactsExtras {
+  subscriptions?: Subscription[];
+  goals?: Goal[];
+  contexts?: FinancialContext[];
+}
 
 const amountOf = (tx: Transaction) => (tx.type === 'Expense' ? netExpenseOf(tx) : rawAmountOf(tx));
 
@@ -67,7 +83,12 @@ const fmtInt = (n: number) => Math.round(n).toLocaleString('en-US');
 
 /** Return only real expense transactions (no transfers, no debt repayments). */
 const realExpenses = (txs: Transaction[]) =>
-  txs.filter((t) => t.type === 'Expense' && normalizeCategory(t.category) !== 'Debt Repayment');
+  txs.filter(
+    (t) =>
+      t.type === 'Expense' &&
+      t.category !== 'Debt Repayment' &&
+      normalizeCategory(t.category) !== 'Debt Repayment'
+  );
 
 /** Day-of-week label. */
 const dayName = (d: Date) => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()];
@@ -84,19 +105,30 @@ export function generateFacts(
   budgets: CategoryBudget[],
   payrolls: PayrollLike[] = [],
   investmentsData?: InvestmentsData | null,
+  extras?: FinancialFactsExtras,
 ): FinancialFact[] {
   if (!kpis) return [];
 
-  const currentPeriod = getCurrentFinancialMonth(payrolls);
-  if (!currentPeriod) return [];
   const now = new Date();
+  const configuredPeriod = getCurrentFinancialMonth(payrolls, now);
+  const currentPeriod = configuredPeriod ?? {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+    start: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0),
+    end: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999),
+  };
   const year = currentPeriod.year;
   const month = currentPeriod.month;
 
   const thisMonthExpenses = realExpenses(getExpensesForMonth(transactions, year, month, payrolls));
   const allExpenses = realExpenses(transactions);
 
-  const prevMonthRef = getPreviousFinancialMonth(payrolls, currentPeriod);
+  const prevMonthRef = configuredPeriod
+    ? getPreviousFinancialMonth(payrolls, configuredPeriod)
+    : {
+        year: month === 1 ? year - 1 : year,
+        month: month === 1 ? 12 : month - 1,
+      };
   const prevMonthExpenses = prevMonthRef ? realExpenses(getExpensesForMonth(transactions, prevMonthRef.year, prevMonthRef.month, payrolls)) : [];
 
   const facts: FinancialFact[] = [];
@@ -436,12 +468,89 @@ export function generateFacts(
     }
   }
 
-  // Fixed vs Discretionary Ratio
+  // Home, Tech & Equipment outlay (room setup, furniture, gear, drives)
+  const equipmentTxs = thisMonthExpenses.filter(
+    (t) => normalizeCategory(t.category) === '🛠️ Home, Tech & Equipment'
+  );
+  if (equipmentTxs.length >= 1) {
+    const equipTotal = equipmentTxs.reduce((s, t) => s + amountOf(t), 0);
+    if (equipTotal >= 50) {
+      facts.push({
+        id: 'home-tech-equipment-spend',
+        type: 'spending',
+        title: 'Home, tech & equipment',
+        message: `You invested ${fmt(equipTotal)} MAD across ${equipmentTxs.length} durable gear, furniture, or setup purchase${equipmentTxs.length > 1 ? 's' : ''} this cycle.`,
+        value: `${fmt(equipTotal)} MAD`,
+        icon: 'layers',
+        priority: 3,
+      });
+    }
+  }
+
+  // Health & Medical care
+  const healthTxs = thisMonthExpenses.filter(
+    (t) => normalizeCategory(t.category) === '🩺 Health & Medical'
+  );
+  if (healthTxs.length >= 1) {
+    const healthTotal = healthTxs.reduce((s, t) => s + amountOf(t), 0);
+    if (healthTotal >= 50) {
+      facts.push({
+        id: 'health-medical-spend',
+        type: 'spending',
+        title: 'Health & wellness',
+        message: `Health, pharmacy, and fitness spending totaled ${fmt(healthTotal)} MAD across ${healthTxs.length} transaction${healthTxs.length > 1 ? 's' : ''} this cycle.`,
+        value: `${fmt(healthTotal)} MAD`,
+        icon: 'shield-check',
+        priority: 4,
+      });
+    }
+  }
+
+  // Household & Family spending
+  const familyTxs = thisMonthExpenses.filter(
+    (t) => normalizeCategory(t.category) === '🏠 Household & Family'
+  );
+  if (familyTxs.length >= 1) {
+    const familyTotal = familyTxs.reduce((s, t) => s + amountOf(t), 0);
+    if (familyTotal >= 100) {
+      facts.push({
+        id: 'household-family-spend',
+        type: 'spending',
+        title: 'Household & family',
+        message: `You allocated ${fmt(familyTotal)} MAD toward household, family support, gifts, or education this cycle.`,
+        value: `${fmt(familyTotal)} MAD`,
+        icon: 'users',
+        priority: 4,
+      });
+    }
+  }
+
+  // Personal & Clothing spending
+  const personalTxs = thisMonthExpenses.filter(
+    (t) => normalizeCategory(t.category) === '👕 Personal & Clothing'
+  );
+  if (personalTxs.length >= 1) {
+    const personalTotal = personalTxs.reduce((s, t) => s + amountOf(t), 0);
+    if (personalTotal >= 80) {
+      facts.push({
+        id: 'personal-clothing-spend',
+        type: 'spending',
+        title: 'Personal & wardrobe',
+        message: `Personal care, grooming, and clothing totaled ${fmt(personalTotal)} MAD across ${personalTxs.length} purchase${personalTxs.length > 1 ? 's' : ''}.`,
+        value: `${fmt(personalTotal)} MAD`,
+        icon: 'shopping-bag',
+        priority: 4,
+      });
+    }
+  }
+
+  // Fixed vs Discretionary Ratio (canonical category labels)
   const fixedCategories = new Set([
-    '🏠 Housing & Utilities',
+    '🏢 Housing & Utilities',
     '📱 Telecom & Subscriptions',
     '💳 Debt & Obligations',
     '🩺 Health & Medical',
+    '🛡️ Insurance / Annual Costs',
   ]);
   let fixedSpend = 0;
   let discretionarySpend = 0;
@@ -566,14 +675,13 @@ export function generateFacts(
     }
   }
 
-  // 50/30/20 Discretionary "Wants" Ratio
+  // 50/30/20 Discretionary "Wants" Ratio (canonical category labels)
   const lifestyleCategories = new Set([
     '🍔 Dining & Takeaway',
     '☕ Coffee & Quick Food',
     '🎬 Entertainment',
     '👥 Social',
-    '🛍️ Shopping',
-    '💇 Personal Care',
+    '👕 Personal & Clothing',
   ]);
   let lifestyleSpend = 0;
   for (const t of thisMonthExpenses) {
@@ -598,6 +706,31 @@ export function generateFacts(
     });
   }
 
+  // Largest Category Share of Monthly Outflow
+  if (thisMonthExpenses.length >= 3 && totalMonthSpendAll >= 200) {
+    const byCatShare: Record<string, number> = {};
+    for (const t of thisMonthExpenses) {
+      const cat = normalizeCategory(t.category) || t.category || 'Other';
+      byCatShare[cat] = (byCatShare[cat] || 0) + amountOf(t);
+    }
+    const topShareEntry = Object.entries(byCatShare).sort((a, b) => b[1] - a[1])[0];
+    if (topShareEntry) {
+      const [catName, catAmt] = topShareEntry;
+      const sharePct = Math.round((catAmt / totalMonthSpendAll) * 100);
+      if (sharePct >= 35) {
+        facts.push({
+          id: 'largest-category-share',
+          type: 'spending',
+          title: 'Category concentration',
+          message: `${catName} accounts for ${sharePct}% of your total monthly spending (${fmt(catAmt)} MAD of ${fmt(totalMonthSpendAll)} MAD).`,
+          value: `${sharePct}% share`,
+          icon: 'pie-chart',
+          priority: 2,
+        });
+      }
+    }
+  }
+
   // Single Largest Outflow Weight
   if (thisMonthExpenses.length >= 3) {
     const sortedByAmount = [...thisMonthExpenses].sort((a, b) => amountOf(b) - amountOf(a));
@@ -610,7 +743,7 @@ export function generateFacts(
           id: 'single-largest-expense-weight',
           type: 'spending',
           title: 'Single largest expense weight',
-          message: `A single ${fmt(biggestAmt)} MAD payment for ${biggestTx.category || 'purchases'} accounted for ${biggestPct}% of your entire month's spend.`,
+          message: `A single ${fmt(biggestAmt)} MAD payment for ${normalizeCategory(biggestTx.category) || biggestTx.category || 'purchases'} accounted for ${biggestPct}% of your entire month's spend.`,
           value: `${biggestPct}% of month`,
           icon: 'layers',
           priority: 2,
@@ -656,16 +789,19 @@ export function generateFacts(
   // ── BUDGET FACTS ─────────────────────────────────────────────────────────
 
   const currentBudgets = budgets.filter((b) => b.year === year && b.month === month);
+  const allContexts = extras?.contexts || [];
+  // Monthly category budgets stay cleanly separated from project/context-tagged expenses
+  const monthlyBudgetExpenses = thisMonthExpenses.filter((t) => !t.contextId);
 
   if (currentBudgets.length > 0) {
     const budgetUsages = currentBudgets.map((b) => {
       const cat = normalizeCategory(b.category);
-      const spent = thisMonthExpenses
+      const spent = monthlyBudgetExpenses
         .filter((t) => normalizeCategory(t.category) === cat)
         .reduce((s, t) => s + amountOf(t), 0);
       const limit = Number.parseFloat(b.amount);
       const pct = limit > 0 ? (spent / limit) * 100 : 0;
-      return { category: b.category, spent, limit, pct, remaining: limit - spent };
+      return { category: cat || b.category, spent, limit, pct, remaining: limit - spent };
     });
 
     // Budget usage (highest used)
@@ -699,6 +835,21 @@ export function generateFacts(
       }
     }
 
+    // Most disciplined budget (lowest usage % with a meaningful limit)
+    const disciplinedCandidates = budgetUsages.filter((u) => u.limit >= 100 && u.pct < 60);
+    if (disciplinedCandidates.length > 0) {
+      const bestDisciplined = [...disciplinedCandidates].sort((a, b) => a.pct - b.pct)[0];
+      facts.push({
+        id: 'most-disciplined-budget',
+        type: 'budget',
+        title: 'Most disciplined budget',
+        message: `You've only used ${bestDisciplined.pct.toFixed(0)}% of your ${bestDisciplined.category} budget (${fmt(bestDisciplined.remaining)} MAD still untouched).`,
+        value: `${bestDisciplined.pct.toFixed(0)}% used`,
+        icon: 'award',
+        priority: 3,
+      });
+    }
+
     // Best budget (under by most)
     const mostUnder = [...budgetUsages].sort((a, b) => b.remaining - a.remaining)[0];
     if (mostUnder && mostUnder.remaining > 50) {
@@ -713,9 +864,9 @@ export function generateFacts(
       });
     }
 
-    // Total unbudgeted spending
+    // Total unbudgeted monthly spending (excluding isolated project/context spend)
     const budgetedCategories = new Set(currentBudgets.map((b) => normalizeCategory(b.category)));
-    const unbudgetedSpend = thisMonthExpenses
+    const unbudgetedSpend = monthlyBudgetExpenses
       .filter((t) => !budgetedCategories.has(normalizeCategory(t.category)))
       .reduce((s, t) => s + amountOf(t), 0);
     if (unbudgetedSpend > 50) {
@@ -723,17 +874,38 @@ export function generateFacts(
         id: 'unbudgeted-spend',
         type: 'budget',
         title: 'Outside your budgets',
-        message: `You still have spending outside your current category budgets this month.`,
+        message: `You have monthly spending outside your active category budgets (project expenses are tracked separately).`,
         value: `${fmt(unbudgetedSpend)} MAD untracked`,
         icon: 'layers',
         priority: 4,
       });
     }
 
-    // Overall budget cushion & adherence rate
+    // Overall budget cushion, adherence rate & pacing vs calendar
+    const totalBudgetAmt = currentBudgets.reduce((s, b) => s + (Number.parseFloat(b.amount) || 0), 0);
+    const totalBudgetSpent = budgetUsages.reduce((s, u) => s + u.spent, 0);
+
+    if (totalBudgetAmt > 0 && kpis.forecast && kpis.forecast.totalDays > 0 && kpis.forecast.elapsedDays >= 3) {
+      const budgetPctUsed = Math.round((totalBudgetSpent / totalBudgetAmt) * 100);
+      const cycleElapsedPct = Math.round((kpis.forecast.elapsedDays / kpis.forecast.totalDays) * 100);
+      const paceGap = budgetPctUsed - cycleElapsedPct;
+      if (Math.abs(paceGap) >= 10) {
+        const isAhead = paceGap < 0;
+        facts.push({
+          id: 'budget-pacing-vs-calendar',
+          type: 'budget',
+          title: isAhead ? 'Ahead of budget pace' : 'Budget burn ahead of calendar',
+          message: isAhead
+            ? `You've used ${budgetPctUsed}% of your monthly budgets with ${cycleElapsedPct}% of the cycle elapsed — strong pacing discipline.`
+            : `You've already used ${budgetPctUsed}% of your monthly budgets while only ${cycleElapsedPct}% of the cycle has passed.`,
+          value: `${budgetPctUsed}% vs ${cycleElapsedPct}% time`,
+          icon: isAhead ? 'shield-check' : 'alert-triangle',
+          priority: isAhead ? 3 : 2,
+        });
+      }
+    }
+
     if (currentBudgets.length >= 2) {
-      const totalBudgetAmt = currentBudgets.reduce((s, b) => s + (Number.parseFloat(b.amount) || 0), 0);
-      const totalBudgetSpent = budgetUsages.reduce((s, u) => s + u.spent, 0);
       const totalHeadroom = Math.max(0, totalBudgetAmt - totalBudgetSpent);
       if (totalHeadroom > 50) {
         facts.push({
@@ -756,6 +928,74 @@ export function generateFacts(
         value: `${onTrackCount} / ${currentBudgets.length} on track`,
         icon: onTrackCount === currentBudgets.length ? 'shield-check' : 'target',
         priority: onTrackCount < currentBudgets.length ? 2 : 4,
+      });
+    }
+  }
+
+  // Isolated Project / Context Budgets & Planned Checklist Progress
+  if (allContexts.length > 0) {
+    const activeProjects = allContexts.filter((c) => c.status === 'Active');
+    const budgetedProjects = activeProjects.filter((c) => (Number.parseFloat(c.budget || '0') || 0) > 0);
+    if (budgetedProjects.length > 0) {
+      const totalProjBudget = budgetedProjects.reduce(
+        (s, c) => s + (Number.parseFloat(c.budget || '0') || 0),
+        0
+      );
+      const projIds = new Set(budgetedProjects.map((c) => c.id));
+      const totalProjSpent = allExpenses
+        .filter((t) => t.contextId && projIds.has(t.contextId))
+        .reduce((s, t) => s + amountOf(t), 0);
+      const projPct = totalProjBudget > 0 ? Math.round((totalProjSpent / totalProjBudget) * 100) : 0;
+      const isOverProj = projPct > 100;
+      facts.push({
+        id: 'project-budgets-isolation',
+        type: 'budget',
+        title: budgetedProjects.length === 1 ? `Project: ${budgetedProjects[0].name}` : 'Active project budgets',
+        message: `${fmt(totalProjSpent)} MAD spent out of ${fmt(totalProjBudget)} MAD across ${budgetedProjects.length} active project${budgetedProjects.length > 1 ? 's' : ''} — isolated from your monthly living budgets.`,
+        value: `${projPct}% of project cap`,
+        icon: isOverProj ? 'alert-triangle' : 'layers',
+        priority: isOverProj ? 1 : 2,
+      });
+    }
+
+    // Planned items checklist progress across active projects
+    let totalPlannedItems = 0;
+    let purchasedPlannedItems = 0;
+    let remainingEstimatedMad = 0;
+    for (const ctx of activeProjects) {
+      let items = ctx.plannedItems;
+      if (!items && ctx.plannedItemsJson) {
+        try {
+          const parsed = JSON.parse(ctx.plannedItemsJson);
+          if (Array.isArray(parsed)) items = parsed;
+        } catch {
+          items = [];
+        }
+      }
+      if (Array.isArray(items) && items.length > 0) {
+        for (const item of items) {
+          totalPlannedItems += 1;
+          if (item.purchased) {
+            purchasedPlannedItems += 1;
+          } else {
+            remainingEstimatedMad += Number(item.estimatedAmount) || 0;
+          }
+        }
+      }
+    }
+    if (totalPlannedItems > 0) {
+      const completionPct = Math.round((purchasedPlannedItems / totalPlannedItems) * 100);
+      facts.push({
+        id: 'project-planned-checklist-progress',
+        type: 'milestone',
+        title: 'Project setup checklist',
+        message:
+          purchasedPlannedItems < totalPlannedItems && remainingEstimatedMad > 0
+            ? `${purchasedPlannedItems} of ${totalPlannedItems} planned items acquired — approx. ${fmt(remainingEstimatedMad)} MAD left to finish your checklist.`
+            : `${purchasedPlannedItems} of ${totalPlannedItems} planned project items completed (${completionPct}%).`,
+        value: `${purchasedPlannedItems} / ${totalPlannedItems} bought`,
+        icon: purchasedPlannedItems === totalPlannedItems ? 'award' : 'target',
+        priority: 3,
       });
     }
   }
@@ -1219,6 +1459,101 @@ export function generateFacts(
         priority: 2,
       });
     }
+
+    // Housing Burden Ratio (% of monthly income)
+    const housingSpend = thisMonthExpenses
+      .filter((t) => normalizeCategory(t.category) === '🏢 Housing & Utilities')
+      .reduce((s, t) => s + amountOf(t), 0);
+    if (housingSpend > 0 && totalIncome > 0) {
+      const housingPct = Math.round((housingSpend / totalIncome) * 100);
+      const isHealthyHousing = housingPct <= 30;
+      facts.push({
+        id: 'housing-burden-ratio',
+        type: 'spending',
+        title: 'Housing cost ratio',
+        message: isHealthyHousing
+          ? `Housing & utilities (${fmt(housingSpend)} MAD) represent ${housingPct}% of cycle income — comfortably within the 30% benchmark.`
+          : `Housing & utilities (${fmt(housingSpend)} MAD) absorb ${housingPct}% of your cycle income, above the 30% guideline.`,
+        value: `${housingPct}% of income`,
+        icon: isHealthyHousing ? 'landmark' : 'alert-triangle',
+        priority: isHealthyHousing ? 3 : 2,
+      });
+    }
+
+    // Days of Income Required to Cover Fixed Essentials
+    if (fixedSpend > 0 && totalIncome > 0) {
+      const dailyIncome = totalIncome / 30;
+      const daysToCoverFixed = fixedSpend / dailyIncome;
+      if (daysToCoverFixed >= 1) {
+        facts.push({
+          id: 'income-days-to-cover-fixed',
+          type: 'income',
+          title: 'Fixed costs work-days',
+          message: `Your fixed monthly essentials (${fmt(fixedSpend)} MAD) are covered by roughly ${daysToCoverFixed.toFixed(1)} days of your cycle income.`,
+          value: `${daysToCoverFixed.toFixed(1)} income days`,
+          icon: 'clock',
+          priority: 3,
+        });
+      }
+    }
+  }
+
+  // Loans Given (Money Lent Out This Cycle)
+  const loansGivenThisMonth = transactions.filter(
+    (t) => normalizeCategory(t.category) === '🤝 Loan Given' && isInMonth(t, year, month, payrolls)
+  );
+  if (loansGivenThisMonth.length > 0) {
+    const lentTotal = loansGivenThisMonth.reduce((s, t) => s + rawAmountOf(t), 0);
+    facts.push({
+      id: 'loans-given-this-cycle',
+      type: 'debt',
+      title: 'Personal loans lent',
+      message: `You lent ${fmt(lentTotal)} MAD across ${loansGivenThisMonth.length} loan${loansGivenThisMonth.length > 1 ? 's' : ''} this cycle — tracked as receivables without inflating your expenses.`,
+      value: `${fmt(lentTotal)} MAD lent`,
+      icon: 'hand-coins',
+      priority: 2,
+    });
+  }
+
+  // Emergency Fund & Investments Allocations This Cycle (expenses or transfers)
+  const cycleTransfersAndExpenses = transactions.filter((t) => isInMonth(t, year, month, payrolls));
+  const walletTypeById = new Map<string, string>();
+  if (kpis.accounts) {
+    for (const w of kpis.accounts) walletTypeById.set(w.id, w.type);
+  }
+  let emergencyAllocated = 0;
+  let investmentsAllocated = 0;
+  for (const t of cycleTransfersAndExpenses) {
+    const cat = normalizeCategory(t.category);
+    const destType = t.destinationWalletId ? walletTypeById.get(t.destinationWalletId) : undefined;
+    if (cat === '🛟 Emergency & goals Fund' || (t.type === 'Transfer' && destType === 'Savings')) {
+      emergencyAllocated += rawAmountOf(t);
+    }
+    if (cat === '📈 Investments' || (t.type === 'Transfer' && destType === 'Investment')) {
+      investmentsAllocated += rawAmountOf(t);
+    }
+  }
+  if (emergencyAllocated >= 50) {
+    facts.push({
+      id: 'emergency-fund-allocation',
+      type: 'savings',
+      title: 'Emergency & goal funding',
+      message: `You set aside ${fmt(emergencyAllocated)} MAD into savings and goal reserves this cycle.`,
+      value: `+${fmt(emergencyAllocated)} MAD saved`,
+      icon: 'piggy-bank',
+      priority: 2,
+    });
+  }
+  if (investmentsAllocated >= 50) {
+    facts.push({
+      id: 'investment-allocation-cycle',
+      type: 'savings',
+      title: 'Capital invested this cycle',
+      message: `You deployed ${fmt(investmentsAllocated)} MAD toward long-term investments this financial cycle.`,
+      value: `${fmt(investmentsAllocated)} MAD invested`,
+      icon: 'trending-up',
+      priority: 2,
+    });
   }
 
   // ── BEHAVIORAL FACTS ─────────────────────────────────────────────────────
@@ -1295,6 +1630,29 @@ export function generateFacts(
         }
       }
     }
+
+    // Biggest Category Spending Drop Win (vs previous month)
+    let bestDrop: { cat: string; saved: number; dropPct: number } | null = null;
+    for (const [cat, prevAmt] of Object.entries(prev)) {
+      if (prevAmt < 120) continue;
+      const currAmt = curr[cat] || 0;
+      const saved = prevAmt - currAmt;
+      const dropPct = (saved / prevAmt) * 100;
+      if (dropPct >= 25 && saved >= 80 && (!bestDrop || saved > bestDrop.saved)) {
+        bestDrop = { cat, saved, dropPct };
+      }
+    }
+    if (bestDrop) {
+      facts.push({
+        id: 'category-drop-win',
+        type: 'milestone',
+        title: 'Category spending win',
+        message: `You cut ${bestDrop.cat} spending by ${bestDrop.dropPct.toFixed(0)}% compared to last cycle, saving ${fmt(bestDrop.saved)} MAD.`,
+        value: `-${fmt(bestDrop.saved)} MAD`,
+        icon: 'award',
+        priority: 2,
+      });
+    }
   }
 
   // Zero-Spend Days & Streak
@@ -1324,6 +1682,25 @@ export function generateFacts(
         icon: 'shield-check',
         priority: 3,
       });
+
+      const elapsedCycleDays = Math.max(
+        1,
+        Math.floor((periodEndTime - cycleStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+      );
+      if (elapsedCycleDays >= 5) {
+        const zeroRatePct = Math.round((zeroSpendDays / elapsedCycleDays) * 100);
+        if (zeroRatePct >= 25) {
+          facts.push({
+            id: 'no-impulse-day-rate',
+            type: 'behavioral',
+            title: 'Spend-free day rate',
+            message: `${zeroRatePct}% of elapsed days this cycle (${zeroSpendDays} of ${elapsedCycleDays} days) had zero outflow.`,
+            value: `${zeroRatePct}% spend-free`,
+            icon: 'sparkles',
+            priority: 3,
+          });
+        }
+      }
     }
 
     // Current zero-spend streak
@@ -1795,6 +2172,164 @@ export function generateFacts(
     });
   }
 
+  // Daily Burn vs Safe Allowance Margin
+  if (
+    typeof kpis.avgDailySpend === 'number' &&
+    kpis.avgDailySpend > 0 &&
+    typeof kpis.dailyAllowance === 'number' &&
+    kpis.dailyAllowance > 0
+  ) {
+    const diff = kpis.dailyAllowance - kpis.avgDailySpend;
+    const isUnder = diff >= 0;
+    if (Math.abs(diff) >= 5) {
+      facts.push({
+        id: 'daily-burn-vs-allowance',
+        type: 'daily',
+        title: isUnder ? 'Daily pace margin' : 'Burn above allowance',
+        message: isUnder
+          ? `Your average daily burn (${fmt(kpis.avgDailySpend)} MAD) stays ${fmt(diff)} MAD/day below your safe allowance.`
+          : `Your average daily burn (${fmt(kpis.avgDailySpend)} MAD) runs ${fmt(Math.abs(diff))} MAD/day faster than your daily allowance.`,
+        value: `${isUnder ? '+' : '-'}${fmt(Math.abs(diff))} MAD / day`,
+        icon: isUnder ? 'shield-check' : 'alert-triangle',
+        priority: isUnder ? 3 : 1,
+      });
+    }
+  }
+
+  // Projected Cash Cushion at Next Payday
+  if (
+    typeof kpis.avgDailySpend === 'number' &&
+    kpis.avgDailySpend > 0 &&
+    kpis.daysUntilPayday > 0
+  ) {
+    const projectedSpendLeft = kpis.avgDailySpend * kpis.daysUntilPayday;
+    const projectedPaydayBalance = kpis.totalLiquidity - projectedSpendLeft;
+    facts.push({
+      id: 'payday-projected-cushion',
+      type: 'liquidity',
+      title: projectedPaydayBalance >= 0 ? 'Projected payday balance' : 'Payday shortfall risk',
+      message:
+        projectedPaydayBalance >= 0
+          ? `At your current burn rate across the remaining ${kpis.daysUntilPayday} days, you are projected to arrive at payday with ~${fmt(projectedPaydayBalance)} MAD.`
+          : `At your current burn rate, spending could outpace liquidity by ~${fmt(Math.abs(projectedPaydayBalance))} MAD before payday.`,
+      value: `${projectedPaydayBalance >= 0 ? '' : '-'}${fmt(Math.abs(projectedPaydayBalance))} MAD`,
+      icon: projectedPaydayBalance >= 0 ? 'wallet' : 'alert-triangle',
+      priority: projectedPaydayBalance < 0 ? 1 : 3,
+    });
+  }
+
+  // ── SUBSCRIPTIONS & RECURRING COMMITMENTS FACTS ──────────────────────────
+  const allSubscriptions = extras?.subscriptions || [];
+  const activeSubscriptions = allSubscriptions.filter((s) => s.status === 'active');
+  if (activeSubscriptions.length > 0) {
+    const monthlyRecurringBurn = activeSubscriptions.reduce(
+      (sum, s) => sum + getNormalizedMonthlyAmount(s.amount, s.billingCycle),
+      0
+    );
+    const annualRecurringBurn = monthlyRecurringBurn * 12;
+
+    if (monthlyRecurringBurn > 0) {
+      facts.push({
+        id: 'subscriptions-monthly-commitment',
+        type: 'spending',
+        title: 'Active recurring commitments',
+        message: `${activeSubscriptions.length} active subscription${activeSubscriptions.length > 1 ? 's' : ''} equal ${fmt(monthlyRecurringBurn)} MAD/month (~${fmtInt(annualRecurringBurn)} MAD/year).`,
+        value: `${fmt(monthlyRecurringBurn)} MAD / mo`,
+        icon: 'repeat',
+        priority: 2,
+      });
+    }
+
+    // Upcoming Renewals in next 14 days
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const upcomingSubs = activeSubscriptions.filter((s) => {
+      if (!s.nextBillingDate) return false;
+      const d = new Date(s.nextBillingDate);
+      if (Number.isNaN(d.getTime())) return false;
+      const dMid = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const diffDays = Math.round((dMid.getTime() - todayMidnight.getTime()) / 86400000);
+      return diffDays >= 0 && diffDays <= 14;
+    });
+    if (upcomingSubs.length > 0) {
+      const dueTotal = upcomingSubs.reduce((sum, s) => sum + (Number.parseFloat(s.amount) || 0), 0);
+      const nextNames = upcomingSubs
+        .slice(0, 2)
+        .map((s) => s.name)
+        .join(', ');
+      facts.push({
+        id: 'upcoming-subscription-renewals',
+        type: 'daily',
+        title: 'Renewals due in 14 days',
+        message: `${upcomingSubs.length} recurring bill${upcomingSubs.length > 1 ? 's' : ''} (${nextNames}${upcomingSubs.length > 2 ? '…' : ''}) will renew within 14 days.`,
+        value: `${fmt(dueTotal)} MAD due`,
+        icon: 'calendar',
+        priority: 1,
+      });
+    }
+
+    // Multi-month sinking fund reserve
+    const multiMonthSubs = activeSubscriptions.filter((s) => getCycleMeta(s.billingCycle).isMultiMonth);
+    if (multiMonthSubs.length > 0) {
+      const sinkingMonthly = multiMonthSubs.reduce(
+        (sum, s) => sum + getNormalizedMonthlyAmount(s.amount, s.billingCycle),
+        0
+      );
+      if (sinkingMonthly >= 25) {
+        facts.push({
+          id: 'multi-month-sinking-fund',
+          type: 'savings',
+          title: 'Multi-month bill sinking fund',
+          message: `Set aside ${fmt(sinkingMonthly)} MAD/month to effortlessly cover your ${multiMonthSubs.length} quarterly/annual renewal${multiMonthSubs.length > 1 ? 's' : ''}.`,
+          value: `${fmt(sinkingMonthly)} MAD / mo`,
+          icon: 'piggy-bank',
+          priority: 3,
+        });
+      }
+    }
+  }
+
+  // ── SAVINGS GOALS FACTS ──────────────────────────────────────────────────
+  const allGoals = extras?.goals || [];
+  if (allGoals.length > 0) {
+    const validGoals = allGoals
+      .map((g) => {
+        const target = Number.parseFloat(g.targetAmount) || 0;
+        const current = Number.parseFloat(g.currentAmount) || 0;
+        const pct = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+        return { name: g.name, target, current, remaining: Math.max(0, target - current), pct };
+      })
+      .filter((g) => g.target > 0);
+
+    if (validGoals.length > 0) {
+      const totalTarget = validGoals.reduce((s, g) => s + g.target, 0);
+      const totalSaved = validGoals.reduce((s, g) => s + g.current, 0);
+      const overallPct = Math.min(100, Math.round((totalSaved / totalTarget) * 100));
+      facts.push({
+        id: 'goals-overall-progress',
+        type: 'savings',
+        title: 'Savings goals progress',
+        message: `You've funded ${fmt(totalSaved)} MAD of your ${fmt(totalTarget)} MAD target across ${validGoals.length} active goal${validGoals.length > 1 ? 's' : ''}.`,
+        value: `${overallPct}% funded`,
+        icon: 'target',
+        priority: 2,
+      });
+
+      const inProgress = validGoals.filter((g) => g.remaining > 0).sort((a, b) => b.pct - a.pct);
+      if (inProgress.length > 0) {
+        const nearest = inProgress[0];
+        facts.push({
+          id: 'nearest-goal-milestone',
+          type: 'milestone',
+          title: `Closest goal: ${nearest.name}`,
+          message: `"${nearest.name}" is ${nearest.pct.toFixed(0)}% complete — only ${fmt(nearest.remaining)} MAD left to hit your target!`,
+          value: `${fmt(nearest.remaining)} MAD to go`,
+          icon: 'award',
+          priority: 2,
+        });
+      }
+    }
+  }
+
   // ── STOCK PORTFOLIO & BROKERAGE RESERVE FACTS ────────────────────────────
   if (investmentsData && investmentsData.positions && investmentsData.positions.length > 0) {
     const posCount = investmentsData.positions.length;
@@ -1860,7 +2395,7 @@ export function generateFacts(
  * Groups by type and deduplicates near-identical facts.
  * The first card is randomly picked from high-priority facts.
  */
-export function selectFacts(facts: FinancialFact[], maxCount = 32): FinancialFact[] {
+export function selectFacts(facts: FinancialFact[], maxCount = 48): FinancialFact[] {
   if (facts.length === 0) return [];
 
   // Deduplicate: keep only the best fact per id prefix (e.g. unusual-spending-*)

@@ -4,30 +4,44 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import cookieParser from 'cookie-parser';
-import { createServer as createViteServer } from 'vite';
-import apiRouter from './server/routes/index.js';
-import { ensureDatabaseSchema } from './src/db/index.js';
-import { NotificationScheduler } from './server/services/NotificationScheduler.js';
 import {
   validateAuthConfig,
   isOriginAllowed,
   isProductionEnv,
 } from './server/services/SecurityCrypto.js';
 import { httpCompressionMiddleware } from './server/middleware/compression.js';
-import { attachLiveVoiceGateway } from './server/services/LiveVoiceGateway.js';
+
+function resolveServerBindConfig(): { port: number; host: string } {
+  const args = process.argv.slice(2);
+  let port = Number(process.env.PORT) || 3000;
+  let host = '0.0.0.0';
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if ((arg === '--port' || arg === '-p') && args[i + 1]) {
+      const parsed = Number(args[i + 1]);
+      if (Number.isFinite(parsed) && parsed > 0) port = parsed;
+      i += 1;
+    } else if (arg.startsWith('--port=')) {
+      const parsed = Number(arg.slice('--port='.length));
+      if (Number.isFinite(parsed) && parsed > 0) port = parsed;
+    } else if (arg === '--host' && args[i + 1]) {
+      host = args[i + 1];
+      i += 1;
+    } else if (arg.startsWith('--host=')) {
+      host = arg.slice('--host='.length);
+    }
+  }
+
+  return { port, host };
+}
 
 async function startServer() {
   // Fail fast in production if required security secrets are missing or weak
   validateAuthConfig();
 
-  try {
-    await ensureDatabaseSchema();
-  } catch (err: any) {
-    console.error('[Server Startup] Deferred database schema initialization notice:', err?.message || err);
-  }
-
   const app = express();
-  const PORT = 3000;
+  const { port: PORT, host: HOST } = resolveServerBindConfig();
 
   app.set('trust proxy', 1);
   app.use(httpCompressionMiddleware);
@@ -37,9 +51,9 @@ async function startServer() {
   // Security headers across all HTTP responses
   app.use((_req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     if (isProductionEnv()) {
+      res.setHeader('X-Frame-Options', 'DENY');
       res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     }
     next();
@@ -90,20 +104,67 @@ async function startServer() {
     res.sendFile(apkPath);
   });
 
-  // Mount clean layered API routes
-  app.use('/api', apiRouter);
+  // Load heavy API router lazily (and pre-warm immediately once port 3000 is bound)
+  let apiRouterPromise: Promise<express.Router> | null = null;
+  const getApiRouter = () => {
+    if (!apiRouterPromise) {
+      apiRouterPromise = import('./server/routes/index.js')
+        .then((mod) => mod.default)
+        .catch((err) => {
+          apiRouterPromise = null;
+          console.error('[Server Startup] Failed to load API router:', err);
+          throw err;
+        });
+    }
+    return apiRouterPromise;
+  };
 
-  // Notification Scheduler
-  const scheduler = new NotificationScheduler();
-  scheduler.start();
+  app.use('/api', (req, res, next) => {
+    getApiRouter()
+      .then((router) => {
+        router(req, res, next);
+      })
+      .catch(next);
+  });
 
-  // Vite middleware for development vs static fallback for production
+  // Vite middleware for development (initialized lazily & pre-warmed once port 3000 is bound)
+  // vs static fallback for production
+  let viteServerRef: { close: () => Promise<void> } | null = null;
+  let vitePromise: Promise<{ middlewares: express.RequestHandler; close: () => Promise<void> }> | null = null;
+  const getViteServer = () => {
+    if (!vitePromise) {
+      const disableHmr = process.env.DISABLE_HMR === 'true';
+      vitePromise = import('vite')
+        .then(({ createServer: createViteServer }) =>
+          createViteServer({
+            server: {
+              middlewareMode: true,
+              ...(disableHmr ? { hmr: false, ws: false } : {}),
+            },
+            appType: 'spa',
+          })
+        )
+        .then((vite) => {
+          viteServerRef = vite;
+          return vite;
+        })
+        .catch((err) => {
+          vitePromise = null;
+          console.error('[Server Startup] Vite dev server initialization failed:', err);
+          throw err;
+        });
+    }
+    return vitePromise;
+  };
+
   if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+    app.use((req, res, next) => {
+      getViteServer()
+        .then((vite) => {
+          vite.middlewares(req, res, next);
+        })
+        .catch(next);
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -113,11 +174,83 @@ async function startServer() {
   }
 
   const httpServer = http.createServer(app);
-  attachLiveVoiceGateway(httpServer);
 
-  httpServer.listen(PORT, '0.0.0.0', () => {
+  httpServer.on('error', (err) => {
+    console.error('[Server Startup] HTTP server error:', err);
+  });
+
+  // Bind port immediately before heavy DB/Vite/route/WebSocket warmup
+  httpServer.listen(PORT, HOST, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+
+    // Pre-warm Vite, API routes, Live Voice WebSocket gateway, DB schema, and scheduler in background
+    if (process.env.NODE_ENV !== 'production') {
+      void getViteServer().catch(() => undefined);
+    }
+    void getApiRouter().catch(() => undefined);
+
+    void import('./server/services/LiveVoiceGateway.js')
+      .then(({ attachLiveVoiceGateway }) => {
+        attachLiveVoiceGateway(httpServer);
+      })
+      .catch((err) => {
+        console.error('[Server Startup] LiveVoiceGateway initialization notice:', err?.message || err);
+      });
+
+    void Promise.all([
+      import('./src/db/index.js'),
+      import('./server/services/NotificationScheduler.js'),
+    ])
+      .then(async ([{ ensureDatabaseSchema }, { NotificationScheduler }]) => {
+        const scheduler = new NotificationScheduler();
+        try {
+          await ensureDatabaseSchema();
+        } catch (err: any) {
+          console.error('[Server Startup] Deferred database schema initialization notice:', err?.message || err);
+        }
+        scheduler.start();
+      })
+      .catch((err: any) => {
+        console.error('[Server Startup] Background warmup notice:', err?.message || err);
+      });
+  });
+
+  // Graceful shutdown so rapid dev server restarts never leave stale port or PGlite locks
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.info(`[Server Shutdown] Received ${signal}, closing server cleanly...`);
+    try {
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    } catch {
+      // Ignore close errors during forced shutdown
+    }
+    try {
+      if (viteServerRef) {
+        await viteServerRef.close();
+      }
+    } catch {
+      // Ignore Vite close errors
+    }
+    try {
+      const { closeDatabase } = await import('./src/db/index.js');
+      await closeDatabase();
+    } catch {
+      // Ignore DB close errors
+    }
+    process.exit(0);
+  };
+
+  process.once('SIGTERM', () => {
+    void shutdown('SIGTERM');
+  });
+  process.once('SIGINT', () => {
+    void shutdown('SIGINT');
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error('[Server Startup] Fatal startup error:', err);
+  process.exit(1);
+});

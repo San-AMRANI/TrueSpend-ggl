@@ -555,7 +555,7 @@ export const subscriptions = pgTable('subscriptions', {
   amount: decimal('amount').notNull(),
   currency: text('currency').default('MAD').notNull(),
   billingCycle: text('billing_cycle').default('monthly').notNull(), // 'monthly' | 'yearly' | 'quarterly' | 'weekly'
-  category: text('category').default('Subscriptions & Streaming').notNull(),
+  category: text('category').default('📱 Telecom & Subscriptions').notNull(),
   walletId: uuid('wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
   nextBillingDate: timestamp('next_billing_date'),
   status: text('status').default('active').notNull(), // 'active' | 'paused' | 'reviewing' | 'cancelled'
