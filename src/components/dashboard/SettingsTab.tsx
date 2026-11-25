@@ -34,6 +34,7 @@ import { useAuth } from '../../context/AuthContext';
 import { ThemeStudioCard } from './ThemeStudioCard';
 import { TemplatesGallery } from '../onboarding/TemplatesGallery';
 import { LegalModal } from '../legal/LegalModals';
+import { CycleAutomationSettingsCard } from './CycleAutomationSettingsCard';
 import { parseFinancialRuleDetails } from '../../lib/auditContracts';
 import { getCapacitorApiBaseUrl, setCapacitorApiBaseUrl, isNativePlatform, getPlatformName } from '../../lib/capacitorBridge';
 import {
@@ -57,6 +58,7 @@ import type {
   Wallet,
   Subscription,
   Debt,
+  Goal,
   InvestmentsData,
   DashboardTab,
   BackupValidationPreview,
@@ -96,6 +98,7 @@ interface SettingsTabProps {
   handleExportSql?: () => void;
   handleImportSql?: (sql: string) => Promise<{ message: string }>;
   wallets?: Wallet[];
+  goals?: Goal[];
   subscriptions?: Subscription[];
   debts?: Debt[];
   investmentsData?: InvestmentsData | null;
@@ -116,6 +119,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   handleExportSql,
   handleImportSql,
   wallets = [],
+  goals = [],
   setActiveTab,
   notifications,
   onDataChange,
@@ -817,6 +821,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           )}
         </CardContent>
       </Card>
+
+      {/* ── Monthly & Yearly Payday Automation ── */}
+      <CycleAutomationSettingsCard
+        wallets={wallets}
+        goals={goals}
+        onNavigateTab={setActiveTab}
+      />
 
       {/* ── Experience Tier Selector (Basic vs Advanced · Both Free) ── */}
       <Card>

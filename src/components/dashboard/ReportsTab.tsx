@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Transaction, KPI, CategoryBudget, DashboardTab, FinancialPositionSnapshot, NetWorthChangeBridge } from '../../types';
-import { FileBarChart, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Award, Sparkles, Database, TrendingUp, RefreshCw } from 'lucide-react';
+import { FileBarChart, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Award, Sparkles, Database, TrendingUp, RefreshCw, CalendarCheck2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { dashboardService } from '../../services/api/dashboardService';
 import { useAuth } from '../../context/AuthContext';
 import { normalizeCategory } from '../../lib/categories';
 import { CycleRetrospectiveView } from './CycleRetrospectiveView';
+import { CycleCloseoutHistoryView } from './CycleCloseoutHistoryView';
 
 interface ReportsTabProps {
   transactions: Transaction[];
@@ -31,8 +32,8 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
   const isAdvanced = user?.experienceTier === 'advanced';
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [activeSubTab, setActiveSubTab] = useState<'retrospective' | 'position' | 'export' | 'import'>(
-    isAdvanced ? 'retrospective' : 'export'
+  const [activeSubTab, setActiveSubTab] = useState<'closeout' | 'retrospective' | 'position' | 'export' | 'import'>(
+    isAdvanced ? 'retrospective' : 'closeout'
   );
   const [snapshots, setSnapshots] = useState<FinancialPositionSnapshot[]>([]);
   const [bridge, setBridge] = useState<NetWorthChangeBridge | null>(null);
@@ -43,7 +44,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
 
   useEffect(() => {
     if (!isAdvanced && (activeSubTab === 'retrospective' || activeSubTab === 'position')) {
-      setActiveSubTab('export');
+      setActiveSubTab('closeout');
     }
   }, [isAdvanced, activeSubTab]);
 
@@ -341,7 +342,7 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
   return (
     <div className="space-y-6 animate-in fade-in">
       {/* Top Header & Section Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
+      <div className="flex flex-col gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
         <div>
           <h2 className="text-2xl font-extrabold text-gray-900 dark:text-white flex items-center gap-2">
             <Award className="h-6 w-6 text-indigo-500" />
@@ -352,10 +353,11 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
           </p>
         </div>
 
-        {/* Tab Pills */}
-        <div className="ts-scrollbar flex items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 max-w-full overflow-x-auto self-start sm:self-auto">
+        {/* Section Switcher */}
+        <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-gray-100 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700/60 self-start">
           {(
             [
+              { id: 'closeout' as const, label: 'Monthly & Yearly Closeout', icon: CalendarCheck2 },
               ...(isAdvanced
                 ? [
                     { id: 'retrospective' as const, label: 'AI Cycle Wrap-Up & Report Card', icon: Award },
@@ -393,6 +395,11 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({ transactions, kpis, budg
           })}
         </div>
       </div>
+
+      {/* Monthly & Yearly Automated Closeout Audit */}
+      {activeSubTab === 'closeout' && (
+        <CycleCloseoutHistoryView onNavigateTab={onNavigateTab} />
+      )}
 
       {/* Retrospective View (Signature Feature) */}
       {activeSubTab === 'retrospective' && (

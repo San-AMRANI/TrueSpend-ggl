@@ -5,8 +5,10 @@ import { payrollRepository } from '../repositories/PayrollRepository.js';
 import { transactionRepository } from '../repositories/TransactionRepository.js';
 import { walletService } from './WalletService.js';
 import { coreAuditService } from './CoreAuditService.js';
+import { cycleCloseoutService } from './CycleCloseoutService.js';
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const autoPayrollLocks = new Map<string, Promise<number>>();
 
 const asCalendarDate = (value: string) => {
   if (!DATE_ONLY.test(value)) throw new Error('Invalid payroll date');
@@ -173,11 +175,86 @@ export class PayrollService {
   }
 
   /**
-   * Audit Fix G: Scheduled payrolls represent EXPECTED income only.
-   * Do NOT automatically fabricate received cash on the scheduled date unless confirmed by the user or matched to a statement row.
-   * For existing historical payrolls that already have a linked transaction, mark their status as 'confirmed'.
+   * Automatically executes due scheduled payrolls (Option A) when the user has
+   * `autoDepositPayroll` enabled. Runs the full Monthly Pre-Payroll Closeout
+   * (Bank + Cash sweep to Savings), posts the salary deposit, recovers pocket Cash
+   * from the incoming payroll, rolls over budgets, schedules next month's payroll,
+   * and triggers Yearly Closeout when closing December.
+   *
+   * Guarded per-user by an in-process lock + DB idempotency keys so concurrent requests
+   * can never double-deposit or double-sweep.
    */
-  async reconcileDuePayrolls(userId: string, _now = new Date()) {
+  async processDueAutoPayrolls(userId: string, now = new Date()): Promise<number> {
+    const existingLock = autoPayrollLocks.get(userId);
+    if (existingLock) {
+      return existingLock;
+    }
+
+    const runPromise = (async () => {
+      try {
+        const settings = await cycleCloseoutService.getSettings(userId);
+        if (!settings.autoDepositPayroll) {
+          return 0;
+        }
+
+        const userPayrolls = await payrollRepository.findAllByUserId(userId);
+        const todayStr = now.toISOString().slice(0, 10);
+        const lookbackDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const minAutoDateStr = lookbackDate.toISOString().slice(0, 10);
+
+        const dueExpected = userPayrolls
+          .filter((p) => {
+            if ((p as any).status && (p as any).status !== 'expected') return false;
+            const sched = new Date(p.scheduledFor);
+            if (Number.isNaN(sched.getTime())) return false;
+            const schedStr = sched.toISOString().slice(0, 10);
+            return schedStr <= todayStr && schedStr >= minAutoDateStr;
+          })
+          .sort(
+            (a, b) =>
+              new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
+          );
+
+        let depositedCount = 0;
+        for (const duePayroll of dueExpected) {
+          const existingTx = await transactionRepository.findByPayrollId(duePayroll.id);
+          if (existingTx) continue;
+
+          const scheduledDateStr = new Date(duePayroll.scheduledFor).toISOString().slice(0, 10);
+          try {
+            const res = await this.confirmPayrollReceipt(userId, duePayroll.id, {
+              confirmedAmount: Number(duePayroll.amount || 0),
+              confirmedDate: scheduledDateStr,
+              walletId: (duePayroll as any).walletId || undefined,
+              status: 'confirmed',
+              triggerSource: 'auto_payroll',
+            });
+            if (!res.alreadyConfirmed) {
+              depositedCount += 1;
+            }
+          } catch (err) {
+            console.error(
+              `[PayrollService] Auto-deposit failed for payroll ${duePayroll.id}:`,
+              err
+            );
+          }
+        }
+
+        return depositedCount;
+      } finally {
+        autoPayrollLocks.delete(userId);
+      }
+    })();
+
+    autoPayrollLocks.set(userId, runPromise);
+    return runPromise;
+  }
+
+  /**
+   * Synchronizes historical payrolls that already have a linked transaction,
+   * and executes due scheduled payrolls when auto-deposit on payday is enabled.
+   */
+  async reconcileDuePayrolls(userId: string, now = new Date()) {
     const userPayrolls = await payrollRepository.findAllByUserId(userId);
     let synced = 0;
 
@@ -200,11 +277,22 @@ export class PayrollService {
       }
     }
 
-    return synced;
+    const autoDeposited = await this.processDueAutoPayrolls(userId, now).catch((err) => {
+      console.warn('[PayrollService] Deferred auto-payroll check notice:', err);
+      return 0;
+    });
+
+    return synced + autoDeposited;
   }
 
   /**
-   * Explicitly confirm a scheduled payroll receipt (with actual received amount, date, wallet, and variance).
+   * Confirms (or auto-deposits) a scheduled payroll receipt.
+   * Orchestrates the full Monthly Closeout lifecycle around the salary deposit:
+   *   1. Pre-Deposit Closeout: sweeps Bank + Cash pocket leftovers to Savings (dated end of closing cycle).
+   *   2. Salary Deposit: posts the incoming payroll Income transaction at `receivedDate`.
+   *   3. Post-Deposit Closeout: recovers pocket Cash from the new payroll (`Main Bank -> Cash` inside the
+   *      incoming cycle), credits optional Savings Goal, auto-schedules next month's payroll, rolls over
+   *      budgets, captures snapshot, logs audit run, and triggers Yearly Closeout if closing December.
    */
   async confirmPayrollReceipt(
     userId: string,
@@ -215,6 +303,8 @@ export class PayrollService {
       walletId?: string;
       varianceNotes?: string;
       status?: 'confirmed' | 'matched';
+      triggerSource?: 'auto_payroll' | 'manual_confirm';
+      skipCloseout?: boolean;
     } = {}
   ) {
     const payroll = await payrollRepository.findByIdAndUserId(payrollId, userId);
@@ -234,6 +324,7 @@ export class PayrollService {
 
     const variance = Number((actualAmt - expectedAmt).toFixed(2));
     const receivedDate = dto.confirmedDate ? asCalendarDate(dto.confirmedDate) : new Date();
+    const triggerSource = dto.triggerSource || 'manual_confirm';
 
     const targetWallet = await this.resolveTargetWallet(
       userId,
@@ -241,6 +332,26 @@ export class PayrollService {
     ).catch(async () => this.resolveTargetWallet(userId, undefined));
     const targetWalletId: string | null = targetWallet?.id || null;
 
+    // PHASE 1: Run Monthly Pre-Payroll Closeout strictly BEFORE salary deposit
+    let preCloseoutResult = null;
+    if (!dto.skipCloseout) {
+      try {
+        preCloseoutResult = await cycleCloseoutService.executeMonthlyPrePayrollCloseout(
+          userId,
+          payroll,
+          receivedDate,
+          actualAmt,
+          targetWallet
+            ? { id: targetWallet.id, name: targetWallet.name, type: targetWallet.type }
+            : null
+        );
+      } catch (err) {
+        console.error('[PayrollService] Pre-payroll monthly closeout error (proceeding safely with deposit):', err);
+      }
+    }
+
+    // PHASE 2: Deposit incoming salary transaction + double-entry journal
+    const depositLabel = triggerSource === 'auto_payroll' ? 'Auto-deposited salary' : 'Confirmed salary deposit';
     const { updatedPayroll, createdTx } = await db.transaction(async (txDb) => {
       const createdTx = await transactionRepository.create(
         {
@@ -250,10 +361,11 @@ export class PayrollService {
           type: 'Income',
           walletId: targetWalletId as any,
           category: '📥 Income',
+          idempotencyKey: `payroll-deposit-${payroll.id}`,
           notes:
             variance === 0
-              ? `Confirmed salary deposit (${actualAmt.toFixed(0)} MAD${targetWallet ? ` · ${targetWallet.name}` : ''})`
-              : `Confirmed salary deposit (${actualAmt.toFixed(0)} MAD vs ${expectedAmt.toFixed(0)} MAD expected · variance ${variance >= 0 ? '+' : ''}${variance.toFixed(0)} MAD${targetWallet ? ` · ${targetWallet.name}` : ''})`,
+              ? `${depositLabel} (${actualAmt.toFixed(0)} MAD${targetWallet ? ` · ${targetWallet.name}` : ''})`
+              : `${depositLabel} (${actualAmt.toFixed(0)} MAD vs ${expectedAmt.toFixed(0)} MAD expected · variance ${variance >= 0 ? '+' : ''}${variance.toFixed(0)} MAD${targetWallet ? ` · ${targetWallet.name}` : ''})`,
           createdAt: receivedDate,
         },
         txDb
@@ -264,7 +376,7 @@ export class PayrollService {
         createdTx,
         {
           idempotencyKey: `payroll-confirm-${payroll.id}`,
-          memo: `Confirmed Payroll Receipt (${actualAmt.toFixed(2)} MAD${targetWallet ? ` -> ${targetWallet.name}` : ''})`,
+          memo: `${depositLabel} (${actualAmt.toFixed(2)} MAD${targetWallet ? ` -> ${targetWallet.name}` : ''})`,
         },
         txDb
       );
@@ -301,6 +413,27 @@ export class PayrollService {
       return { updatedPayroll, createdTx };
     });
 
+    // PHASE 3: Run Post-Deposit Monthly Closeout (Cash Pocket Recovery from incoming payroll,
+    // Budget Rollover, Next Payroll Auto-Schedule, Snapshot, Audit Log & optional Yearly Closeout)
+    let closeoutSummary: any = null;
+    if (!dto.skipCloseout && preCloseoutResult) {
+      try {
+        closeoutSummary = await cycleCloseoutService.completeMonthlyPostPayrollCloseout(
+          userId,
+          payroll,
+          receivedDate,
+          actualAmt,
+          targetWallet
+            ? { id: targetWallet.id, name: targetWallet.name, type: targetWallet.type }
+            : null,
+          preCloseoutResult,
+          triggerSource
+        );
+      } catch (err) {
+        console.error('[PayrollService] Post-payroll monthly closeout notice:', err);
+      }
+    }
+
     await Promise.all([
       coreAuditService.processPendingOutboxEvents(userId).catch(() => undefined),
       coreAuditService.syncAndGetCommitmentOccurrences(userId, 90, { forceSync: true }).catch(() => undefined),
@@ -315,9 +448,11 @@ export class PayrollService {
       },
       transaction: createdTx,
       variance,
+      closeoutSummary,
     };
   }
 }
 
 export const payrollService = new PayrollService();
+
 

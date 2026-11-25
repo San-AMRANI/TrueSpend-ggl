@@ -1046,6 +1046,51 @@ export const categoryBudgetsRelations = relations(categoryBudgets, ({ one }) => 
   }),
 }));
 
+export const cycleAutomationSettings = pgTable('cycle_automation_settings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull().unique(),
+  autoDepositPayroll: boolean('auto_deposit_payroll').default(true).notNull(),
+  sweepMode: text('sweep_mode').default('bank_and_cash_recover').notNull(), // 'bank_and_cash_recover' | 'main_bank_only' | 'safe_surplus_only' | 'all_pocket_no_recover' | 'disabled'
+  targetSavingsWalletId: uuid('target_savings_wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+  targetGoalId: uuid('target_goal_id').references(() => goals.id, { onDelete: 'set null' }),
+  autoRolloverBudgets: boolean('auto_rollover_budgets').default(true).notNull(),
+  autoScheduleNextPayroll: boolean('auto_schedule_next_payroll').default(true).notNull(),
+  autoYearlyCloseout: boolean('auto_yearly_closeout').default(true).notNull(),
+  yearlyDriveBackup: boolean('yearly_drive_backup').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const cycleCloseoutRuns = pgTable(
+  'cycle_closeout_runs',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+    runType: text('run_type').notNull(), // 'monthly' | 'yearly'
+    cycleKey: text('cycle_key').notNull(), // 'YYYY-MM' for monthly, 'YYYY' for yearly
+    payrollId: uuid('payroll_id').references(() => payrolls.id, { onDelete: 'set null' }),
+    triggerSource: text('trigger_source').default('auto_payroll').notNull(), // 'auto_payroll' | 'manual_confirm' | 'manual_run'
+    status: text('status').default('completed').notNull(), // 'completed' | 'partial' | 'skipped'
+    sweepMode: text('sweep_mode').default('bank_and_cash_recover').notNull(),
+    sweptBankAmountMad: decimal('swept_bank_amount_mad').default('0').notNull(),
+    sweptCashAmountMad: decimal('swept_cash_amount_mad').default('0').notNull(),
+    totalSweptAmountMad: decimal('total_swept_amount_mad').default('0').notNull(),
+    recoveredCashAmountMad: decimal('recovered_cash_amount_mad').default('0').notNull(),
+    salaryDepositedMad: decimal('salary_deposited_mad').default('0').notNull(),
+    destinationWalletId: uuid('destination_wallet_id').references(() => wallets.id, { onDelete: 'set null' }),
+    budgetsRolledCount: integer('budgets_rolled_count').default(0).notNull(),
+    nextPayrollId: uuid('next_payroll_id').references(() => payrolls.id, { onDelete: 'set null' }),
+    snapshotId: uuid('snapshot_id'),
+    summaryJson: text('summary_json').default('{}').notNull(),
+    executedAt: timestamp('executed_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('cycle_closeout_runs_user_type_key_unique').on(table.userId, table.runType, table.cycleKey),
+    index('cycle_closeout_runs_user_executed_idx').on(table.userId, table.executedAt),
+  ]
+);
+
 export const walletsRelations = relations(wallets, ({ one, many }) => ({
   user: one(users, {
     fields: [wallets.userId],

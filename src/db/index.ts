@@ -127,6 +127,16 @@ export const createPool = () => {
     } else {
       const dataDir = resolvePgliteDataDir();
       if (!global._pgliteInstance) {
+        if (dataDir !== 'memory://') {
+          const pidFile = path.join(dataDir, 'postmaster.pid');
+          try {
+            if (fs.existsSync(pidFile)) {
+              fs.unlinkSync(pidFile);
+            }
+          } catch {
+            // Non-fatal; proceed to open PGlite
+          }
+        }
         global._pgliteInstance = new PGlite(dataDir);
         console.info(
           `[DB Init] Using embedded PostgreSQL (PGlite) at ${dataDir} (no external POSTGRES_URL/DATABASE_URL set).`
@@ -1309,16 +1319,95 @@ const CORE_DDL_STATEMENTS: Array<{ sql: string; optional?: boolean; label: strin
   { label: 'idx external_wealth_valuations_user_item_date_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "external_wealth_valuations_user_item_date_idx" ON "external_wealth_valuations"("user_id", "item_id", "valuation_date" DESC)` },
   { label: 'idx transactions_user_dest_wallet_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "transactions_user_dest_wallet_idx" ON "transactions"("user_id", "destination_wallet_id")` },
   { label: 'idx domain_event_outbox_user_status_idx', optional: true, sql: `CREATE INDEX IF NOT EXISTS "domain_event_outbox_user_status_idx" ON "domain_event_outbox"("user_id", "status")` },
+
+  // Monthly & Yearly Cycle Closeout Automation tables
+  {
+    label: 'table cycle_automation_settings',
+    sql: `CREATE TABLE IF NOT EXISTS "cycle_automation_settings" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" uuid NOT NULL UNIQUE REFERENCES "users"("id") ON DELETE CASCADE,
+      "auto_deposit_payroll" boolean NOT NULL DEFAULT true,
+      "sweep_mode" text NOT NULL DEFAULT 'bank_and_cash_recover',
+      "target_savings_wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+      "target_goal_id" uuid REFERENCES "goals"("id") ON DELETE SET NULL,
+      "auto_rollover_budgets" boolean NOT NULL DEFAULT true,
+      "auto_schedule_next_payroll" boolean NOT NULL DEFAULT true,
+      "auto_yearly_closeout" boolean NOT NULL DEFAULT true,
+      "yearly_drive_backup" boolean NOT NULL DEFAULT true,
+      "created_at" timestamp NOT NULL DEFAULT now(),
+      "updated_at" timestamp NOT NULL DEFAULT now()
+    )`,
+  },
+  {
+    label: 'table cycle_closeout_runs',
+    sql: `CREATE TABLE IF NOT EXISTS "cycle_closeout_runs" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "run_type" text NOT NULL,
+      "cycle_key" text NOT NULL,
+      "payroll_id" uuid REFERENCES "payrolls"("id") ON DELETE SET NULL,
+      "trigger_source" text NOT NULL DEFAULT 'auto_payroll',
+      "status" text NOT NULL DEFAULT 'completed',
+      "sweep_mode" text NOT NULL DEFAULT 'bank_and_cash_recover',
+      "swept_bank_amount_mad" numeric NOT NULL DEFAULT 0,
+      "swept_cash_amount_mad" numeric NOT NULL DEFAULT 0,
+      "total_swept_amount_mad" numeric NOT NULL DEFAULT 0,
+      "recovered_cash_amount_mad" numeric NOT NULL DEFAULT 0,
+      "salary_deposited_mad" numeric NOT NULL DEFAULT 0,
+      "destination_wallet_id" uuid REFERENCES "wallets"("id") ON DELETE SET NULL,
+      "budgets_rolled_count" integer NOT NULL DEFAULT 0,
+      "next_payroll_id" uuid REFERENCES "payrolls"("id") ON DELETE SET NULL,
+      "snapshot_id" uuid,
+      "summary_json" text NOT NULL DEFAULT '{}',
+      "executed_at" timestamp NOT NULL DEFAULT now(),
+      "created_at" timestamp NOT NULL DEFAULT now()
+    )`,
+  },
+  {
+    label: 'idx cycle_closeout_runs_user_type_key_unique',
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS "cycle_closeout_runs_user_type_key_unique" ON "cycle_closeout_runs"("user_id", "run_type", "cycle_key")`,
+  },
+  {
+    label: 'idx cycle_closeout_runs_user_executed_idx',
+    optional: true,
+    sql: `CREATE INDEX IF NOT EXISTS "cycle_closeout_runs_user_executed_idx" ON "cycle_closeout_runs"("user_id", "executed_at" DESC)`,
+  },
 ];
 
-const CURRENT_SCHEMA_VERSION = 2026112101;
+const CURRENT_SCHEMA_VERSION = 2026112401;
 
 export async function ensureDatabaseSchema(): Promise<void> {
   if (!global._schemaReadyPromise) {
     global._schemaReadyPromise = (async () => {
-      const pool = createPool();
+      let pool = createPool();
       if (global._pgliteInstance) {
-        await global._pgliteInstance.waitReady;
+        try {
+          await global._pgliteInstance.waitReady;
+        } catch (pgliteErr: any) {
+          console.warn(
+            '[DB Init] Embedded PGlite failed to open (likely unclean shutdown); rotating data dir and reinitializing:',
+            pgliteErr?.message || pgliteErr
+          );
+          const dataDir = resolvePgliteDataDir();
+          global._pgliteInstance = undefined;
+          global._postgresPool = undefined;
+          global._dbInstance = undefined;
+          if (dataDir !== 'memory://') {
+            try {
+              const backupDir = `${dataDir}.corrupt.${Date.now()}`;
+              if (fs.existsSync(dataDir)) {
+                fs.renameSync(dataDir, backupDir);
+              }
+              fs.mkdirSync(dataDir, { recursive: true });
+            } catch {
+              // Fall back to fresh memory if filesystem rename fails
+            }
+          }
+          pool = createPool();
+          if (global._pgliteInstance) {
+            await global._pgliteInstance.waitReady;
+          }
+        }
       }
 
       // Fast path: 1-query schema version check avoids re-running 220+ DDL statements on every cold start

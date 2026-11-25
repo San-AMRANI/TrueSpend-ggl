@@ -78,6 +78,15 @@ export class TransactionRepository {
     return result[0] || null;
   }
 
+  async findByIdempotencyKey(userId: string, idempotencyKey: string, exec: DbExecutor = db) {
+    const result = await exec
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId), eq(transactions.idempotencyKey, idempotencyKey)))
+      .limit(1);
+    return result[0] || null;
+  }
+
   async update(id: string, userId: string, data: Partial<CreateTransactionParams>, exec: DbExecutor = db) {
     const sanitizedData = { ...data };
     if (sanitizedData.walletId && !UUID_REGEX.test(sanitizedData.walletId)) {

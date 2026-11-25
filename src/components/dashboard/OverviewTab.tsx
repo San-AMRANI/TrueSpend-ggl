@@ -22,7 +22,6 @@ import { computeFourPillarBreakdown } from '../../lib/finance';
 import { getCurrentFinancialMonth } from '../../lib/financialMonth';
 import { useAuth } from '../../context/AuthContext';
 import { GettingStartedChecklist } from '../onboarding/GettingStartedChecklist';
-import { PaydayCycleCloseoutBanner } from './PaydayCycleCloseoutBanner';
 import {
   Banknote,
   ChevronDown,
@@ -275,17 +274,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       <GettingStartedChecklist
         onNavigateTab={setActiveTab}
         onRelaunchWizard={() => window.dispatchEvent(new CustomEvent('truespend:openOnboarding'))}
-      />
-
-      <PaydayCycleCloseoutBanner
-        kpis={kpis}
-        payrolls={payrolls}
-        budgets={budgets}
-        goals={goals}
-        wallets={kpis?.accounts || []}
-        transactions={transactions}
-        setActiveTab={setActiveTab}
-        onDataChange={onDataChange}
       />
 
       {!currentFm && (

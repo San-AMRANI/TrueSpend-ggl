@@ -19,6 +19,7 @@ import investmentRoutes from './investmentRoutes.js';
 import cycleRetrospectiveRoutes from './cycleRetrospectiveRoutes.js';
 import userManagementRoutes from './userManagementRoutes.js';
 import coreAuditRoutes from './coreAuditRoutes.js';
+import cycleCloseoutRoutes from './cycleCloseoutRoutes.js';
 import { NotificationController } from '../controllers/NotificationController.js';
 import { requireAuth } from '../../src/middleware/auth.js';
 
@@ -71,6 +72,7 @@ apiRouter.use('/', investmentRoutes);
 apiRouter.use('/', cycleRetrospectiveRoutes);
 apiRouter.use('/', userManagementRoutes);
 apiRouter.use('/', coreAuditRoutes);
+apiRouter.use('/', cycleCloseoutRoutes);
 
 // Push Notifications v2
 apiRouter.get('/notifications/vapid-public-key', notificationController.getPublicKey);

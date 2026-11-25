@@ -16,6 +16,7 @@ import { settingsService } from './SettingsService.js';
 import { decryptSecret } from './SecurityCrypto.js';
 import { investmentService } from './InvestmentService.js';
 import { coreAuditService } from './CoreAuditService.js';
+import { payrollService } from './PayrollService.js';
 
 const pushService = new PushService();
 const kpiService = new KpiService();
@@ -82,14 +83,38 @@ export class NotificationScheduler {
       }
     });
 
-    // Automated Drive Backup check run every 15 minutes
+    // Automated Drive Backup & Payday Closeout/Deposit check run every 15 minutes
     cron.schedule('*/15 * * * *', async () => {
       try {
         await this.processAutomatedBackups();
       } catch (error) {
         console.error('[NotificationScheduler] Error checking automated backups:', error);
       }
+      try {
+        await this.processAutoPayrolls();
+      } catch (error) {
+        console.error('[NotificationScheduler] Error processing automated payday closeouts:', error);
+      }
     });
+  }
+
+  async processAutoPayrolls() {
+    try {
+      await ensureDatabaseSchema();
+      const activeUsers = await db
+        .select({ id: users.id, status: users.status, emailVerifiedAt: users.emailVerifiedAt })
+        .from(users);
+
+      const now = new Date();
+      for (const user of activeUsers) {
+        if (user.status !== 'active' || !user.emailVerifiedAt) continue;
+        await payrollService.processDueAutoPayrolls(user.id, now).catch((err) => {
+          console.error(`[PayrollScheduler] Error processing auto-payroll for user ${user.id}:`, err);
+        });
+      }
+    } catch (err) {
+      console.error('[PayrollScheduler] Failed to query active users for auto-payrolls:', err);
+    }
   }
 
   async processAutomatedBackups() {

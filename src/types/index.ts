@@ -1791,4 +1791,44 @@ export interface AiActionImpactSimulation {
   warnings: string[];
 }
 
+export type PocketSweepMode =
+  | 'bank_and_cash_recover'
+  | 'main_bank_only'
+  | 'safe_surplus_only'
+  | 'all_pocket_no_recover'
+  | 'disabled';
+
+export interface CycleAutomationSettings {
+  autoDepositPayroll: boolean;
+  sweepMode: PocketSweepMode;
+  targetSavingsWalletId: string | null;
+  targetGoalId: string | null;
+  autoRolloverBudgets: boolean;
+  autoScheduleNextPayroll: boolean;
+  autoYearlyCloseout: boolean;
+  yearlyDriveBackup: boolean;
+  updatedAt?: string;
+}
+
+export interface CycleCloseoutRunRecord {
+  id: string;
+  runType: 'monthly' | 'yearly';
+  cycleKey: string;
+  payrollId: string | null;
+  triggerSource: 'auto_payroll' | 'manual_confirm' | 'manual_run' | string;
+  status: string;
+  sweepMode: string;
+  sweptBankAmountMad: number;
+  sweptCashAmountMad: number;
+  totalSweptAmountMad: number;
+  recoveredCashAmountMad: number;
+  salaryDepositedMad: number;
+  destinationWalletId: string | null;
+  budgetsRolledCount: number;
+  nextPayrollId: string | null;
+  snapshotId: string | null;
+  summary: Record<string, any>;
+  executedAt: string;
+}
+
 

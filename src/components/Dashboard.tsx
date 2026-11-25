@@ -643,6 +643,7 @@ export default function Dashboard({ onTabChange, activeTab: propActiveTab }: Das
               handleExportSql={handleExportSql}
               handleImportSql={handleImportSql}
               wallets={kpis?.accounts || []}
+              goals={goals}
               subscriptions={subscriptions}
               debts={debts}
               investmentsData={investmentsData}

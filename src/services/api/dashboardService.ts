@@ -943,4 +943,42 @@ export const dashboardService = {
       createdResources: Array<{ kind: string; id: string; name: string }>;
       message: string;
     }>(`/api/templates/${templateId}/apply`, {}, token),
+
+  // Monthly & Yearly Cycle Closeout Automation
+  getCycleCloseoutSettings: (token: string | null) =>
+    apiClient.get<import('../../types').CycleAutomationSettings>(
+      '/api/cycle-closeout/settings',
+      token
+    ),
+  updateCycleCloseoutSettings: (
+    payload: Partial<import('../../types').CycleAutomationSettings>,
+    token: string | null
+  ) =>
+    apiClient.put<import('../../types').CycleAutomationSettings>(
+      '/api/cycle-closeout/settings',
+      payload,
+      token
+    ),
+  getCycleCloseoutRuns: (
+    token: string | null,
+    options?: { runType?: 'monthly' | 'yearly'; limit?: number }
+  ) => {
+    const params = new URLSearchParams();
+    if (options?.runType) params.set('runType', options.runType);
+    if (options?.limit) params.set('limit', String(options.limit));
+    const qs = params.toString();
+    return apiClient.get<{ runs: import('../../types').CycleCloseoutRunRecord[] }>(
+      `/api/cycle-closeout/runs${qs ? `?${qs}` : ''}`,
+      token
+    );
+  },
+  runYearlyCloseout: (
+    payload: { year?: number; forceRefresh?: boolean },
+    token: string | null
+  ) =>
+    apiClient.post<{ run: import('../../types').CycleCloseoutRunRecord }>(
+      '/api/cycle-closeout/run-yearly',
+      payload,
+      token
+    ),
 };
