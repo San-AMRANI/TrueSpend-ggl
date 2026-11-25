@@ -177,8 +177,8 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
   return (
     <div className="space-y-6 min-w-0">
       {/* ── Top Header & Data Synthesis Telemetry ── */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex items-start gap-3">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
           <SpexAvatar
             className="h-14 w-14 shrink-0"
             animated
@@ -192,7 +192,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
                 : 'review'
             }
           />
-          <div>
+          <div className="min-w-0">
             <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <span>Holistic Predictive Intelligence &amp; Forecasting</span>
             </h1>
@@ -206,7 +206,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
         </div>
 
         {/* Section Filter Bar */}
-        <div className="flex items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg overflow-x-auto">
+        <div className="flex flex-wrap items-center gap-1 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg shrink-0 self-start xl:self-auto">
           {(
             [
               { id: 'all', label: 'All Forecasts' },
@@ -220,7 +220,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
               key={tab.id}
               type="button"
               onClick={() => setActiveSection(tab.id)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
                 activeSection === tab.id
                   ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-2xs'
                   : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
@@ -232,30 +232,32 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
         </div>
       </div>
 
-      {/* ── Item O: Forecast Calibration, Assumption Transparency & Data Freshness ── */}
+      {/* ── Forecast Calibration & Assumption Transparency ── */}
       {forecast.calibrationAndFreshness && (
-        <div className="rounded-xl border border-indigo-200/70 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 px-4 py-3 text-xs space-y-2">
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 text-xs space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 font-bold text-indigo-900 dark:text-indigo-200">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-gray-600 dark:text-gray-300">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-gray-900 dark:text-white">
                 <ShieldCheck className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                Forecast Calibration &amp; Data Freshness:
+                Forecast Calibration
               </span>
-              <span className="px-2 py-0.5 rounded-full font-semibold bg-white dark:bg-gray-900 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300">
+              <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">·</span>
+              <span className="font-medium text-indigo-700 dark:text-indigo-300 tabular-nums">
                 Reliability: {forecast.calibrationAndFreshness.reliabilityLabel} ({forecast.calibrationAndFreshness.reliabilityScorePercent}%)
               </span>
-              <span className="px-2 py-0.5 rounded-full font-semibold bg-emerald-100/80 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
-                Inflows: {forecast.calibrationAndFreshness.confirmedInflowsCount} Confirmed / {forecast.calibrationAndFreshness.estimatedInflowsCount} Expected
+              <span aria-hidden="true" className="text-gray-300 dark:text-gray-700">·</span>
+              <span className="font-medium text-emerald-700 dark:text-emerald-300 tabular-nums">
+                {forecast.calibrationAndFreshness.confirmedInflowsCount} Confirmed / {forecast.calibrationAndFreshness.estimatedInflowsCount} Expected Payrolls
               </span>
             </div>
-            <span className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
-              History: {forecast.calibrationAndFreshness.historyDaysAvailable}d · Variance: ±{forecast.calibrationAndFreshness.calibrationVariancePercent}% · {forecast.calibrationAndFreshness.freshnessStatus.toUpperCase()}
+            <span className="text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+              {forecast.calibrationAndFreshness.historyDaysAvailable}d history · {forecast.calibrationAndFreshness.completedCyclesUsed} closed cycles · ±{forecast.calibrationAndFreshness.calibrationVariancePercent}% cycle variance
             </span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 text-[11px] leading-snug text-gray-600 dark:text-gray-300">
             {forecast.calibrationAndFreshness.keyAssumptions.map((assumption, idx) => (
-              <div key={idx} className="truncate bg-white/70 dark:bg-gray-900/60 rounded px-2 py-1 border border-gray-200/60 dark:border-gray-800">
-                • {assumption}
+              <div key={idx} className="bg-gray-50 dark:bg-gray-800/60 rounded-lg px-2.5 py-1.5 border border-gray-100 dark:border-gray-800 tabular-nums">
+                {assumption}
               </div>
             ))}
           </div>
@@ -271,13 +273,13 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
               <span>Current Unified Net Worth</span>
               <Compass className="h-4 w-4 text-indigo-500" />
             </div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1.5 font-mono">
+            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1.5 font-mono tabular-nums">
               {forecast.currentNetWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })} MAD
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500 dark:text-gray-400">
-              <span>Cash {forecast.currentLiquidity.toFixed(0)}</span>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+              <span>Liquid {forecast.currentLiquidity.toLocaleString()}</span>
               <span aria-hidden="true">·</span>
-              <span>Portfolio {forecast.currentPortfolioMad.toFixed(0)}</span>
+              <span>Portfolio {forecast.currentPortfolioMad.toLocaleString()}</span>
             </div>
           </CardContent>
         </Card>
@@ -289,23 +291,23 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
               <span>90-Day Projected Net Worth</span>
               <TrendingUp className="h-4 w-4 text-emerald-500" />
             </div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1.5 font-mono">
+            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1.5 font-mono tabular-nums">
               {forecast.projectedNetWorth90d.toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
               MAD
             </p>
-            <div className="mt-2 flex items-center gap-1.5 text-xs">
+            <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs tabular-nums">
               {forecast.projectedNetWorth90d >= forecast.currentNetWorth ? (
-                <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
+                <span className="text-emerald-600 dark:text-emerald-400 font-medium inline-flex items-center gap-0.5 whitespace-nowrap">
                   <ArrowUpRight className="h-3.5 w-3.5" />+
-                  {(forecast.projectedNetWorth90d - forecast.currentNetWorth).toFixed(0)} MAD
+                  {Math.round(forecast.projectedNetWorth90d - forecast.currentNetWorth).toLocaleString()} MAD
                 </span>
               ) : (
-                <span className="text-rose-600 dark:text-rose-400 font-medium flex items-center gap-0.5">
+                <span className="text-rose-600 dark:text-rose-400 font-medium inline-flex items-center gap-0.5 whitespace-nowrap">
                   <ArrowDownRight className="h-3.5 w-3.5" />
-                  {(forecast.projectedNetWorth90d - forecast.currentNetWorth).toFixed(0)} MAD
+                  {Math.round(forecast.projectedNetWorth90d - forecast.currentNetWorth).toLocaleString()} MAD
                 </span>
               )}
-              <span className="text-gray-500 dark:text-gray-400">over next 3 payroll cycles</span>
+              <span className="text-gray-500 dark:text-gray-400">over 3 payroll cycles</span>
             </div>
           </CardContent>
         </Card>
@@ -347,15 +349,15 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
               />
             </div>
             <p
-              className={`text-2xl font-bold mt-1.5 font-mono ${
+              className={`text-2xl font-bold mt-1.5 font-mono tabular-nums ${
                 forecast.hasLiquidityPinchBeforePayday
                   ? 'text-rose-600 dark:text-rose-400'
                   : 'text-gray-900 dark:text-white'
               }`}
             >
-              {forecast.lowest30dBalance.toLocaleString()} MAD
+              {Math.round(forecast.lowest30dBalance).toLocaleString()} MAD
             </p>
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 text-xs text-gray-500 dark:text-gray-400">
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 text-xs text-gray-500 dark:text-gray-400 tabular-nums">
               <span>Low on {forecast.lowest30dDateLabel}</span>
               <span aria-hidden="true">·</span>
               <span>{forecast.survivalRunwayDays}d survival runway</span>
@@ -581,18 +583,18 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
               </span>
             </label>
 
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-gray-600 dark:text-gray-400">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-gray-600 dark:text-gray-400 tabular-nums">
               <span>
                 Baseline Monthly Surplus:{' '}
                 <strong className="font-mono text-gray-900 dark:text-white">
-                  {forecast.monthlyNetSavingsBaseline.toFixed(0)} MAD
+                  {Math.round(forecast.monthlyNetSavingsBaseline).toLocaleString()} MAD
                 </strong>
               </span>
               <span aria-hidden="true">·</span>
               <span>
                 Simulated Surplus:{' '}
                 <strong className="font-mono text-indigo-600 dark:text-indigo-400">
-                  {forecast.monthlyNetSavingsSimulated.toFixed(0)} MAD/mo
+                  {Math.round(forecast.monthlyNetSavingsSimulated).toLocaleString()} MAD/mo
                 </strong>
               </span>
               <span aria-hidden="true">·</span>
@@ -771,7 +773,7 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
                       data={forecast.dailyCashFlow30d}
-                      margin={{ top: 10, right: 12, left: 0, bottom: 0 }}
+                      margin={{ top: 10, right: 22, left: 0, bottom: 0 }}
                     >
                       <defs>
                         <linearGradient id="cashRunwayGrad" x1="0" y1="0" x2="0" y2="1">
@@ -796,17 +798,19 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
                           fontSize: '12px',
                         }}
                       />
-                      <ReferenceLine
-                        y={kpis?.emergencyBuffer ?? 1000}
-                        stroke="#ef4444"
-                        strokeDasharray="4 4"
-                        label={{
-                          value: 'Emergency Buffer',
-                          position: 'insideTopRight',
-                          fill: '#ef4444',
-                          fontSize: 10,
-                        }}
-                      />
+                      {forecast.protectedSavingsReserve > 0 && (
+                        <ReferenceLine
+                          y={forecast.protectedSavingsReserve}
+                          stroke="#ef4444"
+                          strokeDasharray="4 4"
+                          label={{
+                            value: 'Savings Reserve',
+                            position: 'insideTopRight',
+                            fill: '#ef4444',
+                            fontSize: 10,
+                          }}
+                        />
+                      )}
                       <Area
                         type="monotone"
                         dataKey="projectedLiquidity"
@@ -889,9 +893,9 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
                     <span className="font-semibold uppercase tracking-wider">{sig.domain}</span>
-                    <span className="font-mono font-semibold text-gray-700 dark:text-gray-300">
+                    <span className="font-mono font-semibold tabular-nums text-gray-700 dark:text-gray-300">
                       {sig.impactMad >= 0 ? '+' : ''}
-                      {sig.impactMad.toFixed(0)} MAD impact
+                      {Math.round(sig.impactMad).toLocaleString()} MAD impact
                     </span>
                   </div>
                   <h4 className="text-sm font-bold text-gray-900 dark:text-white">{sig.title}</h4>
@@ -962,17 +966,19 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
                         <td className="py-3 px-4 font-semibold text-gray-900 dark:text-white">
                           {cat.category}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono text-gray-700 dark:text-gray-300">
-                          {cat.spentSoFar.toFixed(0)} /{' '}
-                          {cat.budgetCap > 0 ? `${cat.budgetCap.toFixed(0)} MAD` : 'Unbudgeted'}
+                        <td className="py-3 px-4 text-right font-mono tabular-nums text-gray-700 dark:text-gray-300">
+                          {cat.spentSoFar.toLocaleString()} /{' '}
+                          {cat.budgetCap > 0 ? `${cat.budgetCap.toLocaleString()} MAD` : 'Unbudgeted'}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono text-gray-600 dark:text-gray-400">
-                          {cat.dailyVelocity.toFixed(1)} MAD/d
+                        <td className="py-3 px-4 text-right font-mono tabular-nums text-gray-600 dark:text-gray-400">
+                          {cat.forecastMethod === 'lump_sum'
+                            ? 'One-off'
+                            : `${cat.dailyVelocity.toFixed(1)} MAD/d`}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono font-semibold text-gray-900 dark:text-white">
-                          {cat.projectedEndOfCycle.toFixed(0)} MAD
+                        <td className="py-3 px-4 text-right font-mono tabular-nums font-semibold text-gray-900 dark:text-white">
+                          {cat.projectedEndOfCycle.toLocaleString()} MAD
                         </td>
-                        <td className="py-3 px-4 text-right font-mono">
+                        <td className="py-3 px-4 text-right font-mono tabular-nums">
                           {cat.budgetCap > 0 ? (
                             <span
                               className={
@@ -982,8 +988,8 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
                               }
                             >
                               {cat.projectedVariance > 0
-                                ? `+${cat.projectedVariance.toFixed(0)} Over`
-                                : `${cat.projectedVariance.toFixed(0)} Saved`}
+                                ? `+${cat.projectedVariance.toLocaleString()} Over`
+                                : `${cat.projectedVariance.toLocaleString()} Saved`}
                             </span>
                           ) : (
                             <span className="text-gray-400">—</span>
@@ -999,7 +1005,17 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
                             <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
                               <Clock className="h-3.5 w-3.5 shrink-0" />
                               <span>
-                                Exhausts {cat.exhaustionDateLabel} ({cat.daysUntilExhaustion}d)
+                                {cat.exhaustionDateLabel
+                                  ? `Exhausts ${cat.exhaustionDateLabel} (${cat.daysUntilExhaustion}d)`
+                                  : 'Projected over cap'}
+                              </span>
+                            </span>
+                          ) : cat.status === 'watch' ? (
+                            <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1 tabular-nums">
+                              <Clock className="h-3.5 w-3.5 shrink-0" />
+                              <span>
+                                {Math.round(cat.percentUsed)}% used ·{' '}
+                                {Math.max(0, cat.budgetCap - cat.spentSoFar).toLocaleString()} MAD left
                               </span>
                             </span>
                           ) : (
@@ -1067,17 +1083,29 @@ export const PredictiveForecastTab: React.FC<PredictiveForecastTabProps> = ({
                       </div>
 
                       <div className="text-right">
-                        <div className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                        <div
+                          className={`text-xs font-bold ${
+                            g.simulatedMonthsToComplete === null
+                              ? 'text-rose-600 dark:text-rose-400'
+                              : 'text-indigo-600 dark:text-indigo-400'
+                          }`}
+                        >
                           ETA: {g.simulatedEtaLabel}
                         </div>
-                        {g.monthsSaved > 0 ? (
+                        {g.unlockedByWhatIf ? (
+                          <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                            Unlocked by What-If
+                          </div>
+                        ) : g.monthsSaved > 0 ? (
                           <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
                             {g.monthsSaved} mo faster with What-If
                           </div>
                         ) : (
-                          <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
                             {g.simulatedMonthsToComplete === 0
                               ? 'Goal reached'
+                              : g.simulatedMonthsToComplete === null
+                              ? 'Requires positive monthly surplus'
                               : `~${g.simulatedMonthsToComplete} months left`}
                           </div>
                         )}

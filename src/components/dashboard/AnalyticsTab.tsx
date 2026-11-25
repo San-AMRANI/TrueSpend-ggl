@@ -6,6 +6,12 @@ import { ProgressiveSection } from '../ui/ProgressiveSection';
 import { Select } from '../ui/Select';
 import { Button } from '../ui/Button';
 import {
+  AnalyticsDailyBurnCard,
+  AnalyticsMultiCycleTrendCard,
+  AnalyticsBehaviorRow,
+  AnalyticsCategoryDeepCharts,
+} from './AnalyticsChartsSuite';
+import {
   PieChart,
   Pie,
   Cell,
@@ -1624,6 +1630,29 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
             </Card>
           )}
 
+          {/* Daily Living Burn vs Cap (Active or Selected Cycle) */}
+          <AnalyticsDailyBurnCard
+            transactions={transactions}
+            period={analyticsMonth === 'All Time' ? null : comparisonMonth}
+            kpis={kpis}
+            periodLivingBudget={budgetSummary.totalBudgeted}
+            wallets={wallets}
+          />
+
+          {/* Multi-Cycle Income, Living Spend & Savings Rate Trend */}
+          <AnalyticsMultiCycleTrendCard
+            transactions={transactions}
+            budgets={budgets}
+            payrolls={payrolls}
+            wallets={wallets}
+          />
+
+          {/* Behavioral Insights: Weekday Spending Cadence & Purchase Size Distribution */}
+          <AnalyticsBehaviorRow
+            filteredTransactions={filteredTransactions}
+            wallets={wallets}
+          />
+
           {/* Cumulative Trajectory Burn Chart */}
           <ProgressiveSection
             minHeight={340}
@@ -2103,6 +2132,43 @@ export const AnalyticsTab: React.FC<AnalyticsTabProps> = ({
       {/* ======================= SUB-VIEW 2: CATEGORIES & BUDGET VARIANCE ======================= */}
       {subView === 'categories' && (
         <div className="space-y-6">
+          {/* Budget Pacing vs Cycle Time Elapsed & Multi-Cycle Category Drift */}
+          <AnalyticsCategoryDeepCharts
+            budgets={budgets}
+            filteredTransactions={
+              comparisonMonth
+                ? transactions.filter((t) => {
+                    const dt = new Date(t.createdAt);
+                    return dt >= comparisonMonth.start && dt <= comparisonMonth.end;
+                  })
+                : filteredTransactions
+            }
+            allTransactions={transactions}
+            payrolls={payrolls}
+            year={comparisonMonth?.year ?? new Date().getFullYear()}
+            month={comparisonMonth?.month ?? new Date().getMonth() + 1}
+            elapsedPercent={
+              comparisonMonth
+                ? Math.min(
+                    100,
+                    Math.max(
+                      0,
+                      Math.round(
+                        ((Math.min(Date.now(), comparisonMonth.end.getTime()) -
+                          comparisonMonth.start.getTime()) /
+                          Math.max(
+                            86_400_000,
+                            comparisonMonth.end.getTime() - comparisonMonth.start.getTime()
+                          )) *
+                          100
+                      )
+                    )
+                  )
+                : 50
+            }
+            wallets={wallets}
+          />
+
           {/* Budget Variance Summary Bar */}
           <Card className="border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-r from-indigo-50/50 via-white to-purple-50/50 dark:from-indigo-950/20 dark:via-gray-900 dark:to-purple-950/20">
             <CardHeader className="flex flex-row items-center justify-between pb-3">
