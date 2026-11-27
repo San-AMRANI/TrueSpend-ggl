@@ -118,7 +118,7 @@ Respond with ONLY a JSON object matching this schema:
   "merchant": "Name of the merchant or store",
   "amount": 123.45,
   "transactionDate": "YYYY-MM-DD",
-  "category": "One of: 🍔 Dining & Takeaway, ☕ Coffee & Quick Food, 🛒 Groceries, 🚗 Transportation, 📱 Telecom & Subscriptions, 🩺 Health & Medical, 👕 Personal & Clothing, 🎬 Entertainment, 👥 Social, 🏠 Housing & Utilities, 🚨 Unexpected",
+  "category": "One of: 🍔 Dining & Takeaway, ☕ Coffee & Quick Food, 🛒 Groceries, 🚗 Transportation, 📱 Telecom & Subscriptions, 🩺 Health & Medical, 👕 Personal & Clothing, 🎬 Entertainment, 👥 Social, 🏢 Housing & Utilities, 🛠️ Home, Tech & Equipment, ⚠️ Unexpected, 📦 Others",
   "confidence": 95,
   "notes": "Short summary or item summary",
   "items": [{"name": "item name", "price": 10.5, "quantity": 1}],

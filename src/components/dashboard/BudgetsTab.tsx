@@ -63,6 +63,8 @@ import {
   MessageSquarePlus,
   RefreshCw,
   CalendarRange,
+  ChevronDown,
+  Info,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AnimatedMetricValue, AnimatedProgressBar, MotionModal } from '../ui/MotionPrimitives';
@@ -184,6 +186,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   '🛟 Emergency & goals Fund': '#10b981',
   '📈 Investments': '#3b82f6',
   '🛠️ Home, Tech & Equipment': '#0ea5e9',
+  '📦 Others': '#94a3b8',
 };
 
 const DEFAULT_COLOR = '#6b7280';
@@ -191,29 +194,37 @@ const DEFAULT_COLOR = '#6b7280';
 const categoryColor = (cat: string) => CATEGORY_COLORS[cat] ?? DEFAULT_COLOR;
 
 const statusConfig = {
-  normal: { bar: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400', icon: CheckCircle2, label: 'On Track' },
-  warning: { bar: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400', icon: AlertTriangle, label: 'Warning' },
-  over_budget: { bar: 'bg-orange-500', badge: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400', icon: TrendingUp, label: 'Over Budget' },
-  critical: { bar: 'bg-red-500', badge: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400', icon: AlertTriangle, label: 'Critical' },
-  not_set: { bar: 'bg-gray-300 dark:bg-gray-700', badge: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400', icon: Target, label: 'No Budget' },
+  normal: { bar: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-400', dot: 'bg-emerald-500', icon: CheckCircle2, label: 'On Track' },
+  warning: { bar: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-400', dot: 'bg-amber-500', icon: AlertTriangle, label: 'Warning' },
+  over_budget: { bar: 'bg-orange-500', text: 'text-orange-700 dark:text-orange-400', dot: 'bg-orange-500', icon: TrendingUp, label: 'Over Budget' },
+  critical: { bar: 'bg-red-500', text: 'text-red-700 dark:text-red-400', dot: 'bg-red-500', icon: AlertTriangle, label: 'Critical' },
+  not_set: { bar: 'bg-gray-300 dark:bg-gray-700', text: 'text-gray-500 dark:text-gray-400', dot: 'bg-gray-400', icon: Target, label: 'No Budget' },
 };
 
-const PILLAR_META: Record<FinancialPillar, { label: string; badgeClass: string }> = {
+const PILLAR_META: Record<FinancialPillar, { label: string; shortLabel: string; dotClass: string; textClass: string }> = {
   obligations: {
-    label: '🏛️ Obligation & Need',
-    badgeClass: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/60',
+    label: 'Obligation & Need',
+    shortLabel: 'Obligation',
+    dotClass: 'bg-indigo-500',
+    textClass: 'text-indigo-700 dark:text-indigo-400',
   },
   myself: {
-    label: '✨ Spent on Myself',
-    badgeClass: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200 dark:border-amber-800/60',
+    label: 'Spent on Myself',
+    shortLabel: 'Myself',
+    dotClass: 'bg-amber-500',
+    textClass: 'text-amber-700 dark:text-amber-400',
   },
   investments: {
-    label: '📈 Wealth Investment',
-    badgeClass: 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border-blue-200 dark:border-blue-800/60',
+    label: 'Wealth Investment',
+    shortLabel: 'Investment',
+    dotClass: 'bg-blue-500',
+    textClass: 'text-blue-700 dark:text-blue-400',
   },
   savings: {
-    label: '🏦 Bank Retention & Savings',
-    badgeClass: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60',
+    label: 'Bank Retention & Savings',
+    shortLabel: 'Bank Retention',
+    dotClass: 'bg-emerald-500',
+    textClass: 'text-emerald-700 dark:text-emerald-400',
   },
 };
 
@@ -378,47 +389,51 @@ function BudgetCard({
   };
 
   return (
-    <Card className="overflow-hidden transition-shadow hover:shadow-md">
-      {/* Category accent bar */}
-      <div className="h-1 w-full" style={{ background: color }} />
-      <CardHeader className="pb-2 pt-3.5">
+    <div className="flex flex-col justify-between rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 transition-colors hover:border-gray-300 dark:hover:border-gray-700">
+      <div className="space-y-3">
+        {/* Card Header */}
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 space-y-1">
-            <CardTitle className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-snug truncate">
-              {category}
-            </CardTitle>
-            <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${pillarMeta.badgeClass}`}>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-snug truncate">
+                {category}
+              </h4>
+            </div>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 pl-4">
               {pillarMeta.label}
-            </span>
+            </p>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusCfg.badge}`}>
-              <StatusIcon className="h-3 w-3" />
+          <div className={`inline-flex items-center gap-1 text-xs font-semibold font-mono tabular-nums shrink-0 ${statusCfg.text}`}>
+            <StatusIcon className="h-3.5 w-3.5 shrink-0" />
+            <span>
               {status.status === 'not_set'
                 ? isWealth
                   ? 'No target'
-                  : 'No budget'
+                  : 'No cap'
                 : isWealth && status.usagePercentage >= 100
                 ? `${status.usagePercentage.toFixed(0)}% Met`
                 : `${status.usagePercentage.toFixed(0)}%`}
             </span>
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-3 pb-4">
+
         {/* Spent / Budget display */}
         {amount !== undefined ? (
-          <>
+          <div className="space-y-2.5">
             <div>
-              <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1 font-mono tabular-nums">
-                <span>
-                  {spent.toFixed(2)} MAD {isSavings ? 'retained / saved' : isWealth ? 'invested' : 'spent'}
+              <div className="flex items-baseline justify-between gap-2 mb-1.5 font-mono tabular-nums">
+                <span className="text-base font-bold text-gray-900 dark:text-gray-100">
+                  {spent.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  <span className="text-[11px] font-normal text-gray-500 dark:text-gray-400 ml-1">
+                    MAD {isSavings ? 'retained' : isWealth ? 'invested' : 'spent'}
+                  </span>
                 </span>
-                <span>
-                  {amount.toFixed(2)} MAD {isWealth ? 'target' : 'budget'}
+                <span className="text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                  / {amount.toLocaleString(undefined, { maximumFractionDigits: 0 })} MAD
                 </span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+              <div className="h-1.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${statusCfg.bar}`}
                   style={{ width: `${Math.min(100, status.usagePercentage)}%` }}
@@ -426,155 +441,147 @@ function BudgetCard({
               </div>
             </div>
 
-            {isWealth ? (
-              <div className={`flex items-center gap-1 text-xs font-medium ${status.remaining <= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                {status.remaining <= 0 ? (
-                  <>
-                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                    <span>
-                      Target Achieved! {Math.abs(status.remaining) > 0.5 ? `+${Math.abs(status.remaining).toFixed(2)} MAD above target` : '100% protected'}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Target className="h-3.5 w-3.5 shrink-0" />
-                    <span>{status.remaining.toFixed(2)} MAD left to reach target</span>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className={`flex items-center gap-1 text-xs font-medium ${status.remaining < 0 ? 'text-red-600' : 'text-gray-600 dark:text-gray-400'}`}>
-                {status.remaining < 0 ? (
-                  <><TrendingUp className="h-3 w-3" />{Math.abs(status.remaining).toFixed(2)} MAD over budget</>
-                ) : (
-                  <><TrendingDown className="h-3 w-3" />{status.remaining.toFixed(2)} MAD remaining</>
-                )}
-              </div>
-            )}
+            <div className="flex items-center justify-between gap-2 text-xs">
+              {isWealth ? (
+                <span className={`font-medium font-mono tabular-nums ${status.remaining <= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                  {status.remaining <= 0
+                    ? Math.abs(status.remaining) > 0.5
+                      ? `+${Math.abs(status.remaining).toFixed(0)} MAD above target`
+                      : 'Target protected'
+                    : `${status.remaining.toFixed(0)} MAD to target`}
+                </span>
+              ) : (
+                <span className={`font-medium font-mono tabular-nums ${status.remaining < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-400'}`}>
+                  {status.remaining < 0
+                    ? `${Math.abs(status.remaining).toFixed(0)} MAD over`
+                    : `${status.remaining.toFixed(0)} MAD left`}
+                </span>
+              )}
+
+              {pace && (
+                <span className={`text-[11px] font-mono tabular-nums ${pace.difference > 0 ? 'text-red-500 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                  {Math.abs(pace.difference).toFixed(0)} MAD {pace.difference > 0 ? 'ahead' : 'under pace'}
+                </span>
+              )}
+            </div>
 
             {/* Bank-as-Savings Retention Breakdown for 🛟 Emergency & goals Fund */}
             {isSavings && retentionMeta && (
-              <div className="rounded-lg border border-emerald-200/70 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-2.5 space-y-1 text-[11px]">
-                <div className="flex items-center justify-between text-emerald-900 dark:text-emerald-200 font-semibold">
-                  <span className="flex items-center gap-1">
-                    <Landmark className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-                    Kept in Bank (No Tx Needed):
-                  </span>
-                  <span className="font-mono tabular-nums">
+              <div className="border-t border-gray-100 dark:border-gray-800 pt-2 space-y-1 text-[11px]">
+                <div className="flex items-center justify-between text-gray-700 dark:text-gray-300">
+                  <span>{isCurrentMonth ? 'Protected Floor in Bank' : 'Retained in Bank'}</span>
+                  <span className="font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">
                     {(isCurrentMonth ? retentionMeta.protectedBankRetention : retentionMeta.liveRetainedInBank).toFixed(0)} MAD
                   </span>
                 </div>
                 {isCurrentMonth && (
-                  <div className="flex items-center justify-between text-gray-600 dark:text-gray-400">
-                    <span>Live Unspent Salary in Bank:</span>
-                    <span className="font-mono tabular-nums font-medium">{retentionMeta.liveRetainedInBank.toFixed(0)} MAD</span>
+                  <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
+                    <span>Live Unspent in Bank</span>
+                    <span className="font-mono tabular-nums">{retentionMeta.liveRetainedInBank.toFixed(0)} MAD</span>
                   </div>
                 )}
                 {retentionMeta.explicitTxAmount > 0 && (
-                  <div className="flex items-center justify-between text-gray-600 dark:text-gray-400">
-                    <span>Explicit Savings Transfers:</span>
-                    <span className="font-mono tabular-nums font-medium">+{retentionMeta.explicitTxAmount.toFixed(0)} MAD</span>
+                  <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
+                    <span>Savings Transfers</span>
+                    <span className="font-mono tabular-nums">+{retentionMeta.explicitTxAmount.toFixed(0)} MAD</span>
                   </div>
                 )}
               </div>
             )}
 
-            {pace && (
-              <p className={`text-xs ${pace.difference > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                {Math.abs(pace.difference).toFixed(2)} MAD {pace.difference > 0 ? 'ahead of pace' : 'behind pace'}
-              </p>
-            )}
-            {/* Adaptive daily category limit (only for consumption categories) */}
+            {/* Adaptive daily category limit & overspend warning */}
             {!isWealth && amount !== undefined && isCurrentMonth && pace && pace.daysInMonth > 0 && (
               (() => {
                 const daysLeft = Math.max(1, pace.daysInMonth - pace.elapsedDays);
                 const remaining = Math.max(0, amount - spent);
                 const dailyLimit = remaining / daysLeft;
                 return (
-                  <div className="flex items-center gap-1.5 rounded-md bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1.5 text-xs">
-                    <span className="font-medium text-indigo-700 dark:text-indigo-300 font-mono tabular-nums">
-                      {dailyLimit.toFixed(0)} MAD/day
+                  <div className="border-t border-gray-100 dark:border-gray-800 pt-2 flex items-center justify-between gap-2 text-[11px]">
+                    <span className="text-gray-500 dark:text-gray-400">
+                      Safe pace ({daysLeft}d left)
                     </span>
-                    <span className="text-indigo-500 dark:text-indigo-400">
-                      for {daysLeft} day{daysLeft !== 1 ? 's' : ''} left
+                    <span className="font-mono tabular-nums font-semibold text-gray-800 dark:text-gray-200">
+                      {dailyLimit.toFixed(0)} MAD/day
                     </span>
                   </div>
                 );
               })()
             )}
             {daysWarning !== null && daysWarning <= 5 && (
-              <div className="flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-900/20 px-2 py-1 text-xs text-amber-700 dark:text-amber-400">
+              <p className="flex items-center gap-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="h-3 w-3 shrink-0" />
-                At this pace, budget exceeded in ~{daysWarning} day{daysWarning !== 1 ? 's' : ''}
-              </div>
+                At this pace, cap exceeded in ~{daysWarning}d
+              </p>
             )}
-          </>
+          </div>
         ) : (
-          <div className="space-y-2">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="space-y-1.5 py-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums">
               {isSavings
-                ? `${spent.toFixed(2)} MAD currently retained in bank · Set a target to lock your savings buffer.`
+                ? `${spent.toFixed(0)} MAD retained in bank · No target set`
                 : spent > 0
-                ? `${spent.toFixed(2)} MAD ${isWealth ? 'invested' : 'spent'} · Set a budget to track.`
-                : 'No spending or budget yet.'}
+                ? `${spent.toFixed(0)} MAD ${isWealth ? 'invested' : 'spent'} · No cap set`
+                : 'No spending or cap yet.'}
             </p>
             {isSavings && retentionMeta && retentionMeta.liveRetainedInBank > 0 && (
-              <div className="rounded-lg border border-emerald-200/70 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-2 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
-                <span>🏦 Live Unspent Salary in Bank:</span>
-                <span className="font-mono font-bold tabular-nums">{retentionMeta.liveRetainedInBank.toFixed(0)} MAD</span>
-              </div>
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-mono tabular-nums">
+                Live unspent in bank: {retentionMeta.liveRetainedInBank.toFixed(0)} MAD
+              </p>
             )}
           </div>
         )}
+      </div>
 
-        {/* Edit / Delete row */}
+      {/* Edit / Delete row */}
+      <div className="pt-3 mt-3 border-t border-gray-100 dark:border-gray-800">
         {editing ? (
-          <div className="flex gap-2 pt-1">
+          <div className="flex gap-1.5">
             <Input
               type="number"
               min="0"
               step="0.01"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              className="h-8 text-sm"
+              className="h-8 text-xs font-mono"
               placeholder="Amount MAD"
               autoFocus
             />
             <Button type="button" size="icon" className="h-8 w-8 shrink-0" disabled={saving} onClick={handleSave}>
-              <Check className="h-4 w-4" />
+              <Check className="h-3.5 w-3.5" />
             </Button>
             <Button type="button" size="icon" variant="outline" className="h-8 w-8 shrink-0" onClick={() => setEditing(false)}>
-              <X className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </Button>
           </div>
         ) : (
-          <div className="flex gap-2 pt-1">
+          <div className="flex items-center justify-between gap-2">
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="flex-1 text-xs"
+              className="h-7 px-2 text-xs text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
               onClick={() => { setDraft(budget?.amount ?? ''); setEditing(true); }}
             >
-              <Pencil className="mr-1 h-3 w-3" />
-              {budget ? (isWealth ? 'Edit target' : 'Edit budget') : isWealth ? 'Set target' : 'Set budget'}
+              <Pencil className="mr-1.5 h-3 w-3" />
+              {budget ? (isWealth ? 'Edit target' : 'Edit cap') : isWealth ? 'Set target' : 'Set cap'}
             </Button>
             {budget && onDelete && (
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
                 size="icon"
-                className="h-8 w-8 shrink-0 text-red-500 hover:bg-red-50 hover:border-red-200 dark:hover:bg-red-900/20"
+                className="h-7 w-7 shrink-0 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                 disabled={deleting}
                 onClick={handleDelete}
+                aria-label={`Delete budget for ${category}`}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -622,7 +629,7 @@ function Rule503020View({
 
   const groups = [
     {
-      label: '🏛️ Obligations & Needs',
+      label: 'Obligations & Needs',
       pct: needsPct,
       setPct: setNeedsPct,
       categories: NEEDS_CATEGORIES,
@@ -632,24 +639,24 @@ function Rule503020View({
       subNote: `Housing, Groceries, Transport, Family & Debt (${fourPillar.obligationsPctOfIncome.toFixed(1)}% of income)`,
     },
     {
-      label: '✨ Spent on Myself (Wants)',
+      label: 'Spent on Myself (Wants)',
       pct: wantsPct,
       setPct: setWantsPct,
       categories: WANTS_CATEGORIES,
       color: '#f97316',
       spent: fourPillar.spentOnMyself,
       isWealth: false,
-      subNote: `Dining, Coffee, Clothing, Entertainment & Social (${fourPillar.myselfPctOfIncome.toFixed(1)}% of income)`,
+      subNote: `Dining, Coffee, Clothing, Social & Others (${fourPillar.myselfPctOfIncome.toFixed(1)}% of income)`,
     },
     {
-      label: '🏦 Retained in Bank & Invested',
+      label: 'Retained in Bank & Invested',
       pct: savingsPct,
       setPct: setSavingsPct,
       categories: SAVINGS_CATEGORIES,
       color: '#10b981',
       spent: fourPillar.effectiveSavedForBudget + fourPillar.investedAmount,
       isWealth: true,
-      subNote: `Kept in Bank: ${fourPillar.effectiveSavedForBudget.toFixed(0)} MAD + Invested: ${fourPillar.investedAmount.toFixed(0)} MAD (No dummy tx needed)`,
+      subNote: `Kept in Bank: ${fourPillar.effectiveSavedForBudget.toFixed(0)} MAD + Invested: ${fourPillar.investedAmount.toFixed(0)} MAD`,
     },
   ];
 
@@ -657,7 +664,7 @@ function Rule503020View({
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          The 50/30/20 rule splits your monthly income ({baseAmount.toFixed(0)} MAD) into <strong>Obligations</strong>, <strong>Spent on Myself</strong>, and <strong>Bank-Retained Savings &amp; Investments</strong>.
+          Splits monthly income (<span className="font-mono tabular-nums font-medium text-gray-800 dark:text-gray-200">{baseAmount.toFixed(0)} MAD</span>) across Obligations, Spent on Myself, and Bank-Retained Savings &amp; Investments.
         </p>
         <Button variant="outline" size="sm" onClick={calculateFromBudgets} className="whitespace-nowrap shrink-0">
           <Target className="mr-2 h-4 w-4" /> Sync % from Budgets
@@ -669,60 +676,61 @@ function Rule503020View({
           const pct = target > 0 ? Math.min(100, (g.spent / target) * 100) : 0;
           const over = g.spent > target && target > 0;
           return (
-            <Card key={g.label} className="overflow-hidden">
-              <div className="h-1" style={{ background: g.color }} />
-              <CardHeader className="pb-2 pt-4 flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-sm">{g.label}</CardTitle>
-                <div className="flex items-center gap-1">
+            <div key={g.label} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{g.label}</h4>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
                   <Input
                     type="number"
                     value={g.pct}
                     onChange={(e) => g.setPct(Number(e.target.value) || 0)}
-                    className="w-16 h-7 text-xs text-right p-1"
+                    className="w-14 h-7 text-xs text-right font-mono p-1"
                   />
                   <span className="text-xs text-gray-500">%</span>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <p className="text-2xl font-bold tabular-nums font-mono" style={{ color: g.color }}>
-                  {g.spent.toFixed(0)} MAD
+              </div>
+              <div>
+                <p className="text-2xl font-bold tabular-nums font-mono text-gray-900 dark:text-gray-100">
+                  {g.spent.toFixed(0)} <span className="text-xs font-normal text-gray-500">MAD</span>
                 </p>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400">{g.subNote}</p>
-                {target > 0 && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">
-                    Target ({g.pct}%): {target.toFixed(0)} MAD
-                  </p>
-                )}
-                {target > 0 && (
-                  <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{g.subNote}</p>
+              </div>
+              {target > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+                    <span>Target ({g.pct}%)</span>
+                    <span>{target.toFixed(0)} MAD</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
                     <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: g.color }} />
                   </div>
-                )}
-                {g.isWealth ? (
-                  over ? (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                      ✓ +{(g.spent - target).toFixed(0)} MAD retained above target!
-                    </p>
-                  ) : (
-                    target > 0 && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
-                        {(target - g.spent).toFixed(0)} MAD more needed to hit target
-                      </p>
-                    )
-                  )
+                </div>
+              )}
+              {g.isWealth ? (
+                over ? (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium font-mono tabular-nums">
+                    +{(g.spent - target).toFixed(0)} MAD above target
+                  </p>
                 ) : (
-                  over && <p className="text-xs text-red-500 font-medium">{(g.spent - target).toFixed(0)} MAD over limit</p>
-                )}
-                <ul className="text-xs text-gray-400 dark:text-gray-500 space-y-0.5 pt-1">
-                  {g.categories.slice(0, 4).map((c) => (
-                    <li key={c} className="truncate">
-                      {c}
-                    </li>
-                  ))}
-                  {g.categories.length > 4 && <li>+{g.categories.length - 4} more</li>}
-                </ul>
-              </CardContent>
-            </Card>
+                  target > 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 font-medium font-mono tabular-nums">
+                      {(target - g.spent).toFixed(0)} MAD more needed to hit target
+                    </p>
+                  )
+                )
+              ) : (
+                over && <p className="text-xs text-red-600 dark:text-red-400 font-medium font-mono tabular-nums">{(g.spent - target).toFixed(0)} MAD over limit</p>
+              )}
+              <ul className="border-t border-gray-100 dark:border-gray-800 pt-2 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+                {g.categories.slice(0, 4).map((c) => (
+                  <li key={c} className="truncate">{c}</li>
+                ))}
+                {g.categories.length > 4 && <li>+{g.categories.length - 4} more</li>}
+              </ul>
+            </div>
           );
         })}
       </div>
@@ -761,30 +769,30 @@ function EnvelopeView({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 p-4">
-        <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Spendable Living Envelopes</p>
-          <p className="text-xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">{totalLivingEnvelope.toFixed(2)} MAD</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-gray-200 dark:divide-gray-800 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <div className="p-3.5">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Living Envelopes</p>
+          <p className="text-lg font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100 mt-0.5">{totalLivingEnvelope.toFixed(0)} MAD</p>
         </div>
-        <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Living Spent (Obligations + Myself)</p>
-          <p className="text-xl font-bold font-mono tabular-nums text-orange-600">{totalLivingSpent.toFixed(2)} MAD</p>
+        <div className="p-3.5">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Living Spent</p>
+          <p className="text-lg font-bold font-mono tabular-nums text-amber-600 dark:text-amber-400 mt-0.5">{totalLivingSpent.toFixed(0)} MAD</p>
         </div>
-        <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Spendable Remaining</p>
-          <p className={`text-xl font-bold font-mono tabular-nums ${totalLivingLeft < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{totalLivingLeft.toFixed(2)} MAD</p>
+        <div className="p-3.5">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Envelope Remaining</p>
+          <p className={`text-lg font-bold font-mono tabular-nums mt-0.5 ${totalLivingLeft < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{totalLivingLeft.toFixed(0)} MAD</p>
         </div>
-        <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Retained in Bank &amp; Invested</p>
-          <p className="text-xl font-bold font-mono tabular-nums text-indigo-600 dark:text-indigo-400">
-            {(fourPillar.effectiveSavedForBudget + fourPillar.investedAmount).toFixed(2)} MAD
+        <div className="p-3.5">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Retained &amp; Invested</p>
+          <p className="text-lg font-bold font-mono tabular-nums text-indigo-600 dark:text-indigo-400 mt-0.5">
+            {(fourPillar.effectiveSavedForBudget + fourPillar.investedAmount).toFixed(0)} MAD
           </p>
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
         {monthBudgets.length === 0 && (
-          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">No envelopes for this month. Add category budgets above.</p>
+          <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">No envelopes for this month. Use the form above to set category budgets.</p>
         )}
         {livingBudgets.map((b) => {
           const spent = getCategorySpending(transactions, b.category, year, month, payrolls, wallets);
@@ -794,30 +802,34 @@ function EnvelopeView({
           const color = categoryColor(b.category);
           const pillar = getCategoryPillar(b.category);
           return (
-            <div key={b.id} className="flex items-center gap-3 rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
-              <div className="h-9 w-1 rounded-full shrink-0" style={{ background: color }} />
+            <div key={b.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors">
+              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: color }} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <div className="flex items-center gap-2 min-w-0">
                     <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{b.category}</p>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold shrink-0 ${PILLAR_META[pillar].badgeClass}`}>
-                      {pillar === 'myself' ? '✨ Myself' : '🏛️ Obligation'}
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500 shrink-0">
+                      {PILLAR_META[pillar].shortLabel}
                     </span>
                   </div>
-                  <span className={`text-sm font-semibold shrink-0 tabular-nums font-mono ${left < 0 ? 'text-red-600' : 'text-gray-700 dark:text-gray-300'}`}>
+                  <span className={`text-sm font-semibold shrink-0 tabular-nums font-mono ${left < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-200'}`}>
                     {left < 0 ? '-' : ''}{Math.abs(left).toFixed(0)} MAD left
                   </span>
                 </div>
-                <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+                <div className="flex items-center gap-3">
+                  <div className="h-1.5 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+                  </div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums shrink-0">
+                    {spent.toFixed(0)} / {amount.toFixed(0)} MAD
+                  </span>
                 </div>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 font-mono">{spent.toFixed(0)} / {amount.toFixed(0)} MAD spent</p>
               </div>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                className="h-7 w-7 shrink-0 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                 onClick={() => onDelete(b.id)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -827,10 +839,10 @@ function EnvelopeView({
         })}
 
         {wealthBudgets.length > 0 && (
-          <div className="pt-3 space-y-2">
-            <p className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 px-1">
-              🏦 Wealth Retention &amp; Investment Targets (Backed by Bank Balance &amp; Transfers)
-            </p>
+          <>
+            <div className="bg-gray-50/80 dark:bg-gray-800/50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              Wealth Retention &amp; Investment Targets
+            </div>
             {wealthBudgets.map((b) => {
               const isSavings = isSavingsRetentionCategory(b.category);
               const allocated = isSavings
@@ -840,32 +852,34 @@ function EnvelopeView({
               const pct = amount > 0 ? Math.min(100, (allocated / amount) * 100) : 0;
               const color = categoryColor(b.category);
               return (
-                <div key={b.id} className="flex items-center gap-3 rounded-lg border border-emerald-200/70 dark:border-emerald-900/50 bg-emerald-50/30 dark:bg-emerald-950/20 px-4 py-3">
-                  <div className="h-9 w-1 rounded-full shrink-0" style={{ background: color }} />
+                <div key={b.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors">
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: color }} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <div className="flex items-center gap-2 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{b.category}</p>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 font-semibold shrink-0">
-                          {isSavings ? '🏦 Auto-Retained in Bank' : '📈 Capital Deployed'}
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{b.category}</p>
+                        <span className="text-[11px] text-emerald-700 dark:text-emerald-400 shrink-0">
+                          {isSavings ? 'Auto-Retained' : 'Invested'}
                         </span>
                       </div>
-                      <span className="text-sm font-bold shrink-0 tabular-nums font-mono text-emerald-600 dark:text-emerald-400">
-                        {allocated >= amount ? `✓ Target Met (${allocated.toFixed(0)} MAD)` : `${(amount - allocated).toFixed(0)} MAD to target`}
+                      <span className="text-sm font-semibold shrink-0 tabular-nums font-mono text-emerald-600 dark:text-emerald-400">
+                        {allocated >= amount ? `Target Met (${allocated.toFixed(0)} MAD)` : `${(amount - allocated).toFixed(0)} MAD to target`}
                       </span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                      <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
+                    <div className="flex items-center gap-3">
+                      <div className="h-1.5 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums shrink-0">
+                        {allocated.toFixed(0)} / {amount.toFixed(0)} MAD
+                      </span>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">
-                      {allocated.toFixed(0)} / {amount.toFixed(0)} MAD {isSavings ? 'retained in bank (no transaction needed)' : 'invested'}
-                    </p>
                   </div>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                    className="h-7 w-7 shrink-0 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                     onClick={() => onDelete(b.id)}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -873,7 +887,7 @@ function EnvelopeView({
                 </div>
               );
             })}
-          </div>
+          </>
         )}
       </div>
     </div>
@@ -923,6 +937,8 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
   const [spexPlanResult, setSpexPlanResult] = useState<Awaited<ReturnType<typeof dashboardService.generateSpexBudgetPlan>> | null>(null);
   const [spexCustomOverrides, setSpexCustomOverrides] = useState<Record<string, number>>({});
   const [showPeriodHistory, setShowPeriodHistory] = useState(false);
+  const [showUnsetPicker, setShowUnsetPicker] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   useEffect(() => {
     if (!isAdvanced && selectedPlan === 'spex_ai') {
@@ -1499,6 +1515,20 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
     }
   };
 
+  const hasConnectedHubs =
+    activeOrPlannedProjects.length > 0 ||
+    Boolean(setActiveTab) ||
+    totalPayableDebt > 0 ||
+    currentInvestmentBudget > 0 ||
+    Boolean(
+      investmentsData &&
+        (investmentsData.positions.length > 0 || investmentsData.buyingPower.investmentWalletBalanceMad > 0)
+    ) ||
+    (budgetSurplus > 0 && goals.length > 0);
+
+  const retainedHeadlinePct =
+    totalIncome > 0 ? (fourPillar.effectiveSavedForBudget / totalIncome) * 100 : 0;
+
   return (
     <div className="space-y-6">
 
@@ -1518,108 +1548,160 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
         )}
       </AnimatePresence>
 
-      {/* ── Header ── */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Budget &amp; Salary Retention Planner</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Bank-as-Savings hybrid engine: plan what you spend on Obligations &amp; Yourself, and automatically retain the rest in your bank.
-          </p>
+      {/* ── Section 1: Clean Top Header & Scope Bar ── */}
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+              Monthly Budget
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Plan spending caps for Obligations &amp; Yourself — unspent salary stays retained in your bank.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <div className="inline-flex items-center gap-1 shrink-0">
+              <Button type="button" variant="outline" size="icon" onClick={() => navigate(-1)} aria-label="Previous month" className="h-9 w-9">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setMonthRef(getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 })}
+                className="h-9 whitespace-nowrap shrink-0 font-medium"
+              >
+                {monthLabel(monthRef.year, monthRef.month)}
+              </Button>
+              <Button type="button" variant="outline" size="icon" onClick={() => navigate(1)} aria-label="Next month" className="h-9 w-9">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <Button
+              type="button"
+              onClick={() => setAutoBudgetOpen(true)}
+              className="h-9 bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-600 dark:hover:bg-indigo-700 dark:text-white whitespace-nowrap shrink-0"
+            >
+              <Sparkles className="mr-1.5 h-4 w-4" />
+              Auto-Budget
+            </Button>
+          </div>
         </div>
-        {/* Scope toggle, Month navigator & Auto Budget */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div
-            role="group"
-            aria-label="Monthly budget scope"
-            className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-100/80 dark:bg-gray-800/80 text-xs"
-          >
-            <button
-              type="button"
-              aria-pressed={excludeProjectSpend}
-              onClick={() => setExcludeProjectSpend(true)}
-              className={`px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap transition-colors ${
-                excludeProjectSpend
-                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-2xs'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-              }`}
+
+        {/* Scope Strip: Routine Monthly vs Combined (Clearly Explained) */}
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-900/60 px-3.5 py-2.5">
+          <div className="flex flex-wrap items-center gap-3">
+            <div
+              role="group"
+              aria-label="Monthly budget scope"
+              className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 bg-white dark:bg-gray-950 text-xs shrink-0"
             >
-              Routine Monthly
-            </button>
-            <button
-              type="button"
-              aria-pressed={!excludeProjectSpend}
-              onClick={() => setExcludeProjectSpend(false)}
-              className={`px-2.5 py-1.5 rounded-md font-medium whitespace-nowrap transition-colors ${
-                !excludeProjectSpend
-                  ? 'bg-white dark:bg-gray-900 text-gray-900 dark:text-white shadow-2xs'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-              }`}
-            >
-              Combined
-            </button>
+              <button
+                type="button"
+                aria-pressed={excludeProjectSpend}
+                onClick={() => setExcludeProjectSpend(true)}
+                className={`px-3 py-1 rounded-md font-medium whitespace-nowrap transition-colors ${
+                  excludeProjectSpend
+                    ? 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                Routine Monthly
+              </button>
+              <button
+                type="button"
+                aria-pressed={!excludeProjectSpend}
+                onClick={() => setExcludeProjectSpend(false)}
+                className={`px-3 py-1 rounded-md font-medium whitespace-nowrap transition-colors ${
+                  !excludeProjectSpend
+                    ? 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                Combined
+              </button>
+            </div>
+            <p className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
+              <Info className="h-3.5 w-3.5 text-gray-400 shrink-0 hidden sm:inline" />
+              {excludeProjectSpend ? (
+                <span>
+                  <strong className="font-medium text-gray-900 dark:text-gray-200">Routine Monthly:</strong>{' '}
+                  Excludes Project-tagged purchases from monthly category caps so big upgrades stay separate.
+                </span>
+              ) : (
+                <span>
+                  <strong className="font-medium text-gray-900 dark:text-gray-200">Combined:</strong>{' '}
+                  Includes Project-tagged purchases inside your regular monthly category caps.
+                </span>
+              )}
+            </p>
           </div>
-          <Button type="button" onClick={() => setAutoBudgetOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white dark:bg-indigo-600 dark:hover:bg-indigo-700 dark:text-white whitespace-nowrap shrink-0">
-            <Sparkles className="mr-2 h-4 w-4" />
-            Auto-Budget
-          </Button>
-          <div className="inline-flex items-center gap-1.5 shrink-0">
-            <Button type="button" variant="outline" size="icon" onClick={() => navigate(-1)} aria-label="Previous month">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setMonthRef(getCurrentFinancialMonth(payrolls) || { year: new Date().getFullYear(), month: new Date().getMonth() + 1 })} className="whitespace-nowrap shrink-0">
-              {monthLabel(monthRef.year, monthRef.month)}
-            </Button>
-            <Button type="button" variant="outline" size="icon" onClick={() => navigate(1)} aria-label="Next month">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+          {excludeProjectSpend && fourPillar.excludedProjectSpent > 0 && (
+            <span className="text-xs font-mono tabular-nums font-semibold text-sky-700 dark:text-sky-400 whitespace-nowrap shrink-0">
+              {fourPillar.excludedProjectSpent.toFixed(0)} MAD in Projects (separate)
+            </span>
+          )}
         </div>
       </div>
 
-      {/* ── 4-Pillar Salary & Bank-Retention Vision Hub ── */}
-      <Card className="border-indigo-200/80 dark:border-indigo-900/50 bg-gradient-to-br from-indigo-50/40 via-white to-emerald-50/30 dark:from-gray-900 dark:via-gray-900 dark:to-emerald-950/20 shadow-xs overflow-hidden">
-        <CardContent className="p-4 sm:p-5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                  <Landmark className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                  4-Pillar Salary &amp; Bank-Retention Architecture
-                </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                  Zero-Transaction Bank Retention Active
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Your salary account is your savings account: you only spend what you allocate to <strong>Obligations</strong> &amp; <strong>Yourself</strong>, and the rest stays protected in your bank without needing a dummy savings transaction.
-                {excludeProjectSpend && fourPillar.excludedProjectSpent > 0 && (
-                  <>
-                    {' '}
-                    <strong className="text-sky-700 dark:text-sky-400 font-mono tabular-nums">
-                      {fourPillar.excludedProjectSpent.toFixed(0)} MAD
-                    </strong>{' '}
-                    in Project spending is tracked separately below so routine caps stay clean.
-                  </>
-                )}
-              </p>
-            </div>
-            <div className="text-left sm:text-right shrink-0">
-              <p className="text-[11px] uppercase tracking-wider font-semibold text-gray-400">Period Income Baseline</p>
-              <p className="text-lg font-black font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
-                <AnimatedMetricValue value={totalIncome} suffix=" MAD" />
-              </p>
-            </div>
+      {/* ── Section 2: Unified Budget & Bank-Retention Summary ── */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+        {/* Top KPI Strip */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 divide-y lg:divide-y-0 lg:divide-x divide-gray-100 dark:divide-gray-800">
+          <div className="p-4">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Period Income</p>
+            <p className="text-xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100 mt-0.5">
+              <AnimatedMetricValue value={totalIncome} decimals={0} suffix=" MAD" />
+            </p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 font-mono tabular-nums">
+              {totalBudget.toFixed(0)} MAD total caps &amp; targets
+            </p>
           </div>
+          <div className="p-4">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Living Spent / Cap</p>
+            <p className={`text-xl font-bold font-mono tabular-nums mt-0.5 ${livingSpentTotal > livingBudgetTotal && livingBudgetTotal > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-100'}`}>
+              <AnimatedMetricValue value={livingSpentTotal} decimals={0} />
+              <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                {' '}/ {livingBudgetTotal.toFixed(0)} MAD
+              </span>
+            </p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 font-mono tabular-nums">
+              Oblig {fourPillar.spentOnObligations.toFixed(0)} · Myself {fourPillar.spentOnMyself.toFixed(0)}
+              {excludeProjectSpend && fourPillar.excludedProjectSpent > 0 ? ` · Proj ${fourPillar.excludedProjectSpent.toFixed(0)}` : ''}
+            </p>
+          </div>
+          <div className="p-4">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Safe to Spend Left</p>
+            <p className={`text-xl font-bold font-mono tabular-nums mt-0.5 ${livingRemaining < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+              {livingBudgetTotal > 0 ? <AnimatedMetricValue value={livingRemaining} decimals={0} suffix=" MAD" /> : '—'}
+            </p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+              {livingBudgetTotal > 0 ? (livingRemaining < 0 ? 'Over living budget cap' : 'Remaining in living caps') : 'Set living caps below'}
+            </p>
+          </div>
+          <div className="p-4">
+            <p className="text-xs text-gray-500 dark:text-gray-400">Budget Health</p>
+            <div className="flex items-baseline gap-2 mt-0.5">
+              <span className={`text-xl font-bold ${gradeColor}`}>{grade}</span>
+              <span className="text-sm font-mono tabular-nums text-gray-500 dark:text-gray-400">
+                <AnimatedMetricValue value={healthScore} decimals={0} />/100
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+              {overBudgetCount > 0 ? `${overBudgetCount} living cat. over cap` : 'All living caps on track'}
+            </p>
+          </div>
+        </div>
 
-          {/* 4-Pillar Stacked Allocation Bar */}
+        {/* 4-Pillar Breakdown & Stacked Bar */}
+        <div className="p-4 sm:p-5 space-y-4">
           {totalIncome > 0 && (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <motion.div
                 initial={{ scaleX: 0 }}
                 animate={{ scaleX: 1 }}
                 transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
                 style={{ transformOrigin: 'left' }}
-                className="h-3 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex"
+                className="h-2.5 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden flex"
               >
                 <div
                   className="h-full bg-indigo-600 transition-all duration-500"
@@ -1646,897 +1728,748 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
                 <div
                   className="h-full bg-emerald-500 transition-all duration-500"
                   style={{ width: `${Math.min(100, (fourPillar.totalActualRetainedAndSaved / totalIncome) * 100)}%` }}
-                  title={`Retained in Bank & Saved: ${fourPillar.totalActualRetainedAndSaved.toFixed(0)} MAD`}
+                  title={`Live Retained in Bank & Saved: ${fourPillar.totalActualRetainedAndSaved.toFixed(0)} MAD`}
                 />
               </motion.div>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400 font-mono">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-gray-600 dark:text-gray-400 font-mono tabular-nums">
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-indigo-600" />
-                  Obligations: {fourPillar.obligationsPctOfIncome.toFixed(1)}%
+                  Obligations {fourPillar.obligationsPctOfIncome.toFixed(1)}%
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-amber-500" />
-                  Myself: {fourPillar.myselfPctOfIncome.toFixed(1)}%
+                  Myself {fourPillar.myselfPctOfIncome.toFixed(1)}%
                 </span>
                 {fourPillar.excludedProjectSpent > 0 && (
-                  <span className="flex items-center gap-1.5 text-sky-700 dark:text-sky-400 font-semibold">
+                  <span className="flex items-center gap-1.5 text-sky-700 dark:text-sky-400 font-medium">
                     <span className="h-2 w-2 rounded-full bg-sky-500" />
-                    Projects: {((fourPillar.excludedProjectSpent / totalIncome) * 100).toFixed(1)}%
+                    Projects {((fourPillar.excludedProjectSpent / totalIncome) * 100).toFixed(1)}%
                   </span>
                 )}
                 <span className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-blue-500" />
-                  Invested: {fourPillar.investedPctOfIncome.toFixed(1)}%
+                  Invested {fourPillar.investedPctOfIncome.toFixed(1)}%
                 </span>
-                <span className="flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
+                <span className="flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-400">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  Kept in Bank / Saved: {fourPillar.savedPctOfIncome.toFixed(1)}%
+                  Live in Bank {fourPillar.savedPctOfIncome.toFixed(1)}%
                 </span>
               </div>
             </div>
           )}
 
-          {/* 4 Pillar Cards */}
+          {/* 4 Pillars Clean Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Pillar 1: Obligations */}
-            <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-white dark:bg-gray-900/90 p-3.5 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">🏛️ Spent on Obligations</span>
-                <span className="text-[11px] font-mono font-semibold text-indigo-600 dark:text-indigo-400">
-                  {fourPillar.obligationsPctOfIncome.toFixed(1)}% of inc.
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3.5 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200">
+                  <span className="h-2 w-2 rounded-full bg-indigo-600" />
+                  Obligations
+                </span>
+                <span className="text-[11px] font-mono tabular-nums text-gray-500 dark:text-gray-400">
+                  {fourPillar.obligationsPctOfIncome.toFixed(1)}%
                 </span>
               </div>
-              <p className="text-xl font-black font-mono tabular-nums text-gray-900 dark:text-white">
+              <p className="text-lg font-bold font-mono tabular-nums text-gray-900 dark:text-white">
                 <AnimatedMetricValue value={fourPillar.spentOnObligations} decimals={0} suffix=" MAD" />
               </p>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
-                Budget: {fourPillar.plannedObligationsBudget.toFixed(0)} MAD •{' '}
-                {fourPillar.plannedObligationsBudget - fourPillar.spentOnObligations >= 0
-                  ? `${(fourPillar.plannedObligationsBudget - fourPillar.spentOnObligations).toFixed(0)} left`
-                  : `${Math.abs(fourPillar.plannedObligationsBudget - fourPillar.spentOnObligations).toFixed(0)} over`}
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+                Cap {fourPillar.plannedObligationsBudget.toFixed(0)} ·{' '}
+                <span className={fourPillar.plannedObligationsBudget - fourPillar.spentOnObligations < 0 ? 'text-red-600 dark:text-red-400' : ''}>
+                  {fourPillar.plannedObligationsBudget - fourPillar.spentOnObligations >= 0
+                    ? `${(fourPillar.plannedObligationsBudget - fourPillar.spentOnObligations).toFixed(0)} left`
+                    : `${Math.abs(fourPillar.plannedObligationsBudget - fourPillar.spentOnObligations).toFixed(0)} over`}
+                </span>
               </p>
             </div>
 
             {/* Pillar 2: Spent on Myself */}
-            <div className="rounded-xl border border-amber-100 dark:border-amber-900/50 bg-white dark:bg-gray-900/90 p-3.5 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-amber-700 dark:text-amber-300">✨ Spent on Myself</span>
-                <span className="text-[11px] font-mono font-semibold text-amber-600 dark:text-amber-400">
-                  {fourPillar.myselfPctOfIncome.toFixed(1)}% of inc.
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3.5 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200">
+                  <span className="h-2 w-2 rounded-full bg-amber-500" />
+                  Spent on Myself
+                </span>
+                <span className="text-[11px] font-mono tabular-nums text-gray-500 dark:text-gray-400">
+                  {fourPillar.myselfPctOfIncome.toFixed(1)}%
                 </span>
               </div>
-              <p className="text-xl font-black font-mono tabular-nums text-gray-900 dark:text-white">
+              <p className="text-lg font-bold font-mono tabular-nums text-gray-900 dark:text-white">
                 <AnimatedMetricValue value={fourPillar.spentOnMyself} decimals={0} suffix=" MAD" />
               </p>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
-                Budget: {fourPillar.plannedMyselfBudget.toFixed(0)} MAD •{' '}
-                {fourPillar.plannedMyselfBudget - fourPillar.spentOnMyself >= 0
-                  ? `${(fourPillar.plannedMyselfBudget - fourPillar.spentOnMyself).toFixed(0)} left`
-                  : `${Math.abs(fourPillar.plannedMyselfBudget - fourPillar.spentOnMyself).toFixed(0)} over`}
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+                Cap {fourPillar.plannedMyselfBudget.toFixed(0)} ·{' '}
+                <span className={fourPillar.plannedMyselfBudget - fourPillar.spentOnMyself < 0 ? 'text-red-600 dark:text-red-400' : ''}>
+                  {fourPillar.plannedMyselfBudget - fourPillar.spentOnMyself >= 0
+                    ? `${(fourPillar.plannedMyselfBudget - fourPillar.spentOnMyself).toFixed(0)} left`
+                    : `${Math.abs(fourPillar.plannedMyselfBudget - fourPillar.spentOnMyself).toFixed(0)} over`}
+                </span>
               </p>
             </div>
 
             {/* Pillar 3: Invested */}
-            <div className="rounded-xl border border-blue-100 dark:border-blue-900/50 bg-white dark:bg-gray-900/90 p-3.5 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-blue-700 dark:text-blue-300">📈 Invested (Wealth)</span>
-                <span className="text-[11px] font-mono font-semibold text-blue-600 dark:text-blue-400">
-                  {fourPillar.investedPctOfIncome.toFixed(1)}% of inc.
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3.5 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200">
+                  <span className="h-2 w-2 rounded-full bg-blue-500" />
+                  Invested
+                </span>
+                <span className="text-[11px] font-mono tabular-nums text-gray-500 dark:text-gray-400">
+                  {fourPillar.investedPctOfIncome.toFixed(1)}%
                 </span>
               </div>
-              <p className="text-xl font-black font-mono tabular-nums text-gray-900 dark:text-white">
+              <p className="text-lg font-bold font-mono tabular-nums text-gray-900 dark:text-white">
                 <AnimatedMetricValue value={fourPillar.investedAmount} decimals={0} suffix=" MAD" />
               </p>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono">
-                Target: {fourPillar.plannedInvestmentBudget.toFixed(0)} MAD • Stocks &amp; Crypto
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+                Target {fourPillar.plannedInvestmentBudget.toFixed(0)} MAD · Portfolio
               </p>
             </div>
 
-            {/* Pillar 4: Retained in Bank & Saved */}
-            <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/30 p-3.5 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">🏦 Retained in Bank</span>
-                <span className="text-[11px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                  {fourPillar.savedPctOfIncome.toFixed(1)}% kept
+            {/* Pillar 4: Retained in Bank (Clearly separates Protected Floor vs Live Unspent) */}
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 p-3.5 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  {isCurrentMonth && livingBudgetTotal > 0 ? 'Protected in Bank' : 'Retained in Bank'}
+                </span>
+                <span className="text-[11px] font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">
+                  {retainedHeadlinePct.toFixed(1)}%
                 </span>
               </div>
-              <p className="text-xl font-black font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
+              <p className="text-lg font-bold font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
                 <AnimatedMetricValue value={fourPillar.effectiveSavedForBudget} decimals={0} suffix=" MAD" />
               </p>
-              <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 font-mono">
-                Live in Bank: {fourPillar.liveRetainedInBank.toFixed(0)} MAD
-                {fourPillar.plannedSavingsBudget > 0 ? ` • Target: ${fourPillar.plannedSavingsBudget.toFixed(0)}` : ''}
+              <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 font-mono tabular-nums">
+                Live unspent: {fourPillar.liveRetainedInBank.toFixed(0)} MAD
+                {fourPillar.plannedSavingsBudget > 0 ? ` · Target ${fourPillar.plannedSavingsBudget.toFixed(0)}` : ''}
               </p>
+              {isCurrentMonth && livingBudgetTotal > 0 && (
+                <p className="text-[10px] text-emerald-700/70 dark:text-emerald-400/70">
+                  Floor kept if 100% of caps are spent
+                </p>
+              )}
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* ── Summary KPI Row ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="p-4">
-          <p className="text-xs text-gray-500 dark:text-gray-400">Spendable Living Budget</p>
-          <p className="text-2xl font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100">
-            <AnimatedMetricValue value={livingBudgetTotal} decimals={0} />
-          </p>
-          <p className="text-xs text-gray-400 font-mono">
-            MAD ({totalBudget.toFixed(0)} total w/ wealth)
-          </p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs text-gray-500 dark:text-gray-400">Living Spent So Far</p>
-          <p className={`text-2xl font-bold font-mono tabular-nums ${livingSpentTotal > livingBudgetTotal && livingBudgetTotal > 0 ? 'text-red-600' : 'text-gray-900 dark:text-gray-100'}`}>
-            <AnimatedMetricValue value={livingSpentTotal} decimals={0} />
-          </p>
-          <p className="text-xs text-gray-400 font-mono">
-            Oblig: {fourPillar.spentOnObligations.toFixed(0)} • Myself: {fourPillar.spentOnMyself.toFixed(0)}
-            {excludeProjectSpend && fourPillar.excludedProjectSpent > 0
-              ? ` (+${fourPillar.excludedProjectSpent.toFixed(0)} proj.)`
-              : ''}
-          </p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs text-gray-500 dark:text-gray-400">Spendable Remaining</p>
-          <p className={`text-2xl font-bold font-mono tabular-nums ${livingRemaining < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-            {livingBudgetTotal > 0 ? <AnimatedMetricValue value={livingRemaining} decimals={0} /> : '—'}
-          </p>
-          <p className="text-xs text-gray-400">MAD safe to spend</p>
-        </Card>
-        <Card className="p-4 flex flex-col items-start">
-          <p className="text-xs text-gray-500 dark:text-gray-400">Budget Health Score</p>
-          <div className="flex items-end gap-2">
-            <p className={`text-2xl font-bold ${gradeColor}`}>{grade}</p>
-            <p className="text-sm text-gray-500 mb-0.5 font-mono">
-              <AnimatedMetricValue value={healthScore} decimals={0} />/100
-            </p>
-          </div>
-          <p className="text-xs text-gray-400">{overBudgetCount > 0 ? `${overBudgetCount} living cat. over budget` : 'All living budgets on track'}</p>
-        </Card>
-      </div>
+          {/* Transparent Cash Reconciliation Line */}
+          {totalIncome > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+              <span>
+                Income {totalIncome.toFixed(0)} − Oblig {fourPillar.spentOnObligations.toFixed(0)} − Myself {fourPillar.spentOnMyself.toFixed(0)}
+                {fourPillar.excludedProjectSpent > 0 ? ` − Projects ${fourPillar.excludedProjectSpent.toFixed(0)}` : ''}
+                {fourPillar.investedAmount > 0 ? ` − Invested ${fourPillar.investedAmount.toFixed(0)}` : ''}
+                {fourPillar.explicitSavingsTx > 0 ? ` − Savings Tx ${fourPillar.explicitSavingsTx.toFixed(0)}` : ''}
+                {' = '}
+                <strong className="text-emerald-700 dark:text-emerald-400">
+                  {fourPillar.liveRetainedInBank.toFixed(0)} MAD live in bank
+                </strong>
+              </span>
+              {fourPillar.reimbursedIncomeExcluded > 0 && (
+                <span>Reimbursements stripped: {fourPillar.reimbursedIncomeExcluded.toFixed(0)} MAD</span>
+              )}
+            </div>
+          )}
+        </div>
 
-      {/* ── Overall Living Consumption Pace Bar ── */}
-      {livingBudgetTotal > 0 && (
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center justify-between gap-4 mb-2">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                <BarChart3 className="h-4 w-4 text-indigo-500" />
-                Monthly Living Spending Pace (Obligations + Spent on Myself)
-              </div>
-              <span className={`text-sm font-semibold font-mono tabular-nums ${pace.difference > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                {pace.difference > 0 ? '+' : ''}{pace.difference.toFixed(2)} MAD vs ideal pace
+        {/* Integrated Living Consumption Pace Strip */}
+        {livingBudgetTotal > 0 && (
+          <div className="px-4 py-3 sm:px-5 bg-gray-50/50 dark:bg-gray-900/40 space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                <BarChart3 className="h-3.5 w-3.5 text-indigo-500" />
+                Living Spending Pace
+              </span>
+              <span className={`font-semibold font-mono tabular-nums ${pace.difference > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                {pace.difference > 0 ? '+' : ''}{pace.difference.toFixed(0)} MAD vs ideal today ({pace.ideal.toFixed(0)} MAD)
               </span>
             </div>
             <div className="flex items-center gap-3">
               <AnimatedProgressBar
                 className="flex-1"
-                trackClassName="h-3 w-full rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden"
+                trackClassName="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden"
                 percent={livingBudgetTotal > 0 ? (livingSpentTotal / livingBudgetTotal) * 100 : 0}
                 barClassName={livingSpentTotal > livingBudgetTotal ? 'bg-red-500' : pace.difference > 0 ? 'bg-amber-500' : 'bg-emerald-500'}
               />
-              <span className="text-sm tabular-nums font-mono text-gray-500 dark:text-gray-400 shrink-0">
+              <span className="text-xs tabular-nums font-mono text-gray-500 dark:text-gray-400 shrink-0">
                 {livingBudgetTotal > 0 ? `${Math.min(100, (livingSpentTotal / livingBudgetTotal) * 100).toFixed(0)}%` : '—'}
               </span>
             </div>
-            <div className="flex justify-between text-xs text-gray-400 mt-1 font-mono">
-              <span>0 MAD</span>
-              <span>Ideal today: {pace.ideal.toFixed(0)} MAD</span>
-              <span>{livingBudgetTotal.toFixed(0)} MAD Living Cap</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Active Projects & Setup Budgets Hub ── */}
-      {(activeOrPlannedProjects.length > 0 || setActiveTab) && (
-        <Card className="border-sky-200/80 dark:border-sky-900/50 overflow-hidden shadow-xs">
-          <CardContent className="p-4 sm:p-5 space-y-3.5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
-                  <h3 className="text-sm sm:text-base font-bold text-gray-900 dark:text-gray-100">
-                    Active Projects &amp; Setup Budgets
-                  </h3>
-                </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {excludeProjectSpend
-                    ? 'Project-tagged expenses (like Room Setup, desks, chairs, or gear) are isolated from routine monthly category caps so big upgrades never trigger false overspend alerts.'
-                    : 'Currently showing Combined mode — Project expenses are merged into your routine monthly category caps.'}
-                </p>
-              </div>
-              {setActiveTab && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setActiveTab('contexts')}
-                  className="shrink-0 whitespace-nowrap"
-                >
-                  Manage Projects
-                  <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-
-            {activeOrPlannedProjects.length > 0 ? (
-              <div className="divide-y divide-gray-100 dark:divide-gray-800 border-t border-gray-100 dark:border-gray-800">
-                {activeOrPlannedProjects.map((proj) => {
-                  const pct =
-                    proj.budgetCap > 0 ? Math.min(100, (proj.totalSpent / proj.budgetCap) * 100) : 0;
-                  const isOver = proj.budgetCap > 0 && proj.totalSpent > proj.budgetCap;
-                  return (
-                    <div
-                      key={proj.context.id}
-                      className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                    >
-                      <div className="min-w-0 space-y-1 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                            {proj.context.name}
-                          </span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400">
-                            {proj.context.status}
-                          </span>
-                          {proj.plannedItemsCount > 0 && (
-                            <span className="text-xs font-mono tabular-nums text-sky-700 dark:text-sky-400">
-                              • {proj.purchasedCount}/{proj.plannedItemsCount} items (Est. {proj.plannedEstimateTotal.toFixed(0)} MAD)
-                            </span>
-                          )}
-                        </div>
-                        {proj.budgetCap > 0 && (
-                          <div className="max-w-md flex items-center gap-2.5">
-                            <div className="h-2 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${
-                                  isOver
-                                    ? 'bg-red-500'
-                                    : pct >= 80
-                                    ? 'bg-amber-500'
-                                    : 'bg-sky-500'
-                                }`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                            <span className="text-[11px] font-mono tabular-nums text-gray-500 dark:text-gray-400 shrink-0">
-                              {pct.toFixed(0)}%
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-left sm:text-right font-mono tabular-nums shrink-0">
-                        <p className="text-sm font-bold text-gray-900 dark:text-gray-100">
-                          {proj.totalSpent.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          {proj.budgetCap > 0 ? (
-                            <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
-                              {' '}
-                              / {proj.budgetCap.toLocaleString()} MAD
-                            </span>
-                          ) : (
-                            <span className="text-xs font-normal text-gray-500 dark:text-gray-400"> MAD</span>
-                          )}
-                        </p>
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                          This cycle: {proj.monthSpent.toFixed(0)} MAD
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs text-gray-500 dark:text-gray-400">
-                <span>
-                  Planning a Room Setup, tech upgrade, or multi-purchase project? Create a Project context to track a dedicated cap and planned item checklist separately from monthly caps.
-                </span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Interconnected Debt Payoff Reserve Hub ── */}
-      {totalPayableDebt > 0 && (
-        <Card className={`border overflow-hidden transition-all shadow-xs ${
-          isDebtFullyReserved
-            ? 'border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-r from-emerald-50/50 via-white to-white dark:from-emerald-950/20 dark:via-gray-900 dark:to-gray-900'
-            : 'border-orange-200 dark:border-orange-900/50 bg-gradient-to-r from-orange-50/60 via-white to-white dark:from-orange-950/20 dark:via-gray-900 dark:to-gray-900'
-        }`}>
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div className="flex items-start gap-3.5">
-                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-xs ${
-                  isDebtFullyReserved
-                    ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400'
-                    : 'bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400'
-                }`}>
-                  <CreditCard className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-bold text-sm sm:text-base text-gray-900 dark:text-gray-100">
-                      Debt Servicing &amp; Payoff Allocation
-                    </h3>
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                      isDebtFullyReserved
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                        : 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300'
-                    }`}>
-                      {isDebtFullyReserved ? (
-                        <><CheckCircle2 className="h-3.5 w-3.5" /> Budgeted &amp; Protected</>
-                      ) : (
-                        <><AlertTriangle className="h-3.5 w-3.5" /> Under-Reserved</>
-                      )}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 max-w-2xl">
-                    You have <strong className="text-gray-900 dark:text-gray-200">{totalPayableDebt.toFixed(2)} MAD</strong> across {pendingPayables.length} active payable debts.
-                    {isDebtFullyReserved
-                      ? ` Your ${monthLabel(monthRef.year, monthRef.month)} budget safely reserves ${currentDebtBudget.toFixed(2)} MAD for debt servicing.`
-                      : ` Recommended monthly payoff allocation: ${recommendedDebtAllocation.toFixed(2)} MAD. Currently only ${currentDebtBudget.toFixed(2)} MAD is budgeted for debt servicing.`}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
-                {!isDebtFullyReserved && (
-                  <Button
-                    size="sm"
-                    disabled={reservingDebt}
-                    onClick={handleAutoReserveDebt}
-                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs h-9 shadow-xs flex items-center gap-1.5"
-                  >
-                    <Zap className="h-3.5 w-3.5" />
-                    <span>{reservingDebt ? 'Reserving…' : `Auto-Reserve ${recommendedDebtAllocation.toFixed(0)} MAD in Budget`}</span>
-                  </Button>
-                )}
-                {setActiveTab && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setActiveTab('debts')}
-                    className="text-xs h-9 border-gray-200 dark:border-gray-800"
-                  >
-                    <span>View Debts &amp; IOUs</span>
-                    <ExternalLink className="ml-1.5 h-3.5 w-3.5 text-gray-400" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Interconnected Stock Portfolio & 📈 Investments Budget Hub ── */}
-      {(currentInvestmentBudget > 0 || (investmentsData && (investmentsData.positions.length > 0 || investmentsData.buyingPower.investmentWalletBalanceMad > 0))) && (
-        <Card className="border border-emerald-200 dark:border-emerald-900/50 bg-gradient-to-r from-emerald-50/50 via-white to-indigo-50/30 dark:from-emerald-950/20 dark:via-gray-900 dark:to-indigo-950/20 shadow-xs overflow-hidden">
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div className="flex items-start gap-3.5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
-                  <TrendingUp className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-bold text-sm sm:text-base text-gray-900 dark:text-gray-100">
-                      Equities &amp; Stock Portfolio Allocation (📈 Investments)
-                    </h3>
-                    <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/60 px-2.5 py-0.5 text-xs font-bold font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
-                      {currentInvestmentSpent.toFixed(0)} / {currentInvestmentBudget > 0 ? currentInvestmentBudget.toFixed(0) : recommendedInvestmentBudget.toFixed(0)} MAD Funded
-                    </span>
-                    {investmentsData && investmentsData.buyingPower.investmentWalletBalanceMad > 0 && (
-                      <span className="rounded-full bg-amber-100 dark:bg-amber-950/60 px-2.5 py-0.5 text-xs font-bold font-mono tabular-nums text-amber-800 dark:text-amber-300">
-                        Brokerage Cash: {investmentsData.buyingPower.investmentWalletBalanceMad.toFixed(0)} MAD
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 max-w-2xl">
-                    {currentInvestmentBudget > 0
-                      ? remainingInvestmentBudget > 0
-                        ? `You have ${remainingInvestmentBudget.toFixed(2)} MAD left in your 📈 Investments target this cycle. Transferring cash to your Brokerage Reserve wallet or buying stocks directly from Bank/Cash automatically tracks against this target.`
-                        : `You have fulfilled 100% of your ${currentInvestmentBudget.toFixed(0)} MAD 📈 Investments target this cycle! Buying stocks using cash already inside your Brokerage Reserve wallet will not double-count.`
-                      : `You hold ${investmentsData?.positions.length || 0} stock positions worth ${(investmentsData?.totalPortfolioValueMad || 0).toFixed(0)} MAD. Set a monthly 📈 Investments target (recommended 10%: ${recommendedInvestmentBudget.toFixed(0)} MAD) to automate your Payday Stock Splitter.`}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                {currentInvestmentBudget <= 0 && (
-                  <Button
-                    size="sm"
-                    onClick={() => onSaveBudget('📈 Investments', monthRef.year, monthRef.month, recommendedInvestmentBudget)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-9 flex items-center gap-1.5"
-                  >
-                    <Zap className="h-3.5 w-3.5" />
-                    <span>Set {recommendedInvestmentBudget.toFixed(0)} MAD Stock Target</span>
-                  </Button>
-                )}
-                {onFundInvestmentWallet && remainingInvestmentBudget > 0 && isCurrentMonth && (
-                  <Button
-                    size="sm"
-                    disabled={fundingBrokerage}
-                    onClick={handleFundRemainingInvestmentBudget}
-                    className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-9 flex items-center gap-1.5"
-                  >
-                    <WalletCards className="h-3.5 w-3.5" />
-                    <span>{fundingBrokerage ? 'Funding…' : `Fund ${remainingInvestmentBudget.toFixed(0)} MAD to Brokerage`}</span>
-                  </Button>
-                )}
-                {setActiveTab && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setActiveTab('investments')}
-                    className="text-xs h-9 border-gray-200 dark:border-gray-800"
-                  >
-                    <span>Open Stock Portfolio</span>
-                    <ExternalLink className="ml-1.5 h-3.5 w-3.5 text-gray-400" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Interconnected Smart Surplus Sweep into Savings Goals ── */}
-      {budgetSurplus > 0 && goals.length > 0 && (
-        <Card className="border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-50/70 via-teal-50/30 to-white dark:from-indigo-950/30 dark:via-teal-950/20 dark:to-gray-900 shadow-xs overflow-hidden">
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <div className="flex items-start gap-3.5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
-                  <PiggyBank className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-bold text-sm sm:text-base text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
-                      <Sparkles className="h-4 w-4 text-amber-500" />
-                      Smart Surplus Sweep: Allocate Unspent Living Budget to Goals
-                    </h3>
-                    <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/60 px-2.5 py-0.5 text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                      +{budgetSurplus.toFixed(2)} MAD Unspent Living Budget
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 max-w-2xl">
-                    This money is already retained in your bank account. You can optionally earmark a portion of your unspent living budget directly into a specific Savings Goal milestone.
-                  </p>
-                </div>
-              </div>
-
-              {/* Sweep Action Controls */}
-              <div className="flex flex-wrap items-center gap-2 pt-2 lg:pt-0">
-                <div className="flex items-center gap-1.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1">
-                  <select
-                    value={selectedGoalId}
-                    onChange={(e) => setSelectedGoalId(e.target.value)}
-                    className="bg-transparent text-xs font-semibold text-gray-900 dark:text-gray-100 focus:outline-none px-2 py-1 max-w-[140px] truncate"
-                  >
-                    {goals.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        🎯 {g.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="flex items-center gap-1 border-l border-gray-200 dark:border-gray-700 pl-1.5">
-                    {[0.25, 0.5, 1].map((ratio) => {
-                      const val = Math.round(budgetSurplus * ratio);
-                      return (
-                        <button
-                          key={ratio}
-                          type="button"
-                          onClick={() => setSweepAmount(String(val))}
-                          className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-indigo-900 text-gray-700 dark:text-gray-300"
-                        >
-                          {ratio === 1 ? '100%' : `${ratio * 100}%`}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <input
-                    type="number"
-                    min="1"
-                    max={budgetSurplus}
-                    placeholder={budgetSurplus.toFixed(0)}
-                    value={sweepAmount}
-                    onChange={(e) => setSweepAmount(e.target.value)}
-                    className="w-16 bg-transparent text-xs font-bold text-right text-indigo-600 dark:text-indigo-400 focus:outline-none px-1"
-                  />
-                  <span className="text-[10px] text-gray-400 pr-1">MAD</span>
-                </div>
-
-                <Button
-                  size="sm"
-                  disabled={sweeping || !onContributeGoal}
-                  onClick={handleExecuteSurplusSweep}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-9 shadow-xs flex items-center gap-1.5"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>{sweeping ? 'Sweeping…' : 'Sweep to Goal'}</span>
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Model Selector + Add Form ── */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-3 border-b border-gray-100 dark:border-gray-800/60">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-base font-bold">Add / Update Budget or Retention Target</CardTitle>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 font-medium">
-                  {setCategoriesCount} / {expenseCategories.length} Set
-                </span>
-              </div>
-              <div>
-                {totalIncome > 0 ? (
-                  unbudgetedIncome > 0.01 ? (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5 shadow-2xs">
-                      <Landmark className="w-3.5 h-3.5 text-emerald-500" />
-                      {unbudgetedIncome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD Unbudgeted (Auto-Retained in Bank)
-                    </span>
-                  ) : unbudgetedIncome < -0.01 ? (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300 border border-red-200 dark:border-red-800 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
-                      Over-allocated by {Math.abs(unbudgetedIncome).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MAD
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />
-                      100% Allocated Across Spending &amp; Retention
-                    </span>
-                  )
-                ) : (
-                  <span className="text-xs text-gray-400 font-medium">
-                    {unsetCategories.length} Categories Unbudgeted
-                  </span>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-4 space-y-4">
-            {/* Allocation Meter & Quick Summary */}
-            <div className="p-3 rounded-xl bg-gray-50/80 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-800 space-y-2">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs font-mono">
-                <div>
-                  <span className="text-gray-400 block text-[11px] font-sans">Period Income</span>
-                  <span className="font-bold text-gray-800 dark:text-gray-200">
-                    {totalIncome > 0 ? `${totalIncome.toLocaleString(undefined, { minimumFractionDigits: 0 })} MAD` : '—'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-400 block text-[11px] font-sans">Spendable Budgets</span>
-                  <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                    {livingBudgetTotal.toLocaleString(undefined, { minimumFractionDigits: 0 })} MAD
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-400 block text-[11px] font-sans">Wealth Targets</span>
-                  <span className="font-bold text-blue-600 dark:text-blue-400">
-                    {(fourPillar.plannedSavingsBudget + fourPillar.plannedInvestmentBudget).toLocaleString(undefined, { minimumFractionDigits: 0 })} MAD
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-400 block text-[11px] font-sans">Kept in Bank (Auto)</span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                    {fourPillar.effectiveSavedForBudget.toLocaleString(undefined, { minimumFractionDigits: 0 })} MAD
-                  </span>
-                </div>
-              </div>
-              {totalIncome > 0 && (
-                <div className="space-y-1">
-                  <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden flex">
-                    <div
-                      className={`h-full transition-all duration-300 ${totalBudget > totalIncome ? 'bg-red-500' : 'bg-indigo-600'}`}
-                      style={{ width: `${Math.min(100, (totalBudget / totalIncome) * 100)}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[10px] text-gray-400">
-                    <span>{((totalBudget / totalIncome) * 100).toFixed(0)}% Explicitly Budgeted</span>
-                    <span>
-                      {unbudgetedIncome >= 0
-                        ? `${((unbudgetedIncome / totalIncome) * 100).toFixed(0)}% Unbudgeted (Automatically Kept in Bank)`
-                        : 'Over budget'}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Unset Categories Quick Pick Chips */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  {unsetCategories.length > 0 ? `Unset Categories (${unsetCategories.length} remaining):` : 'All Categories Budgeted:'}
-                </span>
-                {unsetCategories.length > 0 && (
-                  <span className="text-[11px] text-gray-400">Click a chip to set its budget</span>
-                )}
-              </div>
-              {unsetCategories.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
-                  {unsetCategories.map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => {
-                        setNewCategory(cat);
-                        setNewAmount('');
-                      }}
-                      className={`text-xs px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1 ${
-                        newCategory === cat
-                          ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 font-semibold shadow-2xs scale-105'
-                          : 'border-dashed border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 hover:border-indigo-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      <span>{cat}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-2 rounded-lg bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>All 16 categories have an active budget! You can select any category below to adjust its amount.</span>
-                </div>
-              )}
-            </div>
-
-            {/* Form */}
-            <form onSubmit={handleAdd} className="space-y-3 pt-1">
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
-                <div className="sm:col-span-6 space-y-1">
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                    Category
-                  </label>
-                  <Select value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
-                    {expenseCategories.map((c) => {
-                      const existingAmt = monthBudgetsMap.get(c) ?? 0;
-                      const p = getCategoryPillar(c);
-                      const tag = p === 'myself' ? 'Myself' : p === 'obligations' ? 'Obligation' : p === 'investments' ? 'Investment' : 'Bank Retention';
-                      return (
-                        <option key={c} value={c}>
-                          {c} [{tag}] {existingAmt > 0 ? `(Set: ${existingAmt.toFixed(0)} MAD)` : '— (Unset)'}
-                        </option>
-                      );
-                    })}
-                  </Select>
-                  <div className="text-[11px] pt-0.5">
-                    {currentCategoryExistingBudget > 0 ? (
-                      <span className="text-indigo-600 dark:text-indigo-400 font-medium">
-                        Current budget: {currentCategoryExistingBudget.toFixed(2)} MAD (updating will overwrite)
-                      </span>
-                    ) : (
-                      <span className="text-amber-600 dark:text-amber-400 font-medium">
-                        Currently unset (0.00 MAD)
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="sm:col-span-4 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
-                      Amount (MAD)
-                    </label>
-                    {unbudgetedIncome > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setNewAmount(Math.max(0, unbudgetedIncome).toFixed(2))}
-                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
-                      >
-                        Fill Max ({Math.max(0, unbudgetedIncome).toFixed(0)})
-                      </button>
-                    )}
-                  </div>
-                  <Input
-                    required
-                    min="0"
-                    step="0.01"
-                    type="number"
-                    value={newAmount}
-                    onChange={(e) => setNewAmount(e.target.value)}
-                    placeholder={currentCategoryExistingBudget > 0 ? currentCategoryExistingBudget.toFixed(2) : '0.00'}
-                  />
-                  {isNewAmountValid && totalIncome > 0 && (
-                    <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                      Leaves{' '}
-                      <span className={projectedRemaining < 0 ? 'font-bold text-red-600' : 'font-bold text-emerald-600'}>
-                        {projectedRemaining >= 0
-                          ? `${projectedRemaining.toFixed(2)} MAD`
-                          : `-${Math.abs(projectedRemaining).toFixed(2)} MAD`}
-                      </span>{' '}
-                      unbudgeted in bank
-                    </div>
-                  )}
-                </div>
-
-                <div className="sm:col-span-2 pt-5 sm:pt-6">
-                  <Button type="submit" disabled={addSaving} className="w-full h-9 font-medium">
-                    <Plus className="mr-1 h-4 w-4" />
-                    {addSaving ? 'Saving…' : currentCategoryExistingBudget > 0 ? 'Update' : 'Set'}
-                  </Button>
-                </div>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">View Mode</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {([
-              { id: 'category', label: 'Category View', icon: LayoutGrid, desc: '4-Pillar category cards + Bank retention' },
-              { id: '503020', label: '50/30/20 Rule', icon: PieChart, desc: 'Obligations / Myself / Retained split' },
-              { id: 'envelope', label: 'Envelope View', icon: Layers, desc: 'Living envelopes + Wealth targets' },
-            ] as { id: BudgetModel; label: string; icon: any; desc: string }[]).map(({ id, label, icon: Icon, desc }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setBudgetModel(id)}
-                className={`w-full flex items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${budgetModel === id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-700' : 'border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
-              >
-                <Icon className={`h-4 w-4 shrink-0 ${budgetModel === id ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400'}`} />
-                <div>
-                  <p className={`text-sm font-medium ${budgetModel === id ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-700 dark:text-gray-300'}`}>{label}</p>
-                  <p className="text-xs text-gray-400">{desc}</p>
-                </div>
-              </button>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ── Copy + Pillar Filter Bar + Donut ── */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" disabled={copyLoading} onClick={handleCopy} className="whitespace-nowrap shrink-0">
-            <Copy className="mr-2 h-4 w-4" />
-            {copyLoading ? 'Copying…' : "Copy previous month's budgets"}
-          </Button>
-          {budgetRows.length > 0 && totalBudget > 0 && (
-            <Button type="button" variant="outline" size="sm" disabled={clearLoading} onClick={handleClearAll} className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-900/30 whitespace-nowrap shrink-0">
-              <Trash2 className="mr-2 h-4 w-4" />
-              Clear All
-            </Button>
-          )}
-        </div>
-
-        {/* Pillar Filter Pills */}
-        {budgetModel === 'category' && (
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            {([
-              { id: 'all', label: `All (${budgetRows.length})` },
-              { id: 'obligations', label: `🏛️ Obligations (${budgetRows.filter((c) => getCategoryPillar(c) === 'obligations').length})` },
-              { id: 'myself', label: `✨ Spent on Myself (${budgetRows.filter((c) => getCategoryPillar(c) === 'myself').length})` },
-              { id: 'wealth', label: `🏦 Saved & Invested (${budgetRows.filter((c) => isWealthAllocationCategory(c)).length})` },
-            ] as { id: PillarFilter; label: string }[]).map((tab) => {
-              const active = pillarFilter === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setPillarFilter(tab.id)}
-                  className={`relative px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
-                    active
-                      ? 'text-white'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId="budgetPillarFilterPill"
-                      transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                      className="absolute inset-0 rounded-lg bg-indigo-600 shadow-xs"
-                    />
-                  )}
-                  <span className="relative z-10">{tab.label}</span>
-                </button>
-              );
-            })}
           </div>
         )}
       </div>
 
-      {/* ── Main Content Area (switches by model) ── */}
-      {budgetModel === 'category' && (
-        <>
-          {filteredBudgetRows.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {filteredBudgetRows.map((cat) => {
-                const budget = budgetFor(budgets, cat, monthRef.year, monthRef.month);
-                const spent = getEffectiveCategoryAmount(cat);
-                const isSavings = isSavingsRetentionCategory(cat);
-                const isInvest = isInvestmentCategory(cat);
+      {/* ── Section 3: Quick Set / Update Category Budget Bar ── */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Set or Update Category Cap
+            </h3>
+            <span className="text-xs font-mono tabular-nums text-gray-500 dark:text-gray-400">
+              {setCategoriesCount}/{expenseCategories.length} set
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-xs font-mono tabular-nums">
+            {totalIncome > 0 && (
+              <span
+                className={
+                  unbudgetedIncome < -0.01
+                    ? 'text-red-600 dark:text-red-400 font-medium'
+                    : 'text-emerald-700 dark:text-emerald-400 font-medium'
+                }
+              >
+                {unbudgetedIncome > 0.01
+                  ? `${unbudgetedIncome.toLocaleString(undefined, { maximumFractionDigits: 0 })} MAD unbudgeted (stays in bank)`
+                  : unbudgetedIncome < -0.01
+                  ? `Over-allocated by ${Math.abs(unbudgetedIncome).toLocaleString(undefined, { maximumFractionDigits: 0 })} MAD`
+                  : '100% of income allocated'}
+              </span>
+            )}
+            {unsetCategories.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowUnsetPicker((v) => !v)}
+                className="font-sans text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                {showUnsetPicker ? 'Hide unset' : `Pick unset (${unsetCategories.length})`}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Inline Form */}
+        <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+          <div className="sm:col-span-6 space-y-1">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+              Category
+            </label>
+            <Select value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
+              {expenseCategories.map((c) => {
+                const existingAmt = monthBudgetsMap.get(c) ?? 0;
+                const p = getCategoryPillar(c);
+                const tag = PILLAR_META[p].shortLabel;
                 return (
-                  <BudgetCard
-                    key={cat}
-                    category={cat}
-                    budget={budget}
-                    spent={spent}
-                    year={monthRef.year}
-                    month={monthRef.month}
-                    payrolls={payrolls}
-                    isCurrentMonth={isCurrentMonth}
-                    retentionMeta={
-                      isSavings || isInvest
-                        ? {
-                            isSavingsRetention: isSavings,
-                            isInvestmentTarget: isInvest,
-                            protectedBankRetention: fourPillar.protectedBankRetention,
-                            liveRetainedInBank: fourPillar.liveRetainedInBank,
-                            explicitTxAmount: isSavings ? fourPillar.explicitSavingsTx : fourPillar.investedAmount,
-                          }
-                        : undefined
-                    }
-                    onSave={(amount) => onSaveBudget(cat, monthRef.year, monthRef.month, amount)}
-                    onDelete={budget ? () => onDeleteBudget(budget.id) : undefined}
-                  />
+                  <option key={c} value={c}>
+                    {c} [{tag}] {existingAmt > 0 ? `(${existingAmt.toFixed(0)} MAD)` : '— Unset'}
+                  </option>
+                );
+              })}
+            </Select>
+          </div>
+
+          <div className="sm:col-span-4 space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                Monthly Cap (MAD)
+              </label>
+              {unbudgetedIncome > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setNewAmount(Math.max(0, unbudgetedIncome).toFixed(2))}
+                  className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium font-mono"
+                >
+                  Fill {Math.max(0, unbudgetedIncome).toFixed(0)}
+                </button>
+              )}
+            </div>
+            <Input
+              required
+              min="0"
+              step="0.01"
+              type="number"
+              value={newAmount}
+              onChange={(e) => setNewAmount(e.target.value)}
+              placeholder={currentCategoryExistingBudget > 0 ? currentCategoryExistingBudget.toFixed(2) : '0.00'}
+              className="font-mono"
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <Button type="submit" disabled={addSaving} className="w-full h-10 font-medium whitespace-nowrap">
+              <Plus className="mr-1 h-4 w-4" />
+              {addSaving ? 'Saving…' : currentCategoryExistingBudget > 0 ? 'Update' : 'Set Cap'}
+            </Button>
+          </div>
+        </form>
+
+        {/* Subtle live preview / status line */}
+        {isNewAmountValid && totalIncome > 0 && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+            Saving {parsedNewAmount.toFixed(0)} MAD leaves{' '}
+            <strong className={projectedRemaining < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}>
+              {projectedRemaining >= 0
+                ? `${projectedRemaining.toFixed(0)} MAD`
+                : `-${Math.abs(projectedRemaining).toFixed(0)} MAD`}
+            </strong>{' '}
+            unbudgeted in bank.
+          </p>
+        )}
+
+        {/* Collapsible Unset Category Quick Picker */}
+        {showUnsetPicker && unsetCategories.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-100 dark:border-gray-800">
+            {unsetCategories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => {
+                  setNewCategory(cat);
+                  setNewAmount('');
+                }}
+                className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                  newCategory === cat
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 font-medium'
+                    : 'border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/60 text-gray-700 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Section 4: Category Budgets Workspace & View Switcher ── */}
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          {/* View Mode Segmented Control */}
+          <div className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-100/70 dark:bg-gray-900 w-fit">
+            {([
+              { id: 'category', label: 'Categories', icon: LayoutGrid },
+              { id: '503020', label: '50/30/20', icon: PieChart },
+              { id: 'envelope', label: 'Envelopes', icon: Layers },
+            ] as { id: BudgetModel; label: string; icon: any }[]).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setBudgetModel(id)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
+                  budgetModel === id
+                    ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-2xs'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Pillar Filter Tabs (Category View) */}
+          {budgetModel === 'category' && (
+            <div className="flex items-center gap-1 overflow-x-auto">
+              {([
+                { id: 'all', label: `All (${budgetRows.length})` },
+                { id: 'obligations', label: `Obligations (${budgetRows.filter((c) => getCategoryPillar(c) === 'obligations').length})` },
+                { id: 'myself', label: `Myself (${budgetRows.filter((c) => getCategoryPillar(c) === 'myself').length})` },
+                { id: 'wealth', label: `Saved & Invested (${budgetRows.filter((c) => isWealthAllocationCategory(c)).length})` },
+              ] as { id: PillarFilter; label: string }[]).map((tab) => {
+                const active = pillarFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setPillarFilter(tab.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                      active
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
                 );
               })}
             </div>
-          ) : (
-            <Card>
-              <CardContent>
-                <p className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">
-                  No spending or budgets in this filter for {monthLabel(monthRef.year, monthRef.month)} yet.
-                  <br />Use the form above to set your first budget.
-                </p>
-              </CardContent>
-            </Card>
           )}
-        </>
-      )}
 
-      {budgetModel === '503020' && (
-        <Rule503020View
-          budgets={budgets}
-          totalBudget={totalBudget}
-          year={monthRef.year}
-          month={monthRef.month}
-          fourPillar={fourPillar}
-        />
-      )}
+          {/* Utility Actions */}
+          <div className="flex items-center gap-2 shrink-0">
+            <Button type="button" variant="outline" size="sm" disabled={copyLoading} onClick={handleCopy} className="whitespace-nowrap shrink-0 h-8 text-xs">
+              <Copy className="mr-1.5 h-3.5 w-3.5" />
+              {copyLoading ? 'Copying…' : 'Copy Prev Month'}
+            </Button>
+            {budgetRows.length > 0 && totalBudget > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={clearLoading}
+                onClick={handleClearAll}
+                className="h-8 text-xs text-red-600 dark:text-red-400 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-900/40 whitespace-nowrap shrink-0"
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                Clear
+              </Button>
+            )}
+          </div>
+        </div>
 
-      {budgetModel === 'envelope' && (
-        <EnvelopeView
-          budgets={budgets}
-          transactions={transactions}
-          year={monthRef.year}
-          month={monthRef.month}
-          payrolls={payrolls}
-          wallets={wallets}
-          fourPillar={fourPillar}
-          onSave={(cat, amount) => onSaveBudget(cat, monthRef.year, monthRef.month, amount)}
-          onDelete={onDeleteBudget}
-        />
-      )}
+        {/* Main View Area */}
+        {budgetModel === 'category' && (
+          <>
+            {filteredBudgetRows.length > 0 ? (
+              <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-3">
+                {filteredBudgetRows.map((cat) => {
+                  const budget = budgetFor(budgets, cat, monthRef.year, monthRef.month);
+                  const spent = getEffectiveCategoryAmount(cat);
+                  const isSavings = isSavingsRetentionCategory(cat);
+                  const isInvest = isInvestmentCategory(cat);
+                  return (
+                    <BudgetCard
+                      key={cat}
+                      category={cat}
+                      budget={budget}
+                      spent={spent}
+                      year={monthRef.year}
+                      month={monthRef.month}
+                      payrolls={payrolls}
+                      isCurrentMonth={isCurrentMonth}
+                      retentionMeta={
+                        isSavings || isInvest
+                          ? {
+                              isSavingsRetention: isSavings,
+                              isInvestmentTarget: isInvest,
+                              protectedBankRetention: fourPillar.protectedBankRetention,
+                              liveRetainedInBank: fourPillar.liveRetainedInBank,
+                              explicitTxAmount: isSavings ? fourPillar.explicitSavingsTx : fourPillar.investedAmount,
+                            }
+                          : undefined
+                      }
+                      onSave={(amount) => onSaveBudget(cat, monthRef.year, monthRef.month, amount)}
+                      onDelete={budget ? () => onDeleteBudget(budget.id) : undefined}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 py-12 px-4 text-center">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  No spending or budgets in this filter for {monthLabel(monthRef.year, monthRef.month)} yet.
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  Use the category cap form above or click Auto-Budget to populate your month.
+                </p>
+              </div>
+            )}
+          </>
+        )}
 
-      {/* ── Starter Budget & Planning Templates ── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-indigo-500" />
-            Starter Templates
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TemplatesGallery
-            compact
-            onApplied={() => {
-              showToast('Starter template applied!');
-              window.dispatchEvent(new CustomEvent('truespend:tier-changed'));
-            }}
+        {budgetModel === '503020' && (
+          <Rule503020View
+            budgets={budgets}
+            totalBudget={totalBudget}
+            year={monthRef.year}
+            month={monthRef.month}
+            fourPillar={fourPillar}
           />
-        </CardContent>
-      </Card>
+        )}
+
+        {budgetModel === 'envelope' && (
+          <EnvelopeView
+            budgets={budgets}
+            transactions={transactions}
+            year={monthRef.year}
+            month={monthRef.month}
+            payrolls={payrolls}
+            wallets={wallets}
+            fourPillar={fourPillar}
+            onSave={(cat, amount) => onSaveBudget(cat, monthRef.year, monthRef.month, amount)}
+            onDelete={onDeleteBudget}
+          />
+        )}
+      </div>
+
+      {/* ── Section 5: Connected Plans & Allocations (Compact 2-Col Grid) ── */}
+      {hasConnectedHubs && (
+        <div className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            Connected Plans &amp; Allocations
+          </h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Active Projects & Setup Budgets */}
+            {(activeOrPlannedProjects.length > 0 || setActiveTab) && (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex flex-col justify-between gap-3">
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                        <Layers className="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                        Projects &amp; Setup Budgets
+                      </h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {excludeProjectSpend
+                          ? 'Tracked separately from Routine Monthly caps.'
+                          : 'Currently merged into Combined monthly caps.'}
+                      </p>
+                    </div>
+                    {setActiveTab && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setActiveTab('contexts')}
+                        className="h-8 text-xs shrink-0 whitespace-nowrap"
+                      >
+                        Manage
+                        <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+
+                  {activeOrPlannedProjects.length > 0 ? (
+                    <div className="divide-y divide-gray-100 dark:divide-gray-800 border-t border-gray-100 dark:border-gray-800">
+                      {activeOrPlannedProjects.map((proj) => {
+                        const pct = proj.budgetCap > 0 ? Math.min(100, (proj.totalSpent / proj.budgetCap) * 100) : 0;
+                        const isOver = proj.budgetCap > 0 && proj.totalSpent > proj.budgetCap;
+                        return (
+                          <div key={proj.context.id} className="py-2.5 space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="min-w-0 flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                                  {proj.context.name}
+                                </span>
+                                <span className="text-[11px] text-gray-400 shrink-0">{proj.context.status}</span>
+                              </div>
+                              <div className="text-right font-mono tabular-nums shrink-0">
+                                <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                                  {proj.totalSpent.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                  {proj.budgetCap > 0 ? ` / ${proj.budgetCap.toLocaleString()}` : ''} MAD
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 text-[11px] text-gray-500 dark:text-gray-400 font-mono tabular-nums">
+                              {proj.budgetCap > 0 ? (
+                                <div className="flex items-center gap-2 flex-1 max-w-xs">
+                                  <div className="h-1.5 flex-1 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${isOver ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-sky-500'}`}
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                  <span>{pct.toFixed(0)}%</span>
+                                </div>
+                              ) : (
+                                <span>
+                                  {proj.plannedItemsCount > 0 ? `${proj.purchasedCount}/${proj.plannedItemsCount} items` : 'No cap'}
+                                </span>
+                              )}
+                              <span>This cycle: {proj.monthSpent.toFixed(0)} MAD</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-100 dark:border-gray-800">
+                      Create a Project context for room setups, gear upgrades, or multi-purchase plans to keep them separate from monthly caps.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Debt Servicing Reserve */}
+            {totalPayableDebt > 0 && (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex flex-col justify-between gap-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                      <CreditCard className="h-4 w-4 text-gray-500 dark:text-gray-400 shrink-0" />
+                      Debt Servicing Reserve
+                    </h4>
+                    <span className={`text-xs font-medium ${isDebtFullyReserved ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {isDebtFullyReserved ? 'Reserved' : 'Under-Reserved'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                    <strong className="font-mono tabular-nums text-gray-900 dark:text-gray-200">{totalPayableDebt.toFixed(0)} MAD</strong> across {pendingPayables.length} active payable{pendingPayables.length !== 1 ? 's' : ''}.{' '}
+                    {isDebtFullyReserved
+                      ? `${currentDebtBudget.toFixed(0)} MAD reserved in this month's budget.`
+                      : `Recommended monthly reserve: ${recommendedDebtAllocation.toFixed(0)} MAD (currently ${currentDebtBudget.toFixed(0)} MAD).`}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                  {!isDebtFullyReserved && (
+                    <Button
+                      size="sm"
+                      disabled={reservingDebt}
+                      onClick={handleAutoReserveDebt}
+                      className="h-8 text-xs bg-amber-600 hover:bg-amber-700 text-white"
+                    >
+                      <Zap className="mr-1.5 h-3.5 w-3.5" />
+                      {reservingDebt ? 'Reserving…' : `Reserve ${recommendedDebtAllocation.toFixed(0)} MAD`}
+                    </Button>
+                  )}
+                  {setActiveTab && (
+                    <Button size="sm" variant="outline" onClick={() => setActiveTab('debts')} className="h-8 text-xs">
+                      View Debts
+                      <ExternalLink className="ml-1.5 h-3 w-3 text-gray-400" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Stock Portfolio Allocation */}
+            {(currentInvestmentBudget > 0 || (investmentsData && (investmentsData.positions.length > 0 || investmentsData.buyingPower.investmentWalletBalanceMad > 0))) && (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex flex-col justify-between gap-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                      <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                      Stock Portfolio Target
+                    </h4>
+                    <span className="text-xs font-mono tabular-nums font-semibold text-blue-700 dark:text-blue-400">
+                      {currentInvestmentSpent.toFixed(0)} / {currentInvestmentBudget > 0 ? currentInvestmentBudget.toFixed(0) : recommendedInvestmentBudget.toFixed(0)} MAD
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                    {currentInvestmentBudget > 0
+                      ? remainingInvestmentBudget > 0
+                        ? `${remainingInvestmentBudget.toFixed(0)} MAD left in this cycle's investment target.`
+                        : `100% of your ${currentInvestmentBudget.toFixed(0)} MAD target funded this cycle.`
+                      : `${investmentsData?.positions.length || 0} positions worth ${(investmentsData?.totalPortfolioValueMad || 0).toFixed(0)} MAD.`}
+                    {investmentsData && investmentsData.buyingPower.investmentWalletBalanceMad > 0
+                      ? ` Brokerage cash: ${investmentsData.buyingPower.investmentWalletBalanceMad.toFixed(0)} MAD.`
+                      : ''}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                  {currentInvestmentBudget <= 0 && (
+                    <Button
+                      size="sm"
+                      onClick={() => onSaveBudget('📈 Investments', monthRef.year, monthRef.month, recommendedInvestmentBudget)}
+                      className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      Set {recommendedInvestmentBudget.toFixed(0)} MAD Target
+                    </Button>
+                  )}
+                  {onFundInvestmentWallet && remainingInvestmentBudget > 0 && isCurrentMonth && (
+                    <Button
+                      size="sm"
+                      disabled={fundingBrokerage}
+                      onClick={handleFundRemainingInvestmentBudget}
+                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      <WalletCards className="mr-1.5 h-3.5 w-3.5" />
+                      {fundingBrokerage ? 'Funding…' : `Fund ${remainingInvestmentBudget.toFixed(0)} MAD`}
+                    </Button>
+                  )}
+                  {setActiveTab && (
+                    <Button size="sm" variant="outline" onClick={() => setActiveTab('investments')} className="h-8 text-xs">
+                      Portfolio
+                      <ExternalLink className="ml-1.5 h-3 w-3 text-gray-400" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Smart Surplus Sweep into Savings Goals */}
+            {budgetSurplus > 0 && goals.length > 0 && (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex flex-col justify-between gap-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                      <PiggyBank className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      Sweep Unspent Living Budget
+                    </h4>
+                    <span className="text-xs font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">
+                      +{budgetSurplus.toFixed(0)} MAD available
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    Optionally earmark unspent living budget toward a Savings Goal.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                  <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-1 flex-1 min-w-[200px]">
+                    <select
+                      value={selectedGoalId}
+                      onChange={(e) => setSelectedGoalId(e.target.value)}
+                      className="bg-transparent text-xs font-medium text-gray-900 dark:text-gray-100 focus:outline-none px-1.5 py-1 max-w-[120px] truncate"
+                    >
+                      {goals.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex items-center gap-1 border-l border-gray-200 dark:border-gray-700 pl-1.5">
+                      {[0.25, 0.5, 1].map((ratio) => {
+                        const val = Math.round(budgetSurplus * ratio);
+                        return (
+                          <button
+                            key={ratio}
+                            type="button"
+                            onClick={() => setSweepAmount(String(val))}
+                            className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 hover:border-indigo-400 text-gray-700 dark:text-gray-300"
+                          >
+                            {ratio === 1 ? '100%' : `${ratio * 100}%`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      max={budgetSurplus}
+                      placeholder={budgetSurplus.toFixed(0)}
+                      value={sweepAmount}
+                      onChange={(e) => setSweepAmount(e.target.value)}
+                      className="w-16 bg-transparent text-xs font-mono font-semibold text-right text-gray-900 dark:text-gray-100 focus:outline-none px-1 ml-auto"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={sweeping || !onContributeGoal}
+                    onClick={handleExecuteSurplusSweep}
+                    className="h-8 text-xs bg-indigo-600 hover:bg-indigo-700 text-white shrink-0"
+                  >
+                    {sweeping ? 'Sweeping…' : 'Sweep'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Section 6: Starter Templates (Collapsible Disclosure) ── */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowTemplates((v) => !v)}
+          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-indigo-500 shrink-0" />
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Starter Budget Templates
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">
+              Quick-start presets for common monthly lifestyles
+            </span>
+          </div>
+          <ChevronDown
+            className={`h-4 w-4 text-gray-400 transition-transform ${showTemplates ? 'rotate-180' : ''}`}
+          />
+        </button>
+        {showTemplates && (
+          <div className="border-t border-gray-100 dark:border-gray-800 p-4">
+            <TemplatesGallery
+              compact
+              onApplied={() => {
+                showToast('Starter template applied!');
+                window.dispatchEvent(new CustomEvent('truespend:tier-changed'));
+              }}
+            />
+          </div>
+        )}
+      </div>
 
       {/* ── Auto-Budget Modal (Spex AI Personalized Pattern + 3 Fixed Plans) ── */}
       <MotionModal

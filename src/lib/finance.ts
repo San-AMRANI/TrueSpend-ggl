@@ -178,6 +178,7 @@ export const SPENT_ON_MYSELF_CATEGORIES = [
   '🎬 Entertainment',
   '👥 Social',
   '🛠️ Home, Tech & Equipment',
+  '📦 Others',
 ] as const;
 
 const toContextIdSet = (ids?: Set<string> | string[] | null): Set<string> | null => {

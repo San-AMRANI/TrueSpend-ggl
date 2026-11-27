@@ -16,6 +16,7 @@ export const expenseCategories = [
   '🛟 Emergency & goals Fund',
   '📈 Investments',
   '🛠️ Home, Tech & Equipment',
+  '📦 Others',
 ] as const;
 
 export const incomeAndTransferCategories = [
@@ -326,6 +327,16 @@ const aliases = new Map<string, string>([
   ['router', '🛠️ Home, Tech & Equipment'],
   ['cable', '🛠️ Home, Tech & Equipment'],
   ['cables', '🛠️ Home, Tech & Equipment'],
+
+  // Others (general / miscellaneous expenses not covered by specific categories)
+  ['other', '📦 Others'],
+  ['others', '📦 Others'],
+  ['other expenses', '📦 Others'],
+  ['misc', '📦 Others'],
+  ['miscellaneous', '📦 Others'],
+  ['general', '📦 Others'],
+  ['various', '📦 Others'],
+  ['uncategorized', '📦 Others'],
 
   // Income
   ['salary', '📥 Income'],

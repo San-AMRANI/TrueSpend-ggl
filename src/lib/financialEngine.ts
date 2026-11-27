@@ -86,6 +86,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
     '👥 Social',
     '🏠 Household & Family',
     '⚠️ Unexpected',
+    '📦 Others',
     // Backward compatibility
     '👨‍👩‍👦 Family & Gifts',
     '🚨 Unexpected',

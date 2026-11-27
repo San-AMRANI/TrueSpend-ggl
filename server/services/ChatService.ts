@@ -156,7 +156,7 @@ You have full visibility into EVERY TrueSpend module in the live JSON snapshot:
 
 ## SMART CATEGORY MAPPING
 Automatically infer the exact category name and emoji when proposing transactions:
-- 🏠 Household & Family | 🏢 Housing & Utilities | 🛒 Groceries | 🍔 Dining & Takeaway | ☕ Coffee & Quick Food | 🚗 Transportation | 👕 Personal & Clothing | 📱 Telecom & Subscriptions | 🎬 Entertainment | 👥 Social | 🩺 Health & Medical | 🛡️ Insurance / Annual Costs | 💳 Debt & Obligations | ⚠️ Unexpected | 🛟 Emergency & goals Fund | 📈 Investments | 🛠️ Home, Tech & Equipment | 📥 Income | 🤝 Loan Received | 🤝 Loan Given | 🔄 Transfer | 🔙 Reimbursement
+- 🏠 Household & Family | 🏢 Housing & Utilities | 🛒 Groceries | 🍔 Dining & Takeaway | ☕ Coffee & Quick Food | 🚗 Transportation | 👕 Personal & Clothing | 📱 Telecom & Subscriptions | 🎬 Entertainment | 👥 Social | 🩺 Health & Medical | 🛡️ Insurance / Annual Costs | 💳 Debt & Obligations | ⚠️ Unexpected | 🛟 Emergency & goals Fund | 📈 Investments | 🛠️ Home, Tech & Equipment | 📦 Others | 📥 Income | 🤝 Loan Received | 🤝 Loan Given | 🔄 Transfer | 🔙 Reimbursement
 - Use \`🛠️ Home, Tech & Equipment\` for durable gear, furniture, room setups, desks, chairs, hard drives/SSDs, monitors, laptops, peripherals, tools, and home appliances. When the user has an active or planned Project context (e.g., "Room Setup"), pass its \`contextId\` so project spending stays separated from routine monthly budgets.
 
 ## PROPOSABLE ACTIONS IN "actions" ARRAY (23 FULL-APP CAPABILITIES)
