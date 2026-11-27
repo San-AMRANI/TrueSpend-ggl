@@ -469,15 +469,17 @@ function BudgetCard({
             {isSavings && retentionMeta && (
               <div className="border-t border-gray-100 dark:border-gray-800 pt-2 space-y-1 text-[11px]">
                 <div className="flex items-center justify-between text-gray-700 dark:text-gray-300">
-                  <span>{isCurrentMonth ? 'Protected Floor in Bank' : 'Retained in Bank'}</span>
+                  <span>Live Unspent in Bank</span>
                   <span className="font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">
-                    {(isCurrentMonth ? retentionMeta.protectedBankRetention : retentionMeta.liveRetainedInBank).toFixed(0)} MAD
+                    {retentionMeta.liveRetainedInBank.toFixed(0)} MAD
                   </span>
                 </div>
                 {isCurrentMonth && (
                   <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
-                    <span>Live Unspent in Bank</span>
-                    <span className="font-mono tabular-nums">{retentionMeta.liveRetainedInBank.toFixed(0)} MAD</span>
+                    <span>Min left if all caps spent</span>
+                    <span className={`font-mono tabular-nums ${amount !== undefined && retentionMeta.protectedBankRetention < amount ? 'text-amber-600 dark:text-amber-400 font-medium' : ''}`}>
+                      {retentionMeta.protectedBankRetention.toFixed(0)} MAD
+                    </span>
                   </div>
                 )}
                 {retentionMeta.explicitTxAmount > 0 && (
@@ -654,9 +656,9 @@ function Rule503020View({
       setPct: setSavingsPct,
       categories: SAVINGS_CATEGORIES,
       color: '#10b981',
-      spent: fourPillar.effectiveSavedForBudget + fourPillar.investedAmount,
+      spent: fourPillar.totalActualRetainedAndSaved + fourPillar.investedAmount,
       isWealth: true,
-      subNote: `Kept in Bank: ${fourPillar.effectiveSavedForBudget.toFixed(0)} MAD + Invested: ${fourPillar.investedAmount.toFixed(0)} MAD`,
+      subNote: `Kept in Bank: ${fourPillar.totalActualRetainedAndSaved.toFixed(0)} MAD + Invested: ${fourPillar.investedAmount.toFixed(0)} MAD`,
     },
   ];
 
@@ -747,6 +749,7 @@ function EnvelopeView({
   payrolls,
   wallets,
   fourPillar,
+  excludeContextIds,
   onDelete,
 }: {
   budgets: CategoryBudget[];
@@ -756,6 +759,7 @@ function EnvelopeView({
   payrolls: Payroll[];
   wallets?: Array<{ id: string; type?: string }>;
   fourPillar: FourPillarBreakdown;
+  excludeContextIds?: Set<string> | string[];
   onSave: (cat: string, amount: number) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
@@ -785,7 +789,7 @@ function EnvelopeView({
         <div className="p-3.5">
           <p className="text-xs text-gray-500 dark:text-gray-400">Retained &amp; Invested</p>
           <p className="text-lg font-bold font-mono tabular-nums text-indigo-600 dark:text-indigo-400 mt-0.5">
-            {(fourPillar.effectiveSavedForBudget + fourPillar.investedAmount).toFixed(0)} MAD
+            {(fourPillar.totalActualRetainedAndSaved + fourPillar.investedAmount).toFixed(0)} MAD
           </p>
         </div>
       </div>
@@ -795,7 +799,7 @@ function EnvelopeView({
           <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">No envelopes for this month. Use the form above to set category budgets.</p>
         )}
         {livingBudgets.map((b) => {
-          const spent = getCategorySpending(transactions, b.category, year, month, payrolls, wallets);
+          const spent = getCategorySpending(transactions, b.category, year, month, payrolls, wallets, excludeContextIds);
           const amount = parseFloat(b.amount);
           const left = amount - spent;
           const pct = amount > 0 ? Math.min(100, (spent / amount) * 100) : 0;
@@ -846,8 +850,8 @@ function EnvelopeView({
             {wealthBudgets.map((b) => {
               const isSavings = isSavingsRetentionCategory(b.category);
               const allocated = isSavings
-                ? fourPillar.effectiveSavedForBudget
-                : getCategorySpending(transactions, b.category, year, month, payrolls, wallets);
+                ? fourPillar.totalActualRetainedAndSaved
+                : getCategorySpending(transactions, b.category, year, month, payrolls, wallets, excludeContextIds);
               const amount = parseFloat(b.amount);
               const pct = amount > 0 ? Math.min(100, (allocated / amount) * 100) : 0;
               const color = categoryColor(b.category);
@@ -1526,9 +1530,6 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
     ) ||
     (budgetSurplus > 0 && goals.length > 0);
 
-  const retainedHeadlinePct =
-    totalIncome > 0 ? (fourPillar.effectiveSavedForBudget / totalIncome) * 100 : 0;
-
   return (
     <div className="space-y-6">
 
@@ -1827,27 +1828,29 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
               </p>
             </div>
 
-            {/* Pillar 4: Retained in Bank (Clearly separates Protected Floor vs Live Unspent) */}
+            {/* Pillar 4: Retained in Bank (Actual live unspent + savings transfers, consistent across Routine & Combined) */}
             <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 p-3.5 space-y-1">
               <div className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  {isCurrentMonth && livingBudgetTotal > 0 ? 'Protected in Bank' : 'Retained in Bank'}
+                  Retained in Bank
                 </span>
                 <span className="text-[11px] font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-400">
-                  {retainedHeadlinePct.toFixed(1)}%
+                  {fourPillar.savedPctOfIncome.toFixed(1)}%
                 </span>
               </div>
               <p className="text-lg font-bold font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
-                <AnimatedMetricValue value={fourPillar.effectiveSavedForBudget} decimals={0} suffix=" MAD" />
+                <AnimatedMetricValue value={fourPillar.totalActualRetainedAndSaved} decimals={0} suffix=" MAD" />
               </p>
               <p className="text-[11px] text-emerald-800/80 dark:text-emerald-300/80 font-mono tabular-nums">
-                Live unspent: {fourPillar.liveRetainedInBank.toFixed(0)} MAD
-                {fourPillar.plannedSavingsBudget > 0 ? ` · Target ${fourPillar.plannedSavingsBudget.toFixed(0)}` : ''}
+                {fourPillar.plannedSavingsBudget > 0
+                  ? `Target ${fourPillar.plannedSavingsBudget.toFixed(0)} MAD`
+                  : 'Live unspent from period income'}
+                {fourPillar.explicitSavingsTx > 0 ? ` · +${fourPillar.explicitSavingsTx.toFixed(0)} saved tx` : ''}
               </p>
               {isCurrentMonth && livingBudgetTotal > 0 && (
-                <p className="text-[10px] text-emerald-700/70 dark:text-emerald-400/70">
-                  Floor kept if 100% of caps are spent
+                <p className={`text-[10px] font-mono tabular-nums ${fourPillar.plannedSavingsBudget > 0 && fourPillar.protectedBankRetention < fourPillar.plannedSavingsBudget ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700/75 dark:text-emerald-400/75'}`}>
+                  Min left if all caps spent: {fourPillar.protectedBankRetention.toFixed(0)} MAD
                 </p>
               )}
             </div>
@@ -2176,6 +2179,7 @@ export const BudgetsTab: React.FC<BudgetsTabProps> = ({
             payrolls={payrolls}
             wallets={wallets}
             fourPillar={fourPillar}
+            excludeContextIds={activeExcludedProjectIds}
             onSave={(cat, amount) => onSaveBudget(cat, monthRef.year, monthRef.month, amount)}
             onDelete={onDeleteBudget}
           />

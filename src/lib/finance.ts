@@ -766,11 +766,14 @@ export const computeFourPillarBreakdown = ({
     periodIncome - totalLivingSpent - excludedProjectSpent - explicitInvested - explicitSavingsTx
   );
 
-  // 2. Protected Bank Retention (for active month budget allocation):
-  // Any income not committed to living budgets (or actual living spend if higher), separated project spend,
-  // and investment budgets is automatically retained in the bank as savings without requiring a transaction.
+  // 2. Protected Bank Retention (projected worst-case floor for active month):
+  // Exact remaining cash if 100% of every remaining living category cap and investment target is spent,
+  // using per-category max(spent, budgeted) so individual category overspends are never masked.
   const committedLiving = isCurrentMonth && plannedLivingBudget > 0
-    ? Math.max(totalLivingSpent, plannedLivingBudget)
+    ? [...myselfCategories, ...obligationsCategories].reduce(
+        (sum, item) => sum + Math.max(item.spent, item.budgeted),
+        0
+      )
     : totalLivingSpent;
   const committedInvestments = isCurrentMonth && plannedInvestmentBudget > 0
     ? Math.max(explicitInvested, plannedInvestmentBudget)
@@ -781,9 +784,10 @@ export const computeFourPillarBreakdown = ({
     periodIncome - committedLiving - excludedProjectSpent - committedInvestments - explicitSavingsTx
   );
 
-  // Effective saved credited toward '🛟 Emergency & goals Fund' budget card
-  const effectiveSavedForBudget = explicitSavingsTx + (isCurrentMonth && plannedLivingBudget > 0 ? protectedBankRetention : liveRetainedInBank);
+  // Actual retained in bank + explicit savings transfers (always consistent across Routine & Combined views)
   const totalActualRetainedAndSaved = explicitSavingsTx + liveRetainedInBank;
+  // Effective saved credited toward '🛟 Emergency & goals Fund' reflects actual money retained & saved
+  const effectiveSavedForBudget = totalActualRetainedAndSaved;
   const totalWealthBuilt = totalActualRetainedAndSaved + explicitInvested;
 
   return {
