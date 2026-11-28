@@ -2,11 +2,13 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../src/db/index.js';
 import { wallets } from '../../src/db/schema.js';
 import { walletRepository } from '../repositories/WalletRepository.js';
+import type { WalletAccountSubtype } from '../../src/types/index.js';
+import { getAccountSubtypeMeta, isCreditLiabilitySubtype } from '../../src/lib/accountTaxonomy.js';
 
 export interface CreateWalletDTO {
   name: string;
   type: 'Bank' | 'Cash' | 'Savings' | 'Investment';
-  accountSubtype?: 'Checking' | 'Savings' | 'Cash' | 'Brokerage' | 'CreditCard' | 'Overdraft';
+  accountSubtype?: WalletAccountSubtype;
   institutionName?: string;
   accountReference?: string;
   currency?: string;
@@ -17,13 +19,13 @@ export interface CreateWalletDTO {
   statementClosingDay?: number;
   paymentDueDay?: number;
   minimumPayment?: number;
-  valuationStatus?: 'verified' | 'manual' | 'synced' | 'stale';
+  valuationStatus?: 'verified' | 'manual' | 'synced' | 'stale' | 'exact';
 }
 
 export interface UpdateWalletDTO {
   name?: string;
   type?: 'Bank' | 'Cash' | 'Savings' | 'Investment';
-  accountSubtype?: 'Checking' | 'Savings' | 'Cash' | 'Brokerage' | 'CreditCard' | 'Overdraft';
+  accountSubtype?: WalletAccountSubtype;
   institutionName?: string;
   accountReference?: string;
   currency?: string;
@@ -34,7 +36,7 @@ export interface UpdateWalletDTO {
   statementClosingDay?: number;
   paymentDueDay?: number;
   minimumPayment?: number;
-  valuationStatus?: 'verified' | 'manual' | 'synced' | 'stale';
+  valuationStatus?: 'verified' | 'manual' | 'synced' | 'stale' | 'exact';
 }
 
 export class WalletService {
@@ -67,14 +69,15 @@ export class WalletService {
       throw new Error('Wallet name is required');
     }
 
-    const type = dto.type || 'Bank';
+    const subtypeMeta = getAccountSubtypeMeta(dto.accountSubtype, dto.type || 'Bank');
+    const type = dto.type || subtypeMeta.parentType;
     if (!['Bank', 'Cash', 'Savings', 'Investment'].includes(type)) {
       throw new Error('Invalid wallet type. Allowed types: Bank, Cash, Savings, Investment');
     }
 
     const existingWallets = await walletRepository.findAllByUserId(userId);
     const isFirst = existingWallets.length === 0;
-    const isCredit = dto.accountSubtype === 'CreditCard' || dto.accountSubtype === 'Overdraft';
+    const isCredit = isCreditLiabilitySubtype(dto.accountSubtype);
     const isMain = isCredit ? false : isFirst ? true : Boolean(dto.isMain);
     const initialBalance = String(dto.initialBalance ?? 0);
 
@@ -87,15 +90,7 @@ export class WalletService {
     });
 
     const extraPatch: Record<string, any> = {
-      accountSubtype:
-        dto.accountSubtype ||
-        (type === 'Savings'
-          ? 'Savings'
-          : type === 'Cash'
-          ? 'Cash'
-          : type === 'Investment'
-          ? 'Brokerage'
-          : 'Checking'),
+      accountSubtype: dto.accountSubtype || subtypeMeta.subtype,
       institutionName: dto.institutionName?.trim() || null,
       accountReference: dto.accountReference?.trim() || null,
       currency: (dto.currency || 'MAD').toUpperCase().trim(),

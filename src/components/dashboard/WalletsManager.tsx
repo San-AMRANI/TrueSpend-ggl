@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
   Landmark,
@@ -45,6 +45,18 @@ import { useAuth } from '../../context/AuthContext';
 import { useReviewInbox } from '../../hooks/useReviewInbox';
 import { useAccountAuditWorkbench } from '../../hooks/useAccountAuditWorkbench';
 import { expenseCategories } from '../../lib/categories';
+import {
+  ACCOUNTING_CLASS_ORDER,
+  SUBTYPES_BY_CLASS,
+  getAccountSubtypeMeta,
+  getGlCodeForWallet,
+  isCreditLiabilitySubtype,
+} from '../../lib/accountTaxonomy';
+import {
+  buildMultiWalletComparisonSeries,
+  type WalletRangeKey,
+} from '../../lib/walletAnalytics';
+import { WalletAnalyticsPanel, WalletCardSparkline } from './WalletAnalyticsPanel';
 
 const toSafeNum = (value: unknown, fallback = 0): number => {
   const n = Number(value);
@@ -100,6 +112,14 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
   const [reassignTargetId, setReassignTargetId] = useState<string>('');
   const [expandedWalletBills, setExpandedWalletBills] = useState<Record<string, boolean>>({});
   const [payingSubId, setPayingSubId] = useState<string | null>(null);
+  const [selectedGraphWalletId, setSelectedGraphWalletId] = useState<string | null>(null);
+  const [graphRange, setGraphRange] = useState<WalletRangeKey>('30d');
+  const graphPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const walletAnalyticsMap = useMemo(
+    () => buildMultiWalletComparisonSeries(wallets, transactions, graphRange),
+    [wallets, transactions, graphRange]
+  );
 
   const [activeSection, setActiveSection] = useState<WalletsWorkbenchSection>(
     isAdvanced ? initialSection : 'wallets'
@@ -384,7 +404,10 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
     }
   };
 
-  const getWalletIcon = (type: string) => {
+  const getWalletIcon = (type: string, subtype?: string | null) => {
+    if (isCreditLiabilitySubtype(subtype)) {
+      return <CreditCard className="h-5 w-5 text-rose-600 dark:text-rose-400" />;
+    }
     switch (type) {
       case 'Bank':
         return <Landmark className="h-5 w-5 text-blue-600 dark:text-blue-400" />;
@@ -452,121 +475,161 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Wallet Type</label>
-              <Select
-                value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-                className="bg-white dark:bg-gray-800"
-              >
-                <option value="Bank">Bank Account</option>
-                <option value="Cash">Physical Cash</option>
-                <option value="Savings">Savings / Emergency</option>
-                <option value="Investment">Brokerage / Investment / Crypto</option>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Account Subtype</label>
-              <Select
-                value={formData.accountSubtype}
-                onChange={(e) => setFormData({ ...formData, accountSubtype: e.target.value as WalletAccountSubtype })}
-                className="bg-white dark:bg-gray-800"
-              >
-                <option value="Checking">Checking / Current Account</option>
-                <option value="Savings">Savings / Emergency Vault</option>
-                <option value="Cash">Physical Cash</option>
-                <option value="Brokerage">Brokerage / Crypto Account</option>
-                <option value="CreditCard">Credit Card (Liability Account)</option>
-                <option value="Overdraft">Overdraft Line (Liability Account)</option>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Institution &amp; Currency</label>
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  placeholder="e.g. Attijariwafa, CIH, Wise"
-                  value={formData.institutionName}
-                  onChange={(e) => setFormData({ ...formData, institutionName: e.target.value })}
-                  className="bg-white dark:bg-gray-800 flex-1"
-                />
-                <Select
-                  value={formData.currency}
-                  onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                  className="bg-white dark:bg-gray-800 w-24"
-                >
-                  <option value="MAD">MAD</option>
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="GBP">GBP</option>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                {formData.accountSubtype === 'CreditCard' || formData.accountSubtype === 'Overdraft'
-                  ? 'Initial Balance (Use negative for owed liability)'
-                  : `Starting / Initial Balance (${formData.currency})`}
-              </label>
-              <Input
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={formData.initialBalance}
-                onChange={(e) => setFormData({ ...formData, initialBalance: e.target.value })}
-                className="bg-white dark:bg-gray-800"
-              />
-              <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                {formData.accountSubtype === 'CreditCard' || formData.accountSubtype === 'Overdraft'
-                  ? 'Credit limits are never counted as liquid cash.'
-                  : 'The baseline balance before recorded transactions.'}
-              </p>
-            </div>
-
-            {(formData.accountSubtype === 'CreditCard' || formData.accountSubtype === 'Overdraft') && (
-              <>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Credit Limit (MAD)</label>
-                  <Input
-                    type="number"
-                    step="100"
-                    placeholder="e.g. 20000"
-                    value={formData.creditLimit}
-                    onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
-                    className="bg-white dark:bg-gray-800"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
+            {(() => {
+              const selectedMeta = getAccountSubtypeMeta(formData.accountSubtype, formData.type);
+              const isLiabilityForm = isCreditLiabilitySubtype(formData.accountSubtype);
+              return (
+                <>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Closing Day (1-31)</label>
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      Accounting Classification (Chart of Accounts)
+                    </label>
+                    <Select
+                      value={formData.accountSubtype}
+                      onChange={(e) => {
+                        const nextSubtype = e.target.value as WalletAccountSubtype;
+                        const nextMeta = getAccountSubtypeMeta(nextSubtype, formData.type);
+                        setFormData({
+                          ...formData,
+                          accountSubtype: nextSubtype,
+                          type: nextMeta.parentType,
+                        });
+                      }}
+                      className="bg-white dark:bg-gray-800"
+                    >
+                      {ACCOUNTING_CLASS_ORDER.map((cls) => (
+                        <optgroup key={cls} label={cls}>
+                          {SUBTYPES_BY_CLASS[cls].map((item) => (
+                            <option key={item.subtype} value={item.subtype}>
+                              {item.glPrefix} · {item.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </Select>
+                    <p className="text-[11px] font-mono tabular-nums text-indigo-700 dark:text-indigo-300">
+                      GL {selectedMeta.glPrefix} · {selectedMeta.safeToSpendNote}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Ledger Bucket (Auto-Synced)</label>
+                    <Select
+                      value={formData.type}
+                      onChange={(e) => {
+                        const nextType = e.target.value as 'Bank' | 'Cash' | 'Savings' | 'Investment';
+                        const fallbackSubtype: WalletAccountSubtype =
+                          nextType === 'Cash'
+                            ? 'Cash'
+                            : nextType === 'Savings'
+                            ? 'Savings'
+                            : nextType === 'Investment'
+                            ? 'Brokerage'
+                            : isCreditLiabilitySubtype(formData.accountSubtype)
+                            ? formData.accountSubtype
+                            : 'Checking';
+                        setFormData({ ...formData, type: nextType, accountSubtype: fallbackSubtype });
+                      }}
+                      className="bg-white dark:bg-gray-800"
+                    >
+                      <option value="Bank">Bank / Operating Account</option>
+                      <option value="Cash">Physical Cash</option>
+                      <option value="Savings">Savings / Reserve Vault</option>
+                      <option value="Investment">Investment / Brokerage / Crypto</option>
+                    </Select>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      {selectedMeta.description}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Institution &amp; Currency</label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        placeholder="e.g. Attijariwafa, CIH, Wise, Binance"
+                        value={formData.institutionName}
+                        onChange={(e) => setFormData({ ...formData, institutionName: e.target.value })}
+                        className="bg-white dark:bg-gray-800 flex-1"
+                      />
+                      <Select
+                        value={formData.currency}
+                        onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                        className="bg-white dark:bg-gray-800 w-24"
+                      >
+                        <option value="MAD">MAD</option>
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="GBP">GBP</option>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      {isLiabilityForm
+                        ? 'Initial Balance (Use negative for owed liability)'
+                        : `Starting / Initial Balance (${formData.currency})`}
+                    </label>
                     <Input
                       type="number"
-                      min="1"
-                      max="31"
-                      placeholder="15"
-                      value={formData.statementClosingDay}
-                      onChange={(e) => setFormData({ ...formData, statementClosingDay: e.target.value })}
+                      step="0.01"
+                      placeholder="0.00"
+                      value={formData.initialBalance}
+                      onChange={(e) => setFormData({ ...formData, initialBalance: e.target.value })}
                       className="bg-white dark:bg-gray-800"
                     />
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      {isLiabilityForm
+                        ? 'Credit limits are never counted as liquid cash; owed balances reduce Net Worth.'
+                        : 'The baseline balance before recorded transactions.'}
+                    </p>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Due Day (1-31)</label>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="31"
-                      placeholder="5"
-                      value={formData.paymentDueDay}
-                      onChange={(e) => setFormData({ ...formData, paymentDueDay: e.target.value })}
-                      className="bg-white dark:bg-gray-800"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
+
+                  {isLiabilityForm && (
+                    <>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Credit / Facility Limit (MAD)</label>
+                        <Input
+                          type="number"
+                          step="100"
+                          placeholder="e.g. 20000"
+                          value={formData.creditLimit}
+                          onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
+                          className="bg-white dark:bg-gray-800"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Closing Day (1-31)</label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="31"
+                            placeholder="15"
+                            value={formData.statementClosingDay}
+                            onChange={(e) => setFormData({ ...formData, statementClosingDay: e.target.value })}
+                            className="bg-white dark:bg-gray-800"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Due Day (1-31)</label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="31"
+                            placeholder="5"
+                            value={formData.paymentDueDay}
+                            onChange={(e) => setFormData({ ...formData, paymentDueDay: e.target.value })}
+                            className="bg-white dark:bg-gray-800"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
 
             <div className="flex items-center sm:pt-6">
               <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
@@ -1893,59 +1956,63 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
         );
       })()}
 
+      {/* Balance Sheet & Per-Wallet Interactive Graph Studio */}
+      {activeSection === 'wallets' && wallets.length > 0 && (
+        <div ref={graphPanelRef}>
+          <WalletAnalyticsPanel
+            wallets={wallets}
+            transactions={transactions}
+            debts={debts}
+            investmentsData={investmentsData}
+            selectedWalletId={selectedGraphWalletId}
+            onSelectWalletId={setSelectedGraphWalletId}
+            range={graphRange}
+            onRangeChange={setGraphRange}
+          />
+        </div>
+      )}
+
       {/* Wallets Grid / List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {wallets.map((wallet) => (
+        {wallets.map((wallet) => {
+          const subtypeMeta = getAccountSubtypeMeta(wallet.accountSubtype, wallet.type);
+          const glMeta = getGlCodeForWallet(wallet);
+          const isCreditLiability = isCreditLiabilitySubtype(wallet.accountSubtype);
+
+          return (
           <div
             key={wallet.id}
             className={`relative rounded-xl border p-4 transition-all flex flex-col justify-between ${
               wallet.isMain
-                ? 'border-indigo-200 dark:border-indigo-800/60 bg-gradient-to-br from-indigo-50/40 via-white to-white dark:from-indigo-950/20 dark:via-gray-900 dark:to-gray-900 shadow-sm'
+                ? 'border-indigo-200 dark:border-indigo-800/60 bg-gradient-to-br from-indigo-50/40 via-white to-white dark:from-indigo-950/20 dark:via-gray-900 dark:to-gray-900'
                 : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900'
             }`}
           >
             <div>
               <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-800">
-                    {getWalletIcon(wallet.type)}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-800 shrink-0">
+                    {getWalletIcon(wallet.type, wallet.accountSubtype)}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <h4 className="font-semibold text-gray-900 dark:text-gray-100 truncate max-w-[150px]">
+                      <h4 className="font-semibold text-gray-900 dark:text-gray-100 truncate max-w-[155px]">
                         {wallet.name}
                       </h4>
                       {wallet.isMain && (
-                        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 shrink-0">
                           <Star className="h-2.5 w-2.5 fill-current" /> Primary
                         </span>
                       )}
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
-                        {wallet.accountSubtype || wallet.type} {wallet.institutionName ? `· ${wallet.institutionName}` : ''}
-                      </p>
-                      {wallet.currency && wallet.currency !== 'MAD' && (
-                        <span className="rounded bg-blue-100 dark:bg-blue-950/60 px-1.5 py-0.5 text-[9px] font-bold text-blue-700 dark:text-blue-300">
-                          {wallet.currency}
-                        </span>
-                      )}
-                      {(wallet.accountSubtype === 'CreditCard' || wallet.accountSubtype === 'Overdraft') && (
-                        <span className="rounded bg-rose-100 dark:bg-rose-950/60 px-1.5 py-0.5 text-[9px] font-bold text-rose-700 dark:text-rose-300 flex items-center gap-0.5">
-                          <CreditCard className="h-2.5 w-2.5" /> Credit Liability
-                        </span>
-                      )}
-                      {wallet.type === 'Savings' && (
-                        <span className="rounded bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300">
-                          Goal Vault
-                        </span>
-                      )}
-                      {wallet.type === 'Investment' && (
-                        <span className="rounded bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300">
-                          Brokerage Reserve
-                        </span>
-                      )}
-                    </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate" title={`Ledger Account ${glMeta.code}`}>
+                      <span className="font-mono tabular-nums font-semibold text-gray-700 dark:text-gray-300">
+                        GL {subtypeMeta.glPrefix}
+                      </span>{' '}
+                      · {subtypeMeta.shortLabel}
+                      {wallet.institutionName ? ` · ${wallet.institutionName}` : ''}
+                      {wallet.currency && wallet.currency !== 'MAD' ? ` · ${wallet.currency}` : ''}
+                    </p>
                   </div>
                 </div>
 
@@ -2093,7 +2160,7 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                   );
                 }
 
-                const isCreditCard = wallet.accountSubtype === 'CreditCard' || wallet.accountSubtype === 'Overdraft';
+                const isCreditCard = isCreditLiability;
                 if (isCreditCard) {
                   const limit = toSafeNum(wallet.creditLimit, 0);
                   const rawBal = toSafeNum(wallet.balance, 0);
@@ -2232,10 +2299,19 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
                   </div>
                 );
               })()}
+              {/* Inline Per-Wallet Historical Balance Sparkline */}
+              <WalletCardSparkline
+                summary={walletAnalyticsMap.perWallet[wallet.id]}
+                isLiability={isCreditLiability}
+                onInspect={() => {
+                  setSelectedGraphWalletId(wallet.id);
+                  graphPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+              />
             </div>
 
             {/* Bottom Actions */}
-            {!wallet.isMain && wallet.type !== 'Investment' && (
+            {!wallet.isMain && wallet.type !== 'Investment' && !isCreditLiability && (
               <div className="mt-3 pt-2">
                 <button
                   type="button"
@@ -2249,7 +2325,8 @@ export const WalletsManager: React.FC<WalletsManagerProps> = ({
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Delete Confirmation Modal */}

@@ -198,7 +198,20 @@ export interface Forecast {
   spendingPacePercent: number;
 }
 
-export type WalletAccountSubtype = 'Checking' | 'Savings' | 'Cash' | 'Brokerage' | 'CreditCard' | 'Overdraft';
+export type WalletAccountSubtype =
+  | 'Checking'
+  | 'PayrollHub'
+  | 'DigitalWallet'
+  | 'Cash'
+  | 'Savings'
+  | 'EmergencyVault'
+  | 'GoalVault'
+  | 'Brokerage'
+  | 'CryptoExchange'
+  | 'Retirement'
+  | 'CreditCard'
+  | 'Overdraft'
+  | 'BNPL';
 
 export interface Wallet {
   id: string;

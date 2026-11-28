@@ -28,6 +28,7 @@ import {
   wallets,
 } from '../../src/db/schema.js';
 import { pushService } from './PushService.js';
+import { getGlCodeForWallet, isCreditLiabilitySubtype } from '../../src/lib/accountTaxonomy.js';
 
 export type DbExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -171,18 +172,17 @@ export class CoreAuditService {
     const sourceWallet = tx.walletId ? walletMap.get(tx.walletId) : undefined;
     const destWallet = tx.destinationWalletId ? walletMap.get(tx.destinationWalletId) : undefined;
 
-    const isSourceCreditCard =
-      sourceWallet?.accountSubtype === 'CreditCard' || sourceWallet?.accountSubtype === 'Overdraft';
-    const isDestCreditCard =
-      destWallet?.accountSubtype === 'CreditCard' || destWallet?.accountSubtype === 'Overdraft';
+    const isSourceCreditCard = isCreditLiabilitySubtype(sourceWallet?.accountSubtype);
+    const isDestCreditCard = isCreditLiabilitySubtype(destWallet?.accountSubtype);
 
-    const sourceAccountCode = isSourceCreditCard
-      ? `2010-LIAB-${(sourceWallet?.name || 'CREDIT').toUpperCase().slice(0, 10)}`
-      : `1010-ASSET-${(sourceWallet?.name || 'WALLET').toUpperCase().slice(0, 10)}`;
+    const sourceGl = getGlCodeForWallet({
+      name: sourceWallet?.name || (isSourceCreditCard ? 'CREDIT' : 'WALLET'),
+      type: sourceWallet?.type || 'Bank',
+      accountSubtype: sourceWallet?.accountSubtype,
+    });
+    const sourceAccountCode = sourceGl.code;
     const sourceAccountName = sourceWallet?.name || 'Primary Wallet';
-    const sourceAccountClass: JournalLineInput['accountClass'] = isSourceCreditCard
-      ? 'Liability'
-      : 'Asset';
+    const sourceAccountClass: JournalLineInput['accountClass'] = sourceGl.accountClass;
 
     if (tx.type === 'Income') {
       const isLoan = (tx.category || '').toLowerCase().includes('loan');
@@ -475,8 +475,8 @@ export class CoreAuditService {
 
   async syncCreditWalletLiabilityBalances(userId: string, txDb: DbExecutor = db) {
     const userWallets = await txDb.select().from(wallets).where(eq(wallets.userId, userId));
-    const creditWallets = userWallets.filter(
-      (w) => w.accountSubtype === 'CreditCard' || w.accountSubtype === 'Overdraft'
+    const creditWallets = userWallets.filter((w) =>
+      isCreditLiabilitySubtype(w.accountSubtype)
     );
     if (creditWallets.length === 0) return;
 
@@ -665,7 +665,7 @@ export class CoreAuditService {
     // Side-by-side wallet balance comparison (Legacy vs Double-Entry Journal) in O(1) per wallet
     const walletComparison = userWallets.map((w) => {
       const initBal = Number(w.initialBalance || 0);
-      const isCredit = w.accountSubtype === 'CreditCard' || w.accountSubtype === 'Overdraft';
+      const isCredit = isCreditLiabilitySubtype(w.accountSubtype);
       const walletLines = postedLinesByWallet.get(w.id) || [];
       const netJournalDelta = walletLines.reduce(
         (s, l) =>

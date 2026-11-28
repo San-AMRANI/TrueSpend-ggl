@@ -53,6 +53,11 @@ const FinancialInsightModal = lazy(() =>
 );
 
 // Viewport-lazy lower overview bands (each chunks independently + avoids computing/rendering offscreen)
+const OverviewBandDataGameAndKpis = lazy(() =>
+  import('./overview/OverviewBandDataGameAndKpis').then((m) => ({
+    default: m.OverviewBandDataGameAndKpis,
+  })),
+);
 const OverviewBand2HealthAndCategories = lazy(() =>
   import('./overview/OverviewBand2HealthAndCategories').then((m) => ({
     default: m.OverviewBand2HealthAndCategories,
@@ -687,6 +692,30 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ═════════════════════════════════════════════════════════════════════
+          BAND 1B — EXECUTIVE KPI MATRIX, FINANCIAL DATA GAME & CREATIVE CHARTS
+          ═════════════════════════════════════════════════════════════════════ */}
+      <ProgressiveSection
+        minHeight={420}
+        label="Executive KPI Matrix, Financial Data Game & Behavioral Charts"
+        render={() => (
+          <Suspense fallback={<BandSuspenseSkeleton heightClass="h-[420px]" />}>
+            <OverviewBandDataGameAndKpis
+              kpis={kpis}
+              transactions={transactions}
+              budgets={budgets}
+              payrolls={payrolls}
+              debts={debts}
+              goals={goals}
+              subscriptions={subscriptions}
+              investmentsData={investmentsData}
+              isPrivacyMode={isPrivacyMode}
+              setActiveTab={setActiveTab}
+            />
+          </Suspense>
+        )}
+      />
 
       {/* ═════════════════════════════════════════════════════════════════════
           BAND 2 — CATEGORY PRESSURE, FORECAST SCENARIOS & FINANCIAL HEALTH

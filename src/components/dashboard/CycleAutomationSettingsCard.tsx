@@ -3,6 +3,7 @@ import { CalendarCheck2, Check, Loader2, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { dashboardService } from '../../services/api/dashboardService';
+import { isCreditLiabilitySubtype } from '../../lib/accountTaxonomy';
 import { useAuth } from '../../context/AuthContext';
 import type {
   CycleAutomationSettings,
@@ -72,7 +73,7 @@ export const CycleAutomationSettingsCard: React.FC<CycleAutomationSettingsCardPr
   }, [token]);
 
   const savingsEligibleWallets = wallets.filter(
-    (w) => w.accountSubtype !== 'CreditCard' && w.accountSubtype !== 'Overdraft'
+    (w) => !isCreditLiabilitySubtype(w.accountSubtype)
   );
 
   const handleSave = async (e: React.FormEvent) => {

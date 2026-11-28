@@ -141,7 +141,7 @@ export interface YearlyAuditSummary {
 const round2 = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
 
 const isCreditLiabilityWallet = (w: CloseoutWalletInput): boolean =>
-  w.accountSubtype === 'CreditCard' || w.accountSubtype === 'Overdraft';
+  w.accountSubtype === 'CreditCard' || w.accountSubtype === 'Overdraft' || w.accountSubtype === 'BNPL';
 
 /**
  * Returns a timestamp strictly inside the closing financial period (the calendar day

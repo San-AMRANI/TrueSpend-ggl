@@ -101,8 +101,11 @@ export class KpiService {
         id: w.id,
         name: w.name,
         type: w.type,
+        accountSubtype: w.accountSubtype,
         isMain: w.isMain,
         initialBalance: w.initialBalance,
+        creditLimit: w.creditLimit,
+        liabilityBalance: w.liabilityBalance,
       })),
       userSettings: {
         emergencyBuffer: Number(dbUser?.emergencyBuffer || 0),

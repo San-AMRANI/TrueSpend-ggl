@@ -2,6 +2,7 @@ import { Transaction, Payroll, Debt, CategoryBudget } from '../types/index.js';
 import { getCurrentFinancialMonth, getNextPayroll, isInFinancialMonth, FinancialMonthBounds } from './financialMonth.js';
 import { normalizeCategory } from './categories.js';
 import { isReimbursementIncome, reimbursedAmountOf } from './finance.js';
+import { isCreditLiabilitySubtype } from './accountTaxonomy.js';
 
 export interface FinancialEngineWalletInput {
   id: string;
@@ -248,7 +249,7 @@ export function computeFinancialState(input: FinancialEngineInput) {
   }
 
   const isCreditLiabilityWallet = (w: FinancialEngineWalletInput) =>
-    w.accountSubtype === 'CreditCard' || w.accountSubtype === 'Overdraft';
+    isCreditLiabilitySubtype(w.accountSubtype);
 
   const savingsWallets = userWallets.filter(w => w.type === 'Savings' && !w.isMain && !isCreditLiabilityWallet(w));
   const savingsBalance = userWallets.length > 0
